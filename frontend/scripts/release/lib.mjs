@@ -64,11 +64,11 @@ export function changelogSection({ version, date, previous, entries, repoUrl }) 
   return lines.join('\n')
 }
 
-/** Put the section under the `# Changelog` heading, newest first. */
+/** Put the section above the newest one, newest first — under the heading and whatever introduces the file. */
 export function insertSection(changelog, section) {
-  const head = '# Changelog'
-  const body = changelog.startsWith(head) ? changelog.slice(head.length).replace(/^\n+/, '') : changelog
-  return `${head}\n\n${section}\n${body}`.replace(/\n{3,}/g, '\n\n')
+  const at = changelog.search(/^## /m)
+  if (at >= 0) return `${changelog.slice(0, at)}${section}\n${changelog.slice(at)}`.replace(/\n{3,}/g, '\n\n')
+  return `${changelog.trimEnd()}\n\n${section}`.replace(/\n{3,}/g, '\n\n')
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -54,6 +54,12 @@ describe('the release script', () => {
     expect(first).toContain(lib.TODO)
     const merged = lib.insertSection('# Changelog\n\n## 0.8.0 — old\n', '## 0.9.0 — new\n')
     expect(merged).toBe('# Changelog\n\n## 0.9.0 — new\n\n## 0.8.0 — old\n')
+    // The paragraph that introduces the file stays on top, also before the very first section.
+    const intro = '# Changelog\n\nEvery release, newest first.\n'
+    expect(lib.insertSection(intro, '## 0.9.0 — new\n')).toBe(`${intro}\n## 0.9.0 — new\n`)
+    expect(lib.insertSection(`${intro}\n## 0.9.0 — new\n`, '## 0.9.1 — newer\n')).toBe(
+      `${intro}\n## 0.9.1 — newer\n\n## 0.9.0 — new\n`
+    )
   })
 })
 

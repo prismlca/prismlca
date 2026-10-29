@@ -129,7 +129,9 @@ async function main() {
 
   // 6. The changelog draft — read and finished by a person before anything is committed.
   const whatsNew = JSON.parse(readFileSync(join(FRONTEND, 'src/renderer/src/assets/whats-new.json'), 'utf-8'))
-  const today = new Date().toISOString().slice(0, 10)
+  // The local date: a release tagged shortly after midnight is dated the day it was made, not UTC's day.
+  const now = new Date()
+  const today = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
   const section = changelogSection({
     version,
     date: today,
