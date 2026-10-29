@@ -27,6 +27,22 @@ PrismLCA aims to be as approachable as a modern desktop app and as capable as th
 - **Bring your data.** Import inventories from SimaPro, openLCA (JSON-LD), EcoSpold and ILCD into your own
   library; background data comes from ecoinvent or BAFU (see [Background data](#background-data)).
 
+## Install
+
+Installers are on the [releases page](https://github.com/prismlca/prismlca/releases/latest): the `.exe` for
+Windows 10 and 11 (64-bit), the `.AppImage` or the `.deb` for Linux (x64). `SHA256SUMS` lists the checksum of
+every file, and every file carries a build provenance attestation
+(`gh attestation verify <file> --repo prismlca/prismlca`).
+
+- **Windows:** releases before 0.9.1 are not code-signed, so Windows shows "Windows protected your PC". Compare
+  the installer with `SHA256SUMS` first (`Get-FileHash .\<installer>.exe` in PowerShell), then choose
+  *More info → Run anyway*. By default it installs for your user only, without administrator rights.
+- **Linux:** check with `sha256sum -c SHA256SUMS --ignore-missing`, then make the AppImage executable and start
+  it, or install the deb with `sudo apt install ./<package>.deb`.
+
+PrismLCA looks for a new version only when you click *Check for updates* on its About page. The Windows
+installation and the AppImage update in place; with the deb you install the new package yourself.
+
 ## Privacy
 
 PrismLCA runs on your computer and makes no network request on its own: no account, no telemetry, no crash
