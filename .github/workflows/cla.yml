@@ -1,0 +1,45 @@
+# The Contributor License Agreement check: every author of a pull request's commits accepts the CLA once,
+# by posting the sentence from CONTRIBUTING.md as a comment. The logic lives in .github/scripts/cla.cjs.
+#
+# `pull_request_target` because the check has to answer pull requests from forks, which a plain
+# `pull_request` run cannot (its token is read-only there). That trigger runs with a write token, so this
+# workflow never checks out or runs the pull request's code: it checks out the default branch, only the
+# script folder, and reads the pull request through the API.
+name: CLA
+
+# `edited` for a new base branch, which brings in other commits without moving the head; every comment
+# on a pull request, because each run works out the whole state again (see the concurrency note).
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+# One run per pull request at a time. GitHub keeps only the newest waiting run and drops the others, which
+# is safe only because every run checks everything from scratch. Runs for different pull requests that
+# write the signatures file at the same moment are resolved in the script (it reads it again and adds to it).
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  cla:
+    if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the signatures file on the cla-signatures branch
+      pull-requests: write # the comment on the pull request
+      statuses: write # the CLA status on its head commit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const cla = require('./.github/scripts/cla.cjs')
+            await cla.run({ github, context })

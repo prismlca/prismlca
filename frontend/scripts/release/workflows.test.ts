@@ -1,9 +1,10 @@
 /**
- * The release-workflow rules, checked on every workflow file in .github/workflows
- * (also the `.disabled` ones, which become live in the new repo). A rule here is cheaper than a review
- * that has to catch it:
+ * The workflow rules, checked on every workflow file in .github/workflows
+ * (also the `.disabled` ones, so a workflow is checked before it is switched on). A rule here is cheaper
+ * than a review that has to catch it:
  *  - every action pinned to a full commit SHA, so a moved tag cannot change what runs;
- *  - `pull_request_target` only in the CLA workflow (it must answer pull requests from forks);
+ *  - `pull_request_target` only in the CLA workflow (it must answer pull requests from forks), and that
+ *    workflow runs nothing from the pull request: default branch only, no token kept, no shell steps;
  *  - the self-hosted release runner (label prism-release-win) only in the release workflow, and never
  *    in a workflow a pull request can start — labels route jobs, they do not protect the runner;
  *  - no workflow publishes a release: drafts only, the maintainer publishes;
@@ -61,6 +62,20 @@ describe('GitHub workflows', () => {
     const { text } = load(f)
     expect(text).not.toMatch(/--draft=false|draft:\s*false|make_latest|gh release edit/)
     expect(text).not.toMatch(/electron-builder[^\n]*--publish (always|onTag)/)
+  })
+
+  it('CLA workflow: runs nothing from the pull request — default branch only, no token kept, no shell', () => {
+    const name = files.find((f) => /^cla\.ya?ml/.test(f))!
+    const { wf } = load(name)
+    expect(wf.permissions).toEqual({})
+    for (const job of Object.values(wf.jobs ?? {}))
+      for (const step of job.steps ?? []) {
+        expect(step.run).toBeUndefined()
+        if (step.uses?.startsWith('actions/checkout@')) {
+          expect(step.with?.ref).toBe('${{ github.event.repository.default_branch }}')
+          expect(step.with?.['persist-credentials']).toBe(false)
+        }
+      }
   })
 
   it('release workflow: tags and manual starts only, no default permissions, no stored credentials', () => {

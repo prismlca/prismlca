@@ -14,9 +14,13 @@ To accept, post this sentence as a comment on your pull request:
 
 > I have read the CLA Document and I hereby sign the CLA
 
-A bot records the acceptance (name, GitHub account, date, commit) in the `cla-signatures` branch and marks
-the pull request as cleared. You do this once; it covers all your later contributions. Until the bot is live
-you can also send a signed copy of the agreement to harthjonas@gmail.com.
+A bot records the acceptance (name, GitHub account, date, commit) in the `cla-signatures` branch and sets the
+pull request's CLA check to passed. You do this once; it covers all your later contributions. Co-authors in a
+`Co-authored-by` line need the agreement too: give their GitHub address there
+(`ID+login@users.noreply.github.com`) so they can sign the same way. The bot can only tell who wrote a commit
+when its author email belongs to a GitHub account — if it lists a commit it cannot place, add that email to
+your account or rewrite the commit, then comment `recheck`. If you cannot accept on GitHub, send a signed copy
+of the agreement to harthjonas@gmail.com.
 
 If your contribution includes work you do not own — third-party code, data, fonts, images — say so in the
 pull request and name the source and its licence (CLA Section 7). Everything shipped is listed in
