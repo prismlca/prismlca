@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<flowDataSet xmlns="http://lca.jrc.it/ILCD/Flow" xmlns:common="http://lca.jrc.it/ILCD/Common" version="1.1">
+  <flowInformation>
+    <dataSetInformation>
+      <common:UUID>44444444-4444-4444-4444-444444444444</common:UUID>
+      <name><baseName xml:lang="en">Electricity, medium voltage</baseName></name>
+      <classificationInformation></classificationInformation>
+    </dataSetInformation>
+    <quantitativeReference><referenceToReferenceFlowProperty>0</referenceToReferenceFlowProperty></quantitativeReference>
+  </flowInformation>
+  <modellingAndValidation><LCIMethod><typeOfDataSet>Product flow</typeOfDataSet></LCIMethod></modellingAndValidation>
+  <flowProperties>
+    <flowProperty dataSetInternalID="0">
+      <referenceToFlowPropertyDataSet type="flow property data set" refObjectId="66666666-6666-6666-6666-666666666666" uri="../flowproperties/66666666-6666-6666-6666-666666666666.xml">
+        <common:shortDescription xml:lang="en">Energy</common:shortDescription>
+      </referenceToFlowPropertyDataSet>
+      <meanValue>1.0</meanValue>
+    </flowProperty>
+  </flowProperties>
+</flowDataSet>

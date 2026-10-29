@@ -1,0 +1,128 @@
+/* --- Import wizard ------------------------------------------------------------------------- */
+/* Wide, because the review table is the step that matters and a truncated flow name cannot be
+   reviewed. The table scrolls inside the sheet rather than the sheet growing past the window. */
+.modal.sheet.import-wizard { width: min(1100px, 94vw); max-height: 88vh; }
+/* Every other step is prose and a couple of buttons; at review width the line runs so long it stops
+   being read. Same 560px the other sheets use. */
+.modal.sheet.import-wizard.compact { width: min(560px, 94vw); }
+/* The picked file: a chip in the terminal face on the navy ground, not a line of hint prose. Navy
+   rather than green — this is the input being echoed back, not a result. */
+.imp-path {
+  display: inline-block; max-width: 100%; margin: 8px 0 0;
+  font-family: var(--mono); font-size: var(--fs-sec);
+  padding: 5px 9px; border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--navy-soft); color: var(--navy); word-break: break-all;
+}
+/* What the chip above turned out to be. It sat straight under the chip's border and read as part
+   of it; a line of air makes it the answer to the path rather than its second row. */
+.imp-detected { margin-top: 8px; }
+.import-wizard .ai-table-wrap { max-height: 46vh; overflow: auto; }
+.import-wizard .ai-table td { vertical-align: top; }
+.import-wizard select { max-width: 340px; }
+/* `.settings-field` is a row everywhere else, and a row is wrong for a free-text name: the label
+   takes the line and the input ends up squeezed against the right edge, three characters wide.
+   Same treatment the rails give it — label above, field on its own full-width line. */
+.import-wizard .settings-field { flex-direction: column; align-items: stretch; gap: 3px; }
+.import-wizard .settings-field.settings-check { flex-direction: row; align-items: center; }
+.import-wizard .settings-field input[type='text'],
+.import-wizard .settings-field input:not([type]) { width: 100%; text-align: left; }
+/* The evidence is the reason the table exists; it gets the room that is left. */
+.import-wizard .ai-table th:nth-child(3), .import-wizard .ai-table td:nth-child(3) { min-width: 260px; }
+.import-wizard .ai-table th:nth-child(1), .import-wizard .ai-table td:nth-child(1) { min-width: 220px; }
+.row-gap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.mono { font-family: var(--mono); overflow-wrap: anywhere; }
+/* The bands, in the one place a reader compares them. Colour carries the same order as the words
+   and never carries it alone — the label is always there, because a colour-blind reviewer has to
+   be able to sort the table too. */
+.band { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: var(--fs-label);
+  font-weight: 600; white-space: nowrap; }
+.band-good { background: var(--green-soft); color: var(--green-ink); }
+.band-medium { background: var(--navy-soft); color: var(--navy); }
+.band-low { background: var(--purple-soft); color: var(--purple); }
+.band-open { background: var(--surface-2); color: var(--faint); }
+
+/* ── Progress bars: one look, the splash screen's ──────────────────────────────────────────────────
+   Every fill wears the gradient the start screen draws (purple → navy → green); the tracks keep their
+   own heights, radii and widths. The gradient is sized to the TRACK, not to the fill: the track is a
+   size container, so `100cqw` is its width and a fill at 40 % reveals the first 40 % of the colours —
+   at 100 % the whole range is there, compressed to whatever width the bar has. An indeterminate chip
+   carries the whole gradient in itself, since it has no width to reveal. */
+:root { --progress-gradient: linear-gradient(90deg, var(--purple), var(--navy), var(--green)); }
+.idx-progress-bar, .setup-progress, .calc-progress-bar, .rsec-progress { container-type: inline-size; }
+.idx-progress-bar span, .setup-progress i, .calc-progress-bar span, .rsec-progress span {
+  background-color: transparent;
+  background-image: var(--progress-gradient);
+  background-size: 100cqw 100%;
+  background-position: left 0;
+  background-repeat: no-repeat;
+}
+.setup-progress.indeterminate i, .calc-progress-bar .indeterminate { background-size: 100% 100%; }
+
+/* Comparison models: the picker (rows, not the Overview's cards), the toggles in the chat's "+" menu
+   and the chips above the composer. One icon — LinkIcon — for the whole concept. */
+.modal.sheet.cmp-sheet { width: min(620px, 94vw); max-height: 86vh; }
+.cmp-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 4px; }
+.cmp-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; padding: 7px 10px; font: inherit; font-size: var(--fs-body);
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); color: var(--text); }
+.cmp-search:focus { outline: none; border-color: var(--green-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+.cmp-folder { display: flex; flex-direction: column; gap: 2px; }
+.cmp-folder + .cmp-folder { border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; }
+.cmp-folder-h { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 6px; border: none; background: none;
+  color: var(--text); font: inherit; font-size: var(--fs-body); font-weight: 600; text-align: left; cursor: pointer; border-radius: 7px; }
+.cmp-folder-h:hover { background: var(--surface-2); }
+.cmp-folder-h.muted { color: var(--muted); cursor: default; }
+.cmp-folder-h.muted:hover { background: none; }
+.cmp-folder-h svg { flex: none; color: var(--muted); }
+.cmp-count { margin-left: auto; font-size: var(--fs-label); font-weight: 500; color: var(--faint); }
+.cmp-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px 6px 6px; border: 1px solid transparent;
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; border-radius: 8px; }
+.cmp-row:hover:not(:disabled) { background: var(--bg-muted); }
+.cmp-row.on { background: var(--green-soft); }
+.cmp-row:disabled { cursor: default; }
+.cmp-check { flex: none; width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--surface);
+  display: grid; place-items: center; font-size: 11px; line-height: 1; color: var(--surface); }
+.cmp-row.on .cmp-check { background: var(--green); border-color: var(--green); }
+.cmp-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cmp-name { font-size: var(--fs-body); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.cmp-fu { font-size: var(--fs-label); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-meta { flex: none; font-size: var(--fs-label); color: var(--faint); }
+/* The linked models as chips above the composer — the visible sign that the assistant is briefed on
+   them. The ✕ only switches one off for THIS chat; the link itself is removed in the picker. */
+.chat-cmp-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+/* In the controls row, between the "+" and the microphone: one line, names cut
+   before they push the mic and send buttons off the row. */
+.chat-cmp-list.inline { flex: 1; min-width: 0; flex-wrap: nowrap; margin: 0 0 0 4px; overflow: hidden; }
+.chat-cmp-list.inline .chat-cmp { min-width: 0; padding: 3px 7px; }
+.chat-cmp-list.inline .chat-attach-name { max-width: 220px; }
+.chat-cmp { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--text);
+  background: var(--navy-soft); border-radius: 8px; padding: 4px 8px; max-width: 100%; }
+.chat-cmp svg { flex: none; color: var(--navy); }
+/* In the Info dialog: the linked models as a row of chips with a remove, and the button to add one. */
+.mi-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mi-compare .chat-cmp { background: var(--surface-2); }
+.mi-compare-empty { font-size: var(--fs-sec); color: var(--muted); }
+.mi-compare-note { margin: 0 0 8px; font-size: var(--fs-sec); line-height: 1.5; color: var(--muted); max-width: 70ch; }
+.chat-cmp-many { border: none; cursor: pointer; font: inherit; font-size: var(--fs-sec); }
+.chat-cmp-many:hover { background: var(--navy); color: var(--surface); }
+.chat-cmp-many:hover svg { color: var(--surface); }
+
+
+/* The wizard as a sheet: head with the three stations, body per step, one foot that moves it on.
+   The station strip reads done → current → ahead by weight alone; the current one carries the green. */
+.imp-steps { display: flex; gap: 18px; margin: 12px 0 0; padding: 0; list-style: none; font-size: var(--fs-sec); color: var(--faint); }
+.imp-steps li { display: inline-flex; align-items: center; gap: 7px; }
+.imp-steps li.on { color: var(--text); font-weight: 600; }
+.imp-steps li.done { color: var(--muted); }
+.imp-step-n { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-label);
+  font-weight: 700; border: 1.5px solid var(--border-strong); color: var(--faint); background: var(--surface); }
+.imp-steps li.on .imp-step-n { background: var(--green); border-color: var(--green); color: #17240a; }
+.imp-steps li.done .imp-step-n { background: var(--green-soft); border-color: var(--green-soft); color: var(--green-ink); }
+.imp-body { padding-top: 14px; }
+.imp-body > .settings-hint:first-child { margin-top: 2px; }
+.imp-error { margin: 10px 0 0; }
+/* The foot's left half holds a sentence, a busy line or the read bar — all at the meta size, the bar
+   taking the width that is there. */
+.imp-foot-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.imp-foot-meta .imp-progress { max-width: none; }
+.imp-foot-meta .imp-busy-inline { font-size: var(--fs-sec); color: var(--muted); }
+.imp-foot-warn { color: var(--wait); font-weight: 600; }

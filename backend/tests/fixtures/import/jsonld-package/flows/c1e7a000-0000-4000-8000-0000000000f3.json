@@ -1,0 +1,19 @@
+{
+  "@type": "Flow",
+  "@id": "c1e7a000-0000-4000-8000-0000000000f3",
+  "name": "Carbon dioxide, fossil",
+  "flowType": "ELEMENTARY_FLOW",
+  "flowProperties": [
+    {
+      "@type": "FlowPropertyFactor",
+      "isRefFlowProperty": true,
+      "conversionFactor": 1.0,
+      "flowProperty": {
+        "@type": "FlowProperty",
+        "@id": "c1e7a000-0000-4000-8000-000000000002",
+        "name": "Mass"
+      }
+    }
+  ],
+  "category": "Elementary flows/Emission to air/unspecified"
+}

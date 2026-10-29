@@ -1,0 +1,64 @@
+appId: de.prismlca.app
+productName: PrismLCA
+copyright: © Jonas Harth
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  # Read at runtime through `?asset` imports (main/licence.ts, the window icon). Without them only
+  # out/** is packed, and the licence and notices buttons open nothing in an installed app.
+  - resources/LICENSE.txt
+  - resources/THIRD-PARTY-NOTICES.md
+  - resources/icon.png
+
+# The OS opens these with its own viewer, which cannot read inside app.asar (licence.ts uses
+# `?asset&asarUnpack` to point at the unpacked copies).
+asarUnpack:
+  - resources/LICENSE.txt
+  - resources/THIRD-PARTY-NOTICES.md
+
+# Ship the PyInstaller onedir backend bundle as resources/backend.
+# Build the backend first:  cd ../backend && uv run pyinstaller prism_backend.spec --noconfirm
+extraResources:
+  - from: ../backend/dist/prism-lca-backend
+    to: backend
+    filter:
+      - "**/*"
+  # Hunspell dictionaries for the five report languages — spell checking works offline and never
+  # contacts Google's CDN (see src/main/spellcheck.ts). Licences: resources/dictionaries/LICENSES.md.
+  - from: resources/dictionaries
+    to: dictionaries
+
+win:
+  target:
+    - nsis
+  # Explicit, like linux.icon: build/ (electron-builder's default icon place) is gitignored, so a CI
+  # build would otherwise ship Electron's own icon. 512×512 PNG, converted to .ico by the builder.
+  icon: resources/icon.png
+  # Local builds stay unsigned. Releases are signed with Certum Open Source Code Signing on the release
+  # runner; the sign hook is added with release.yml.
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Science
+  icon: resources/icon.png # committed; build/ is gitignored
+  maintainer: Jonas Harth <harthjonas@gmail.com>
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  include: resources/installer.nsh
+
+# Update feed: GitHub Releases. The app only asks it when the user clicks "Check for updates"
+# (Settings → About, src/main/updater.ts) — never on its own.
+# Repository: github.com/prismlca/prismlca
+publish:
+  provider: github
+  owner: prismlca
+  repo: prismlca

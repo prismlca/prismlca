@@ -1,0 +1,194 @@
+# ---------------------------------------------------------------------------
+# Python (Backend)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+
+# Testing / coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.cache/
+# The frontend side of the same thing (`npm run test:cov` writes an HTML report here).
+frontend/coverage/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.dmypy.json
+
+# ---------------------------------------------------------------------------
+# Node / Electron (Frontend)
+# ---------------------------------------------------------------------------
+# No trailing slash: a git worktree links node_modules from the main checkout, and a symlink is a file.
+node_modules
+.npm/
+.pnp.*
+.yarn/
+
+# Build output
+out/
+# electron-builder's output only — a bare `release/` also hid frontend/scripts/release/
+frontend/release/
+app/dist/
+dist-electron/
+build-electron/
+
+# Electron packaging artifacts
+*.asar
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+*.snap
+# …but not Vitest's snapshot files, which are test fixtures and must be versioned.
+!**/__snapshots__/*.snap
+
+# Logs / debug
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite / bundler caches
+.vite/
+.parcel-cache/
+
+# ---------------------------------------------------------------------------
+# LCA databases (large, licensed data — never commit)
+# ---------------------------------------------------------------------------
+databases/
+*.7z
+*.spold
+*.ecospold
+ecoinvent*/
+# …except the import test fixtures: hand-written or from brightway2-io's own tests, each one listed in
+# backend/tests/fixtures/import/SOURCES.md — no ecoinvent data among them.
+!backend/tests/fixtures/import/**/*.spold
+
+# ---------------------------------------------------------------------------
+# Environment / secrets
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.local
+# API keys — never commit. The OpenRouter key lives here (loaded by the Electron main).
+.secrets/
+apikey.txt
+*openrouter*key*
+**/openrouter-key
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Frontend build artifacts
+frontend/out/
+out/
+*.tsbuildinfo
+
+# Transient screenshots dropped for review
+screenshot_delete_afterwards*.png
+Bildschirmfoto_*.png
+Screenshot_*.png
+
+# Design drafts and mockups handed over for a feature — HTML sketches, screenshots, pasted
+# references. They belong to the conversation that produced them, not to the repository: the
+# implementation is what gets committed. Kept locally so a draft can be looked at again.
+draft/
+
+# Editor swap files
+.*.kate-swp
+*.kate-swp
+
+# Live-eval reports (opt-in AI evals; contain model output, never versioned)
+frontend/.eval-out/
+
+# Design references dropped into the working tree (licensed stock previews). They inform a layout and
+# are never part of the product — one was committed by accident, which is why the rule exists.
+stock-vector-*
+*-shutterstock-*.jpg
+
+# Model bundles a user exported for themselves — the format is tested against the golden fixtures
+# under backend/tests/fixtures/bundles/, which ARE versioned.
+/*.prism
+
+# Reports rendered out of the app and dropped in the working tree to be looked at. They carry a real
+# author, a real client and real numbers — the same reason the .prism line above exists.
+/*.pdf
+
+# Playwright MCP scratch output (page snapshots, console logs) — tool droppings, never source.
+.playwright-mcp/
+
+# Local operating documents (hosting contracts, records of processing) — never part of the repository.
+/betrieb/
+
+# Third-party LCA reports, downloaded only as reading material for prompt work — never commit.
+.lca-refs/
+
+# Diagnostic log of the report gate: one line per verdict, rotating, only for reading by hand. It lives
+# in the application's data directory, not here — the entry covers a copy dropped into the repository
+# for inspection.
+report_gate.jsonl
+frontend/match-eval.log
+
+# Third-party sample exports for trying out the import assistant (ILCD, SimaPro, EcoSpold).
+# Deliberately NOT versioned: they come from third parties, carry their own licences and weigh megabytes.
+# Source and licence per file are noted in a file inside that folder, which is not versioned either. What
+# the tests need lives, small and checked, under backend/tests/fixtures/import/.
+import-samples/
+
+# Local truth tables for flow matching (contain ecoinvent nomenclature/UUIDs — never committed,
+# never packaged: matching runs at runtime against the user's own ecoinvent)
+backend/local/
+
+# Throwaway copy of the app data for website/handbook screenshots (contains licensed ecoinvent data)
+.shot-data/
+
+# Filled-in environment files hold credentials (e.g. the contact form's SMTP login) — only the
+# *.env.example templates are versioned
+*.env
+!*.env.example
+
+# Private parts that sit next to the public tree in a working copy and never enter it
+internal/
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/worktrees/
+website/
+Website2/
+ecoquery-bafu/
+.agents/
+.codex/

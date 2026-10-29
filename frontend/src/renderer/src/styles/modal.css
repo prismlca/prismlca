@@ -1,0 +1,293 @@
+/* inspector + audit (right) */
+.insp { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.insp h4 { margin: 0; font-size: var(--fs-body); }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field label { font-size: var(--fs-label); color: var(--faint); font-weight: 600; }
+.field .val { border: 1px solid var(--border); border-radius: var(--r-sm); padding: 6px 9px; background: var(--surface-2); font-size: var(--fs-body); }
+.tagrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: var(--fs-label); font-weight: 600; padding: 3px 8px; border-radius: 6px; background: var(--green-soft); color: var(--green-ink); }
+.empty { color: var(--faint); font-size: var(--fs-body); padding: 14px; }
+.audit-wrap { flex: 1; overflow: auto; padding: 12px 14px; }
+.audit-list { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.aud { display: flex; gap: 8px; align-items: baseline; font-size: var(--fs-sec); padding: 5px 7px; border-radius: 6px; background: var(--surface-2); }
+.aud.undo, .aud.redo { opacity: .7; font-style: italic; }
+/* Who did it, and under it whether it can be taken back. A column, so the marker below the label
+   costs the summary no width — as the right-edge pill did, on entries that have since grown long. */
+.aud-who { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
+.aud-src { flex: none; }
+/* Exception marker: this entry is an audit-only note, not part of the undo history. */
+.aud-noundo { display: inline-flex; color: var(--faint); cursor: help; }
+/* Where a change came from (`Copy 'x' from A into B` seen from B), and the marker for a project-wide
+   action that reached into this model. Both sit before the no-undo pill, which keeps the `auto`. */
+.aud-rel { flex: none; margin-left: auto; color: var(--muted); cursor: help; }
+.aud-rel + .aud-rel { margin-left: 0; }
+/* One assistant turn (one chat message): its consecutive changes sit in one dashed box, so "what
+   did the assistant just do" reads as one block — and Undo offers to take the block back whole. */
+.aud-turn { display: flex; flex-direction: column; gap: 5px; border: 1px dashed var(--border-strong); border-radius: 8px; padding: 6px 6px 6px; }
+.aud-turn-head { font-size: var(--fs-label); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 0 2px; cursor: help; }
+/* The history from before entries said which model they belonged to: collapsed, and never mixed in. */
+.audit-earlier { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+/* Where a copied model came from — above its own list, because everything older is over there. */
+.audit-origin { font-size: var(--fs-sec); color: var(--muted); line-height: 1.45; margin: 8px 2px 0; }
+
+/* modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(23,31,24,.42); backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+/* A dialog opened FROM a dialog gets a click-catcher, not a second veil. Two stacked veils darken
+   to ~0.66 and, worse, the blur then traces the sheet underneath: its white rectangle stops being
+   a surface and becomes a bright outline around the whole window — very visible, and the first
+   thing seen on the Add-model dialog. Measured at the running app: it is not the
+   sheet's border (transparent it, and the line stays), it is the edge of the white fill under the
+   second veil. Dropping the veil removes it and leaves the sheet behind readable, which is what a
+   nested dialog wants anyway — the front one carries its own shadow.
+   The selector works because a nested dialog renders inside the modal that opened it. */
+.modal .modal-backdrop { background: none; backdrop-filter: none; }
+/* Every overlay in the app, from the design of the Model-info window: a sheet that rises
+   into place, a layered shadow instead of one flat drop, and the app dimmed and blurred behind it. The
+   frame is shared on purpose — a window that looks like the others needs no explaining. */
+.modal {
+  width: min(380px, 90vw); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 18px;
+  box-shadow: var(--shadow-sheet);
+  animation: sheet-rise .22s cubic-bezier(.16,.84,.44,1) both;
+}
+@keyframes sheet-rise { from { opacity: 0; transform: translateY(10px) scale(.99); } }
+/* The dataset editor is the canvas inspector in a sheet: it needs an inspector's width, and its body
+   scrolls, because a process with thirty inputs is not unusual. The head stays outside the scroll,
+   so the X is reachable from anywhere in a long process. */
+.modal.sheet.library-edit { width: min(640px, 94vw); max-height: 88vh; }
+@media (prefers-reduced-motion: reduce) { .modal { animation: none; } }
+
+/* A sheet whose head, body and foot own their own padding: the frame stops padding itself so the head
+   can carry a rule to the edge and the foot its own tint. */
+.modal.sheet { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.sheet-head { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px 16px 22px; border-bottom: 1px solid var(--border); }
+.sheet-head-grow { flex: 1; min-width: 0; }
+.sheet-head h3 { margin: 0; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.005em; display: flex; align-items: center; gap: 9px; }
+.sheet-head h3 .sep { color: var(--faint); font-weight: 400; }
+.sheet-head p { margin: 7px 0 0; font-size: var(--fs-body); line-height: 1.55; color: var(--muted); max-width: 62ch; }
+.sheet-x { flex: none; width: 30px; height: 30px; border-radius: var(--r); border: 1px solid transparent;
+  background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: 16px; line-height: 1;
+  transition: background .12s, color .12s, border-color .12s; }
+.sheet-x:hover { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+.sheet-foot { display: flex; align-items: center; gap: 14px; padding: 13px 20px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.sheet-foot .meta { font-size: var(--fs-sec); color: var(--muted); }
+.sheet-foot .acts { margin-left: auto; display: flex; gap: 8px; }
+
+/* The left rail: a quiet column against the sheet's white, its active row lifted rather than tinted. */
+.sheet-rail { border-right: 1px solid var(--border); background: var(--surface-2); padding: 18px 16px;
+  display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+.rail-nav { display: flex; flex-direction: column; gap: 1px; margin: 0 -8px; }
+.rail-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 1px solid transparent;
+  border-radius: 7px; background: none; font: inherit; font-size: var(--fs-body); color: var(--muted); text-align: left;
+  line-height: 1.3; cursor: pointer; transition: background .12s, color .12s; }
+.rail-item:hover { background: var(--surface-3); color: var(--text); }
+.rail-item.on { background: var(--surface); color: var(--text); font-weight: 600; border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(20,32,28,.06); }
+.rail-item .tally { margin-left: auto; font-variant-numeric: tabular-nums; font-size: var(--fs-label); color: var(--faint); }
+.rail-item.on .tally { color: var(--green-ink); }
+.rail-pip { width: 7px; height: 7px; border-radius: 50%; flex: none; border: 1.5px solid var(--border-strong);
+  background: none; transition: background .2s, border-color .2s; }
+.rail-pip.done { background: var(--green); border-color: var(--green); }
+.rail-note { margin-top: auto; padding: 12px; border-radius: var(--r); background: var(--surface);
+  border: 1px solid var(--border); font-size: var(--fs-sec); line-height: 1.55; color: var(--muted); }
+.rail-note b { color: var(--text); font-weight: 600; }
+/* Every window's title reads like the sheet's, so a small dialog is recognisably the same furniture. */
+.modal h3 { margin: 0 0 12px; font-size: var(--fs-title); font-weight: 600; letter-spacing: -.005em; }
+/* …but inside a sheet's head the 12px belong to the head's own padding, not the title. */
+.modal.sheet .sheet-head h3 { margin: 0; }
+.mfield { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.mfield span { font-size: var(--fs-body); color: var(--text); font-weight: 600; }
+/* Same field as the model window's: the app's radius, a green focus ring instead of the browser's. */
+.mfield input, .mfield textarea, .mfield select { background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r); padding: 9px 11px; font: inherit; font-size: var(--fs-body);
+  transition: border-color .14s, box-shadow .14s; }
+.mfield input:hover, .mfield textarea:hover, .mfield select:hover { border-color: var(--border-strong); }
+.mfield input:focus, .mfield textarea:focus, .mfield select:focus { outline: none; border-color: var(--green-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+.mfield-err { color: var(--prism-alert, #cc4b37); font-size: var(--fs-sec); font-weight: 600; }
+/* Hybrid unit combo: suggestions pop from the first typed character. */
+.unit-combo { position: relative; display: flex; flex-direction: column; }
+.unit-combo input { width: 100%; }
+.unit-combo-list {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 60;
+  background: var(--surface, #fff); border: 1px solid var(--border-strong, #cfd5cb);
+  border-radius: 6px; box-shadow: 0 10px 28px rgba(15, 23, 30, 0.16);
+  max-height: 190px; overflow-y: auto;
+}
+.unit-combo-list button {
+  display: block; width: 100%; text-align: left; padding: 6px 9px;
+  background: none; border: none; font: inherit; font-size: var(--fs-body); color: var(--text); cursor: pointer;
+}
+.unit-combo-list button:hover { background: var(--bg-muted, #f2f2f2); }
+/* Formula fields (FormulaInput): parameter names complete under the field, and what the server would
+   refuse is said there too — as a note while typing, as a refusal once a commit was tried. */
+.fx-combo { position: relative; display: flex; flex-direction: column; width: 100%; min-width: 0; }
+.flow .fx-combo { grid-column: 1 / -1; }
+/* Fixed and rendered into <body>: placed by FormulaInput against the field, so a scrolling panel cannot
+   clip it; above the modal backdrop (100), below the welcome tour (1000). */
+.fx-combo-list {
+  position: fixed; z-index: 300; box-sizing: border-box;
+  background: var(--surface, #fff); border: 1px solid var(--border-strong, #cfd5cb);
+  border-radius: 6px; box-shadow: 0 10px 28px rgba(15, 23, 30, 0.16);
+  max-height: 190px; overflow-y: auto;
+}
+.fx-combo-list button {
+  display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 5px 9px;
+  background: none; border: none; font: 12.5px/1.4 ui-monospace, monospace; color: var(--text); cursor: pointer;
+}
+.fx-combo-list button.sel, .fx-combo-list button:hover { background: var(--bg-muted, #f2f2f2); }
+.fx-combo-hint { color: var(--faint); font-family: inherit; white-space: nowrap; }
+.fx-problem { margin-top: 3px; font-size: var(--fs-label); color: var(--faint); line-height: 1.4; }
+.fx-problem.hard { color: var(--bad); }
+.fx-problem button { background: none; border: none; padding: 0 0 0 6px; font: inherit; color: var(--green-ink, var(--text));
+  text-decoration: underline; cursor: pointer; }
+.fx-combo .refused { border-color: var(--bad) !important; }
+.mfield textarea { resize: vertical; min-height: 60px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+/* Model info (goal & scope editor): wider than the small form modal, scrolls when tall. */
+/* Model info: the study's brief, grouped the way ISO 14044 groups it, with a rail that says how much of
+   it is filled in. The flat list of thirteen fields it replaced gave no sense of that at all — and this
+   is the one dialog whose emptiness has consequences, because the report chapters and the assistant's
+   brief are both written from it. */
+/* `min(88vh, 700px)`: at 88vh alone this sheet grew with the screen — on a 1440p display it stood 1140px
+   tall, which is not a dialog any more but a page with a shadow. A form of thirteen fields does not
+   become clearer for being shown at once, and scrolling it is expected; the cap keeps the sheet the size of a
+   sheet and lets the left rail's progress stay in view while you work down the sections. */
+.modal.model-info { width: min(900px, 94vw); max-height: min(88vh, 700px); }
+.model-info-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); flex: 1; min-height: 0; }
+.model-info-error { margin: 0; font-size: var(--fs-body); color: var(--bad); }
+/* The model's name is the sheet's title, and it is renamed there: text with a pencil behind it, and
+   on click the same text becomes a field with a discard and a confirm beside it. The name stays text
+   until asked for — the canvas group name settled that question the same way — and the two buttons are
+   the only commit, so there is no blur to race an Escape with. */
+/* Just the icon, no chip: it sits inside a heading, where a filled button reads as a control of its
+   own rather than as an affordance on the name beside it. Light grey until pointed at. */
+.mi-title-pencil {
+  flex: none; display: inline-flex; align-items: center; margin-left: 5px; padding: 0; border: none;
+  background: none; line-height: 0; color: var(--faint); cursor: pointer; transition: color .12s;
+}
+.mi-title-pencil svg { width: 14px; height: 14px; }
+.mi-title-pencil:hover { color: var(--muted); }
+/* The field does NOT stretch to the sheet's edge: the confirm would then sit against the window's own
+   ✕, two crosses side by side meaning "discard" and "close". It is as wide as a model name needs and
+   the two buttons stay with the name. */
+.mi-title-edit { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 auto; }
+/* `width`, not only a flex basis: an input's content size is its `size` attribute (20 characters), and
+   that is what the row shrinks it to — the basis alone left a field two thirds the intended width. */
+.mi-title-edit input {
+  flex: 0 1 44ch; width: 44ch; min-width: 12ch; font: inherit; font-size: var(--fs-title); font-weight: 600;
+  letter-spacing: -.005em; color: var(--text); padding: 2px 9px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface); transition: border-color .14s;
+}
+.mi-title-edit input:hover { border-color: var(--border-strong); }
+.mi-title-edit input:focus { outline: none; border-color: var(--green-ink); }
+/* The glyphs are text, so they take the title's font size unless told otherwise — and the confirming
+   one carries the accent, because it is the one that acts. */
+.mi-title-edit .act-icon { font-size: 13px; line-height: 1; padding: 4px 7px; }
+.mi-title-edit .act-icon.ok { color: var(--green-ink); background: var(--green-soft); }
+.mi-title-edit .act-icon.ok:hover { background: color-mix(in srgb, var(--green-ink) 16%, var(--surface)); }
+.mi-title-err { margin: 7px 0 0; font-size: var(--fs-body); color: var(--bad); }
+
+/* The completeness dial. Not a score to chase: filled fields are simply counted, and a study with
+   nothing to say about allocation is allowed to leave it blank. */
+.mi-gauge { display: flex; align-items: center; gap: 12px; }
+.mi-gauge svg { flex: none; transform: rotate(-90deg); }
+.mi-gauge .track { stroke: var(--surface-3); }
+.mi-gauge .arc { stroke: var(--green); stroke-linecap: round; transition: stroke-dashoffset .45s cubic-bezier(.3,.9,.3,1); }
+.mi-gauge .pct { font-size: var(--fs-title); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.mi-gauge .lbl { margin-top: 3px; }
+@media (prefers-reduced-motion: reduce) { .mi-gauge .arc { transition: none; } }
+
+.mi-fields { overflow-y: auto; padding: 0 24px 26px; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { .mi-fields { scroll-behavior: auto; } }
+.mi-sec { padding-bottom: 24px; }
+/* Sticky, so a long section still says which one you are in while you scroll it. */
+.mi-sechead { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 16px 0 9px;
+  margin-bottom: 14px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--border); }
+/* The section mark. One rule for all of them: the model window sets it as an element, every other
+   window's underlined heading gets it from ::before, so a heading with a rule under it looks the same
+   wherever it is. */
+.mi-swatch, .settings-panel h4::before, .pdet-section-h::before {
+  content: ''; width: 9px; height: 9px; border-radius: 3px; background: var(--green); flex: none;
+  box-shadow: 0 0 0 3px var(--green-soft);
+}
+.mi-sechead h4 { margin: 0; }
+/* The clause the section answers to. An identifier, so it is not translated and not abbreviated. */
+.mi-std { margin-left: auto; font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
+
+.mi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.mi-grid .span2 { grid-column: 1 / -1; }
+.mi-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mi-field .top { display: flex; align-items: center; gap: 8px; }
+.mi-field label { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+.mi-tag { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .07em; padding: 1.5px 5px; border-radius: 4px; font-weight: 600; }
+.mi-tag.req { color: var(--green-ink); background: var(--green-soft); }
+.mi-tag.opt { color: var(--faint); background: var(--surface-3); }
+.mi-field textarea, .mi-field input[type=text] {
+  width: 100%; font-family: inherit; font-size: var(--fs-body); line-height: 1.55; color: var(--text);
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+  resize: none; overflow: hidden; transition: border-color .14s, box-shadow .14s;
+}
+.mi-field textarea::placeholder, .mi-field input::placeholder { color: var(--faint); }
+.mi-field textarea:hover, .mi-field input:hover { border-color: var(--border-strong); }
+.mi-field textarea:focus, .mi-field input:focus { outline: none; border-color: var(--green-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+/* The reference quantity sits under the functional unit because that is the sentence it makes true.
+   Set apart with a rule rather than a box: it is not a fourteenth study field, it is the one control
+   on this sheet that changes the model rather than describing it (V233). */
+.mi-refq { border-top: 1px dashed var(--border); padding-top: 12px; margin-top: 2px; gap: 7px; }
+.mi-refq-now { margin: 0; font-size: var(--fs-body); line-height: 1.5; color: var(--text); }
+.mi-refq-now.muted { color: var(--faint); }
+.mi-refq-now code { font-size: .93em; padding: 1px 5px; border-radius: 4px;
+  background: var(--surface-3); color: var(--green-ink); }
+.mi-refq-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mi-refq-form select { min-width: 200px; }
+.mi-refq-form input[type=text] { flex: 1 1 190px; width: auto; }
+.mi-refq > .btn { align-self: flex-start; }
+.mi-refq-err { margin: 0; font-size: var(--fs-label); color: var(--bad); }
+
+/* A filled field is marked at its edge rather than by its content — the point is to see the gaps. */
+.mi-field.filled textarea, .mi-field.filled input { border-color: var(--green); box-shadow: inset 2px 0 0 var(--green); }
+.mi-field.filled textarea:focus, .mi-field.filled input:focus {
+  box-shadow: inset 2px 0 0 var(--green), 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+
+@media (max-width: 760px) {
+  .model-info-body { grid-template-columns: 1fr; }
+  .sheet-rail { flex-direction: row; align-items: center; gap: 14px; overflow-x: auto;
+    border-right: 0; border-bottom: 1px solid var(--border); padding: 12px 14px; }
+  .rail-nav { flex-direction: row; margin: 0; }
+  .rail-note { display: none; }
+  .mi-grid { grid-template-columns: 1fr; }
+  .mi-fields { padding: 0 14px 20px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* The form modal's footnote: what the dialog leaves out on purpose, and where it is asked instead. */
+.modal-note { margin: 2px 0 0; font-size: var(--fs-sec); line-height: 1.5; color: var(--faint); }
+
+/* Dataset-editor sheet: the body already insets the editor; the inspector's own padding and bottom
+   rule would double it. */
+.library-edit .sheet-body > .insp { padding: 12px 0 0; border-bottom: none; }
+/* The location field's combo names each code ("DE · Germany"); the name is the quieter half. */
+.unit-combo-desc { color: var(--muted); }
+
+/* A form modal's facts: what it acts on (the flow an exchange carries, from where, into what), read-only
+   above the fields. A quiet tinted block, so it reads as context and not as something to fill in. */
+.modal-facts { margin: 0 0 14px; padding: 9px 12px; display: flex; flex-direction: column; gap: 5px;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface-2); }
+.modal-facts > div { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: baseline; }
+.modal-facts dt { font-size: var(--fs-sec); color: var(--muted); }
+.modal-facts dd { margin: 0; font-size: var(--fs-body); color: var(--text); overflow-wrap: anywhere; }
+/* The unit an amount is counted in, after its input. `.mfield .` because `.mfield span` sets the label face. */
+.mfield-with-unit { display: flex; align-items: center; gap: 9px; }
+.mfield-with-unit input { flex: 1; min-width: 0; }
+.mfield .mfield-unit { font-weight: 400; color: var(--muted); white-space: nowrap; }
+/* The audit log's heading: navy like the inspector's headings above it, with a history glyph. */
+.audit-wrap > .audit-head { display: flex; align-items: center; gap: 6px; color: var(--navy); }
+.audit-head svg { flex: none; }
+/* The entry the arrow keys have marked in a UnitCombo list. */
+.unit-combo-list button.sel { background: var(--bg-muted); }
+
+/* The inspector's chip for an inherited value (see .pnode-tag.inherited): outlined instead of filled. */
+.tag.inherited { background: transparent; border: 1px dashed var(--green); padding: 2px 7px; font-weight: 500; font-style: italic; }

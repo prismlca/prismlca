@@ -1,0 +1,128 @@
+/* Noto Sans 2.015 — SIL Open Font License 1.1, licence text in fonts/OFL.txt. Bundled locally on
+   purpose: never fetched from a font CDN, which in Germany has produced cease-and-desist letters
+   over transmitting the visitor's IP address. One variable file covers every weight. */
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/NotoSansVariable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../assets/fonts/NotoSansVariable-Italic.woff2") format("woff2");
+}
+
+* { box-sizing: border-box; }
+
+/* The small label — one role, three appearances instead of seventeen. It labels a field, a
+   column, a group: eleven pixels, letter-spaced, in capitals. The same role used to appear in
+   five sizes (10 · 10.5 · 11 · 11.5 · 12), three colours and four letter-spacings — depending on
+   who wrote it last. New code uses `.lbl`, `.lbl-sec` or `.lbl-head`; the class names beside
+   them are the grown names of the same thing.
+   A `.lbl`      — labels something (field, column, group)
+   B `.lbl-sec`  — section within a sheet (tighter letter-spacing, in text colour)
+   C `.lbl-head` — titles a box or section (in navy, the heading colour) */
+.lbl, .eyebrow, .prow-head, .pdet-section-h, .pnew-f > span, .pedit-f > span, .props-head, .efield > label, .scen-field > span, .scen-ov-group-name, .tagmenu-title, .ai-tool-group-h, .hl-group-name, .ind-fam-label, .subj-subhead, .sub-label, .mi-gauge .lbl {
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--faint);
+}
+.lbl-sec, .settings-panel h4, .mi-sechead h4 {
+  font-size: var(--fs-label); font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text);
+}
+.lbl-head, .rp-title, .ind-fam-head, .flow-head, .th-family, .aud-src, .report-setup h4 {
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--navy);
+}
+
+
+/* Checkboxes/radios pick up the brand green when checked (theme-aware via --green,
+   #93c120 light / #a6d42e dark) instead of the browser-default blue. In dark mode
+   color-scheme:dark lets the native control render dark so an unchecked box no
+   longer shows as a bright white square. */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--green); }
+:root[data-theme='dark'] input[type="checkbox"],
+:root[data-theme='dark'] input[type="radio"] { color-scheme: dark; }
+
+/* Scrollbars — themed centrally with the palette instead of the native bar, which renders
+   glaringly light on the dark theme. The thumb picks up --border-strong (light grey in light
+   mode, muted blue-grey in dark mode) so it stays subtle and matches the surface in both. */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+html, body, #root { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Noto Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--fs-base); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased;
+}
+.spacer { flex: 1; }
+
+/* brand */
+/* Regular and bold, the same two weights the overview's own wordmark uses:
+   at 650 against 700 the two halves were indistinguishable and "PrismLCA" read as one bold word. */
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 400; letter-spacing: -.01em; }
+.brand b { font-weight: 700; }
+.prism { width: 20px; height: 20px; border-radius: 5px; flex: none;
+  background: conic-gradient(from 210deg, var(--green), var(--navy), var(--purple), var(--green)); }
+
+/* buttons */
+.btn { appearance: none; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font: inherit; font-weight: 600; font-size: var(--fs-body); padding: 7px 12px; border-radius: var(--r-sm); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px; }
+.btn:hover:not(:disabled) { border-color: var(--faint); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--green); border-color: var(--green); color: #17240a; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.04); }
+.btn.sm { padding: 4px 9px; font-size: var(--fs-sec); }
+.btn.ico { padding: 7px 9px; }
+.icon-btn { appearance: none; border: 1px solid var(--green); background: var(--green); color: #17240a;
+  border-radius: var(--r-sm); width: 34px; height: 34px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { filter: brightness(1.05); }
+.darkmode { display: inline-flex; align-items: center; gap: 7px; }
+.dm-ic { color: var(--faint); font-size: var(--fs-body); }
+.tog { width: 38px; height: 22px; border-radius: 999px; background: var(--border-strong); position: relative; border: none; cursor: pointer; flex: none; }
+.tog::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+.tog.on { background: var(--green); }
+.tog.on::after { transform: translateX(16px); }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: var(--fs-sec); font-weight: 600; white-space: nowrap; flex: none;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--muted); }
+.pill.ro { color: var(--navy); background: var(--navy-soft); border-color: transparent; }
+
+/* ---- connection gate ---- */
+.gate, .setup { height: 100%; display: flex; align-items: center; justify-content: center; }
+.card { width: min(460px, 90vw); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--shadow); }
+.setup h3 { margin: 0 0 8px; }
+.status { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: var(--fs-title); }
+.status .dot { width: 10px; height: 10px; border-radius: 50%; }
+.status.ok .dot { background: var(--ok); } .status.wait .dot { background: var(--wait); } .status.bad .dot { background: var(--bad); }
+.detail { color: var(--bad); font-size: var(--fs-body); margin: 10px 0 0; }
+.hint { margin: 16px 0 0; color: var(--muted); font-size: var(--fs-sec); line-height: 1.5; }
+
+
+/* A button that reads as a link inside running text (the privacy notice in Settings and the tour).
+   A button, not an anchor, for the reason every link here is one: an <a href> would navigate the
+   window. Inherits the surrounding size and colour, so it sits in a hint like a word. */
+.link-btn { appearance: none; border: 0; background: none; padding: 0; margin: 0; font: inherit;
+  color: var(--text); text-decoration: underline; cursor: pointer; }
+.link-btn:hover { color: var(--green-ink); }
+/* The FU pill before a process is chosen: a hint, not a value — quieter than the pill that names one. */
+.pill.fu-unset { color: var(--faint); font-weight: 500; }
+
+/* The note a double-click on a number leaves at the pointer ("Copied 0,123456789", lib/copyNumber.ts):
+   an inverted chip above everything, passing clicks through, fading out on its own. */
+.copy-note { position: fixed; z-index: 10000; pointer-events: none; padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--ink); color: var(--surface); font-size: var(--fs-label); font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow); animation: copy-note-fade 1.4s ease-in forwards; }
+@keyframes copy-note-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .copy-note { animation: none; } }

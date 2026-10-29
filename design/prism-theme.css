@@ -1,0 +1,114 @@
+/* ---------------------------------------------------------------------------
+ * PrismLCA — design tokens
+ * The project's palette: defined here, referenced everywhere.
+ * Binding palette for all UI/designs in this project.
+ *
+ * The app pulls this file in via @import in src/renderer/src/index.css — Vite inlines the
+ * import when bundling, so there is no second request at runtime. The values reflect the
+ * app's LIVE state (for a while the real tokens lived only in index.css and this file was a dead
+ * document holding the mockup values of the first design phase); the --prism-* names from back
+ * then survive as aliases at the end of the file.
+ *
+ * Theme cascade, explained in one place because it is easy to get wrong: the light table carries
+ * the explicit switch in its selector list so that an explicitly chosen light appearance
+ * (specificity 0,2,0) beats the system-dark media block (bare :root, 0,1,0). WITHOUT an explicit
+ * choice the media block wins by later position alone. The dark table appears twice — once for
+ * the system choice, once for the switch — because CSS cannot hoist a media query into a
+ * selector list; themeTokens.test.ts keeps the two bodies byte-identical.
+ * -------------------------------------------------------------------------- */
+
+:root,
+:root[data-theme='light'] {
+  /* Surfaces & borders ------------------------------------------------------- */
+  --bg: #f3f5f2; --surface: #ffffff; --surface-2: #f4f6f1; --surface-3: #eef1ec;
+  --border: #e0e4dd; --border-strong: #cfd5cb;
+  /* Text ------------------------------------------------------------------- */
+  --text: #26313a; --muted: #5f6b6f; --faint: #8b968f;
+  /* Brand: green is primary (links, buttons, accents), navy secondary (headings, dark UI),
+     purple the category/secondary accent. The -soft variants are their surfaces. */
+  --green: #93c120; --green-ink: #5f8410; --green-soft: #eaf3d6;
+  --navy: #2f4e66; --navy-soft: #e5ecf1; --purple: #9f5987; --purple-soft: #f0e4ec;
+  /* Source chips: yellow for the own library "My processes", a bluish violet for BAFU —
+     next to navy for ecoinvent. Violet is deliberately a token of its own: --purple is the warmer
+     category accent and stays as it is. */
+  --yellow: #8a6d00; --yellow-soft: #fbf1c7;
+  --violet: #6b57b8; --violet-soft: #ebe6f8;
+  /* Semantic ------------------------------------------------------------- */
+  --ok: #3a9d5d; --wait: #d18a00; --bad: #cc4b37; --info: #1779ba;
+  /* Shadows --------------------------------------------------------------- */
+  --shadow: 0 1px 2px rgba(20,32,28,.06), 0 4px 16px rgba(20,32,28,.05);
+  --shadow-lg: 0 10px 34px rgba(20,32,28,.14);
+  --shadow-sheet: 0 1px 1px rgba(20,32,28,.04), 0 12px 24px -8px rgba(20,32,28,.14), 0 40px 80px -24px rgba(20,32,28,.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131c24; --surface: #1a262f; --surface-2: #1f2d38; --surface-3: #243541;
+    --border: #2c3d49; --border-strong: #38505f;
+    --text: #e7edf0; --muted: #a4b4bf; --faint: #74868f;
+    --green: #a6d42e; --green-ink: #b9e34a; --green-soft: #26331a;
+    --navy: #7ea6c4; --navy-soft: #1e2f3c; --purple: #c98bb3; --purple-soft: #2e2130;
+    --yellow: #e8c547; --yellow-soft: #34301b;
+    --violet: #ab9ce6; --violet-soft: #26223a;
+    --ok: #4fc47d; --wait: #f0ae2e; --bad: #e5745f; --info: #4aa3dd;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.3);
+    --shadow-lg: 0 10px 34px rgba(0,0,0,.45);
+    --shadow-sheet: 0 1px 1px rgba(0,0,0,.3), 0 12px 24px -8px rgba(0,0,0,.45), 0 40px 80px -24px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #131c24; --surface: #1a262f; --surface-2: #1f2d38; --surface-3: #243541;
+  --border: #2c3d49; --border-strong: #38505f;
+  --text: #e7edf0; --muted: #a4b4bf; --faint: #74868f;
+  --green: #a6d42e; --green-ink: #b9e34a; --green-soft: #26331a;
+  --navy: #7ea6c4; --navy-soft: #1e2f3c; --purple: #c98bb3; --purple-soft: #2e2130;
+  --yellow: #e8c547; --yellow-soft: #34301b;
+  --violet: #ab9ce6; --violet-soft: #26223a;
+  --ok: #4fc47d; --wait: #f0ae2e; --bad: #e5745f; --info: #4aa3dd;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.3);
+  --shadow-lg: 0 10px 34px rgba(0,0,0,.45);
+  --shadow-sheet: 0 1px 1px rgba(0,0,0,.3), 0 12px 24px -8px rgba(0,0,0,.45), 0 40px 80px -24px rgba(0,0,0,.6);
+}
+
+/* Theme-independent: geometry, type scale and mono stack do not change with the palette. */
+:root {
+  --r: 8px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  /* One width for the app's side panels, on the 8px grid. The rail of Results and Report always has
+     it; every page's right side panel (inspector, help, scenario detail) has it from 1500px of window
+     and 300px below. The breakpoint counts CSS pixels, after the OS scaling: 1500 lets a 1920 laptop
+     at 125 % (1536) have the wide panel and still leaves the model canvas ~630px; below that the
+     canvas needs the room more. */
+  --rail-w: 384px;
+  --side-w: 300px;
+  /* The type scale: six steps, each with a role. There used to be seventeen steps between
+     9 and 33px — six of them half sizes — because nothing gave a new rule anything to hold on to.
+     Glyphs (carets, ×, arrows), SVG chart text and em-relative sizes are not part of the text
+     scale and keep their own dimensions. */
+  --fs-label: 11px;   /* small label, column headers, meta lines, units, badges */
+  --fs-sec: 12px;     /* secondary text: hints, chips, descriptions, data tables */
+  --fs-body: 13px;    /* running text in rows, lists, fields, buttons */
+  --fs-base: 14px;    /* base text, navigation, wordmark, search field */
+  --fs-title: 17px;   /* sheet and dialog titles, large number */
+  --fs-page: 26px;    /* page heading and headline figure of the start page */
+  /* One monospace stack for the whole app — formulas, traces, code in the assistant's answers. */
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (min-width: 1500px) { :root { --side-w: var(--rail-w); } }
+
+/* Legacy vocabulary (--prism-*, from the first mockup): aliases onto the live tokens so that
+   both names resolve correctly in both themes. New rules use the short names. */
+:root {
+  --ink: var(--text);
+  --bg-muted: var(--surface-2);
+  --panel: var(--surface);
+  --prism-navy: var(--navy);
+  --prism-green: var(--green);
+  --prism-green-dark: var(--green-ink);
+  --prism-gray-light: var(--border-strong);
+  --prism-alert: var(--bad);
+  --prism-info: var(--info);
+  --prism-purple: var(--purple);
+  /* The app's warning colour. It was the one alias nobody defined, so fourteen rules fell back to a
+     literal #ffae00 that no theme could reach — a fixed orange on the dark canvas. --wait is the
+     token that already carries this role everywhere else. */
+  --prism-warning: var(--wait);
+}

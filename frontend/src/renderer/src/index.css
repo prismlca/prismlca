@@ -1,0 +1,32 @@
+/* Die verbindliche Palette wohnt in design/prism-theme.css (Projektregel: dort definieren,
+   überall referenzieren) — per @import eingebunden; Vite inlined sie beim Bundeln, zur Laufzeit
+   gibt es keinen zweiten Request. @import steht vor allem anderen, weil CSS es so verlangt. */
+@import '../../../../design/prism-theme.css';
+
+/* Cascade order. The sheets below are the former single index.css, cut into contiguous slices and
+   kept in the original order. The order matters: later rules win over earlier ones of equal
+   specificity, and several rules rely on that (e.g. the .modal base after its variants, the second
+   .cmp-row/.cmp-name and .mono definitions, the reduced-motion override at the end of modal.css).
+   New rules go at the end of the sheet they belong to; never reorder the sheets or move rules
+   between them. report.css also holds app-wide rules that are not report-only: the Accordion
+   (.acc-grp/.acc-ghead/.acc-gbody), the rail tabs (.rail-tabs), .modal-h, .sub-label and
+   .cover-error. They stay there because moving them would change the cascade; results.css and
+   others rely on them. */
+@import './styles/base.css';
+@import './styles/shell.css';
+@import './styles/detailed-results.css';
+@import './styles/workbench-search.css';
+@import './styles/overview.css';
+@import './styles/canvas.css';
+@import './styles/setup.css';
+@import './styles/inspector.css';
+@import './styles/settings.css';
+@import './styles/pickers-study.css';
+@import './styles/results.css';
+@import './styles/modal.css';
+@import './styles/chat-dock.css';
+@import './styles/chat.css';
+@import './styles/settings-ai.css';
+@import './styles/report.css';
+@import './styles/import-compare.css';
+@import './styles/welcome.css';

@@ -1,0 +1,148 @@
+/* ---- app shell ---- */
+/* The rail folds down to an icon strip. The width lives here because the grid owns it,
+   but the state lives on the rail itself — `:has()` reads it off the one element that knows, rather
+   than asking the Workbench to put the same flag on two nodes that could then disagree. ReactFlow
+   re-measures itself, so the canvas follows the animation on its own. */
+.app-shell { height: 100%; display: grid; grid-template-columns: 224px 1fr; overflow: hidden;
+  transition: grid-template-columns 220ms cubic-bezier(0.4, 0, 0.2, 1); }
+.app-shell:has(.side-collapsed) { grid-template-columns: 56px 1fr; }
+@media (prefers-reduced-motion: reduce) { .app-shell { transition: none; } }
+.side { border-right: 1px solid var(--border); padding: 14px 12px; display: flex; flex-direction: column; gap: 3px; overflow: auto;
+  /* The prism facets behind the navigation (from the design draft): side-bg.png is a 1:3 picture, plain
+     tinted white at the top, gathering lilac, blue and green facets in its lower half. It ships as lossless
+     PNG at the source's full 724×2172 (~0.9 MB): sharp on a 4K display at 2×, and no JPEG blocking in the
+     soft gradients. Scaled to
+     cover the whole panel and anchored bottom-left, so the facets reach up to about mid-height and grow with
+     the window instead of staying a strip at the bottom. The
+     surface-coloured fade over the top hides the seam between picture and panel. The layers sit on the scroll container itself, so they
+     stay put while a long navigation scrolls. */
+  background:
+    linear-gradient(180deg, var(--surface) 0%, var(--surface) 10%,
+      color-mix(in srgb, var(--surface) 65%, transparent) 26%, transparent 42%),
+    url('../assets/side-bg.png') 0 100% / cover no-repeat,
+    var(--surface); }
+/* Dark theme: its own picture, drawn for the dark panel — the facets glow out of a
+   navy ground close to --surface; the same fade covers the small difference at the top. An inverted copy
+   of the light picture stood here first and looked muddy. The draft is rebuilt as
+   an SVG (4 kB): the drawn picture carried grain and soft blotches in its gradients, and no bitmap stays
+   smooth at every window height and pixel density; the vector does. Geometry and colours were measured
+   off the draft (RMSE 2.7 % against it). */
+:root[data-theme='dark'] .side {
+  background:
+    linear-gradient(180deg, var(--surface) 0%, var(--surface) 10%,
+      color-mix(in srgb, var(--surface) 65%, transparent) 26%, transparent 42%),
+    url('../assets/side-bg-dark.svg') 0 100% / cover no-repeat,
+    var(--surface); }
+/* A hair larger than the body size, in the rail only (--fs-title turned
+   out to be too much): it is the app's name, not a navigation row. 15px is deliberately NOT a step
+   of the six-step scale — between --fs-base and --fs-title there is nothing else, and this one
+   wordmark is not worth a seventh step for the whole app. Scoped to .side so the welcome tour's
+   header, which reuses these classes, keeps the size it was drawn at. */
+/* No padding on the right, unlike the other three sides: the only thing that sits there is the fold
+   button, and its green hover box is meant to end on the same line as the green pill under the
+   selected page — which ends at the edge of the navigation list, six pixels
+   further out than this padding used to allow. */
+.side .brand { padding: 2px 0 11px 6px; font-size: 15px; }
+.side .prism { width: 22px; height: 22px; }
+.side .eyebrow { padding: 10px 8px 4px; }
+/* The fold button. Open, it sits at the right edge of the brand row. */
+.side-fold { appearance: none; background: none; border: none; padding: 0; margin-left: auto; flex: none;
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm);
+  color: var(--muted); cursor: pointer; transition: color 140ms ease, background 140ms ease, opacity 140ms ease; }
+.side-fold:hover { color: var(--green); background: var(--green-soft); }
+.side-fold:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.side-fold svg { width: 16px; height: 16px; }
+/* The rows sit above one shared highlight (.nav-pill) that slides between them, so the green
+ * block travels with the click instead of blinking off one row and on at another. */
+.navlist { position: relative; display: flex; flex-direction: column; gap: 3px; }
+.nav-pill { position: absolute; left: 0; right: 0; top: 0; border-radius: var(--r-sm);
+  background: var(--green-soft); pointer-events: none;
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1), height 260ms cubic-bezier(0.4, 0, 0.2, 1); }
+.navitem { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--r-sm); color: var(--muted); font-weight: 400; cursor: default;
+  /* A floor, so a folded row (glyph only, 16px) is exactly as tall as an open one (label, 20px) and
+     the list does not jump under the sliding pill while the rail folds. */
+  min-height: 20px; }
+/* One SVG glyph per page; it inherits the row's colour, so hover/active tint it along. */
+.navitem .ic { display: grid; place-items: center; width: 16px; height: 16px; flex: none; color: inherit; transition: color 140ms ease; }
+.navitem .ic svg { width: 16px; height: 16px; stroke-width: 1.7; }
+.navitem:not(.disabled):hover { color: var(--text); }
+.navitem:not(.disabled):hover .ic { color: var(--green); }
+.navitem.on { color: var(--text); font-weight: 600; }
+.navitem.on .ic { color: var(--green); }
+/* Right-aligned inside the row, and faded in rather than switched on: the pill glides between rows over
+   260 ms, and a mark that appears instantly at the destination arrives before the highlight does. */
+.navitem-mark {
+  margin-left: auto; font-size: inherit; line-height: 1; color: inherit;
+  opacity: 0; transition: opacity 200ms ease 60ms;
+}
+.navitem.on .navitem-mark { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .navitem-mark { transition: none; } }
+.proj-card { margin-top: auto; border: 1px solid var(--border-strong); border-radius: var(--r); padding: 10px;
+  /* Slightly translucent so the facets behind the navigation show through the card. The
+     base steps up from surface-2 to surface-3 and the border to border-strong before it turns see-through,
+     so the card does not wash out over the light upper picture; the blur keeps the text readable over the
+     coloured facets. */
+  background: color-mix(in srgb, var(--surface-3) 78%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.proj-card .row { display: flex; align-items: center; gap: 8px; }
+/* The project's own green, with a wash of the same colour as its ring. It used to take `--ok`, the
+   health green — a different hue from everything else that marks this project, which made the card look like
+   it was reporting a status rather than naming what is open. */
+.dot-live { width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); flex: none; }
+
+/* ---- the folded rail ----------------------------------------------------------------------
+   56 px wide: eight of padding each side leaves forty for a centred 16 px glyph. The prism picture
+   stays on — `cover` crops it to its left edge, which keeps the colour of the
+   facets even where their shape no longer fits. The page names move into each row's `title`, the
+   platform's own hint, which is what every other icon button in this app already uses.
+
+   The cells are deliberately NOT square, and the mark keeps its 22 px: both were tried and
+   taken back out — a 40 px column of squares turns the strip into a row of
+   buttons, where what it should read as is the same navigation, narrower. */
+.side-collapsed { padding: 14px 8px; }
+.side-collapsed .eyebrow { display: none; }
+/* Only the mark is left up here — the fold button is not rendered folded. */
+.side-collapsed .brand { justify-content: center; padding: 2px 0 11px; }
+.side-collapsed .brand-name { display: none; }
+.side-collapsed .navitem { justify-content: center; gap: 0; padding: 7px 0; }
+.side-collapsed .navitem-label, .side-collapsed .navitem-mark { display: none; }
+/* Folded, the hover needs to say which glyph the pointer is on, and a brighter icon alone does not
+   carry that at 16 px. So the row takes a box of its own — the grey step the app uses for every
+   other hover surface, at the radius the green pill already has, so it reads as the same family of
+   shape. Not on the active row: the green pill is already there, and a grey
+   box over it would only mute it. */
+.side-collapsed .navitem:not(.disabled):not(.on):hover { background: var(--surface-3); }
+/* Everything under the navigation is the way back to the full rail. `e-resize` is the nearest the
+   platform has to "this edge moves"; a drawn double-chevron would be a fixed-size bitmap that a
+   scaled-up system cursor renders wrong. Deliberately WITHOUT a hover wash: the cursor alone
+   announces it, so the panel keeps looking like the ground it is. */
+.side-expand-zone { flex: 1; min-height: 40px; margin-top: 6px; appearance: none; border: none;
+  background: none; border-radius: var(--r-sm); cursor: e-resize; }
+.side-expand-zone:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .side-fold { transition: none; } }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.topbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.rtabs { display: flex; gap: 4px; }
+/* Top padding compensates the 2px underline so the tab text sits on the same line as "Model". */
+.rtab { appearance: none; background: none; border: none; border-bottom: 2px solid transparent; padding: 8px 10px 6px;
+  margin-bottom: -11px; font: inherit; font-size: var(--fs-body); font-weight: 600; color: var(--muted); cursor: pointer; }
+.rtab:hover { color: var(--text); }
+.rtab.on { color: var(--text); border-bottom-color: var(--green); }
+
+
+/* A bridge-launched, unclaimed instance: one slim line, top centre, above the shell
+   but below drawers and dialogs. Same family as .wb-ask / .wb-xa; the first click claims the window
+   and removes it, so covering a strip of the toolbar for that moment is harmless. */
+.bridge-banner { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 4px 6px 4px 14px; border-radius: 999px; background: var(--navy-soft); color: var(--navy); border: 1px solid color-mix(in srgb, var(--navy) 30%, transparent); box-shadow: 0 2px 8px color-mix(in srgb, var(--navy) 18%, transparent); font-size: var(--fs-sec); white-space: nowrap; }
+.bridge-banner > span { overflow: hidden; text-overflow: ellipsis; }
+
+/* A chat that finished or failed out of sight (V406): one compact row per chat, under the toolbar on
+   every view — the same family and place as .wb-ask, since both say "the assistant needs you there". */
+.chat-elsewhere { display: flex; flex-direction: column; }
+.chat-elsewhere-row { display: flex; align-items: center; gap: 10px; background: var(--navy-soft); color: var(--navy); border-bottom: 1px solid color-mix(in srgb, var(--navy) 30%, transparent); padding: 4px 10px 4px 16px; font-size: var(--fs-sec); white-space: nowrap; }
+.chat-elsewhere-row > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-elsewhere-row.err { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: var(--bad); border-bottom-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.chat-elsewhere-x { background: none; border: 0; padding: 2px 6px; color: inherit; opacity: .7; cursor: pointer; font-size: var(--fs-sec); }
+.chat-elsewhere-x:hover { opacity: 1; }

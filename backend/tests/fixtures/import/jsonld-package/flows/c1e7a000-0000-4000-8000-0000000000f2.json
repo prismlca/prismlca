@@ -1,0 +1,18 @@
+{
+  "@type": "Flow",
+  "@id": "c1e7a000-0000-4000-8000-0000000000f2",
+  "name": "steel part",
+  "flowType": "PRODUCT_FLOW",
+  "flowProperties": [
+    {
+      "@type": "FlowPropertyFactor",
+      "isRefFlowProperty": true,
+      "conversionFactor": 1.0,
+      "flowProperty": {
+        "@type": "FlowProperty",
+        "@id": "c1e7a000-0000-4000-8000-000000000002",
+        "name": "Mass"
+      }
+    }
+  ]
+}

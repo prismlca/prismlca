@@ -1,0 +1,168 @@
+/* ---------------------------------------------------------------------------
+   Canvas assistant chat — docked bottom-right, expands upward. The transcript is
+   ~75% transparent (the network shows through); the input bar is opaque.
+--------------------------------------------------------------------------- */
+.canvas-chat {
+  /* Anchored inside the canvas column (.stage is position:relative) so it never overlaps the
+     right inspector sidebar — it sits only over the canvas. */
+  position: absolute; right: 16px; bottom: 16px; z-index: 20;
+  width: min(58%, 660px); display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none; /* let clicks through where the chat isn't */
+}
+.canvas-chat > * { pointer-events: auto; }
+
+/* ---------------------------------------------------------------------------
+   Canvas minimap — the whole model in miniature, the on-screen part cut out of a
+   dimming mask.
+
+   It sits (in its wrapper) in the dock above, NOT pinned to the canvas. React
+   Flow would have pinned it (.react-flow__panel is absolute + margin:15px), and a
+   hard-coded `bottom:` under it would be wrong within a keystroke: the input pill
+   grows with a wrapped draft and again with an attachment chip. In the same
+   bottom-anchored column the launcher's height IS the offset, with nothing to
+   measure. Hence the three undone properties.
+--------------------------------------------------------------------------- */
+/* The map's own wrapper, and the flex child of the dock. It exists because the map has to take a
+   drag (React Flow's <MiniMap> forwards no DOM handlers) and because the drop crosshair needs
+   something positioned to sit in. `flex: none` so an enlarged map is not squeezed back to the width
+   of the chat bar above it — it overflows the dock's column to the LEFT, out of its own corner,
+   which is why its size is clamped against the stage rather than against the dock. */
+.canvas-minimap-dock { position: relative; align-self: flex-end; flex: none; }
+.canvas-minimap-dock.big .canvas-minimap.react-flow__panel {
+  /* Lifted further off the canvas while enlarged — it covers a good part of it, and should read as
+     something held up in front rather than as the canvas having changed. */
+  box-shadow: 0 14px 44px rgba(0,0,0,0.32);
+}
+/* Where a dropped dataset would land, in the model. The map is the only surface in the app where a
+   point means a point in the model, so the drop says so before it happens. */
+.mm-aim {
+  position: absolute; left: 0; top: 0; width: 13px; height: 13px; margin: -7px 0 0 -7px;
+  border: 2px solid var(--green); border-radius: 50%; background: var(--green-soft);
+  /* A ring of paper around it: the marks it lands among are grey, purple and orange, and a green dot
+     on an orange mark is the one place it would disappear. */
+  box-shadow: 0 0 0 2px var(--surface);
+  display: none; pointer-events: none;
+}
+.canvas-minimap-dock.aiming .mm-aim { display: block; }
+.canvas-minimap-dock.aiming .canvas-minimap.react-flow__panel { border-color: var(--green); }
+.mm-aim-hint {
+  /* Inside the map, not above it: enlarged, the map's top edge is a few pixels under the canvas
+     toolbar, and a label placed above it would sit on the controls. */
+  position: absolute; left: 8px; top: 8px; pointer-events: none;
+  font-size: var(--fs-sec); color: var(--green-ink); background: var(--surface);
+  border: 1px solid var(--green); border-radius: 7px; padding: 2px 7px;
+}
+
+.canvas-minimap.react-flow__panel {
+  position: static; margin: 0; z-index: auto;
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18); /* the same lift as .chat-bar under it — one stack of two */
+  cursor: pointer; /* a click re-centres the view; nothing here drags or zooms */
+  /* React Flow's own custom properties, so the map is themed by the house tokens instead of the
+     library's fixed light greys (which on the dark canvas were a white box). */
+  --xy-minimap-background-color: var(--surface);
+  /* The dim is a scrim, not a token colour: it has to DARKEN in both themes to keep meaning
+     ("outside the screen"), and every theme-aware pair would lighten the dark canvas instead —
+     which is why .modal-backdrop and .overlay are theme-neutral too. Kept weak: the nodes outside
+     the viewport are the map, so they must stay readable through it. */
+  --xy-minimap-mask-background-color: rgba(23, 31, 24, 0.22);
+  --xy-minimap-mask-stroke-color: var(--green);
+  /* Reached only if a node ever arrives without one of the classes below: a grey that is legible in
+     both themes beats the library default, which is legible in one. */
+  --xy-minimap-node-background-color: var(--faint);
+}
+/* The map reads as the canvas reads. A locked background process is the quiet grey of
+   .pnode.external, a tag-highlighted one is the green .pnode.hl rings itself in, and a process the
+   user colour-coded arrives as an inline fill that outranks both — just as the card's colour bar
+   outranks its background. */
+.react-flow__minimap-node.mm-node { fill: var(--faint); }
+.react-flow__minimap-node.mm-node.ext { fill: var(--border-strong); }
+.react-flow__minimap-node.mm-node.hl { fill: var(--green); }
+
+
+/* ---------------------------------------------------------------------------
+   Plan card — the assistant's checklist, a second floating card LEFT of the dock,
+   bottom-aligned with it. Same material as
+   .chat-panel. Positioned against .canvas-chat, so it moves with the dock and needs
+   no measuring; `.canvas-chat > *` already gives it pointer events.
+--------------------------------------------------------------------------- */
+.plan-card {
+  position: absolute; right: calc(100% + 12px); bottom: 0; width: 280px;
+  max-height: min(60vh, 460px); display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.16); outline: none;
+}
+/* Too narrow for card + dock: over the transcript, inside the dock column. With the chat
+   collapsed it sits above the composer instead. */
+.plan-card.overlay { right: 0; bottom: calc(100% + 8px); width: min(280px, 100%); z-index: 2; }
+/* Above the pinned run bar (`.chat-runbar`, z-index 2, later in the markup): at the same level the bar
+   painted over the card's head for exactly as long as a run lasted. */
+.chat-panel > .plan-card.overlay {
+  left: 8px; right: 8px; top: 34px; bottom: auto; width: auto; max-height: calc(100% - 42px);
+  box-shadow: 0 10px 32px rgba(0,0,0,0.24); z-index: 3;
+}
+.plan-head {
+  display: flex; align-items: center; gap: 6px; padding: 7px 6px 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.plan-title {
+  flex: 1; min-width: 0; font-size: var(--fs-sec); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plan-count { font-size: var(--fs-label); color: var(--faint); font-variant-numeric: tabular-nums; }
+.plan-collapse {
+  border: none; background: transparent; color: var(--faint); cursor: pointer;
+  padding: 3px 4px; border-radius: 6px; display: inline-flex;
+}
+.plan-collapse:hover { color: var(--text); background: var(--surface-2); }
+.plan-frozen {
+  font-size: var(--fs-label); color: var(--faint); padding: 5px 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.plan-stop {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.plan-stop-why { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--ink); }
+.plan-continue {
+  border: 1px solid var(--green); background: var(--green-soft); color: var(--green-ink);
+  font-size: var(--fs-sec); padding: 3px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.plan-continue:hover:not(:disabled) { background: var(--green); color: var(--surface); }
+.plan-continue.armed { border-color: var(--prism-warning); background: var(--surface); color: var(--text); }
+.plan-continue:disabled { opacity: .5; cursor: default; }
+.plan-steps { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; }
+.plan-step {
+  display: flex; gap: 8px; align-items: flex-start; padding: 4px 10px;
+  font-size: var(--fs-sec); color: var(--text); line-height: 1.4;
+}
+.plan-mark {
+  flex: 0 0 14px; display: inline-flex; justify-content: center; align-items: center;
+  height: 1.4em; color: var(--faint);
+}
+.plan-text { min-width: 0; overflow-wrap: anywhere; }
+.plan-note { display: block; font-size: var(--fs-label); color: var(--faint); }
+.plan-step.in_progress { background: var(--green-soft); color: var(--green-ink); font-weight: 600; }
+.plan-step.in_progress .plan-note { font-weight: 400; }
+.plan-step.completed, .plan-step.skipped { color: var(--faint); }
+.plan-step.completed .plan-mark { color: var(--green); }
+.plan-step.skipped .plan-text { text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.plan-step.blocked .plan-mark { color: var(--prism-warning); }
+
+/* Collapsed: the pill at the left edge of the dock column, bottom-aligned like the card. */
+.plan-pill {
+  position: absolute; right: calc(100% + 12px); bottom: 0;
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18); color: var(--text); cursor: pointer;
+  font-size: var(--fs-sec); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.plan-pill:hover { border-color: var(--green); }
+.plan-pill.stopped { border-color: var(--prism-warning); }
+.plan-pill-check { color: var(--green); font-weight: 700; }
+.plan-ring-track { fill: none; stroke: var(--border); stroke-width: 2.5; }
+.plan-ring-fill { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; }
+
+/* Continue without a plan: under the stop note in the transcript. */
+.chat-continue { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; }
+.chat-continue-why { font-size: var(--fs-label); color: var(--faint); }

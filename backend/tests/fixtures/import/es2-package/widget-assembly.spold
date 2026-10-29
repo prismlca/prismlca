@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hand-written fixture (PrismLCA). Not real data: two datasets of one package, linked by activityLinkId. -->
+<ecoSpold xmlns="http://www.EcoInvent.org/EcoSpold02">
+  <childActivityDataset>
+    <activityDescription>
+      <activity id="aaaaaaaa-0000-4000-8000-00000000000a" activityNameId="aaaaaaaa-0000-4000-8000-00000000000a" inheritanceDepth="0" type="1" specialActivityType="0">
+        <activityName xml:lang="en">widget assembly</activityName>
+        <generalComment><text xml:lang="en" index="0">Hand-written fixture. Not real data.</text></generalComment>
+      </activity>
+      <geography><shortname xml:lang="en">DE</shortname></geography>
+      <technology technologyLevel="3"/>
+      <timePeriod startDate="2026-01-01" endDate="2026-12-31" isDataValidForEntirePeriod="true"/>
+    </activityDescription>
+    <flowData>
+      <intermediateExchange id="aaaaaaaa-0000-4000-8000-00000000000a-0" amount="1" intermediateExchangeId="aaaaaaaa-0000-4000-8000-0000000000f1">
+        <name xml:lang="en">widget</name>
+        <unitName xml:lang="en">kg</unitName>
+        <outputGroup>0</outputGroup>
+      </intermediateExchange>
+      <intermediateExchange id="aaaaaaaa-0000-4000-8000-00000000000a-1" amount="2" intermediateExchangeId="bbbbbbbb-0000-4000-8000-0000000000f1" activityLinkId="bbbbbbbb-0000-4000-8000-00000000000b">
+        <name xml:lang="en">steel part</name>
+        <unitName xml:lang="en">kg</unitName>
+        <inputGroup>5</inputGroup>
+      </intermediateExchange>
+      <elementaryExchange id="aaaaaaaa-0000-4000-8000-00000000000a-9" amount="0.1" elementaryExchangeId="00000000-0000-0000-0000-00000000c002">
+        <name xml:lang="en">Carbon dioxide, fossil</name>
+        <unitName xml:lang="en">kg</unitName>
+        <compartment><compartment xml:lang="en">air</compartment><subcompartment xml:lang="en">unspecified</subcompartment></compartment>
+        <outputGroup>4</outputGroup>
+      </elementaryExchange>
+    </flowData>
+    <administrativeInformation>
+      <dataEntryBy personId="00000000-0000-0000-0000-000000000001" personName="PrismLCA fixture" personEmail="fixture@example.org"/>
+      <dataGeneratorAndPublication personId="00000000-0000-0000-0000-000000000001" personName="PrismLCA fixture" personEmail="fixture@example.org"/>
+    </administrativeInformation>
+  </childActivityDataset>
+</ecoSpold>

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "GHSA-fgmj-fm8m-jvvx",
+    "package": "echarts",
+    "reason": "XSS only in the Lines series tooltip without a custom formatter (CVE-2026-45249). PrismLCA renders bar, heatmap and radar charts only; no `type: 'lines'` anywhere (tripwire: frontend/src/echartsSeries.test.ts). Fix needs echarts 6, a major step planned after the first release.",
+    "expires": "2027-01-31"
+  },
+  {
+    "id": "PYSEC-2026-327",
+    "package": "deepdiff",
+    "reason": "Class pollution through Delta deserialisation. bw2data 4.7 pins deepdiff ~=7.0.1; PrismLCA never loads deltas or pickles from outside (bw2data uses deepdiff for its own revisions only). Lift when bw2data allows deepdiff 8.6+.",
+    "expires": "2027-01-31"
+  },
+  {
+    "id": "PYSEC-2026-2445",
+    "package": "deepdiff",
+    "reason": "Restricted unpickler limits classes but not their arguments. bw2data deserialises its revision deltas with deepdiff's json_loads, never with pickle, and PrismLCA applies no revisions from outside; pinned by bw2data ~=7.0.1.",
+    "expires": "2027-01-31"
+  }
+]

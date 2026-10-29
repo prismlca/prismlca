@@ -1,0 +1,352 @@
+/* Results page */
+/* Plain block flow — NOT flex: a flex item with overflow gets min-height:0 and the flex
+ * algorithm would shrink the (overflowing) results table to nothing when content grows. */
+/* The Results page is a rail page, like Report: the controls live in a full-height column with a rule
+   down its right edge, and the results own the rest of the window. The three boxes it replaced —
+   Subjects, Chart display, Indicators — are the rail's accordion groups. */
+.results-view { flex: 1; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.results-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--rail-w) minmax(360px, 1fr); }
+.results-rail {
+  display: flex; flex-direction: column; gap: 10px;
+  /* No bottom padding: the pinned Calculate bar carries its own and reaches the rail's edge. */
+  padding: 16px 18px 0; background: var(--surface);
+  border-right: 1px solid var(--border); overflow-y: auto; min-height: 0;
+}
+.results-rail > .panel-h { padding: 0 0 6px; }
+.results-rail > .rail-tabs { margin: 0 -18px 10px; padding: 0 18px; gap: 2px; }
+.results-rail > .rail-tabs .rtab { padding: 6px 8px 7px; font-size: var(--fs-body); }
+/* The indicator picker sizes itself by container query; the group body is the container now that the
+   panel that used to be one is gone. Below 430px it collapses to a single column, which is the rail. */
+.results-rail .acc-gbody { container-type: inline-size; container-name: rpanel; }
+/* Stacked rather than side by side: in 348px a label beside its control has no room for either. */
+.results-rail .settings-field { flex-direction: column; align-items: stretch; gap: 3px; }
+/* …and the report rail does the same (`.report-setup .settings-field`). That stretches a segmented
+   control to the rail's width while its buttons stay content-sized, so the two options huddled at the
+   left edge with a dead strip after them. Share the width instead — the control
+   then lines up with the selects above and below it. Both rails, one rule: a seg that is stretched
+   has to divide what it was given, wherever it stands. */
+.results-rail .settings-field .seg,
+.report-setup .settings-field .seg { display: flex; }
+.results-rail .settings-field .seg-btn,
+.report-setup .settings-field .seg-btn { flex: 1; justify-content: center; }
+
+/* Calculate, its progress and Cancel, pinned to the foot of the rail. */
+/* `min-width: 0` is what keeps a long status line from widening the whole rail. As a flex item of the rail the
+   bar's automatic minimum is its min-content width, and the min-content of a `nowrap` label is the entire
+   sentence — so "Stacked breakdown — market for electricity, low voltage [CN-CSG] · 14/22" made the bar 429px
+   wide in a 384px rail and the rail scrolled sideways, which is the "text pushes out of the field" symptom.
+   With the floor removed the label shrinks to the rail and ellipsises, which is what its ellipsis is for. */
+.results-actbar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+  min-width: 0; margin: auto -18px 0; padding: 10px 18px 14px; background: var(--surface);
+  border-top: 1px solid var(--border); }
+/* The bar's own frame is gone — the pinned row is the frame now. The button goes last and to the right,
+   whichever branch is rendered: the status reads left to right and the verb sits where a verb sits. */
+.results-actbar .calcbar { margin: 0; padding: 0; border: 0; background: none; flex: 1; min-width: 0; flex-wrap: wrap; }
+.results-actbar .calcbar > .btn { order: 99; margin-left: auto; }
+
+/* The results column: what acts on them stays over them, and they are unchanged below. */
+/* The results column is one 12-column field. Every box in it — the table, the radar, the heatmap,
+   each bar chart — spans whole twelfths of the same field, so their edges line up down the page instead of
+   each row of charts finding its own width. `container-type` makes the column itself the reference: the rail
+   beside it is 384px fixed, so the field is what is left, and the spans below react to *that* rather than to
+   the window (a media query would count the rail in and break at the wrong widths). */
+.results-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow-y: auto;
+  padding: 0 20px 20px; container-type: inline-size; container-name: rmain; }
+.results-mainhead { display: flex; align-items: center; gap: 10px; padding: 12px 0 8px; flex: none; }
+/* The detailed tab has no head row over its results, so its first element — the Expand all / Collapse all /
+   Save image row — sat flush against the top edge of the window. The Overview tab gets its top space
+   from `.results-mainhead`; here the column carries it, and the same 12px, so the two tabs start on one line. */
+.dr .results-main { padding-top: 12px; }
+.results-mainhead .srow { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+/* Both lists only ever show short method names, so cap them; the description column absorbs
+   whatever width is left over. Scoped to Results — the LCIA page runs this picker full-width. */
+.results-view .ind-picker-cols { grid-template-columns: minmax(150px, 280px) minmax(240px, 440px) minmax(260px, 1fr); }
+/* The picker's width is set by whatever column it landed in, not by the window, so it reacts to
+   its own card rather than to a viewport breakpoint. ~700px is where three columns stop fitting
+   (150 + 240 + 260 + gaps), ~430px is where even two do. Only the Indicators card becomes a
+   container — inline-size containment also re-roots absolutely positioned descendants, which the
+   neighbouring cards' controls should not have to care about. */
+@container rpanel (max-width: 700px) {
+  .results-view .ind-picker-cols { grid-template-columns: minmax(140px, 280px) minmax(200px, 1fr); }
+  .results-view .ind-info { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--border); padding: 10px 0 0; }
+}
+@container rpanel (max-width: 430px) {
+  .results-view .ind-picker-cols { grid-template-columns: minmax(0, 1fr); }
+}
+/* Native colour input styled as a clean filled swatch (no tiny dot inside a button). Checkbox-high
+   (~14px), not 22px: the swatch sits beside one, and a taller block dominated the row. */
+.subj-color { -webkit-appearance: none; appearance: none; width: 14px; min-width: 14px; height: 14px; padding: 0; border: none; border-radius: 4px; background: none; cursor: pointer; flex: none; box-sizing: border-box; }
+.subj-subhead { margin: 10px 0 4px; }
+.subj-subhead:first-of-type { margin-top: 0; }
+.bg-subj { border-style: dashed; }
+.bg-subj .flow-geo { margin-left: 6px; }
+.bg-amount { margin-left: 6px; font-weight: 700; color: var(--prism-navy, #2f4e66); }
+/* The amount block yields before the region picker does: at 147px (74px field plus "kilowatt hour") it was the
+   widest thing in the row, and it is the one part whose text can be cut without losing the point — the unit is
+   also printed in the results table. `min-width: 0` plus an ellipsis on the unit; the field keeps its 74px so
+   a four-digit amount stays readable. */
+.sd-amount { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+/* 62px, not 74px: the twelve pixels are what let "175 regions" print in full in the picker beside it, and an
+   amount in this list is one or two digits — it is a factor on a reference product, not a measured value. */
+.sd-amount .fp-amt { width: 62px; flex: none; }
+.sd-amount .fp-unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bg-rm { border: none; background: none; color: var(--prism-alert, #cc4b37); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 0 0 4px; opacity: .6; }
+.bg-rm:hover { opacity: 1; }
+.modal.sheet.search-modal { width: min(680px, 94vw); max-height: 88vh; }
+.search-modal .search { margin: 0 0 8px; }
+.search-modal .srow { padding: 0; margin-bottom: 8px; }
+/* Match the model-page search panel: the db dropdown fills the row (Search button right-aligned
+   with the input above), and the filter block loses the panel's 12px insets inside the modal. */
+.search-modal .srow .search-sel { flex: 1; min-width: 0; }
+.search-modal .filters { padding: 8px 0; margin-bottom: 8px; }
+.search-results { max-height: 46vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.subj-color::-webkit-color-swatch-wrapper { padding: 0; }
+.subj-color::-webkit-color-swatch { border: 1px solid var(--border-strong); border-radius: 4px; }
+/* Where a variant row has no colour of its own: the baseline takes the model's colour, so the swatch
+   would be a second control for the same thing. The gap keeps its label on the same vertical as the
+   scenarios below it. */
+.subj-color-gap { width: 14px; min-width: 14px; flex: none; }
+.cs-decimals { width: 52px; text-align: right; }
+.cs-item input[type="color"] { -webkit-appearance: none; appearance: none; }
+.cs-item input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.cs-item input[type="color"]::-webkit-color-swatch { border: 1px solid var(--border-strong); border-radius: 5px; }
+/* Consistent card styling across subjects, indicators and the per-family chart cards. */
+.res-card { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 12px 16px 14px; }
+/* One heading style for every card. */
+.rp-title, .ind-fam-head { margin-bottom: 10px; display: flex; align-items: center; gap: 7px; }
+/* align-items:center keeps the short indicator pills at their natural height next to the
+   taller (36px) inline add-button instead of being stretched up to it. */
+.ind-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; min-height: 22px; }
+.ind-chip-group { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 2px 6px 2px 2px; border: 1px dashed var(--border-strong); border-radius: 12px; }
+.ind-fam-label { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+/* A picked indicator, wherever one is shown: the Results rail, the Detailed-Results scenario note and
+   the report's method picker. It used to be declared twice — here at 12px on a green wash, and again in
+   the report block at 11.5px on --green-soft. Same specificity, so the later one won everywhere and the
+   Results chips rendered as something no rule near them described. One definition now; these are the
+   values that were actually on screen. The × comes as a bare <button> (Results) or as .ind-chip-x
+   (picker) — same size either way, it is the same chip. */
+.ind-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  font-size: var(--fs-sec); font-weight: 600; line-height: 1.6; padding: 1px 4px 1px 6px; border-radius: 999px;
+  background: var(--green-soft); color: var(--green-ink); border: 1px solid transparent; }
+.ind-chip button, .ind-chip-x { border: 0; background: none; color: inherit; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0 1px; opacity: .65; }
+.ind-chip button:hover, .ind-chip-x:hover { opacity: 1; }
+/* A stored indicator that this project's method list does not contain — worth seeing, not hiding. */
+.ind-chip.unknown { background: color-mix(in srgb, var(--prism-warning) 18%, var(--surface));
+  color: color-mix(in srgb, var(--prism-warning) 72%, var(--ink));
+  border-color: color-mix(in srgb, var(--prism-warning) 45%, var(--surface)); }
+.ind-picker { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.ind-picker-cols { display: grid; grid-template-columns: minmax(150px, 0.9fr) minmax(200px, 1.2fr) minmax(220px, 1.1fr); gap: 12px; }
+.ind-info { border-left: 1px solid var(--border); padding-left: 12px; min-width: 0; }
+.ind-info-name { font-size: var(--fs-body); font-weight: 700; color: var(--prism-navy, #2f4e66); margin-bottom: 5px; }
+.ind-info-text { font-size: var(--fs-sec); color: var(--text); line-height: 1.45; margin: 0 0 8px; }
+.ind-info-facts { margin: 0 0 8px; padding-left: 16px; }
+.ind-info-facts li { font-size: var(--fs-sec); color: var(--faint); line-height: 1.5; }
+.ind-info-link { font-size: var(--fs-sec); font-weight: 600; color: var(--prism-green-dark, #769a1a); cursor: pointer; text-decoration: none; }
+.ind-info-link:hover { text-decoration: underline; }
+.ind-family { min-height: 190px; padding: 4px !important; }
+.ind-family option { padding: 4px 6px; border-radius: 4px; font-size: var(--fs-body); }
+.ind-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ind-detail-actions { display: flex; align-items: center; gap: 12px; font-size: var(--fs-label); color: var(--faint); }
+.ind-detail-actions > span { margin-left: auto; }
+.linklike { background: none; border: none; padding: 0; font: inherit; font-size: var(--fs-label); font-weight: 600; color: var(--prism-green-dark, #769a1a); cursor: pointer; }
+.linklike:hover:not(:disabled) { text-decoration: underline; }
+.linklike:disabled { color: var(--faint); opacity: .6; cursor: default; }
+.ind-detail-list { max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+.ind-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 5px 9px; border: none; border-bottom: 1px solid var(--border); background: none; cursor: pointer; font: inherit; }
+.ind-row:hover { background: var(--bg-muted, #f2f2f2); }
+.ind-row.on { background: rgba(147,193,32,0.14); }
+.ind-check { color: var(--prism-green-dark, #769a1a); font-weight: 700; text-align: center; }
+.ind-name { font-size: var(--fs-body); color: var(--ink, #303030); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ind-star { color: var(--green); }
+.ind-unit { font-size: var(--fs-label); color: var(--faint); }
+.chart-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
+.cs-item { display: flex; align-items: center; gap: 7px; font-size: var(--fs-body); color: var(--text); cursor: pointer; }
+/* Rows with a text label + control (Decimals, Reference, Split by): the label gets a fixed
+   column so all inputs/dropdowns start at the same left edge — aligned, but not pushed right. */
+.cs-item > span:first-child { width: 84px; flex: none; }
+.cs-item > select { min-width: 150px; }
+.cs-item input[type="color"] { width: 30px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: 5px; background: none; cursor: pointer; }
+.cs-item select { padding: 4px 7px; }
+/* Uniform height for all header controls (segmented control + buttons). */
+.view-head .srow > .btn, .view-head .srow > .seg { height: 30px; box-sizing: border-box; display: inline-flex; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 7px; overflow: hidden; }
+.seg-btn { display: inline-flex; align-items: center; border: none; background: var(--surface);
+  color: var(--text); font: inherit; font-size: var(--fs-sec); padding: 5px 11px; cursor: pointer; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--border-strong); }
+.seg-btn.on { background: var(--prism-green, #93c120); color: #17240a; font-weight: 600; }
+/* A choice that is offered but not available right now — greyed rather than removed, so the control
+   does not move about and the tooltip can say why. */
+.seg-btn:disabled { color: var(--faint); cursor: not-allowed; }
+.seg-btn:disabled.on { background: var(--surface-2); color: var(--faint); font-weight: 600; }
+/* Calculate bar: a full-width card between the settings panels and the results. */
+.calcbar {
+  display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
+  font-size: var(--fs-body); color: var(--faint);
+}
+.calcbar .spinner { flex: none; }
+/* Status text under the row it belongs to, across the whole rail (`order` puts it after the button, and a
+   100% basis makes it a line of its own). Beside the bar it had about 140px of a 384px rail, so
+   "Stacked breakdown — market for electricity, low voltage [CN-CSG] · 3/22" was cut after three words — and
+   before that it was capped by `max-width: 46%`, a percentage that resolves against whatever the flex layout
+   happens to hand this container, which is how it could push out of the bar in the first place. A full line
+   fits the whole sentence; the ellipsis stays as the backstop for a very long subject name. */
+/* The running label takes a line of its own, *after* the button (`order`): beside the bar and Cancel there are
+   about 150px left in a 384px rail, and every one of these sentences is longer than that. */
+.calc-progress-label { flex: 1 1 100%; order: 100; min-width: 0; color: var(--faint); }
+/* The idle line keeps its place *before* the button — the status reads left to right and the verb sits at the
+   right end, which an `order` after the button would have inverted. It grows into the space the button leaves
+   and wraps inside its own box when the sentence is long, so the button never gets pushed to a second line. */
+.calc-stale { flex: 1 1 150px; min-width: 0; color: var(--faint); overflow-wrap: anywhere; }
+.calc-progress-bar { flex: 1 1 90px; min-width: 60px; height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.calc-progress-bar span { display: block; height: 100%; border-radius: 999px; background: var(--green); transition: width .3s ease; }
+/* Single-tree runs have no step count — show a sweeping indeterminate bar instead. */
+.calc-progress-bar .indeterminate { width: 35%; animation: calc-indet 1.2s ease-in-out infinite; }
+@keyframes calc-indet { from { margin-left: -35%; } to { margin-left: 100%; } }
+.calc-progress-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Settings changed after the shown results were computed. */
+/* The banner carries its own space on BOTH sides. It sits in `.results-main`, a flex column, where
+   margins do not collapse — so on Detailed results, whose next element brings no top margin of its
+   own, the warning sat flush against the toolbar under it. */
+.stale-banner {
+  margin-top: 12px; margin-bottom: 12px; padding: 9px 14px; border-radius: var(--r-lg);
+  font-size: var(--fs-body); color: var(--ink);
+  border: 1px solid color-mix(in srgb, #ffae00 45%, var(--border));
+  background: color-mix(in srgb, #ffae00 12%, var(--surface));
+}
+/* `flex: none` is the fix for a table two pixels tall. A scroll container's automatic minimum size is zero —
+   the `min-content` floor every other
+   flex item gets does not apply to it — so in this scrolling column the charts below pushed the table down to
+   its own two borders, and its 149px of rows lived entirely inside a 0px viewport. It now takes the height its
+   rows need, up to a cap: past that the rows scroll under their sticky head, which is what the head is for. */
+/* …and where the next element already has a top margin, that margin steps aside instead of adding
+   to it: 12 + 14 would be a hole, and the table still needs its 14px when no banner precedes it. */
+.stale-banner + .results-table-wrap { margin-top: 0; }
+.results-table-wrap { flex: none; max-height: min(56vh, 620px); overflow: auto; margin-top: 14px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); }
+.th-sortable { cursor: pointer; user-select: none; }
+.th-sortable:hover { color: var(--green-ink, #5f8410); }
+.results-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+.results-table th, .results-table td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+/* The indicator head wraps, the numbers never do (horizontal scrolling because the names did not
+   break). "global warming potential (GWP100)" on one line is a 230px column carrying a 90px number; over two
+   or three lines it is 150px, and twenty indicators fit in a third less width. The cap is on the head only —
+   a wrapped number is unreadable, and a subject name has its own ellipsis. */
+.results-table thead tr:nth-child(2) th { white-space: normal; max-width: 150px; vertical-align: bottom; }
+.results-table .th-ind { overflow-wrap: break-word; }
+.results-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+/* Left-align only the Subject column — NOT the first indicator th in the 2nd header row. */
+.results-table thead tr:first-child th:first-child, .results-table td:first-child { text-align: left; }
+.th-family { text-align: center !important; background: var(--bg-muted, #f2f2f2); border-bottom: 2px solid var(--border-strong) !important; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.results-table th.fam-start, .results-table td.fam-start { border-left: 2px solid var(--border-strong); }
+.th-ind { display: block; font-weight: 700; color: var(--prism-navy, #2f4e66); }
+.th-unit { display: block; font-size: var(--fs-label); font-weight: 400; color: var(--faint); }
+.td-subj { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.td-score { font-variant-numeric: tabular-nums; }
+/* Visible, not theoretical: the tint was `--surface-2`, which is #f4f6f1 against a white table — a
+   two-percent difference nobody sees. `--surface-3` is the same family one step down and reads as the row
+   lighting up, which is what a hover on a wide numeric row is for: keeping your eye on the line. */
+.results-table tbody tr { transition: background .1s; }
+.results-table tbody tr:hover { background: var(--surface-3); }
+/* A method family is a heading over its charts, not a card around them (every bar chart gets a box of
+   its own). One card per chart also means one frame per thing you can save, enlarge or point at — the family
+   card used to put three charts behind one border, and the hover buttons belonged to no visible box. */
+.ind-fam-section { margin-top: 12px; }
+.ind-chart-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+/* Full width until there is room for two, then for three. The breakpoints are measured, not guessed: the
+   column is the window minus the 384px rail, so 1280px of window leaves 622px — two charts of ~300px, which
+   is what the old `minmax(280px, 1fr)` gave and the width at which a subject label still fits under its bar.
+   Three only from ~940px of column (a 1400px window), because at 300px they are already tight. */
+.ind-chart { grid-column: span 12; position: relative; border: 1px solid var(--border);
+  border-radius: var(--r-lg); background: var(--surface); padding: 10px 12px 12px; }
+@container rmain (min-width: 560px) { .ind-chart { grid-column: span 6; } }
+@container rmain (min-width: 940px) { .ind-chart { grid-column: span 4; } }
+/* Radar and heatmap in the same field: stacked while the column is narrow, side by side once both have room,
+   and then 5:7 rather than 6:6 — a radar is square by nature and a heatmap is as wide as it has indicators. */
+.results-charts-top > .ind-fam-section { grid-column: span 12; margin-top: 0; }
+@container rmain (min-width: 940px) {
+  .results-charts-top > .res-radar { grid-column: span 5; }
+  .results-charts-top > .res-heat { grid-column: span 7; }
+}
+.norm-wrap { position: relative; }
+.chart-save { position: absolute; top: 4px; right: 6px; z-index: 2; width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--prism-navy, #2f4e66);
+  cursor: pointer; opacity: 0; transition: opacity .12s; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.ind-chart:hover .chart-save, .norm-wrap:hover .chart-save, .radar-wrap:hover .chart-save, .ctree3-host:hover .chart-save { opacity: 1; }
+.radar-wrap .chart-save, .ctree3-host .chart-save { top: 7px; right: 9px; }
+.chart-save:hover { border-color: var(--prism-green, #93c120); color: var(--prism-green-dark, #769a1a); }
+/* Enlarge button sits just left of the save button (same look, second slot). */
+.chart-save.zoom { right: 36px; }
+.radar-wrap .chart-save.zoom, .ctree3-host .chart-save.zoom { right: 39px; }
+.ind-chart:hover .chart-save.zoom, .norm-wrap:hover .chart-save.zoom, .radar-wrap:hover .chart-save.zoom { opacity: 1; }
+/* Chart-enlarge overlay: the LIVE chart rendered big (hover/tooltips keep working). */
+.chart-zoom-box { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; }
+/* 17px: the title of an enlarged chart has to be larger than the numbers inside it, and at the panel's 13.5px
+   it was smaller than the scaled axis labels — the heading then read as a caption of the axis. */
+.chart-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; color: var(--ink); font-size: var(--fs-title); }
+.chart-zoom-live { width: min(1400px, 92vw); height: min(800px, 76vh); padding: 12px; overflow: auto; }
+.chart-zoom-live .ind-chart-canvas, .chart-zoom-live .norm-chart-canvas, .chart-zoom-live .radar-canvas { width: 100%; height: 100%; }
+/* The heatmap is an HTML table, not an echarts canvas, so its type grows here rather than through `scale`.
+   The same 1.5 as `ZOOM_SCALE`, and the vertical indicator heads get the room the larger type needs. */
+.chart-zoom-live .heatmap { font-size: 18px; }
+.chart-zoom-live .heatmap th, .chart-zoom-live .heatmap td { padding: 9px 12px; }
+.chart-zoom-live .heatmap thead tr:nth-child(2) th { height: 240px; }
+.chart-zoom-live .heatmap thead tr:nth-child(2) th .th-ind { max-height: 228px; }
+.ind-chart-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink, #303030); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ind-chart-canvas { height: 260px; }
+.norm-chart-canvas { height: 420px; margin-top: 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 10px; }
+.radar-wrap { position: relative; }
+.radar-canvas { height: 440px; }
+/* Radar + heatmap side by side, above the per-indicator charts. */
+.results-charts-top { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; margin-top: 16px; }
+.heatmap-wrap { overflow-x: auto; }
+.heatmap { border-collapse: collapse; width: 100%; font-size: 12px; }
+.heatmap th, .heatmap td { border: 1px solid var(--border); padding: 6px 8px; white-space: nowrap; }
+.heatmap thead th { background: var(--surface); }
+.heat-cell { text-align: center; color: #303030; font-variant-numeric: tabular-nums; font-weight: 600; }
+/* Indicator headers written vertically to keep the columns narrow. */
+.heatmap thead tr:nth-child(2) th { vertical-align: bottom; height: 165px; padding: 4px 2px; }
+.heatmap thead tr:nth-child(2) th .th-ind { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block;
+  white-space: nowrap; max-height: 156px; overflow: hidden; text-overflow: ellipsis; }
+.heatmap thead tr:nth-child(2) th .th-unit { display: none; }
+
+
+/* Radar and heatmap carry a second heading line like the bar charts do (there it is the unit): the family word
+   stays the uppercase head, what used to follow the dash becomes the sub-heading in the unit line's type.
+   The row runs to the box's edge; the two hover buttons in the corner may cover its right
+   end while the pointer is over the box, and that was preferred to a key that stops short of the edge. */
+.ind-fam-head.has-sub { margin-bottom: 2px; }
+.chart-sub-row { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px;
+  margin-bottom: 10px; font-size: var(--fs-label); line-height: 12px; }
+.chart-sub { font-weight: 400; color: var(--faint); }
+/* Colour scale in the heatmap's sub-heading row: the app's one heat ramp as a short
+   bar, "Lower impact" and "Higher impact" at its ends on the sub-heading's own line and type. Flush right while the row holds both; once it does not, the sub-heading keeps its line and the
+   key drops to the next, still flush right. */
+.heat-scale { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; font-size: var(--fs-label);
+  font-weight: 400; letter-spacing: 0; text-transform: none; line-height: 12px; color: var(--muted); }
+.heat-scale-end { white-space: nowrap; }
+.heat-scale-ramp { width: 180px; height: 10px; border-radius: 5px; border: 1px solid var(--border); box-sizing: border-box; }
+/* In the enlarge overlay the key rides in the head between the title and Close, a little larger. */
+.chart-zoom-head .heat-scale { font-weight: 400; font-size: var(--fs-sec); line-height: 14px; }
+.chart-zoom-head .heat-scale-ramp { width: 225px; height: 12px; }
+
+/* The normalized comparison is a card like the radar and the heatmap, with the same two heading lines; before it
+   was a bare canvas whose only "title" was the echarts legend, and the view read as unlabelled.
+   The canvas gives up its own frame inside the card; the enlarge overlay still renders it bare, so those rules
+   stay on the class itself. The corner buttons take the card's offsets. */
+.res-norm .norm-chart-canvas { margin-top: 0; border: none; border-radius: 0; padding: 0; }
+.norm-wrap .chart-save { top: 7px; right: 9px; }
+.norm-wrap .chart-save.zoom { right: 39px; }
+
+/* Search sheet: the body opens with the search field, so it gets the head's air above it. */
+.search-modal .sheet-body { padding-top: 14px; }
+
+/* "Add another model": the process the model is compared by, shown as a fact to confirm rather than a list
+   to pick from. The name may wrap — it is the one thing on the sheet worth reading in full. */
+.modelpick-ref { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--surface-2); }
+.modelpick-ref-label { font-size: var(--fs-label); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--faint); }
+.modelpick-ref-name { font-size: var(--fs-body); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.modelpick-ref-meta { font-size: var(--fs-sec); color: var(--muted); }

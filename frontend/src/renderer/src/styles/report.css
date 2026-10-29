@@ -1,0 +1,883 @@
+/* ---- Report page ------------------------------------------------------- */
+/* Three columns: what the report covers, the saved report being edited, the typeset document. The
+   preview is a sandboxed iframe, so the report's own stylesheet cannot leak into the app.
+
+   Saved reports sits beside the setup rather than under it because it carries the chapter list — the
+   part you actually work in — and stacking it left the editing surface half a screen tall while the
+   preview had a whole one. The preview keeps the remaining width: a page is a page, and it does not
+   read better for being wider than one. */
+.report-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(320px, 420px) minmax(360px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+/* Two tabs, one rail each beside the preview: the controls get a whole column instead of sharing the
+   row with the other tool, which is what makes room for a full report to own its coverage.
+   A RAIL, not a card — the same furniture as the models list, only wider: the controls belong to the
+   page rather than sitting on it, so this grid runs edge to edge and the left column carries the rule.
+   The page therefore drops the standard view padding and hands it to its own header. */
+.report-grid.two { grid-template-columns: var(--rail-w) minmax(360px, 1fr); gap: 0; align-items: stretch; }
+/* Top to bottom, like the models panel: the page has no header row of its own, so the rail starts at the
+   content area's top edge and ends at its bottom. The page name and the two kinds of report are the
+   rail's own head, and what acts on the whole document sits over the preview instead. */
+/* `flex: 1` for the same reason `.work` has it: `.main` is a flex column, so a view that does not
+   claim the remaining height ends where its content does — which left the rail stopping mid-window. */
+.view.report-view { flex: 1; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.report-view > .report-grid { flex: 1; min-height: 0; }
+.report-setup > .panel-h { padding: 0 0 6px; }
+/* The page's two kinds, as tabs in the rail's head — with the row's own rule under them; see `.rail-tabs`. */
+.report-setup > .rail-tabs { margin: 0 -18px 10px; padding: 0 18px; gap: 2px; }
+.report-setup > .rail-tabs .rtab { padding: 6px 8px 7px; font-size: var(--fs-body); }
+
+/* The preview owns the whole of the remaining canvas: no card, no margin, no bar across it. Its surface
+   takes the colour that used to surround the card, so the page it shows still sits on a tone rather than
+   on white — the document is the white thing here, and it should be the only one. */
+.report-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
+.report-main > .report-preview { flex: 1; margin: 0; border: 0; border-radius: 0; box-shadow: none;
+  background: var(--bg); }
+
+/* The document's verbs, pinned to the foot of the rail: the one place that stays put while the accordion
+   above it opens and closes. */
+/* Its rule spans the rail like the group rules do — reaching the padding with a negative margin and
+   putting the content back with a matching one. */
+.report-actbar { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 10px;
+  min-width: 0; margin: auto -18px 0; padding: 10px 18px 14px; background: var(--surface);
+  border-top: 1px solid var(--border); }
+.report-actbar-acts { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+/* The data hand-out sits left of the three deliverables and wraps to its own line when the rail is too
+   narrow for four buttons. Wrapping on available width is stable; what used to jump was a status text
+   whose own width changed while the work ran, which is why that one is gone (see the bar's comment). */
+.report-actbar { flex-wrap: wrap; }
+.report-actbar-aside { display: flex; }
+.report-actbar > .settings-hint { flex: 1 0 100%; margin: 0; }
+@media (max-width: 1100px) { .report-grid.two { grid-template-columns: 1fr; } }
+@media (max-width: 1500px) { .report-grid { grid-template-columns: minmax(260px, 340px) 1fr; } }
+@media (max-width: 1100px) { .report-grid { grid-template-columns: 1fr; } }
+/* .card carries a fixed width: min(460px, 90vw) for the standalone cards elsewhere. Here the grid
+   sizes the columns, so both give that up — otherwise they overflow their column and the preview
+   paints over the setup panel. */
+.report-setup, .report-preview { width: auto; min-width: 0; }
+/* The rail: the page's own surface with a rule down its right edge, scrolling on its own. */
+.report-setup {
+  display: flex; flex-direction: column; gap: 10px;
+  /* No bottom padding: the pinned actions bar carries its own, so it reaches the rail's bottom edge
+     instead of floating above a strip of surface. */
+  padding: 16px 18px 0; background: var(--surface);
+  border-right: 1px solid var(--border); border-radius: 0;
+  overflow-y: auto; min-height: 0;
+}
+/* Report picker and "New report" on one line, the select taking what is left. */
+.report-pick { display: flex; gap: 8px; align-items: center; }
+.report-pick select { flex: 1; min-width: 0; }
+.report-pick .btn { flex: none; white-space: nowrap; }
+
+/* The preview keeps its card, and its breathing room comes from the cell now that the grid has none. */
+
+/* .settings-field is built for the wide settings modal; in a 380px column its inputs would
+   overflow the card and slide under the preview. Stack label over input instead. */
+.report-setup .settings-field { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+.report-setup .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.report-setup select, .report-setup input { width: 100%; min-width: 0; }
+.report-setup input[type="checkbox"] { width: auto; }
+.report-setup h4 { margin: 0; }
+.report-methods { display: flex; flex-direction: column; gap: 6px; }
+.report-methods-head { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.report-methods-list {
+  max-height: 260px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-2); padding: 6px 8px;
+}
+.report-methods-actions { display: flex; gap: 10px; align-items: baseline; font-size: var(--fs-sec); }
+.report-methods-actions .faint { margin-left: auto; }
+.report-method { display: flex; align-items: center; gap: 6px; font-size: var(--fs-body); padding: 2px 0; width: 100%; min-width: 0; }
+.report-method input { width: auto; }
+.report-method span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-method .faint { flex: 0 0 auto; white-space: nowrap; }
+/* A fixed height that fills the page, not a minimum. With only a minimum the card grew to the height of
+   a zoomed page, so the window scrolled instead of the pane — and the zoom control ended up below the
+   viewport. The pane keeps its own scrollbar, so paging and zooming never move the rest of the page. */
+.report-preview { padding: 0; overflow: hidden; min-height: 0; display: flex; position: relative; }
+.report-preview iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+/* The typeset page. The image keeps its natural size capped by the width and scrolls; `flex: 1` on an
+   image collapses it to nothing, which is how the first version rendered a blank pane. */
+.report-page { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface-3);
+  position: relative; }
+.report-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; justify-content: center; padding: 14px; }
+.report-scroll img { height: auto; align-self: flex-start; background: #fff; box-shadow: var(--shadow); }
+/* Fit: the whole page inside the pane, which is what "one page" means. Zoomed: the width is set inline
+   and the pane scrolls in both directions. */
+.report-scroll.fit img { max-width: 100%; max-height: 100%; }
+/* Zoomed: the image is a flex item, and a flex item shrinks back to fit however wide you make it —
+   `flex: none` is what lets the set width stand and the pane scroll.
+   `margin: 0 auto` keeps the page centred while it still fits; once it is wider than the pane the auto
+   margins collapse to zero by themselves, so it scrolls from its left edge instead of being cut off.
+   `justify-content: center` alone could not do that — it pushes the overflow out of reach on the left. */
+.report-scroll:not(.fit) { justify-content: flex-start; }
+.report-scroll:not(.fit) img { flex: none; max-width: none; max-height: none; margin: 0 auto; }
+/* Deliberately the same control as the canvas — same size, borders, radius and shadow as React Flow's,
+   because they do the same thing and sit two clicks apart. */
+/* What the page is doing. Beside the buttons in the setup cards, and as an overlay on the preview pane —
+   a report render computes the whole study, and twelve silent seconds is when people click again. */
+/* A preview typeset before the report last changed: a banner across the top of the pane, in the
+   warning tone — the pages below are of a document that no longer exists. */
+.report-stale-note { padding: 6px 12px; font-size: var(--fs-sec); color: var(--ink);
+  background: color-mix(in srgb, var(--prism-warning) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--prism-warning) 45%, transparent); }
+.report-pageno { display: inline-flex; align-items: center; gap: 6px; }
+.report-pageno input { width: 3.6em; padding: 2px 4px; text-align: center; }
+/* No spin buttons here: the two arrows either side of this field already step the page, and a second
+   pair inside it does the same job in half the size. Typing a number is what the field is for. */
+.report-pageno input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.report-pageno input[type='number']::-webkit-inner-spin-button,
+.report-pageno input[type='number']::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* `.report-busy` is gone: the status is `.report-working` over the preview, and in the rail it moved the
+   buttons. See the note in Report.tsx. */
+.report-working { position: absolute; z-index: 3; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 9px; padding: 10px 14px; font-size: var(--fs-body); color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-lg); }
+.report-zoom { position: absolute; left: 14px; bottom: 52px; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
+.report-zoom button { width: 30px; height: 30px; background: var(--surface); border: none;
+  border-bottom: 1px solid var(--border); color: var(--ink); display: inline-flex; align-items: center;
+  justify-content: center; cursor: pointer; padding: 0; }
+.report-zoom button:last-child { border-bottom: none; }
+.report-zoom button:hover { background: var(--surface-2); }
+.report-zoom svg { width: 14px; height: 14px; }
+.report-pager { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 8px;
+  border-top: 1px solid var(--border); background: var(--surface); font-size: var(--fs-sec); color: var(--muted); }
+.report-preview .empty { margin: auto; padding: 24px; }
+
+/* ---- Report: chapter management -------------------------------------------- */
+/* Reordering is safe by construction: chapter numbers and cross-references are placeholders resolved
+   at typeset time, so a moved chapter takes its numbering and its "see Table 1" with it. */
+/* The chapter list scrolls inside itself, not the page: the card is as tall as the preview beside it, and
+   everything above the list (name, options, template, Add) stays put while a twenty-chapter list scrolls.
+   Only the drag & drop area moves — a scrollbar around the whole card would take the controls with it.
+   `min-height: 0` on every ancestor is what lets a flex child actually shrink and hand the overflow to
+   the list instead of growing the column. */
+/* The rail fills its grid row; its own scroll does the rest. A viewport-height guess was needed while
+   this was a card in a padded, scrolling view. */
+.report-stored { min-height: 0; }
+/* It fills the rail so the pinned bar's `margin-top: auto` reaches the bottom edge — but it must never be
+   shorter than its content. With `min-height: 0` it was: the flex line squeezed it to the rail's height
+   while an open group ran on for twice that, so the content spilled out (visibly, since it does not clip)
+   and the sticky bar — clamped to its containing block — stopped halfway up the panel, sitting on top of
+   the theme tiles with the Upload button stranded below the window. `min-height: auto` is what a flex item
+   wants here; the scroll belongs to the rail, and only the rail. */
+.report-stored > .rsec { flex: 1 1 auto; }
+/* The report's controls as an accordion. The panel had become one long column in
+   which the theme picker, the subject selection and a fifteen-chapter list all fought for the same
+   scroll; now each group states what it holds while closed, and only the chapters are open by default.
+   The preview beside it is untouched — it was the one part that already worked. */
+.rsec { display: flex; flex-direction: column; margin-top: 6px; }
+/* The rules run the full width of the rail, not the width of its text column: a divider that stops 18px
+   short of both edges reads as a box someone forgot to finish. The negative margin reaches the rail's
+   padding, the matching padding puts the content back on the text column. */
+/* The tab row carries its own rule, on both rails. The line Results showed under its tabs was the
+   *first group's* top rule 10px below, which the active tab's green mark crossed by a pixel — two lines at
+   two heights, which is what looked wrong. Now the row draws the line, full rail width like every other one
+   here, and the mark sits **on** it: of its 2px, 1px covers the grey and 1px hangs below, so the overlap is
+   a chosen pixel rather than an accident. The group that follows the row gives up its own rule, or the two
+   would stand 10px apart with nothing in between — which reads as a doubled line. */
+.rail-tabs { border-bottom: 1px solid var(--border); }
+.rail-tabs .rtab { margin-bottom: -1px; }
+.rail-tabs + .acc-grp { border-top: 0; }
+.acc-grp { border-top: 1px solid var(--border); margin-inline: -18px; padding-inline: 18px; }
+.acc-grp:last-of-type { border-bottom: 1px solid var(--border); }
+/* Groups sit flush against each other: the rule between them does the separating, and a gap on top of it
+   made the space around an open group's title visibly larger than around a closed one.
+   Scoped to the Results rail, which is the flex column with the 10px gap — it is right there for the head,
+   the picker and the pinned bar, and only wrong between groups. On the Report page the groups live inside
+   `.rsec`, which has no gap, so cancelling one there would overlap them. */
+.results-rail > .acc-grp { margin-top: -10px; }
+/* The head reaches the rail's edges, so its hover tint does too: the group already pulls its rules
+   out into the rail's padding with a negative inline margin, and a tint that stopped 18px short of both edges
+   read as a box inside the row rather than as the row lighting up. The 2px keeps the title and the summary on
+   the same text column as everything else in the rail. */
+/* `calc(100% + 36px)` rather than `auto`: a `button` shrinks to fit whatever its display, so `auto` gave a
+   head as wide as its title. 100% is the group's content width, and the 36px are the two negative margins. */
+.acc-ghead { display: flex; align-items: center; gap: 10px; width: calc(100% + 36px); border: 0;
+  background: none; font: inherit; padding: 9px 20px; margin-inline: -18px; cursor: pointer;
+  text-align: left; color: var(--text); }
+.acc-ghead:hover { background: var(--surface-2); }
+/* A little larger than the 9px it started at: it is the one thing that says a group opens, and
+   at 9px it read as a bullet rather than as a mark that turns. */
+.acc-ghead .car { display: inline-flex; align-items: center; color: var(--faint); flex: none; transition: transform .16s; }
+.acc-ghead .car svg { width: 13px; height: 13px; }
+.acc-grp.open .acc-ghead .car { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .acc-ghead .car { transition: none; } }
+.acc-ghead .t { font-size: var(--fs-body); font-weight: 600; letter-spacing: -.005em; flex: none; }
+/* What the group holds, so it often need not be opened at all. Ellipsised rather than wrapped: the head
+   is one line, and a summary that grows moves every group below it. */
+.acc-ghead .s { margin-left: auto; font-size: var(--fs-sec); color: var(--faint); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 55%; text-align: right; }
+/* 9px above the title, 2px below it, 12px under the last control: an even rhythm against the rules.
+   16px at the foot made the space below an open group half again the space above its own title. */
+.acc-gbody { display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 12px; min-height: 0; }
+/* The body's padding owns the space at the foot, so a last child's own bottom margin only doubles it —
+   several of these controls were built for a padded box and still carry one. */
+.acc-gbody > :last-child { margin-bottom: 0; }
+
+/* The rail's fixed bottom: the chapter foot and the document bar docked together, ruled off from the
+   scrolling accordion by a full-width line above (the actbar's own rule is the line between the two
+   rows). Sticky, not merely last: the foot used to scroll away with the groups, so on a long report
+   "Rewrite all chapters" was reachable only past the list it acts on.
+   `margin-top: auto` keeps it on the bottom edge when the content is shorter than the rail. */
+.rsec-dock { position: sticky; bottom: 0; z-index: 2; margin: auto -18px 0; padding: 0 18px;
+  background: var(--surface); border-top: 1px solid var(--border); }
+/* Inside the dock the bar gives up its own stickiness — the dock carries it — and keeps only its
+   full-width rule and padding. */
+.rsec-dock .report-actbar { position: static; margin: 0 -18px; }
+/* Directly under the last group: what is left to write, and the button that writes it. It belongs to the
+   accordion — it acts on the chapters listed in it — where the bar below belongs to the document. */
+.rsec-foot { display: flex; align-items: center; gap: 12px; padding: 10px 0; }
+/* Progress of a chapter run or the dialog's staleness check: a thin bar that fills per finished
+   step and shimmers while one is in flight — between two completions of a reasoning model lie
+   minutes, and a static counter over minutes reads as a hang. */
+.rsec-progress { flex-basis: 100%; height: 4px; border-radius: 2px; background: var(--bg-muted); overflow: hidden; }
+.rsec-progress span { display: block; height: 100%; border-radius: 2px; background: var(--green); transition: width .4s ease; }
+/* The sheen rides as a second layer over the shared gradient (see the progress block at the end of this
+   file); the keyframes move only that first layer, the gradient keeps its place. */
+.rsec-progress.working span { background-image: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%), var(--progress-gradient); background-size: 80px 100%, 100cqw 100%; background-position: -80px 0, left 0; background-repeat: no-repeat; animation: rsec-progress-sheen 1.4s linear infinite; }
+@keyframes rsec-progress-sheen { from { background-position: -80px 0, left 0; } to { background-position: calc(100% + 80px) 0, left 0; } }
+.rsec-plan-check .rsec-progress { margin: 2px 0 10px; }
+.rsec-foot .p { font-size: var(--fs-sec); color: var(--faint); font-variant-numeric: tabular-nums; }
+/* The last action's result, on a line of its own above the counter. Full width because it is a
+   sentence and not a badge — "Impact assessment: 2 of 3 corrections stored, 1 refused by the check —
+   …" has no business being squeezed next to three buttons. Not faint like the counter beside it: the
+   counter is standing state, this is something that just happened and may be a refusal. */
+.rsec-foot .rsec-note { flex-basis: 100%; margin: 0 0 2px; color: var(--muted); }
+/* Three choices now live here — read, correct, write — and the panel is narrow, so they wrap
+   instead of pushing each other out of it. */
+.rsec-foot { flex-wrap: wrap; }
+.rsec-foot .r { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  justify-content: flex-end; }
+
+/* The dry run for "Write all": every chapter it considered, on one screen. The untouched ones are
+   listed too and deliberately not hidden — "four were left alone" only reassures if you can see
+   which four and why. Their rows are dimmed, not removed. */
+.rsec-plan { width: 720px; max-width: 92vw; max-height: 82vh; display: flex; flex-direction: column; }
+.rsec-plan-list { margin: 10px 0 12px; display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+/* Four fixed columns rather than three and a shrug: the outcome badges differ in width ("Write" against
+   "Waiting on a setting"), and letting the reason start wherever the badge happened to end made a list
+   of eight rows read as ragged noise. */
+.rsec-plan-row { display: grid; grid-template-columns: auto minmax(7em, 12em) 10.5em 1fr; gap: 8px;
+  align-items: baseline; padding: 6px 8px; border-radius: 6px; font-size: var(--fs-sec); cursor: pointer; }
+.rsec-plan-row:hover { background: var(--bg-muted, #f2f2f2); }
+.rsec-plan-row.off { cursor: default; opacity: 0.65; }
+.rsec-plan-row input { align-self: center; }
+.rsec-plan-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rsec-plan-tag { justify-self: start; font-size: var(--fs-label); padding: 1px 7px; border-radius: 999px;
+  white-space: nowrap; border: 1px solid var(--border); color: var(--faint, #8a8a8a); }
+.rsec-plan-tag.go { border-color: color-mix(in srgb, var(--prism-green, #93c120) 55%, transparent);
+  color: var(--prism-navy, #2f4e66); }
+.rsec-plan-tag.bad { border-color: color-mix(in srgb, var(--prism-alert, #cc4b37) 55%, transparent);
+  color: var(--prism-alert, #cc4b37); }
+/* Warning yellow is unreadable as text on a light surface, so the badge borrows it for the border
+   and darkens it for the word itself. */
+.rsec-plan-tag.warn { border-color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, transparent);
+  color: color-mix(in srgb, var(--prism-warning, #ffae00) 55%, var(--prism-ink, #303030)); }
+/* The reason is the point of the row, but it must never push the chapter name out of view. */
+.rsec-plan-why { color: var(--faint, #8a8a8a); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0; }
+
+/* The chapter as the document will read it. Set as prose, not as code: the question it answers is
+   "does this sentence say the right thing", and a monospaced dump reads as debug output. */
+.rsec-resolved-box { margin: -2px 0 8px; }
+.rsec-resolved { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--bg-muted, #f2f2f2);
+  font-size: var(--fs-body); line-height: 1.7; white-space: pre-wrap; }
+/* A resolved number keeps a faint mark so it is visibly *not* the author's typing — the tooltip on it
+   is where the path and the member it is pinned to live. */
+.rsec-pval { border-bottom: 1px dotted var(--prism-gray-light, #cbcbcb); cursor: help; }
+.rsec-pval.pinned { border-bottom-color: color-mix(in srgb, var(--prism-green, #93c120) 70%, transparent); }
+.rsec-pval.bad { color: var(--prism-alert, #cc4b37); font-weight: 600;
+  border-bottom-color: var(--prism-alert, #cc4b37); }
+
+/* A correction, shown as what it is: a few words out, a few words in. A sheet, so the head's ✕ and
+   the foot's action stand still while the diff scrolls between them. */
+.rsec-patch { width: 720px; max-width: 92vw; max-height: 82vh; }
+.rsec-patch-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 20px 18px; }
+.rsec-diff { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rsec-diff li { padding: 10px 12px; border-radius: 8px; background: var(--bg-muted, #f2f2f2);
+  font-size: var(--fs-body); line-height: 1.55; }
+.rsec-diff del { display: block; text-decoration: line-through; opacity: 0.7;
+  color: var(--prism-alert, #cc4b37); }
+.rsec-diff ins { display: block; text-decoration: none; font-weight: 600; }
+.rsec-diff .why { display: block; margin-top: 5px; font-size: var(--fs-sec); color: var(--faint, #8a8a8a); }
+/* The replacement with its placeholders worked out. Set apart from the diff because it answers a
+   different question: not "which words change" but "which figure will stand there". */
+.rsec-diff-shown { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border);
+  font-size: var(--fs-sec); color: var(--muted); }
+.rsec-diff-shown b { color: var(--faint); font-weight: 600; }
+/* "What moved since I read it": one flowing paragraph, not two columns — the point is to read it. */
+/* The legend above the diff uses the same two marks it explains, so the explanation is the sample. */
+.rsec-patch .hint del { text-decoration: line-through; opacity: .65; color: var(--bad); }
+.rsec-patch .hint ins { text-decoration: none; font-weight: 600;
+  background: color-mix(in srgb, var(--green) 22%, transparent); border-radius: 3px; }
+.rsec-worddiff { font-size: var(--fs-body); line-height: 1.7; white-space: pre-wrap; }
+.rsec-worddiff del { text-decoration: line-through; opacity: 0.65; color: var(--prism-alert, #cc4b37); }
+.rsec-worddiff ins { text-decoration: none; font-weight: 600;
+  background: color-mix(in srgb, var(--prism-green, #93c120) 22%, transparent); border-radius: 3px; }
+/* A badge that is also a button — it opens the diff it is talking about. */
+.rsec-stale.link { border: 0; cursor: pointer; font-family: inherit; }
+.rsec-stale.link:hover { text-decoration: underline; }
+.rsec-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* Text fields share the row and may shrink; a select keeps the width its longest option needs, or it
+   renders as "Englisl". */
+.rsec-head input { flex: 1 1 8em; min-width: 0; width: auto; }
+.rsec-head select { flex: 0 0 auto; }
+/* `flex: 1` alone means basis 0, which squeezed the name to a few pixels once a subtitle field joined
+   the row. A real basis lets both fields shrink evenly instead of one collapsing. */
+.rsec-name { flex: 1 1 8em; min-width: 0; font-weight: 600; }
+.rsec-head a.btn, .rsec-head button.btn { white-space: nowrap; flex: 0 0 auto; }
+/* Only the drag & drop area scrolls, and there is exactly one scrollbar. The card is as tall as the
+   preview beside it and the list takes whatever is left over (`flex` + `min-height: 0` on every ancestor,
+   which is what lets a flex child shrink instead of growing its column) — so name, options, template and
+   the Add row all stay where they are while a twenty-chapter list scrolls inside its box. Giving the list
+   a minimum height instead would push the card past the viewport and produce a second scrollbar around it.
+   `overscroll-behavior: contain` stops a flick from carrying on into the page. */
+.rsec-list { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.rsec-item {
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2);
+  padding: 5px 7px;
+}
+.rsec-item.dragging { opacity: 0.45; }
+/* The drop marker is a line in the gap, not a highlight on a chapter: the gap is what the pointer means.
+   Drawn with an inset box-shadow so it needs no extra element and cannot shift the layout while dragging. */
+.rsec-item.drop-above { box-shadow: inset 0 3px 0 -1px var(--green); }
+.rsec-item.drop-below { box-shadow: inset 0 -3px 0 -1px var(--green); }
+.rsec-item.locked { border-left: 3px solid var(--green); }
+/* One line, always: handle, title, kind, badges, then the actions at the right end. What gives way when
+   the line is short is set in the one-line block below (V431) and at the end of this sheet — the kind label
+   first, then the badges, then the worded offers, the title down to its floor; the icon buttons never.
+   The gap is the Overview action strip's 4px, so the icons stand as close as they do there, and every
+   pixel the line saves goes to the badges. */
+.rsec-row { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.rsec-row .pdrag-handle { cursor: grab; flex: 0 0 auto; }
+/* A real basis, for the same reason as the header row: with `flex: 1` (basis 0) a chapter carrying a
+   "numbers moved" badge and four buttons squeezed its title field down to a sliver. */
+.rsec-title { flex: 1 1 11em; min-width: 0; font-size: var(--fs-body); }
+/* Badges and buttons keep their size; the field gives way instead. */
+.rsec-row .rsec-stale, .rsec-row .rsec-kind { flex: 0 0 auto; }
+/* Up to eight buttons — Release, Correct…, Accept as it is, Re-link, Write, Edit, Lock, Delete. All worded,
+   they need a second line, which the list can afford only under the pointer, where it pushes every row
+   below it down. So the ones a chapter's kind always brings — write (or resolve), edit, lock, delete — are
+   small icons (`.act-icon`, the Overview's model-card look): they fit on the row's own line and stay
+   visible, and the padlock says at a glance which chapters are locked. The worded offers that only some
+   states bring sit before them, in `.rsec-offers`.
+   The group stays one element in the markup but lays out as the row's own items (`contents`), so each
+   button can say for itself whether it may shrink — a group that shrinks as one has no floor and would
+   push its icons out past the row's edge. The first of them takes the spare room, which keeps the set
+   right-aligned. */
+.rsec-actions, .rsec-offers { display: contents; }
+.rsec-offers > :first-child, .rsec-offers:empty + .act-icon { margin-left: auto; }
+.rsec-kind { font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
+/* "numbers moved": the deterministic staleness signal. Warning, not error — the text is still there
+   and may well still be right; only its basis has changed. */
+.rsec-stale {
+  font-size: var(--fs-label); font-weight: 600; white-space: nowrap; border-radius: 4px; padding: 1px 5px;
+  background: color-mix(in srgb, var(--prism-warning, #ffae00) 20%, var(--surface));
+  color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, var(--ink));
+}
+.rsec-row .btn.sm { padding: 2px 7px; font-size: var(--fs-sec); }
+/* What the gate refused, in the author's words rather than a status code — a missing fact often
+   belongs in the study metadata rather than in the bin. */
+/* An advisory finding reads as a remark, not as a fault. */
+.rsec-findings li.note { color: var(--muted); }
+.rsec-findings li.note::marker { color: var(--muted); }
+/* A remark that belongs to the run rather than to one chapter: it stands once at the top of the
+   writer report, with the chapters it touched named after it. Same amber as the per-chapter list —
+   it is the same kind of remark, only said in the right place (V266). */
+.rsec-wr-runwide { display: block; margin: 0 0 12px; }
+.rsec-wr-where { display: block; margin-top: 4px; font-size: var(--fs-label); color: var(--muted); }
+
+/* One chapter's block in the writer report: its name, the way to open it, and its remarks. */
+.rsec-wr-chapter + .rsec-wr-chapter { margin-top: 14px; }
+.rsec-wr-head { display: flex; align-items: center; gap: 8px; }
+.rsec-wr-title { flex: 1; min-width: 0; font-weight: 600; color: var(--ink); }
+.rsec-wr-chapter .rsec-findings { margin-top: 6px; }
+.rsec-findings {
+  margin: 4px 0 2px; padding: 6px 10px 6px 24px; border-radius: var(--r-md); font-size: var(--fs-sec);
+  line-height: 1.5; color: color-mix(in srgb, var(--prism-warning, #ffae00) 72%, var(--ink));
+  background: color-mix(in srgb, var(--prism-warning, #ffae00) 12%, var(--surface));
+}
+/* The chapter editor as an overlay: wide enough for prose, built as a sheet — the head's ✕ and the foot's
+   Write stand still, only the middle scrolls. */
+.rsec-modal { width: min(760px, 94vw); max-height: 88vh; }
+.rsec-modal-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 22px 20px; }
+.rsec-modal h3 { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.rsec-modal textarea { width: 100%; min-width: 0; resize: vertical; line-height: 1.55; }
+/* The editor's fields wear the same face as every other window's (the model dialog's .mfield):
+   the app font — a bare <textarea> falls back to the browser's monospace — the app radius, and
+   the green focus ring. */
+.rsec-modal-body textarea, .rsec-modal-body input:not([type='checkbox']), .rsec-modal-body select {
+  font: inherit; font-size: var(--fs-body); background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r); transition: border-color .14s, box-shadow .14s; }
+.rsec-modal-body textarea { padding: 9px 11px; }
+.rsec-modal-body input:not([type='checkbox']), .rsec-modal-body select { padding: 6px 9px; }
+.rsec-modal-body textarea:hover, .rsec-modal-body input:not([type='checkbox']):hover,
+.rsec-modal-body select:hover { border-color: var(--border-strong); }
+.rsec-modal-body textarea:focus, .rsec-modal-body input:not([type='checkbox']):focus,
+.rsec-modal-body select:focus { outline: none; border-color: var(--green-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+/* Small buttons that carry an icon (Show with the numbers, Add a figure): the 16px default
+   overpowers the sm label beside it. */
+.rsec-modal-body .btn svg { width: 13px; height: 13px; }
+/* A hint that explains a whole section sits in its own quiet box. */
+.rsec-note { display: flex; gap: 9px; padding: 10px 12px; border-radius: var(--r);
+  background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-sec);
+  line-height: 1.55; color: var(--muted); }
+.rsec-note svg { flex: none; width: 15px; height: 15px; margin-top: 2px; color: var(--faint); }
+.rsec-modal .settings-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.rsec-modal .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+/* The instruction is the secondary half of the dialog — set apart rather than hidden, because a chapter
+   whose assignment cannot be found is one people work around by rewriting its output every time. */
+.rsec-instruction { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 7px; }
+.rsec-instruction .rsec-head { display: flex; align-items: center; gap: 8px; }
+.rsec-instruction select { flex: 1; min-width: 0; }
+.modal-h { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.rsec-modal .rsec-findings { margin: 10px 0 0; }
+.rsec-figopts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: var(--fs-sec); color: var(--muted); }
+.rsec-figopts label { display: inline-flex; align-items: center; gap: 6px; }
+.rsec-figopts input { width: auto; }
+/* A heading with a LIST under it, not a row of controls. Wrapping put the first scenario beside
+   "Compare with" and the rest under it, which reads as a ragged accident rather than a list.
+   One per line is also what the 348px rail has room for. */
+.rsec-figopts.rsec-figlist { flex-direction: column; align-items: flex-start; gap: 6px; }
+/* Hover thumbnail for the two optional comparison figures. Their names say what the figure is ABOUT
+   ("every indicator", "across the indicators") but not what it LOOKS like, and that is the half a
+   reader needs to choose. Shown on hover and on keyboard focus; it is decorative, so it is out of
+   the accessibility tree and never intercepts the pointer — a preview that swallows the click on
+   the checkbox it explains would be worse than none. */
+.figpre { position: relative; }
+.figpre-pop {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 20;
+  display: none; padding: 7px; pointer-events: none;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+  box-shadow: 0 6px 18px rgba(0,0,0,.16);
+}
+.figpre:hover .figpre-pop, .figpre:focus-within .figpre-pop { display: block; }
+.figpre-pop svg { display: block; }
+.figpre-cell { fill: var(--green); }
+/* The web is scenery: it has to read as a grid without competing with the profiles on top of it. */
+.figpre-web { fill: none; stroke: var(--border-strong); stroke-width: .8; }
+.figpre-profile { fill: none; stroke-width: 1.6; }
+.figpre-profile.p0 { stroke: var(--green); }
+.figpre-profile.p1 { stroke: var(--navy); }
+.figpre-profile.p2 { stroke: var(--purple); }
+/* One figure of a chapter's list: a box, because the row of five controls belongs to *this* figure and a
+   chapter may hold six of them. The remove button goes last in the row, where it cannot be hit on the way
+   to a select. */
+.rsec-fig { border: 1px solid var(--border); border-radius: var(--r); background: var(--surface-2);
+  padding: 8px 10px; margin-top: 8px; }
+.rsec-fig .rsec-figopts select { font-size: var(--fs-sec); padding: 2px 4px; }
+/* The caption is the one free-text field here, so it gets the width of the box rather than a slot in the row. */
+.rsec-figcap { width: 100%; margin-top: 7px; font-size: var(--fs-sec); }
+/* The number sits in the same row as the checkboxes; without a width it stretches to the flex line. */
+.rsec-threshold input[type='number'] { width: 4.5em; }
+/* "Show all N" closes the flows list: full width so it reads as the end of the list rather than as one more
+   row in it, and it scrolls with the list because that is where you are when you want it. */
+.dr-flows-more { width: 100%; margin-top: 6px; }
+
+/* A shortened background description ends in "more", inline right after the ellipsis, where the sentence
+   stops. On its own line it read as a control for the whole panel rather than for this paragraph. Navy like
+   the inspector's other links (Details, Properties); semibold, because navy alone sits close to the text. */
+.descr-more { appearance: none; border: 0; background: none; padding: 0; margin-left: 4px; font: inherit;
+  font-weight: 600; color: var(--navy); cursor: pointer; border-radius: 3px; }
+.descr-more:hover { text-decoration: underline; text-underline-offset: 2px; }
+.descr-more:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+/* Guidance under the process description: what belongs in it, without a tooltip nobody hovers. */
+.efield-hint { display: block; margin-top: 3px; font-size: var(--fs-label); line-height: 1.35; color: var(--faint); }
+/* Which LLM(s) wrote the chapters — one quiet line under the report picker, before the groups. */
+.rsec-writtenby { margin: 0 0 8px; font-size: var(--fs-sec); color: var(--faint); }
+.rsec-writtenby code { font-size: 0.92em; }
+/* Deliberately not a flex row. As one, the long explanation either pushed the label out of the 380px
+   card or — with min-width: 0 — collapsed to a one-character column. A block label with an inline
+   checkbox wraps the way running text does, which is all this needs. */
+.rsec-public { display: block; font-size: var(--fs-sec); line-height: 1.45; color: var(--muted); }
+.rsec-public input { margin-right: 6px; }
+.rsec-public em { font-style: normal; color: var(--faint); }
+/* The translate-study-texts row: button and its last outcome on one line, hint wraps under it. */
+.rsec-translate { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-top: 6px; }
+.rsec-add { display: flex; gap: 8px; align-items: center; }
+.rsec-add select { flex: 1; min-width: 0; }
+
+/* Cover-image row on the report card: a thumbnail small enough to sit in a control row, and large
+   enough to tell which photograph is on the title page. */
+.rsec-cover-thumb {
+  height: 26px; width: auto; max-width: 70px; object-fit: cover;
+  border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2);
+}
+
+/* Identity fields, in the Settings window and in the title-page overlay alike. The 72px right-aligned
+   input of the numeric settings is wrong for a name: text reads from the left and a company name is
+   longer than a rounding digit. */
+.settings-field.ident-text input { width: min(300px, 60%); text-align: left; }
+
+/* Dropdown and button fill the card's width between them: the dropdown takes what is left after the
+   button, which keeps its own size. Basis 0, not auto — with `auto` the dropdown's intrinsic width (its
+   widest option, ~260px) counted towards the row and pushed the button onto a line of its own. The rule is
+   specific enough to beat `.rsec-head select { flex: 0 0 auto }`. */
+.rsec-head select.rsec-theme { flex: 1 1 0; min-width: 0; }
+
+/* Theme previews — a typeset cover, A4 so always taller than wide. The thumbnail rides in a control row,
+   the card is the one you actually look at. `empty` holds the space while it loads, so nothing jumps. */
+/* Height only, never both: an A4 raster is 0.7071 wide and any pair of fixed pixel values misses that by a
+   fraction of a percent, which is enough to make a circle stop looking like one. `width: auto` lets the
+   image keep its own ratio, and the empty placeholder carries the width so nothing jumps while it loads. */
+.theme-preview { display: block; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2); }
+.theme-preview.thumb { height: 28px; width: auto; flex: 0 0 auto; }
+.theme-preview.thumb.empty { width: 19.8px; }
+.theme-preview.card { height: 187px; width: auto; }
+/* The gallery's tile: fills its column at A4 proportions, so three of them line up whatever the rail's
+   width happens to be. Cropped from the top — the head of a cover is what tells two themes apart. */
+.theme-preview.tile { width: 100%; height: auto; aspect-ratio: 1 / 1.414; object-fit: cover; object-position: top center; }
+.theme-preview.tile.empty { width: 100%; height: auto; aspect-ratio: 1 / 1.414; }
+.theme-preview.card.empty { width: 132px; }
+.theme-preview.empty { background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, var(--surface) 6px 12px); }
+
+/* The theme picker: a button that opens its own list, because a native select's options are drawn by the
+   OS and no hover of them reaches the page. Sized like the select it replaces so the row does not move. */
+
+/* Themes window: one row per theme, its actions on the right. Wide enough for a shipped label plus three
+   buttons, and it scrolls once a project has more themes than fit a screen. */
+/* Appearance holds two questions now — the colours and the layout — so each gets a quiet label. Not an
+   `h4`: the group's own head is the heading here, and a second one at that weight would compete with it. */
+.sub-label { margin: 2px 0 -2px; }
+.acc-gbody > .sub-label:not(:first-child) { margin-top: 8px; }
+
+/* The colour sets. Chips rather than tiles: a set is three colours, and three stripes show all of it —
+   the real preview is the gallery below, which repaints its covers in whichever set is picked. Two to a
+   row at the rail's width, so the label has room to be read rather than ellipsised. */
+.pal { display: flex; flex-direction: column; gap: 8px; }
+.pal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.pal-chip {
+  /* `align-items: stretch` spelled out: a `button` that is a flex container centres its items rather than
+     stretching them (the UA's own rule for button content), which collapsed the swatch bar to the 2px its
+     zero-width stripes needed and left every chip looking blank. */
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 5px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+  transition: border-color .13s, box-shadow .13s;
+}
+.pal-chip:hover { border-color: var(--green); }
+/* The same ring the chosen theme and the chosen model carry: one mark for "this is the one". */
+.pal-chip.on { border-color: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+.pal-sw { display: flex; width: 100%; height: 22px; border-radius: 4px; overflow: hidden;
+  border: 1px solid var(--border); }
+/* The accent carries the design, so it gets the room; the paper is a tint and needs only enough to be seen. */
+.pal-sw i:first-child { flex: 1.6; }
+.pal-sw i { flex: 1; }
+.pal-name { font-size: var(--fs-label); line-height: 1.3; color: var(--text); text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The three hex fields under the sets: try an accent, a deep tone and a paper on this one report. Hidden
+   entirely when the backend says so (`PRISM_REPORT_CUSTOM_COLORS`), which is why nothing here is disabled —
+   a field you cannot use is worse than a field that is not there. */
+.pal-own { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.pal-own-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pal-own-row { display: flex; gap: 8px; margin-top: 6px; }
+.pal-own-f { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pal-own-f > span { font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--faint); }
+/* The swatch sits inside the field, so what you typed and what it looks like are one object. */
+.pal-own-in { display: flex; align-items: center; gap: 6px; background: var(--bg);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 0 6px 0 5px; }
+.pal-own-in:focus-within { border-color: var(--green); }
+.pal-own-in > i { flex: none; width: 13px; height: 13px; border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--text) 22%, transparent); }
+.pview .pal-own-in > input, .pal-own-in > input { flex: 1; min-width: 0; border: 0; background: none;
+  padding: 5px 0; font: inherit; font-size: var(--fs-sec); color: var(--text);
+  font-family: var(--mono); outline: none; }
+.pal-own-in > input::placeholder { color: var(--faint); }
+
+/* The theme gallery inside Appearance. Three to a row, but with the covers we
+   already render rather than colour swatches: choosing a theme is choosing a picture, and the label is at
+   best a hint. The card is the control; Download and Delete belong to the card the pointer is on. */
+.thg { display: flex; flex-direction: column; gap: 10px; }
+/* Three to a row (two to a row was tried first). It costs legibility
+   of the *title inside* a cover, which at 104px is unreadable; what it buys is the whole shelf at a glance,
+   and a cover is told apart by its shape and its colour field long before its type. The name under the tile
+   carries the rest. */
+.thg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: start; }
+.thg-card { position: relative; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.thg-pick {
+  position: relative; display: block; width: 100%; padding: 3px; border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); cursor: pointer; transition: border-color .13s, box-shadow .13s;
+}
+.thg-pick:hover:not(:disabled) { border-color: var(--green); }
+.thg-pick:disabled { cursor: default; }
+/* The one in use carries the ring, the same mark a selected model carries on the Overview page. */
+.thg-card.on .thg-pick { border-color: var(--green); box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+.thg-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+/* One line, ellipsised, with the whole name on the tooltip, and the "yours" badge beside it rather than
+   under it. Clamped to two lines it made a card taller than its neighbours and pushed the next row down by
+   however long a label happened to be; one row on every card, with or without the badge, is what lets the
+   grid read as a grid. */
+.thg-name { flex: 1 1 0; min-width: 0; font-size: var(--fs-sec); line-height: 1.35; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.thg-badge {
+  font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .06em; font-weight: 600;
+  padding: 1px 4px; border-radius: 3px; background: var(--surface-3); color: var(--faint);
+}
+.thg-badge.on { background: var(--green-soft); color: var(--green-ink); }
+/* "in use" sits on the cover picture itself, bottom left, over whatever the cover draws there. */
+.thg-inuse { position: absolute; left: 8px; bottom: 8px; box-shadow: 0 0 0 1px var(--surface); }
+/* Only on the card under the pointer (or focused, for the keyboard): eleven themes would otherwise put
+   thirty-three buttons on the panel. */
+.thg-acts { position: absolute; top: 6px; right: 6px; display: flex; gap: 3px; opacity: 0; transition: opacity .12s; }
+.thg-card:hover .thg-acts, .thg-card:focus-within .thg-acts { opacity: 1; }
+.thg-act {
+  width: 20px; height: 20px; display: grid; place-items: center; padding: 0;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--surface);
+  font-size: var(--fs-label); line-height: 1; color: var(--muted); cursor: pointer;
+}
+.thg-act:hover { border-color: var(--green); color: var(--green-ink); }
+.thg-act.danger:hover { border-color: var(--bad); color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .thg-acts { transition: none; } }
+
+
+/* The pinned title-page row: same box as a chapter so the list reads as the document's pages, but
+   marked as fixed — a star where the drag handle would be, and a title you cannot type in. */
+.rsec-cover-item { background: color-mix(in srgb, var(--green) 7%, var(--surface-2)); }
+.rsec-cover-pin { flex: 0 0 auto; font-size: var(--fs-label); color: var(--green-ink); width: 12px; text-align: center; }
+.rsec-title-static { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+
+/* The title-page overlay. Narrower than the chapter editor: it is a column of short fields, and a wide
+   window would strand every control on the left. */
+.modal.sheet.cover-modal { width: min(520px, 94vw); max-height: 88vh; }
+.cover-modal .settings-field { align-items: flex-start; }
+.cover-row > span:first-child { padding-top: 4px; }
+.cover-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-sec); }
+/* The no-logo switch rides in the logo row, after the buttons it overrules. `margin-left: auto` would push
+   it to the far edge and away from what it belongs to, so it simply follows them with a wider gap. */
+
+/* Logos are shown on white because that is what the title page puts them on: a pale wordmark that
+   disappears there disappears here too, while there is still time to pick another file. */
+.cover-logo-thumb {
+  height: 24px; width: auto; max-width: 96px; object-fit: contain; background: #fff;
+  border: 1px solid var(--border); border-radius: 3px; padding: 2px;
+}
+.cover-thumb {
+  height: 34px; width: auto; max-width: 90px; object-fit: cover;
+  border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2);
+}
+
+/* A cover-image problem belongs at the cover control, not in the card's error line at the very bottom. */
+.cover-error {
+  margin: -2px 0 4px; font-size: var(--fs-sec); line-height: 1.4;
+  color: var(--prism-alert, #cc4b37);
+}
+
+/* The dry run as a sheet: the intro and the check stand, only the chapter list scrolls between head
+   and foot — so the column is a flex column and the list is the one that gives (min-height: 0 on it). */
+.rsec-plan .sheet-body { display: flex; flex-direction: column; min-height: 0; padding-top: 12px; }
+/* The patch sheets' legend and the Before/Now labels, as classes instead of inline margins. */
+.rsec-patch-lead { margin: -6px 0 12px; }
+.rsec-patch-label { margin: 0 0 4px; }
+.rsec-worddiff + .rsec-patch-label { margin-top: 10px; }
+/* The author's release of a model-written chapter. "Pending" wears the same amber
+   as every other "needs your attention" badge; "released" is the one green badge in a row, because it is
+   the one state that says a person stands behind the text — the check only ever stands behind figures. */
+.rsec-stale.ok {
+  background: color-mix(in srgb, var(--prism-green) 18%, var(--surface));
+  color: var(--prism-green-dark);
+}
+
+/* V412: the chapter list kept its "takes whatever is left" promise only on paper. The flex chain the
+   `.rsec-list` rule relies on is broken twice since the accordion: `.acc-grp` is a block box, and
+   `.report-stored > .rsec` keeps `min-height: auto` (on purpose, see there). So the list never got a
+   definite height — it was always as tall as its rows, the whole rail scrolled, and the sticky dock
+   (which grows once chapters are written: the note line, Release/Correct buttons) covered its lower part.
+   Once badges wrapped every row onto two lines, the strip between the group heads and the dock held one row.
+   While the Chapters group is open the chain is closed again: the group and its body are flex items that
+   grow, and the list grows into the rail's spare height. The floor is a flex BASIS, not a min-height: the
+   column's content-based minimum is computed with the list at its basis, so `.rsec` is never squeezed below
+   "header + heads + 14rem of list + dock" (no overflow past the sticky dock), while a taller rail hands the
+   list the rest. `max-height: max-content` stops it growing past its rows, so "Add chapter" stays under
+   the last one. A rail too short for even that scrolls as before. */
+.rsec > .acc-grp.open:has(> .acc-gbody > .rsec-list) { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.acc-grp.open > .acc-gbody:has(> .rsec-list) { flex: 1 1 auto; }
+.acc-gbody > .rsec-list { flex: 1 1 14rem; max-height: max-content; }
+
+/* V431: one line per chapter. With three full-worded badges ("check the wording", "expert review pending",
+   "what changed") a row stood on two lines, and a 1280×820 window showed four of fifteen chapters. The
+   badges are one-word chips now (full wording in their tooltip and accessible name) on one line that never
+   wraps; the title field takes what is left and truncates with an ellipsis, the kind label gives way first.
+   Width check at the 384 px rail (`.report-grid.two`): ~330 px inside a row, ~300 px after handle and
+   gaps; a typical set, "wording · review · before · 1 note", is ~200 px at 11 px, so the
+   title keeps ~95 px (its floor is 6em). Five chips at once (with "draft") would cross that floor — then
+   the strip clips at its end rather than wrapping, and every chip's text is in its tooltip.
+   The actions share this line now (`.rsec-actions`), and with them the line needs an order of giving way
+   that shrink factors cannot express: a shortfall is shared out in proportion, so every item that may
+   shrink pays part of it — "Release" would lose a pixel to an ellipsis while the strip beside it still has
+   room to give. So the kind label and the strip take only what is left over: no basis of their own, a grow
+   factor that fills the strip before the kind label and both before the title's spare width, each capped
+   at its own content. The factors lie three orders of magnitude apart because growth is shared out in
+   proportion too: closer together, a kind label waiting its turn gets half a pixel — a sliver of its first
+   letter beside the title. A short line is then paid by them first, the title never below its floor, the
+   icons never; a row with a worded offer or a second badge takes a second line instead (end of sheet). */
+.rsec-row > .rsec-title { flex: 1 1 6em; min-width: 6em; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.rsec-row > .rsec-kind { flex: 1000 1 0px; max-width: max-content; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; }
+.rsec-badges { display: inline-flex; align-items: center; gap: 3px; flex: 1000000 1 0px;
+  max-width: max-content; min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.rsec-badges:empty { display: none; }
+.rsec-badges > .rsec-stale { flex: 0 0 auto; padding: 1px 4px; }
+
+/* The colour picker's own head: the word, and at its far right the + that adds a set of your own. Small and
+   unframed like the other inline adds, so it reads as part of the label rather than as a second toolbar. */
+.pal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pal-add { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  padding: 0; border: 1px solid transparent; border-radius: var(--r-sm); background: none; color: var(--faint);
+  cursor: pointer; }
+/* The plus as tall as the label's capitals, in the label's grey, at the label's 2px drop (`.sub-label`'s
+   margin) and with a stroke near its bold weight, so the two read as one line. */
+.pal-add { margin: 2px 0 -2px; }
+.pal-add svg { width: 12px; height: 12px; stroke-width: 2.5; }
+.pal-add:hover, .pal-add.on { border-color: var(--green); color: var(--green-ink); }
+
+/* A chip of your own carries a Delete in its corner, shown on hover and focus like a theme card's. */
+.pal-cell { position: relative; min-width: 0; display: flex; }
+.pal-cell > .pal-chip { flex: 1; min-width: 0; }
+.pal-del { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted); font-size: 10px;
+  line-height: 1; cursor: pointer; opacity: 0; transition: opacity .12s; }
+.pal-cell:hover .pal-del, .pal-cell:focus-within .pal-del { opacity: 1; }
+.pal-del:hover { border-color: var(--bad); color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .pal-del { transition: none; } }
+
+/* The form for a new set: a name, then per colour the system's colour well beside a hex field — the well is
+   how most people choose, the field is how a style guide hands a colour over, and both edit one value. */
+.pal-new { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface-2); }
+.pal-new-name, .pal-new-f { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.pal-new-name > span, .pal-new-f > span { font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--faint); }
+.pal-new-f > span em { font-style: normal; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.pview .pal-new input:not([type='color']), .pal-new input:not([type='color']) { width: 100%; box-sizing: border-box;
+  padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg);
+  color: var(--text); font: inherit; font-size: var(--fs-sec); outline: none; }
+/* After the rule above and as specific: the hex fields are code, the name is not. */
+.pview .pal-new .pal-new-f input, .pal-new .pal-new-f input { font-family: var(--mono); }
+.pal-new input:not([type='color']):focus { border-color: var(--green); }
+.pal-new input.bad { border-color: var(--bad); }
+.pal-new-row { display: flex; align-items: flex-end; gap: 8px; }
+/* The colour well, stripped of the UA's inset frame so it reads as a swatch you can click. Two classes deep
+   on purpose: the rail's `.report-setup input { width: 100% }` outranks one class, and stretched the well
+   across the row while the hex field beside it was squeezed to nothing. */
+.pal-new .pal-new-well { flex: none; width: 34px; height: 29px; padding: 0; border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); background: none; cursor: pointer; }
+.pal-new .pal-new-well::-webkit-color-swatch-wrapper { padding: 2px; }
+.pal-new .pal-new-well::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.pal-new-preview { display: flex; flex-direction: column; gap: 4px; width: 50%; }
+.pal-new-warn { color: var(--wait); }
+.pal-new-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* "White page background" under the colour chips: a plain checkbox row, the label in body text. */
+.pal-white { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--text);
+  cursor: pointer; align-self: flex-start; }
+.report-setup .pal-white input { width: auto; margin: 0; }
+
+/* "New report" and Delete beside the report list, as a pair. Delete is the same button with only its icon;
+   with no vertical padding of its own it is stretched to the pair's height, which is "New report"'s, so the
+   two stand exactly as tall as each other whatever the text's line height. The bin turns to the alert
+   colour under the pointer, as every other delete icon does. */
+.report-pick-acts { flex: none; display: flex; align-items: stretch; gap: 8px; }
+.report-pick .report-del { justify-content: center; padding-top: 0; padding-bottom: 0; }
+.report-pick .report-del svg { width: 13px; height: 13px; }
+.report-pick .report-del:hover:not(:disabled) { color: var(--prism-alert); }
+
+/* ---- Chapter list: the one-line row, its icon actions, Add chapter on demand, the document bar ---- */
+/* The grip without the browser's button frame, which made it a grey box twice the width of its dots. At
+   12 px it is as wide as the title page's star (`.rsec-cover-pin`), so every title starts on one line. */
+.rsec-row > .pdrag-handle { margin-right: 0; padding: 3px 2px; border: 0; border-radius: 3px; background: none; }
+.rsec-row > .pdrag-handle:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+/* The worded offers stand on a line of their own (the crowded row below). Should they outgrow even that,
+   they shrink, ending in an ellipsis rather than pushing past the row's edge. Block, not the button's
+   inline-flex, because an ellipsis needs a line box to end in. */
+.rsec-offers > .btn.sm { display: block; flex: 0 1 auto; min-width: 2.5em; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+/* A crowded row takes a second line: grip, title and icons stay on the first, the badges (left) and the
+   worded offers (right) move beneath. Squeezed onto one line they would clip the badge strip, and its
+   "before" and "changed" buttons are the way back to earlier text — clipped, they are gone for the
+   pointer and invisible to the keyboard. Crowded means what no longer fits beside the title's floor and
+   four icons at the rail's width: any worded offer, or a second badge. A chapter with nothing to do, or
+   with one badge, stays on one line; one that asks for a decision shows it beneath its name. The `::after`
+   is the line break; badges and offers that do not fit side by side beneath it wrap once more, the offers
+   onto a line of their own. */
+.rsec-row:is(:has(> .rsec-actions > .rsec-offers > *), :has(> .rsec-badges > :nth-child(2))) {
+  flex-wrap: wrap; row-gap: 4px; }
+.rsec-row:is(:has(> .rsec-actions > .rsec-offers > *), :has(> .rsec-badges > :nth-child(2)))::after {
+  content: ''; order: 1; flex: 0 0 100%; }
+.rsec-row:is(:has(> .rsec-actions > .rsec-offers > *), :has(> .rsec-badges > :nth-child(2))) > .rsec-badges {
+  order: 2; flex: 0 1 auto; max-width: none; flex-wrap: wrap; overflow: visible; padding-left: 16px; }
+.rsec-row:is(:has(> .rsec-actions > .rsec-offers > *), :has(> .rsec-badges > :nth-child(2))) > .rsec-actions > .rsec-offers {
+  display: flex; order: 3; flex: 0 1 auto; gap: 4px; margin-left: auto; }
+/* The icons never shrink (`.act-icon` is `flex: none`). A disabled one keeps its resting look under the
+   pointer — the hover tint would promise a click it cannot take — and the spinner that stands in for a
+   sparkle while it works keeps the icon's size. */
+.rsec-actions > .act-icon:disabled:hover { background: var(--surface-3); color: var(--muted); }
+.rsec-actions > .act-icon .spinner { width: 13px; height: 13px; margin-top: 0; }
+/* The confirm beside the chapter-kind picker: as tall as the picker, and green like the ✓ that confirms a
+   rename in Model info. */
+.rsec-add > .act-icon { align-self: stretch; padding: 0 7px; }
+.rsec-add > .act-icon.ok { color: var(--green-ink); background: var(--green-soft); }
+.rsec-add > .act-icon.ok:hover { background: color-mix(in srgb, var(--green-ink) 16%, var(--surface)); }
+/* "Update data only" is a special-purpose hand-out beside the document's three deliverables, so it steps
+   back: framed but unfilled, in the muted text colour. Still a button at full opacity — a disabled one
+   is the faded kind — and it comes forward under the pointer. */
+.report-actbar-aside > .btn { background: transparent; border-color: var(--border); color: var(--muted); }
+.report-actbar-aside > .btn:hover:not(:disabled) { background: var(--surface); border-color: var(--border-strong);
+  color: var(--text); }
+
+/* Writer v2. One state chip per chapter row: "Needs update" and "Couldn't finish" in the alert tone,
+   "New" quiet — the rest keep the warning amber the chip has always had. */
+.rsec-stale.state-unfinished, .rsec-stale.state-update {
+  background: color-mix(in srgb, var(--prism-alert) 16%, var(--surface));
+  color: color-mix(in srgb, var(--prism-alert) 78%, var(--ink));
+}
+.rsec-stale.state-new {
+  background: color-mix(in srgb, var(--green) 14%, var(--surface));
+  color: var(--green-ink);
+}
+
+/* The writers' questions above the chapter list: asked once, answered with a click or a sentence. */
+.rsec-questions {
+  margin: 4px 0 10px; padding: 10px 12px; border-radius: var(--r-md);
+  border: 1px solid var(--border-strong); background: var(--surface-2);
+}
+.rsec-questions-head { margin: 0 0 6px; font-weight: 600; color: var(--ink); font-size: var(--fs-sec); }
+.rsec-question + .rsec-question { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.rsec-question-text { margin: 0; font-size: var(--fs-sec); color: var(--ink); }
+.rsec-question-where { color: var(--muted); }
+.rsec-question-why { margin: 2px 0 0; font-size: var(--fs-label); color: var(--muted); }
+.rsec-question-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.rsec-question-own { flex: 1 1 180px; min-width: 0; }
+
+/* What the second reader made of a chapter, in the editor: open points first, the settled ones folded. */
+.rsec-review { margin: 6px 0 4px; font-size: var(--fs-sec); }
+.rsec-review-open {
+  padding: 8px 10px; border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--prism-warning) 12%, var(--surface));
+}
+.rsec-review-head { margin: 0 0 4px; font-weight: 600; color: var(--ink); }
+.rsec-review-point p { margin: 0; color: var(--text); }
+.rsec-review-point + .rsec-review-point { margin-top: 8px; }
+.rsec-review-acts { display: flex; gap: 6px; margin-top: 4px; }
+.rsec-review-log { margin-top: 6px; color: var(--muted); }
+.rsec-review-log summary { cursor: pointer; }
+.rsec-review-log ul { margin: 4px 0 0; padding-left: 20px; }
+.rsec-review-why { color: var(--faint); }
+/* The literature switch of the introduction and the interpretation: a quiet second line, right-aligned
+   under the row's icons it belongs to. */
+.rsec-lit { display: flex; justify-content: flex-end; margin-top: 2px; }
+.rsec-lit label { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-label);
+  color: var(--muted); cursor: pointer; }
+.rsec-lit input { margin: 0; }
+/* Title & language opens straight onto its text fields, and at the body's 2px their borders nearly touched
+   the head's hover box; a few pixels more let the head read as a heading over them. */
+.acc-gbody > .rsec-head:first-child { margin-top: 4px; }

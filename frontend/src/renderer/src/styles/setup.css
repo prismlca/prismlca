@@ -1,0 +1,279 @@
+/* First-run setup wizard */
+/* Same veil as .modal-backdrop (modal.css), so a sheet on an Overlay dims and blurs the app like
+   every other window; z-index stays at 50 because the setup gate sits under the modals. */
+.overlay { position: fixed; inset: 0; background: rgba(23,31,24,.42); backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.sheet-body .muted { color: var(--faint, #8a8a8a); font-size: var(--fs-body); line-height: 1.5; }
+.setup-row { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+.setup-path { font-size: var(--fs-sec); color: var(--faint, #8a8a8a); word-break: break-all; }
+.setup-status { margin-top: 14px; font-size: var(--fs-body); padding: 8px 10px; border-radius: 6px;
+  background: var(--bg-muted, #f2f2f2); }
+.setup-status.error { background: rgba(204,75,55,0.12); color: var(--prism-alert, #cc4b37); }
+.setup-status.done { background: rgba(147,193,32,0.15); }
+/* Import progress: a thin bar under the status line; the indeterminate one slides while bw2io
+   works without reporting (the ecoinvent inventory step). */
+.setup-progress { position: relative; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--surface-3, #e6e6e6); overflow: hidden; }
+.setup-progress i { display: block; height: 100%; background: var(--green); border-radius: 3px; transition: width 0.4s ease; }
+.setup-progress.indeterminate i { width: 30%; animation: setup-progress-slide 1.4s ease-in-out infinite; }
+@keyframes setup-progress-slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+.setup-progress-pct { position: absolute; right: 0; top: -18px; font-size: var(--fs-label); color: var(--muted); }
+.setup-result { margin-top: 12px; }
+.setup-result table { width: 100%; border-collapse: collapse; font-size: var(--fs-sec); margin-top: 6px; }
+.setup-result td, .setup-result th { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--border, #e6e6e6); vertical-align: top; }
+.setup-result td:last-child, .setup-result th:last-child { text-align: right; white-space: nowrap; }
+
+/* Background-data and import sheets: the standard sheet head (title row + X) stays put, the body
+   scrolls — on a small screen the window fits and the X is never off-screen. */
+.modal.sheet.bg-sheet { width: min(900px, 94vw); max-height: min(88vh, 720px); }
+/* Distances panel: one lookup and the last five, narrow like a tool, not a page. */
+.modal.sheet.dist-sheet { width: min(560px, 94vw); max-height: 88vh; }
+/* The export/import sheet lists every section of a bundle — taller than an 820 px window. Capped like
+   its siblings, so the head and the Export button stay reachable and the section list scrolls. */
+.modal.sheet.bundle-sheet { width: min(560px, 94vw); max-height: 88vh; }
+.dist-modes { display: flex; gap: 6px; margin: 14px 0 12px; }
+.dist-mode { display: inline-flex; align-items: center; gap: 6px; }
+.dist-io { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dist-io label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sec); color: var(--muted); }
+.dist-io input { padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--surface-2); color: var(--text); font-size: var(--fs-body); }
+.dist-io input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.dist-resolved { font-size: var(--fs-label); color: var(--faint); min-height: 1.2em; }
+.dist-field { position: relative; }
+.dist-suggest { position: absolute; left: 0; right: 0; top: calc(100% - 1.2em); z-index: 5; margin: 0; padding: 4px; list-style: none;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r-sm); box-shadow: var(--shadow); }
+.dist-suggest button { display: block; width: 100%; text-align: left; background: none; border: none; font: inherit; font-size: var(--fs-sec);
+  color: var(--text); padding: 5px 8px; border-radius: 4px; cursor: pointer; }
+.dist-suggest button:hover, .dist-suggest button:focus { background: var(--surface-3); outline: none; }
+.dist-recent .route { background: none; border: none; font: inherit; color: var(--text); text-align: left; cursor: pointer; padding: 0; }
+/* Hover marks the whole row, in the surface tint every hoverable row in the app uses — not a link. */
+.dist-recent li:hover { background: var(--surface-3); }
+.dist-actions { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+.dist-result { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 12px 14px; margin: 4px 0 14px; }
+.dist-km { display: flex; align-items: baseline; gap: 8px; }
+.dist-km b { font-size: var(--fs-page); font-weight: 600; letter-spacing: -.01em; }
+.dist-km .unit { color: var(--muted); font-size: var(--fs-base); }
+.dist-km .btn { margin-left: auto; }
+.dist-detail { font-size: var(--fs-sec); color: var(--muted); margin: 6px 0 0; line-height: 1.5; }
+.dist-detail.warn { color: var(--wait); }
+.dist-detail.bad { color: var(--bad); }
+.dist-recent { list-style: none; margin: 0; padding: 0; }
+.dist-recent li { display: flex; align-items: center; gap: 9px; padding: 7px 6px; margin: 0 -6px; border-radius: var(--r-sm); border-bottom: 1px solid var(--border); font-size: var(--fs-body); }
+.dist-recent .route { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dist-recent .km { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dist-foot { font-size: var(--fs-label); color: var(--faint); margin: 12px 0 0; line-height: 1.5; }
+.dist-foot a { color: inherit; }
+.modal.sheet.setup-sheet { width: min(560px, 94vw); max-height: 88vh; }
+.sheet-body { flex: 1; min-width: 0; overflow-y: auto; padding: 4px 22px 22px; }
+.sheet-body .setup-row:first-child { margin-top: 12px; }
+/* The import review's "Matched to" cell. Four facts have to fit: what it matched to, into which
+   compartment or region, what the conversion does to the number, and where else to look. The
+   reason for the match is the one thing that hides — behind the ⓘ, because as a column it ate the
+   width the other four need. */
+/* Beside the button rather than under it: the row is short and the bar has room. */
+.imp-progress { flex: 1; min-width: 140px; max-width: 320px; margin: 0; }
+.imp-match { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.imp-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.imp-row > select:first-child { flex: 1; min-width: 0; }
+.imp-row > select:nth-of-type(2) { flex: none; width: 5.5em; }
+.imp-name { overflow-wrap: anywhere; }
+.imp-why { flex: none; cursor: help; color: var(--muted); font-size: var(--fs-body); }
+.imp-why:hover { color: var(--navy); }
+.imp-find { flex: none; display: inline-flex; align-items: center; border: none; background: none;
+  color: var(--muted); cursor: pointer; padding: 2px; border-radius: var(--r-sm); }
+.imp-find:hover { color: var(--navy); background: var(--surface-2); }
+.imp-find svg { width: 13px; height: 13px; }
+/* The arithmetic the reviewer signs off. Marked when the conversion rests on an assumption. */
+.imp-scale { font-size: var(--fs-label); color: var(--muted); font-variant-numeric: tabular-nums; }
+.imp-scale.assumed { color: var(--prism-alert, #cc4b37); cursor: help; }
+.imp-search { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.imp-search input { flex: 1; min-width: 120px; font: inherit; font-size: var(--fs-sec);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 3px 6px;
+  background: var(--surface); color: var(--text); }
+.imp-hits { flex: 1 0 100%; max-height: 190px; overflow: auto; border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--surface); }
+.imp-hit { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  border: none; background: none; cursor: pointer; padding: 4px 7px; font: inherit;
+  font-size: var(--fs-sec); color: var(--text); }
+.imp-hit:hover { background: var(--surface-2); }
+.imp-hit-name { overflow-wrap: anywhere; }
+
+.proj-sel { flex: 1; min-width: 0; background: transparent; color: inherit; font-weight: 600;
+  font-size: var(--fs-body); border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
+.proj-sel option { color: #303030; }
+
+
+/* Background-data sheet (views/BackgroundData.tsx). The body is a .settings-panel so the section heads
+   are the app's: sticky, uppercase, with the green swatch — the same furniture as Settings and the
+   bundle sheets. Everything below a head is a card or a row, never a bare table. */
+.bg-panel { padding-top: 0; }
+.bg-panel > h4:first-child { margin-top: 0; }
+.bg-h4-sub { margin-left: 4px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--faint);
+  font-size: var(--fs-sec); }
+.settings-panel h4.bg-h4-danger::before { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
+/* Four numbers across the top, divided by hairlines like the start page's statistics. */
+.bg-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 18px 0 20px; }
+.bg-stat { min-width: 0; padding: 0 14px; border-left: 1px solid var(--border); }
+.bg-stat:first-child { padding-left: 0; border-left: none; }
+.bg-stat-num { font-size: var(--fs-page); font-weight: 700; color: var(--navy); line-height: 1.1;
+  font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.bg-stat-label { margin-top: 4px; font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+.bg-stat-sub { margin-top: 1px; font-size: var(--fs-sec); color: var(--faint); line-height: 1.4; }
+.bg-stat.warn .bg-stat-num { color: var(--wait); }
+.bg-stat.warn .bg-stat-sub { color: var(--wait); }
+/* A card per database and per import: title and chips left, the one action right, facts underneath. */
+.bg-card { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  padding: 12px 14px; margin: 0 0 10px; box-shadow: 0 1px 2px rgba(20,32,28,.04); }
+.bg-card-head { display: flex; align-items: flex-start; gap: 12px; }
+.bg-card-head > .btn { flex: none; margin-left: auto; }
+.bg-card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-body); }
+.bg-card-title b { font-weight: 600; color: var(--text); margin-right: 2px; }
+.bg-card-meta { margin-top: 5px; font-size: var(--fs-sec); color: var(--muted); font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere; }
+.bg-card-meta .mono { font-size: var(--fs-label); }
+.bg-card-note { margin: 7px 0 0; font-size: var(--fs-sec); color: var(--muted); line-height: 1.5; }
+.bg-card-key { font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--faint); margin-right: 4px; }
+/* The second click's box: the warning and the two buttons together, inside the card they belong to. */
+.bg-confirm { margin-top: 10px; padding: 10px 12px; border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bad) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--border)); border-left-width: 3px; }
+.bg-confirm p { margin: 0 0 8px; font-size: var(--fs-sec); line-height: 1.5; color: var(--text); }
+.bg-confirm-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.bg-empty { margin: 2px 0 12px; font-size: var(--fs-body); color: var(--faint); line-height: 1.5; }
+/* What can still be imported: one card per provider, side by side when both are open. */
+.bg-offers { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 2px 0 14px; }
+.bg-offer { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r-md);
+  border: 1px dashed var(--border-strong); background: var(--surface-2); }
+.bg-offer-head { display: flex; align-items: center; gap: 6px; }
+.bg-offer-hint { margin: 0; font-size: var(--fs-sec); color: var(--muted); line-height: 1.5; flex: 1; }
+.bg-offer-acts { display: flex; justify-content: flex-end; }
+/* A row with a fact on the left and its action on the right — for the things that are not a card. */
+.bg-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; margin: 0 0 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.bg-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; font-size: var(--fs-body); }
+.bg-row-text b { font-weight: 600; color: var(--text); }
+.bg-row-text span { font-size: var(--fs-sec); color: var(--muted); line-height: 1.45; }
+.bg-row > .btn { flex: none; }
+.bg-feedback { margin: 4px 0 8px; }
+.bg-feedback .setup-status { margin-top: 8px; }
+/* The danger zone: the same tinted box as the key notice in Settings, in the alert colour. */
+.bg-danger { padding: 12px 14px; border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--border)); border-left-width: 3px;
+  background: color-mix(in srgb, var(--bad) 6%, var(--surface)); }
+.bg-danger p { margin: 0 0 8px; font-size: var(--fs-sec); line-height: 1.55; color: var(--muted); }
+.bg-danger p b { color: var(--text); font-weight: 600; }
+.bg-danger-acts { display: flex; justify-content: flex-end; margin-top: 2px; }
+.bg-reset { border-top: 1px dashed color-mix(in srgb, var(--bad) 35%, var(--border)); padding-top: 10px; margin-top: 4px; }
+.bg-reset-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.bg-reset-row .bg-code-input { margin-right: auto; }
+/* The code is meant to be read off the screen and typed, so it is deliberately large. */
+.bg-code { font-family: var(--mono); font-size: 30px; font-weight: 700; letter-spacing: 0.28em; text-align: center;
+  margin: 8px 0 2px; color: var(--bad); }
+.bg-code-input { width: 108px; font-family: var(--mono); font-size: 20px; letter-spacing: 0.22em; text-align: center;
+  padding: 5px 8px; border-radius: var(--r-sm); border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--text); }
+.bg-code-input:focus { outline: none; border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 20%, transparent); }
+/* The left rail, as in the model window: sections to jump to, a pip that fills once a section has what
+   it is for, and the project's name in the note. The body is a grid so the rail stands beside the
+   scrolling column, not above it. */
+.bg-body { display: grid; grid-template-columns: 224px minmax(0, 1fr); flex: 1; min-height: 0; }
+.bg-rail .rail-item.danger { color: var(--bad); }
+.bg-rail .rail-item.danger .rail-pip { border-color: color-mix(in srgb, var(--bad) 55%, transparent); }
+.bg-rail .rail-item.danger.on { color: var(--bad); }
+.bg-rail .rail-pip.ghost { visibility: hidden; }
+.bg-rail .rail-note b { display: inline-block; margin-bottom: 4px; overflow-wrap: anywhere; }
+.bg-sec { scroll-margin-top: 0; }
+.bg-sec:last-child { padding-bottom: 8px; }
+.bg-panel .bg-stats { padding-top: 18px; }
+@media (max-width: 760px) {
+  .bg-body { grid-template-columns: 1fr; }
+  .bg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+  .bg-stat:nth-child(2n + 1) { border-left: none; padding-left: 0; }
+}
+/* Distances: the sea-routing chips tuck under the mode chips; the hints in a row drop their paragraph
+   margin. Two classes each, because .settings-hint comes later in the cascade. */
+.dist-modes.dist-via { margin-top: -6px; }
+.dist-modes .dist-terminals { margin: 0 0 0 8px; display: inline-flex; gap: 6px; }
+.dist-actions .settings-hint { margin: 0; }
+/* "Recent" is a section head now; its rule replaces the list's own top border. */
+.dist-sheet .mi-sechead { margin-bottom: 0; }
+
+/* The reviewer's bridge between two quantities: sits under the converted amount it changes. */
+.imp-assume { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 4px; font-size: var(--fs-label); color: var(--muted); }
+.imp-assume input { font: inherit; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 2px 6px;
+  background: var(--surface); color: var(--text); }
+.imp-assume-q { width: 7em; font-variant-numeric: tabular-nums; }
+.imp-assume-what { flex: 1 1 14em; min-width: 10em; }
+/* Import sheet: where the files come from, with a link out to the provider's page. */
+.setup-source { margin: 0 0 4px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: var(--fs-body); line-height: 1.5; color: var(--text); }
+.setup-source code { word-break: break-word; }
+/* The result, redesigned: one row per leg to enter — icon, what and where, the
+   kilometres, a copy button — with the main leg larger; under a row only what changes its number; hints
+   and caveats below; the derivation folded away; the attribution always shown. */
+.dist-legs { list-style: none; margin: 0; padding: 0; }
+.dist-leg { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; column-gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--border); }
+.dist-leg:first-child { padding-top: 0; }
+.dist-leg:last-child { border-bottom: none; }
+.dist-leg-ico { color: var(--muted); display: inline-flex; }
+.dist-leg-what { display: flex; flex-direction: column; min-width: 0; }
+.dist-leg-label { font-size: var(--fs-label); color: var(--muted); }
+.dist-leg-path { font-size: var(--fs-sec); line-height: 1.4; overflow-wrap: anywhere; }
+.dist-leg-km { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); font-size: var(--fs-sec); }
+.dist-leg-km b { color: var(--text); font-size: var(--fs-base); font-weight: 600; }
+.dist-leg.main .dist-leg-ico { color: var(--text); }
+.dist-leg.main .dist-leg-km b { font-size: var(--fs-page); letter-spacing: -.01em; }
+.dist-leg-km.bad, .dist-leg-note.bad { color: var(--bad); }
+.dist-leg-note { grid-column: 2 / -1; margin: 4px 0 0; font-size: var(--fs-sec); line-height: 1.45; }
+.dist-leg-note.warn { color: var(--wait); }
+.dist-how { margin: 8px 0 0; font-size: var(--fs-sec); color: var(--muted); }
+.dist-how summary { cursor: pointer; width: fit-content; }
+.dist-how summary:hover { color: var(--text); }
+.dist-how ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
+.dist-attrib { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--fs-label);
+  color: var(--faint); line-height: 1.5; }
+/* Under the import bar: how long it has been running, and Cancel while the backend can still stop it. */
+.setup-status-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; margin-top: 8px; }
+.setup-status-foot .muted { font-size: var(--fs-sec); }
+/* The two things the ecoinvent import asks for, picked out of the sentence that explains them. */
+.setup-key { background: var(--green-soft); color: inherit; border-radius: 3px; padding: 0 3px; }
+
+/* The import wizard as steps, numbered because the order is real: where the data goes, what it is,
+   which methods. One line of hint under each; the background knowledge folds under questions. */
+.setup-steps { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 14px; counter-reset: setup-step; }
+.setup-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; counter-increment: setup-step; }
+.setup-step::before { content: counter(setup-step); width: 22px; height: 22px; border-radius: 50%;
+  background: var(--navy-soft); color: var(--navy); font-weight: 700; font-size: var(--fs-label);
+  display: grid; place-items: center; margin-top: 5px; }
+.setup-step-body { display: grid; gap: 4px; }
+.setup-step-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.setup-step-label { font-weight: 600; min-width: 112px; }
+.setup-step-hint { color: var(--muted); font-size: var(--fs-sec); line-height: 1.45; }
+.setup-help { margin: 14px 0 0 36px; display: grid; gap: 6px; font-size: var(--fs-sec); }
+.setup-help summary { cursor: pointer; color: var(--green-ink); width: fit-content; }
+.setup-help p { margin: 6px 0 2px; padding: 8px 10px; border-radius: 6px; background: var(--surface-2);
+  color: var(--muted); line-height: 1.5; }
+
+/* The first-run gate: two databases to choose from, side by side; ecoinvent carries the recommendation. */
+.card.setup-gate { width: min(640px, 92vw); }
+.gate-choices { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+/* Heading, text, button: the text row takes the slack, so side by side both buttons sit on one line however
+   long either text runs. */
+.gate-choice { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px; display: grid;
+  grid-template-rows: auto 1fr auto; gap: 8px; background: var(--surface-2); }
+.gate-choice.rec { border-color: var(--green); background: var(--surface); }
+.gate-choice-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.gate-choice-h b { font-size: var(--fs-body); }
+.gate-choice p { margin: 0; font-size: var(--fs-sec); color: var(--muted); line-height: 1.45; }
+.gate-choice .btn { justify-self: start; }
+.gate-chip { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; padding: 1px 7px;
+  border-radius: 999px; }
+.gate-chip.rec { background: var(--green-soft); color: var(--green-ink); }
+.gate-chip.free { background: var(--violet-soft); color: var(--violet); }
+.gate-links { margin: 14px 0 0; font-size: var(--fs-sec); color: var(--muted); }
+/* A chosen path stays beside its button and wraps there; the name field looks like the app's others. */
+.setup-step-row .setup-path { flex: 1 1 180px; min-width: 0; word-break: normal; overflow-wrap: anywhere; }
+.setup-step-row input { font: inherit; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text); min-width: 0; flex: 1 1 200px; }

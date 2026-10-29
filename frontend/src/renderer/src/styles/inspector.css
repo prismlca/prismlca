@@ -1,0 +1,223 @@
+/* Foreground process editor (right inspector) */
+/* Content-sized, not greedy: the editor used to take every spare pixel of the right panel and the
+   flow list stretched with it, which left the audit log a sliver at the bottom even for a process
+   with two inputs. The list now grows with its rows up to a cap and the audit log gets the rest. */
+.insp.editor { display: flex; flex-direction: column; gap: 8px; flex: 0 1 auto; min-height: 0; }
+.efield { display: flex; flex-direction: column; gap: 2px; }
+/* The textarea belongs in this list. Left out, it fell back to the browser's own textarea font —
+   a different family at a different size, right beside the inputs it sits under.
+   `font: inherit` is the part that fixes it: a textarea does not inherit the family on its own. */
+.efield input, .efield select, .efield textarea { padding: 5px 7px; border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px;
+  background: var(--bg, #fff); color: var(--ink, #303030); font: inherit; font-size: var(--fs-body); }
+.efield textarea { width: 100%; box-sizing: border-box; resize: vertical; line-height: 1.45; }
+.efield input:focus, .efield select:focus, .efield textarea:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.efield .val { font-size: var(--fs-body); color: var(--ink, #303030); padding: 4px 0; }
+.efield-row { display: flex; gap: 8px; }
+.efield-row .efield { flex: 1; min-width: 0; }
+.flow-head { margin-top: 6px; border-bottom: 1px solid var(--prism-gray-light, #cbcbcb); padding-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+.flow-count { background: var(--bg-muted, #f2f2f2); border-radius: 8px; padding: 0 6px; font-size: var(--fs-label); color: var(--faint, #8a8a8a); }
+.flow-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid var(--border, #e0e0e0); flex: 0 0 auto; }
+.flow-tab { appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
+  padding: 5px 6px 6px; margin-bottom: -1px; font: inherit; font-size: var(--fs-label); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--faint, #8a8a8a); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; }
+.flow-tab:hover { color: var(--ink, #303030); }
+.flow-tab.on { color: var(--prism-navy, #2f4e66); border-bottom-color: var(--prism-green, #93c120); }
+/* Sort toggles at the right edge of a flow-list header (shown only for longer lists). */
+.flow-sort { margin-left: auto; display: inline-flex; gap: 2px; align-items: center; }
+.flow-sort-btn { appearance: none; background: none; border: none; padding: 3px 4px; border-radius: 5px; color: var(--faint); cursor: pointer; display: inline-flex; }
+.flow-sort-btn svg { width: 14px; height: 14px; }
+.flow-sort-btn:hover { color: var(--ink, #303030); background: var(--bg-muted, #f2f2f2); }
+.flow-sort-btn.on { color: var(--prism-green-dark, #769a1a); background: rgba(147, 193, 32, 0.14); }
+/* The inspector's own sort control: a glyph that only labels, then "A–Z 9–1" as text. Grey at rest; navy
+   under the pointer and for the order in force, and the glyph turns navy with it. The labels are inline, not
+   flex items, so the one space between them renders. */
+.flow-order { margin-left: auto; display: inline-flex; gap: 5px; align-items: center; color: var(--faint); }
+.flow-order svg { flex: none; }
+.flow-order.on svg { color: var(--navy); }
+.flow-order-keys { white-space: nowrap; }
+.flow-order-btn { appearance: none; background: none; border: none; padding: 0; margin: 0; font: inherit;
+  font-size: var(--fs-label); font-weight: 600; color: var(--faint); cursor: pointer; border-radius: 3px; }
+.flow-order-btn:hover, .flow-order-btn.on { color: var(--navy); }
+.flow-order-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+/* 36 vh → 30 vh (about 15 % less) so the audit log below shows more rows. */
+.flow-list { flex: 0 1 auto; min-height: 0; max-height: 30vh; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+/* Five cells: name, amount (+fx), unit, comment, remove. The comment button was added to a
+   four-column grid, so every editable row had one child too many and the × wrapped to a line of
+   its own — visible on any process you can edit, not only a parameterised one. The reference row
+   fills the remove cell with a spacer so the columns stay aligned down the list. */
+/* The name gets about four more characters before its ellipsis: the amount field gave up 18 px and
+   the gaps 8 px. */
+/* The unit column shows the canvas arrows' short form and gave 8 px to the name. Every unit in
+   ecoinvent 3.12, BAFU and biosphere3 fits in 26 px except EUR2005 and "guest night"; the long forms
+   did not fit in 34 — "kilogram" ran into the comment button and "ton kilometer" wrapped onto two
+   lines, which made the row taller too. */
+.flow { display: grid; grid-template-columns: 1fr 78px 26px 18px 20px; align-items: center; gap: 4px;
+  margin: 0 -4px; padding: 3px 4px; border-radius: 5px; }
+/* A read-only dataset (a background database) is read-only in every row, so its rows drop the
+   comment and remove columns and give those 46 px to the name. */
+.flow.ro { grid-template-columns: 1fr 78px 26px; }
+.flow.ref { background: rgba(147, 193, 32, 0.08); }
+/* The location chip is shown whole or not at all — a chip cut in half reads as a different code. The
+   name and the chip wrap as two flex items in a box one line high: when both fit they share the line;
+   when they don't, the chip wraps onto the hidden second line and the name, alone, takes the ellipsis.
+   The location stays in the row's tooltip. */
+.flow-name { font-size: var(--fs-body); color: var(--ink, #303030); display: flex; flex-wrap: wrap; align-items: center;
+  align-content: flex-start; height: 1lh; overflow: hidden; }
+.flow-name-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-name .flow-geo { flex: none; }
+.flow-geo { margin-left: 5px;font-size: var(--fs-label); color: var(--faint, #8a8a8a); border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 3px; padding: 0 3px; }
+.flow-dup { margin-right: 4px; color: var(--prism-warning, #ffae00); cursor: help; font-size: var(--fs-sec); }
+.flow-amt { display: flex; gap: 3px; align-items: center; }
+.flow-amt.ro { justify-content: flex-end; gap: 3px; font-variant-numeric: tabular-nums; font-size: var(--fs-sec); overflow: hidden; white-space: nowrap; }
+.fx-mark { color: var(--prism-purple, #9f5987); font-style: italic; font-weight: 700; cursor: help; }
+.flow-amt input { width: 100%; min-width: 0; padding: 3px 5px; border: 1px solid var(--prism-gray-light, #cbcbcb);
+  border-radius: 4px; font-size: var(--fs-sec); text-align: right; background: var(--bg, #fff); color: var(--ink, #303030); }
+.flow-amt input.fx-input { text-align: left; font-family: ui-monospace, monospace; cursor: pointer; }
+.flow-amt input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+/* An amount that cannot be read is said while it is typed, not swallowed on the commit. */
+.flow-amt input.refused, input.props-amt.refused, .fp-amt.refused, .lcia-cf-input.refused { border-color: var(--bad); }
+/* Full-width, multi-line formula editor that opens under the flow row (the narrow amount cell
+   is too small for real formulas). Spans the whole grid so it never gets clipped by the list. */
+.flow .fx-expand, .refblock .fx-expand { margin-top: 4px; width: 100%; box-sizing: border-box;
+  min-height: 66px; resize: vertical; font: 12.5px/1.5 ui-monospace, monospace; padding: 7px 9px;
+  border: 1px solid var(--prism-green, #93c120); border-radius: 6px; background: var(--bg, #fff);
+  color: var(--ink, #303030); white-space: pre-wrap; word-break: break-word; }
+.flow .fx-expand:focus, .refblock .fx-expand:focus { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--prism-green, #93c120) 30%, transparent); }
+.fxtog { border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 4px; background: var(--bg, #fff);
+  font: italic 600 11px/1 ui-monospace, monospace; color: var(--faint, #8a8a8a); padding: 3px 4px; cursor: pointer; }
+.fxtog.on { background: var(--prism-purple, #9f5987); color: #fff; border-color: var(--prism-purple, #9f5987); }
+.flow-unit { font-size: var(--fs-label); color: var(--faint, #8a8a8a); text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-del { border: none; background: none; color: var(--prism-alert, #cc4b37); font-size: 16px; line-height: 1; cursor: pointer; opacity: .55; }
+.flow-del:hover { opacity: 1; }
+.flow-del-spacer { display: inline-block; width: 20px; }
+.hint-sm { font-size: var(--fs-label); color: var(--faint, #8a8a8a); margin: 6px 0 0; line-height: 1.4; }
+.editor-err { font-size: var(--fs-sec); color: var(--prism-alert, #cc4b37); background: rgba(204,75,55,0.1); border-radius: 5px; padding: 6px 8px; }
+/* A field with a link on its label line (Details, Properties): label left, link right, the value below
+   across the full width. A grid rather than a wrapper row, so `.efield > label` keeps its label style. */
+.efield.has-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: baseline; }
+.efield.has-action > * { grid-column: 1 / -1; }
+.efield.has-action > label, .efield.has-action > .field-link { grid-column: auto; }
+/* The link itself: text in the navy of the headings below (Inputs, Outputs), no frame, no fill, a long
+   drawn arrow after it. Smaller than the uppercase label it sits beside — a half step under --fs-label,
+   kept here rather than made a seventh step of the scale, because only this link needs it. */
+.field-link { appearance: none; border: 0; background: none; padding: 0; margin: 0; font: inherit;
+  font-size: 10.5px; color: var(--navy); cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 3px; }
+.field-link svg { flex: none; }
+.field-link:hover .field-link-text { text-decoration: underline; text-underline-offset: 2px; }
+.field-link:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+
+/* Flow-properties window */
+/* Wide enough for ecoinvent property names ("concentration, potassium carbonate, in ground") —
+   at 560px the name column got ~300px and cut most of them off. */
+.modal.sheet.props-modal { width: min(760px, 94vw); max-height: 88vh; }
+.props-sub { display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); color: var(--text); margin: -6px 0 12px; flex-wrap: wrap; }
+.props-unit { color: var(--faint); font-size: var(--fs-sec); }
+.props-badge { font-size: var(--fs-label); padding: 1px 7px; border-radius: 8px; }
+.props-badge.ro { background: var(--surface-2); color: var(--faint); }
+.props-badge.ed { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green-ink); }
+.props-table { border-top: 1px solid var(--border); }
+.props-row { display: grid; grid-template-columns: 1fr 110px 90px 22px; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.props-head { border-bottom: 1px solid var(--border); }
+/* Wrap instead of ellipsis: a truncated property name is exactly what this window exists to show. */
+.props-name { font-size: var(--fs-body); color: var(--text); overflow-wrap: anywhere; }
+.props-note { margin-left: 5px; color: var(--info); cursor: help; font-size: var(--fs-label); }
+.props-amt { font-variant-numeric: tabular-nums; font-size: var(--fs-body); }
+.props-amt.ro { text-align: right; color: var(--text); }
+input.props-amt { text-align: right; padding: 3px 6px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); }
+input.props-amt:focus { outline: none; border-color: var(--green); }
+.props-unit-cell { font-size: var(--fs-label); color: var(--faint); }
+.props-del { border: none; background: none; color: var(--bad); font-size: 16px; line-height: 1; cursor: pointer; opacity: .55; }
+.props-del:hover { opacity: 1; }
+.props-add { display: flex; gap: 6px; margin-top: 10px; }
+.props-add input { flex: 1; min-width: 0; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font-size: var(--fs-body); }
+.props-add input:focus { outline: none; border-color: var(--green); }
+
+/* Danger button (destructive confirmations) */
+.btn.danger { background: var(--prism-alert, #cc4b37); border-color: var(--prism-alert, #cc4b37); color: #fff; }
+.btn.danger:hover:not(:disabled) { filter: brightness(1.05); }
+
+/* Confirmation window */
+.confirm-modal { width: min(420px, 92vw); }
+.confirm-msg { font-size: var(--fs-body); color: var(--ink, #303030); line-height: 1.5; margin: 0 0 6px; }
+
+
+/* Flow-properties sheet: the body scrolls (the table no longer does on its own), and the table's top
+   rule needs air under the head's. */
+.props-modal .sheet-body { padding-top: 12px; }
+/* A suggestion list (modal.css: .unit-combo-list) in a two-up row (Location | Unit) spans the whole row,
+   not its half: "RER w/o CH+DE · Europe without Germany and Switzerland" wrapped over four lines in half
+   a column, and a list wider than the row ran past the window's right edge, where the inspector sits. */
+.efield-row { position: relative; }
+.efield-row .unit-combo { position: static; }
+.efield-row .unit-combo-list { left: 0; right: 0; }
+/* The editor's field labels and the Tags line take the navy of the section headings below (Inputs,
+   Outputs), so the panel reads as one set of headings rather than grey captions over navy ones. */
+.insp.editor .efield > label, .insp .field > label { color: var(--navy); }
+/* A flow row lights up under the pointer, so the amount and the buttons at the right read as one line with
+   the name at the left. Every row carries the 4px inset the reference row always had, pulled back with a
+   negative margin so the text stays aligned; the list pads by the same 4px so the highlight is not clipped
+   by its scroll box. The reference row keeps its green, a shade stronger. */
+.flow:hover { background: var(--surface-2); }
+.flow.ref:hover { background: color-mix(in srgb, var(--green) 14%, transparent); }
+/* Filter and sort side by side at the right of a flow list's heading (the process details window). The
+   magnifier slides a small field out to its left; grey at rest, navy under the pointer and while open,
+   the same grammar as the sort labels beside it. The field keeps the heading's height, so opening it moves
+   nothing, and it is set in plain text, not in the heading's capitals. */
+.flow-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
+.flow-tools .flow-order { margin-left: 0; }
+.flow-search { display: inline-flex; align-items: center; gap: 5px; }
+.flow-search-input { width: 0; padding: 1px 0; border: 1px solid transparent; border-radius: 5px; opacity: 0; visibility: hidden;
+  font: inherit; font-size: var(--fs-sec); font-weight: 400; text-transform: none; letter-spacing: normal;
+  color: var(--text); background: var(--bg); outline: none;
+  transition: width .18s ease, padding .18s ease, opacity .18s ease, border-color .18s ease, visibility 0s linear .18s; }
+.flow-search.open .flow-search-input { width: 150px; padding: 1px 7px; border-color: var(--border-strong); opacity: 1;
+  visibility: visible; transition-delay: 0s; }
+.flow-search-input:focus { border-color: var(--navy); }
+.flow-search-btn { appearance: none; background: none; border: none; padding: 0; margin: 0; font-size: 13px; line-height: 0;
+  color: var(--faint); cursor: pointer; border-radius: 3px; }
+.flow-search-btn:hover, .flow-search-btn.on { color: var(--navy); }
+.flow-search-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .flow-search-input { transition: none; } }
+/* The comment on a flow: why this amount, this sign, this proxy — or, on a background dataset, the source's
+   own note. A speech bubble, grey at rest and navy under the pointer and while open, the grammar of the
+   magnifier above. Green and filled when the flow has a comment, because an undocumented waste sign and a
+   documented one look identical otherwise; on a read-only dataset the bubble is there only when there is a
+   comment, so it stays grey. What it opens spans the row below the name and the buttons. */
+.flow-note-btn { appearance: none; border: 0; background: none; cursor: pointer; padding: 0; line-height: 0;
+  display: inline-flex; justify-content: center; color: var(--faint); border-radius: 3px; }
+.flow-note-btn:hover, .flow-note-btn.open { color: var(--navy); }
+.flow-note-btn.on { color: var(--green-ink); }
+.flow-note-btn.on svg { fill: currentColor; fill-opacity: .22; }
+.flow-note-btn:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }
+.fx-expand.note { min-height: 3.2em; }
+.flow > .fx-expand.note { grid-column: 1 / -1; }
+/* A read-only dataset with flow comments keeps a column for the bubble; one without gives it to the name. */
+.flow.ro.notes { grid-template-columns: 1fr 78px 26px 18px; }
+.flow-note-text { grid-column: 1 / -1; margin-top: 4px; padding: 6px 9px; border-radius: 6px; background: var(--surface-3);
+  font-size: var(--fs-sec); line-height: 1.5; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The reference product as one block (ReferenceProduct.tsx): the product on its own line, then amount,
+   fx and unit, then what the amount means. The tint is the one the reference row always had. A read-only
+   dataset gets a single line, like the flows under it. */
+.flow-head .field-link { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ref-badge { font-size: var(--fs-label); font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  background: var(--yellow-soft); color: var(--yellow); border-radius: 4px; padding: 0 6px; }
+.refblock { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 7px;
+  background: color-mix(in srgb, var(--green) 8%, transparent); }
+.refblock.ro { padding: 5px 8px; }
+.refline { display: grid; grid-template-columns: 112px minmax(0, 1fr) 18px; gap: 6px; align-items: center; }
+.refblock.ro .refline { grid-template-columns: minmax(0, 1fr) auto 34px 18px; }
+.refline .efield input, .refline .efield select { padding: 3px 5px; }
+.ref-name { font-size: var(--fs-body); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-hint { margin: 0; font-size: var(--fs-label); line-height: 1.35; color: var(--faint); }
+.refblock .settings-hint { margin: 0; }
+/* Location alone in its row keeps the half width it had beside the unit. */
+.insp.editor .efield-row > .efield:only-child { flex: 0 1 calc(50% - 4px); }
+/* The flow-properties sheet's "Add property" combo (UnitCombo): its list sits in the flow and the sheet
+   grows to hold it. Hung over the content, it was cut off by the sheet body, which scrolls. */
+.props-add { align-items: flex-start; }
+.props-add .unit-combo { flex: 1; min-width: 0; }
+.props-add .unit-combo-list { position: static; margin-top: 2px; }

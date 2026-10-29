@@ -1,0 +1,327 @@
+/* ── Welcome tour ───────────────────────────────────────────────────────────────────────────────
+   The first-start tour (welcome/WelcomeTour.tsx). Composition:
+   text on the left, a rebuilt piece of the interface on the right, progress and Back/Next below —
+   and, where the element is currently on screen, a ring with an arrow OUTSIDE the card pointing at
+   the real control. No Skip, no close button: the cards are meant to be read to the end.
+   z-index 1000 because the tour sits above everything else (previous maximum: 200). */
+.wt-root { position: fixed; inset: 0; z-index: 1000; }
+
+/* EXACTLY ONE layer dims the screen, otherwise it ends up dimming the card too. Without an anchor it is
+   this surface; with an anchor it is the ring below, whose shadow does the same and leaves the target
+   element out. Both stay under the card — the card is never dimmed.
+   Layers: dimming 0 · arrow 1 · card 2 · note 3. */
+.wt-backdrop { position: absolute; z-index: 0; inset: 0; background: rgba(12, 22, 28, .55); }
+
+/* The ring around the real element: a green border with a glow — and a shadow as wide as the
+   screen that dims everything around it and leaves exactly this element out. It sits under the
+   card (z-index 0 versus 2); above it, it would tint the card as well. Measured in the running
+   app: outside 122,127,130 · cut-out 254,254,254 · card 251,252,253. */
+.wt-ring {
+  position: absolute; z-index: 0; border-radius: var(--r-md); pointer-events: none;
+  border: 2px solid var(--green);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--green) 30%, transparent), 0 0 0 9999px rgba(12, 22, 28, .55);
+  animation: wt-ring-in .28s ease-out;
+}
+@keyframes wt-ring-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+
+.wt-arrow { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.wt-arrow-line { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 7 6; }
+.wt-arrow-tip { fill: var(--green); }
+
+.wt-anchor-note {
+  position: absolute; z-index: 3; width: 210px; padding: 7px 10px; border-radius: var(--r);
+  background: var(--green); color: #17240a; font-size: var(--fs-sec); font-weight: 600; line-height: 1.35;
+  box-shadow: var(--shadow-lg); pointer-events: none;
+}
+
+/* The card. Its right half carries the prism gradient from the design (assets/welcome-bg.webp,
+   lossy WebP instead of a 4.7 MB PNG); in dark mode only a hint of it remains. */
+.wt-card {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  /* Fixed size, not content-dependent: ten cards with very different amounts of text must not
+     jump while clicking through, and 880 × 620 is the aspect ratio of the design. */
+  width: min(820px, calc(100vw - 64px)); height: min(620px, calc(100vh - 64px));
+  display: flex; flex-direction: column;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sheet);
+  overflow: hidden; z-index: 2;
+}
+.wt-card::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  /* Only the corner, not the whole surface: with `cover` the facets ran straight through the text.
+     Oversized and anchored bottom right, the design's white sheet remains at the left and top. */
+  background: url('../assets/welcome-bg.webp') right bottom / auto 165% no-repeat;
+  opacity: .72;
+}
+:root[data-theme='dark'] .wt-card::before { opacity: .10; }
+.wt-card > * { position: relative; z-index: 1; }
+
+/* Look and structure come from `.brand`/`.brand-name`, the same classes as in the sidebar — but
+   deliberately one size larger here: the card has many times the area, and the wordmark is its
+   header line. Only the type is large, therefore; the symbol stays at the sidebar's 20 px, so it
+   comes unchanged from `.prism`. */
+.wt-brand { padding: 26px 34px 0; font-size: var(--fs-title); }
+
+.wt-body {
+  display: grid; grid-template-columns: 1fr 340px; gap: 44px; padding: 26px 34px 34px;
+  /* `safe` center: centred as long as it fits — an overfull card then scrolls from the top
+     instead of pushing its first line out of the box. */
+  overflow: auto; flex: 1; align-content: safe center;
+}
+.wt-text { min-width: 0; }
+.wt-kicker {
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--green-dark, var(--navy));
+}
+.wt-text h2 { margin: 9px 0 18px; font-size: var(--fs-title); font-weight: 650; letter-spacing: -.015em; line-height: 1.3; }
+.wt-text p { margin: 0 0 14px; font-size: var(--fs-body); line-height: 1.7; }
+.wt-text p:last-child { margin-bottom: 0; }
+.wt-muted { color: var(--muted); }
+/* External links are buttons (openExternal) but should look like links. */
+.wt-link {
+  appearance: none; border: 0; background: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--navy); font-weight: 600; word-break: break-all; text-align: left;
+  text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px;
+}
+.wt-link:hover { text-decoration-thickness: 2px; }
+.wt-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 3px; }
+:root[data-theme='dark'] .wt-link { color: var(--green); }
+.wt-code { font-family: var(--mono); font-size: .92em; }
+
+.wt-visual { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.wt-stack { display: flex; flex-direction: column; gap: 14px; }
+
+/* Card 1 — the chat bar with the "+" menu open on the skill list. Rebuilt, not the real
+   component: CanvasChat needs a model, a project and a running agent, and none of those exist
+   on first start. Dimensions follow the real bar. */
+.wt-chat { display: flex; flex-direction: column; gap: 10px; }
+
+.wt-chat-menu {
+  border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-chat-menu-h {
+  padding: 8px 13px; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 68%, transparent);
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--faint);
+}
+.wt-chat-menu-row {
+  display: flex; align-items: center; gap: 9px; padding: 8px 13px;
+  font-size: var(--fs-sec); color: var(--muted); border-bottom: 1px solid var(--border);
+}
+.wt-chat-menu-row:last-child { border-bottom: 0; }
+.wt-chat-menu-row.on { color: var(--text); font-weight: 600; }
+/* The ticked check in green, the empty box as a quiet outline — the same language as the
+   switches in the real "+" menu. */
+.wt-chat-check {
+  display: grid; place-items: center; width: 15px; height: 15px; flex: none; border-radius: 4px;
+  background: var(--green); color: #17240a;
+}
+.wt-chat-box-off {
+  width: 15px; height: 15px; flex: none; border-radius: 4px; border: 1px solid var(--border-strong);
+}
+
+.wt-chat-field {
+  border: 1px solid var(--border-strong); border-radius: var(--r-md); padding: 12px 13px 9px;
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-chat-prompt { font-size: var(--fs-sec); line-height: 1.5; color: var(--text); }
+.wt-chat-bar { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+.wt-chat-btn {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 999px;
+  border: 1px solid var(--border-strong); color: var(--muted);
+}
+/* The "+" button is pressed — it is the one that opened the menu above it. */
+.wt-chat-btn.on { background: var(--green); border-color: var(--green); color: #17240a; }
+.wt-chat-model {
+  margin-left: auto; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-strong);
+  font-size: var(--fs-label); font-weight: 600; color: var(--muted);
+}
+.wt-chat-send {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 999px;
+  background: var(--navy); color: #fff;
+}
+
+/* Card 2 — the two background databases as tiles. */
+/* 32 % translucent, as a trial: the card's prism gradient continues behind the two tiles.
+   As a background colour, not as `opacity` — the latter would take the text and the border
+   along and make the tile pale instead of translucent. */
+.wt-db {
+  padding: 15px 17px; border: 1px solid var(--border); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-db-h { font-weight: 650; font-size: var(--fs-body); margin-bottom: 3px; display: flex; align-items: center; gap: 8px; }
+/* The freely usable database may look the part — for everyone without an ecoinvent licence it is
+   the argument of the whole card. */
+.wt-db.free { border-color: var(--green); }
+/* The counterpart to the green `free`: a licence you have to bring — matter-of-fact, not warning.
+   The tile carries the same colour in its border, just as the free database carries the green. */
+.wt-db-tag.paid { background: var(--navy); color: #fff; }
+.wt-db.paid { border-color: var(--navy); }
+.wt-db-tag {
+  padding: 1px 7px; border-radius: 999px; background: var(--green); color: #17240a;
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+}
+.wt-db-b { font-size: var(--fs-sec); color: var(--text); }
+.wt-db-f { font-size: var(--fs-sec); color: var(--muted); margin-top: 5px; }
+
+/* Card 3 shows the real rail (`.navlist`/`.navitem` from the sidebar, fed from STUDY_NAV).
+   This only holds what the sidebar contributes around it: the box, the base font — and the
+   pill, which is measured at runtime there and does not arrive in a preview without measuring. */
+.wt-rail {
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  padding: 10px; font-size: var(--fs-base);
+}
+.wt-rail .navitem.on { background: var(--green-soft); }
+
+/* Card 4 — an excerpt of the audit log. */
+.wt-log { border: 1px solid var(--border); border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 68%, transparent); overflow: hidden; }
+.wt-log-h {
+  padding: 10px 15px; border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 68%, transparent);
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--faint);
+}
+.wt-log-row { padding: 11px 15px; font-size: var(--fs-sec); border-bottom: 1px solid var(--border); }
+.wt-log-row:last-child { border-bottom: 0; }
+.wt-log-row.ai { color: var(--navy); }
+:root[data-theme='dark'] .wt-log-row.ai { color: var(--green); }
+.wt-log-t { display: inline-block; min-width: 46px; color: var(--faint); font-family: var(--mono); font-size: .92em; }
+
+.wt-note { font-size: var(--fs-sec); color: var(--muted); line-height: 1.45; }
+.wt-note.soft { font-style: italic; }
+
+/* Karte 5 — Suchtreffer, Markt gegen Produktion. */
+.wt-search { border: 1px solid var(--border); border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 68%, transparent); overflow: hidden; }
+.wt-search-q {
+  padding: 11px 15px; border-bottom: 1px solid var(--border); font-size: var(--fs-sec); color: var(--text);
+  background: color-mix(in srgb, var(--surface-2) 68%, transparent);
+}
+.wt-hit { display: flex; align-items: center; gap: 10px; padding: 11px 15px; border-bottom: 1px solid var(--border); font-size: var(--fs-sec); }
+.wt-hit:last-child { border-bottom: 0; }
+.wt-hit.dim { opacity: .55; }
+.wt-hit-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wt-tag { flex: none; padding: 2px 7px; border-radius: 5px; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.wt-tag.market { background: color-mix(in srgb, var(--green) 24%, var(--surface)); color: var(--text); }
+.wt-tag.prod { background: var(--surface-2); color: var(--muted); }
+
+/* Card 6 — the two providers with their real logos. */
+/* 32 % translucent like the two database tiles — see `.wt-db`. */
+.wt-prov {
+  display: flex; align-items: center; gap: 14px; padding: 15px 17px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-prov-logo { width: 24px; height: 24px; flex: none; object-fit: contain; }
+:root[data-theme='dark'] .wt-prov-logo { filter: invert(1) hue-rotate(180deg); }
+.wt-prov-name { font-weight: 650; font-size: var(--fs-body); }
+.wt-prov-sub { font-size: var(--fs-sec); color: var(--muted); margin-top: 2px; }
+
+/* Card 7 — the model ladder: more expensive upwards, better upwards. */
+.wt-ladder { display: flex; flex-direction: column; gap: 12px; }
+/* 32 % translucent like the database and provider tiles — see `.wt-db`. */
+.wt-lad-row {
+  display: flex; align-items: center; gap: 13px; padding: 13px 15px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-lad-bar { width: 5px; align-self: stretch; border-radius: 3px; flex: none; }
+.wt-lad-bar.top { background: var(--purple); }
+.wt-lad-bar.mid { background: var(--navy); }
+.wt-lad-bar.low { background: var(--green); }
+.wt-lad-name { font-weight: 650; font-size: var(--fs-sec); }
+.wt-lad-sub { font-size: var(--fs-sec); color: var(--muted); margin-top: 2px; }
+
+/* Privacy card — every door as one line of a single list, the way the bug report form is drawn. Eight
+   separate tiles were taller than the card; a list with rules between the rows keeps them apart in half
+   the height. Translucent like the other tiles of the tour — see `.wt-db`. */
+.wt-doors { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 68%, transparent); }
+.wt-doors-row { padding: 7px 13px; font-size: var(--fs-sec); line-height: 1.4; color: var(--muted);
+  border-bottom: 1px solid var(--border); }
+.wt-doors-row:last-child { border-bottom: 0; }
+.wt-doors-row b { color: var(--text); font-weight: 650; }
+
+/* Card 9 — the contact point, with GitHub's logo (used only to link to our own repository; source
+   and trademark note in the third-party notices), below it the bug report as a three-line form. */
+.wt-gh {
+  text-align: center; padding: 22px 17px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-gh-logo { width: 30px; height: 30px; margin-bottom: 8px; }
+:root[data-theme='dark'] .wt-gh-logo { filter: invert(1); }
+.wt-gh-url { font-family: var(--mono); font-size: var(--fs-sec); font-weight: 650; word-break: break-all; }
+.wt-gh-sub { font-size: var(--fs-sec); color: var(--muted); margin-top: 3px; }
+
+.wt-issue { border: 1px solid var(--border); border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 68%, transparent); overflow: hidden; }
+.wt-issue-row { padding: 11px 15px; font-size: var(--fs-sec); border-bottom: 1px solid var(--border); }
+.wt-issue-row:last-child { border-bottom: 0; }
+.wt-issue-l { display: inline-block; min-width: 88px; color: var(--faint); font-weight: 600; }
+
+/* Card 10 — the soft brake and the hard one. */
+.wt-field {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 17px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+.wt-field-l { font-size: var(--fs-sec); }
+.wt-field-v { font-family: var(--mono); font-weight: 650; font-size: var(--fs-body); padding: 2px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface-2); }
+.wt-hard { padding: 15px 17px; border: 2px solid var(--green); border-radius: var(--r-md); background: color-mix(in srgb, var(--green) 12%, var(--surface)); }
+.wt-hard-h { font-weight: 700; font-size: var(--fs-body); margin-bottom: 3px; }
+.wt-hard-b { font-size: var(--fs-sec); line-height: 1.45; }
+
+/* Footer: counter, dots, Back/Next. No Skip — see WelcomeTour.tsx. */
+.wt-foot {
+  display: flex; align-items: center; gap: 18px; padding: 18px 34px;
+  /* Semi-transparent instead of opaque: the gradient continues under the bar instead of being cut
+     off at its upper edge — that edge was the most conspicuous thing about the box at first. */
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(6px);
+}
+.wt-count {
+  /* Small-label style, but without capitals: the only word in the counter is the "of" in "1 of 11",
+     and as "OF" it reads like an abbreviation. */
+  font-size: var(--fs-label); font-weight: 700; letter-spacing: .05em; color: var(--faint);
+  flex: none; font-variant-numeric: tabular-nums;
+}
+.wt-dots { display: flex; gap: 6px; flex: 1; }
+.wt-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); transition: background .18s, transform .18s; }
+.wt-dot.done { background: color-mix(in srgb, var(--green) 55%, var(--border-strong)); }
+.wt-dot.on { background: var(--green); transform: scale(1.35); }
+.wt-acts { display: flex; gap: 8px; flex: none; }
+
+/* Narrow windows: the visual goes below the text instead of beside it. */
+@media (max-width: 900px) {
+  .wt-body { grid-template-columns: 1fr; gap: 20px; }
+  .wt-card::before { opacity: .35; }
+}
+
+/* The one question the tour asks — may the start page load the news? — lives in the footer bar,
+   right of the dots and left of the buttons, on every card. Quiet: label-sized,
+   muted, no heading; the checkbox is the only control in the tour besides Back/Next. */
+.wt-choice { flex: none; display: inline-flex; align-items: center; gap: 8px; margin-right: 6px;
+  font-size: var(--fs-sec); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.wt-choice input { width: auto; margin: 0; accent-color: var(--green); }
+.wt-choice:hover { color: var(--text); }
+@media (max-width: 900px) { .wt-choice span { display: none; } }
+
+/* Card 10: the news question is swept once with a highlighter, left to right, in the app's green. A
+   pseudo-element behind the text scales in from the left, holds, then fades —
+   so the text itself never moves and nothing stays tinted once it is done. */
+.wt-choice-mark { position: relative; isolation: isolate; padding: 2px 6px; margin-left: -6px; border-radius: 4px; }
+.wt-choice-mark::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 4px;
+  background: color-mix(in srgb, var(--green) 38%, transparent);
+  transform-origin: left center; transform: scaleX(0); opacity: 1;
+  animation: wt-mark 2.6s cubic-bezier(.2,.7,.2,1) .35s 1 both;
+}
+@keyframes wt-mark {
+  0% { transform: scaleX(0); opacity: 1; }
+  28% { transform: scaleX(1); opacity: 1; }
+  72% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wt-choice-mark::before { animation: none; transform: scaleX(1); opacity: 0; }
+}
+

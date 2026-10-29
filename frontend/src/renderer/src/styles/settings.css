@@ -1,0 +1,204 @@
+/* Settings window */
+/* Needs `.modal.settings-modal` (specificity) or the later `.modal { width: … }` rule wins. */
+.modal.settings-modal { width: min(1000px, 92vw); }
+/* Fixed body height so every category page is the same size; long panels (AI) scroll internally.
+   The rail is the same column as the model window's: a quiet tint against the sheet, its active row
+   lifted onto white rather than washed in green. */
+.settings-body { display: flex; height: min(560px, 78vh); }
+.settings-cats { flex: 0 0 204px; display: flex; flex-direction: column; gap: 1px;
+  border-right: 1px solid var(--border); background: var(--surface-2); padding: 16px 10px; overflow-y: auto; }
+.settings-cat { text-align: left; background: none; border: 1px solid transparent; padding: 7px 9px; border-radius: 7px;
+  font: inherit; font-size: var(--fs-body); color: var(--muted); cursor: pointer; transition: background .12s, color .12s; }
+.settings-cat.grouped { padding-left: 14px; } /* indented under its group heading */
+/* The branch mark says "belongs to the row above"; faint, so the label stays the text. */
+.settings-cat.grouped::before { content: '└'; color: var(--faint); margin-right: 6px; font-family: var(--mono); }
+/* A group heading is a button that folds its pages away (all groups start folded except the one that
+   holds the opened page). It looks exactly like an entry — no chevron, no label face;
+   that a click unfolds something is the whole difference. */
+.settings-cat-group { margin: 0; padding: 7px 9px; display: block; width: 100%;
+  background: none; border: 1px solid transparent; border-radius: 7px; text-align: left; cursor: pointer;
+  font: inherit; font-size: var(--fs-body); color: var(--muted); transition: background .12s, color .12s; }
+.settings-cat-group:hover { background: var(--surface-3); color: var(--text); }
+.settings-cat:hover { background: var(--surface-3); color: var(--text); }
+.settings-cat.on { background: var(--surface); color: var(--text); font-weight: 600; border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(20,32,28,.06); }
+.settings-panel { flex: 1; min-width: 0; overflow-y: auto; padding: 0 22px 24px; }
+/* Sticky section heads, so a long panel keeps saying which group you are in — same rule and rhythm as
+   the model window's sections. */
+.settings-panel h4 { position: sticky; top: 0; z-index: 2; background: var(--surface); display: flex; align-items: center; gap: 9px; margin: 0 0 10px; padding: 16px 0 8px; border-bottom: 1px solid var(--border); }
+.settings-hint { font-size: var(--fs-sec); color: var(--muted); margin: 0 0 12px; line-height: 1.5; }
+/* The audit panel's footnote: what the history covers, and what Undo does not. */
+.audit-note { font-size: var(--fs-sec); color: var(--muted); line-height: 1.45; margin: 10px 2px 0; }
+.settings-hint.ok { color: var(--ok); }
+.settings-hint.bad { color: var(--bad); }
+/* A consequence worth reading, not a mistake: choosing your chat model as its own reviewer is
+   allowed and sometimes wanted. --wait rather than --bad, so it reads as "know this", not "fix this". */
+.settings-hint.warn { color: var(--wait); }
+/* The consequence notice above a field that hands data and money to a third party (the provider key).
+   Body size, not the smaller hint size: this is the one paragraph on the page that must be read before
+   the field under it is used, and the warning tint carries it without a shouting icon. */
+.settings-notice {
+  font-size: var(--fs-body); color: var(--ink, #303030); line-height: 1.55; margin: 0 0 12px;
+  padding: 10px 12px; border-radius: 6px;
+  background: color-mix(in srgb, var(--prism-warning, #d18a00) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--prism-warning, #d18a00) 40%, var(--border));
+  border-left-width: 3px;
+}
+/* Provider choice as two cards (logo, name, five words) instead of a dropdown: the provider is the
+   one decision on its page, and a select hides the alternative. Same selected-state grammar as the
+   category rail (.settings-cat.on): surface, border, a soft shadow — plus the green ring the inputs
+   already use for "this one is active". */
+.provider-cards { display: flex; gap: 12px; margin: 2px 0 12px; }
+/* Square tiles (141 × 141) — as tall as they are wide (after 3:4 and 5:6 both
+   read too tall in the panel). Content sits top-anchored with the logo carrying the visual
+   weight; see the name-alignment note below. */
+.provider-card { flex: 0 0 141px; height: 141px; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 17px 12px 10px; border-radius: 12px; border: 1px solid var(--border-strong);
+  background: var(--surface); cursor: pointer; font: inherit; text-align: center;
+  transition: border-color .12s, background .12s, box-shadow .12s; }
+.provider-card:hover { background: var(--surface-3); }
+.provider-card.on { border-color: var(--prism-green, #93c120); box-shadow: 0 0 0 2px
+  color-mix(in srgb, var(--prism-green, #93c120) 35%, transparent), 0 1px 2px rgba(20,32,28,.06); }
+/* Top-anchored with a fixed logo slot instead of vertically centred: centring let the two-line
+   blurb push one card's stack upward, so the two provider NAMES sat on different heights. With the
+   same offset and the same logo box on both cards, the name row lines up to the pixel. */
+.provider-card-logo { width: 40px; height: 40px; margin-bottom: 3px; flex: 0 0 auto; }
+/* A word mark (icon + name in one image) instead of a square icon: wider slot, the name line dropped. */
+.provider-card-logo.wide { width: 108px; height: 40px; object-fit: contain; margin: 4px 0 4px; }
+.provider-card-name { font-size: var(--fs-body); font-weight: 600; color: var(--ink, #303030); }
+.provider-card-blurb { font-size: var(--fs-sec); color: var(--muted); line-height: 1.3; }
+
+/* A key is long and reads left to right — the number-input geometry of .settings-field would give it
+   72px and right-align it. Stacked instead: the label above, the field on its own full-width line. */
+.settings-field.settings-key { flex-direction: column; align-items: stretch; gap: 5px; }
+.settings-field.settings-key input { width: 100%; text-align: left; font-family: var(--mono); }
+.settings-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: var(--fs-body); color: var(--ink, #303030); }
+.settings-field input { width: 72px; padding: 5px 7px; border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px; background: var(--bg, #fff); color: var(--ink, #303030); text-align: right; }
+.settings-field input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+/* Checkbox rows: checkbox at the left, its text directly beside it (both left-aligned). */
+.settings-field.settings-check { justify-content: flex-start; gap: 8px; }
+/* The generic field rule above sizes every input to 72 px, right-aligned — a checkbox drawn inside
+   that box sat at a different x depending on the row (V343). It is a box, not a number field. */
+.settings-field.settings-check input[type='checkbox'] { width: auto; flex: none; margin: 0; text-align: initial; }
+/* Wide enough for the full "label — descriptor" option text of the chat-model picker. */
+.settings-field select { width: min(380px, 100%); padding: 5px 7px; border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px; background: var(--bg, #fff); color: var(--ink, #303030); }
+
+/* Exceptions under a switch: indented and quieter, so they read as "…except" rather than as two
+   more independent options at the same level. */
+.settings-sub { margin: -2px 0 4px 26px; }
+.settings-sub .settings-field { padding: 2px 0; color: var(--muted); }
+
+/* "Add model…" under the cost table, plus the picker it opens. The picker reuses the flow
+   picker's geometry (search field, scrolling row list, three columns) because it is the same
+   shape of question: find one row among hundreds and take it. */
+.addmodel-bar { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
+.addmodel-bar .settings-hint { margin: 0; }
+/* `.modal.` prefix required: the generic `.modal { width: min(380px, 90vw) }` further down the
+   file has the same specificity and would win on source order — the trap the settings modal
+   already documents at its own rule. Without it this dialog renders at 380px and every model
+   name, id and context figure is cut off by an ellipsis. */
+.modal.addmodel-modal {
+  width: min(760px, 96vw);
+  /* Bound to the SHEET it opens from, not to the screen. That sheet is `min(560px, 78vh)` of body
+     plus 161px of chrome and deliberately does not grow with the display — so on a 1350px-tall window the dialog's own
+     52vh made it 880 against a 721 sheet and it hung out over both edges. The same expression,
+     minus 40px, keeps it inset inside the sheet at every window size; at half screen it is above
+     what the dialog already needed, so that case is untouched. */
+  max-height: calc(min(560px, 78vh) + 121px);
+  display: flex;
+  flex-direction: column;
+}
+/* The list is what gives when the dialog is capped: everything else in there is one line of its
+   own. `min-height` so it never collapses to a sliver on a short window — below that the dialog
+   scrolls as a whole, which is the honest failure. */
+.addmodel-list { flex: 1 1 auto; max-height: none; min-height: 140px; }
+/* The footnote is a remark about the list, not its last row — it needs to sit clear of the
+   scrolling frame instead of clinging to its bottom edge. */
+.addmodel-modal .flowpick-list + .settings-hint { margin-top: 12px; }
+.addmodel-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) 120px; align-items: start; }
+.addmodel-row:disabled { opacity: 0.55; cursor: default; background: none; }
+.addmodel-id { display: block; font-size: var(--fs-label); color: var(--faint); font-family: var(--mono);
+  overflow: hidden; text-overflow: ellipsis; }
+/* `.addmodel-row` prefix required: `.fp-cat` (borrowed from the flow picker, further down the
+   file) sets `white-space: nowrap` at the same specificity and would win on source order —
+   which cut "no zero-retention endpoint" off mid-word. */
+.addmodel-row .addmodel-facts { white-space: normal; overflow: visible; }
+/* The one fact that decides whether the model will work at all under the default privacy rule —
+   coloured like a consequence to know, not like an error (same tint as .settings-hint.warn). */
+.addmodel-nozdr { color: var(--wait); }
+/* Remove a self-added row: same quiet weight as the pencil beside it, red only on hover. */
+
+
+/* The mark on a model the user added themselves: a pencil where every other row has nothing.
+   Sits inside .info-tip, so it inherits the same hover/focus panel as the field explanations and
+   there is only one tooltip mechanism on the page. */
+/* Two marks inside a table cell: no border, no chip, quiet grey, sitting on the text baseline. The size is the house one that
+   `.act-icon` and `.ov-model-act` share — 13px. They used to inherit the 16px default and the
+   cell's dark text colour, because the rule that sized them still targeted the InfoTip they were
+   built with before the switch to a native title.
+   The pencil is a MARK and the bin is a CONTROL, so they are not identical: the mark is the
+   quieter of the two and does not react to the pointer, the control lightens up and turns to the
+   alert colour, the same one `.act-icon.danger` uses. */
+.model-own,
+.model-drop {
+  display: inline-flex; align-items: center; padding: 0; margin-left: 5px; border: none;
+  background: none; line-height: 0; vertical-align: -2px;
+}
+.model-own svg,
+.model-drop svg { width: 13px; height: 13px; display: block; }
+.model-own { color: var(--border-strong); }
+.model-drop { color: var(--muted); cursor: pointer; }
+.model-drop:hover { color: var(--prism-alert, #cc4b37); }
+
+/* Model-role rows. Six pickers used to sit a paragraph apart, which put the last of them below the
+   fold on a laptop; the paragraphs moved into .info-tip, so the rows can close up.
+   Tighter than a normal settings row, but not tighter than a comfortable click target. */
+.settings-field.settings-role { padding: 3px 0; }
+.settings-role .role-name { display: inline-flex; align-items: center; }
+
+/* The explanation, one hover away. CSS-only (hover OR focus-within) so it holds no state and cannot
+   get stuck open; `display:none` rather than opacity, because an absolutely positioned panel that is
+   merely invisible still counts towards the settings panel's scroll height. */
+.info-tip { position: relative; display: inline-flex; margin-left: 5px; }
+.info-tip-btn { display: inline-flex; align-items: center; padding: 0; border: none; background: none;
+  color: var(--faint, #8a8a8a); cursor: help; }
+.info-tip-btn svg { width: 14px; height: 14px; }
+.info-tip:hover .info-tip-btn, .info-tip:focus-within .info-tip-btn { color: var(--prism-navy, #2f4e66); }
+.info-tip-btn:focus-visible { outline: 2px solid var(--prism-green, #93c120); outline-offset: 2px; border-radius: 50%; }
+.info-tip-panel {
+  display: none; position: absolute; left: -4px; top: calc(100% + 6px); z-index: 6;
+  width: max-content; max-width: 330px; padding: 8px 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow);
+  font-size: var(--fs-sec); font-weight: 400; line-height: 1.45; text-transform: none; letter-spacing: normal;
+  color: var(--muted); text-align: left; white-space: normal;
+}
+.info-tip:hover .info-tip-panel, .info-tip:focus-within .info-tip-panel { display: block; }
+.info-tip-panel code { font-family: var(--mono); font-size: 0.94em; }
+
+
+/* A dashed rule between the chat model (with its reasoning-effort dial) and the other jobs' models. */
+.settings-dashed { border: none; border-top: 1px dashed var(--border-strong); margin: 8px 0 10px; }
+
+/* Icons in front of the top-level entries and the group headings: a fixed box,
+   so labels line up whatever size an icon draws itself at (the gear and the sparkle differ). */
+.settings-cat-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+  margin-right: 8px; color: var(--muted); flex: none; }
+/* Icon and label as one flex row, label kept on one line: "Transport distances" wrapped in the old
+   184 px rail and its second line started under the icon. The rail is 204 px now. */
+.settings-cat-group, .settings-cat:not(.grouped) { display: flex; align-items: center; white-space: nowrap; }
+.settings-cat-icon svg { width: 16px; height: 16px; }
+.settings-cat.on .settings-cat-icon { color: var(--text); }
+/* The geocoders' logos are black; on the dark theme they turn white. Mapbox's brand guidelines allow its
+   logo in black or white only, and black on the dark card could not be read at all. */
+:root[data-theme='dark'] .provider-card-logo.wide { filter: invert(1); }
+/* A notice of several paragraphs (Transport distances → API provider): the gaps between them stay smaller
+   than the box's own margin, so the paragraphs read as one notice. */
+.settings-notice > p { margin: 0 0 6px; }
+.settings-notice > p:last-child { margin-bottom: 0; }
+/* Settings → About: the lead developer's name and the row of outside links, each with its mark at the
+   size the start page's footer uses. The GitHub mark is black and turns white on the dark theme. */
+.about-link { display: inline-flex; align-items: center; gap: 5px; }
+.about-link img, .about-link svg { width: 14px; height: 14px; flex: none; }
+.about-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+:root[data-theme='dark'] .about-link .about-gh { filter: invert(1); }

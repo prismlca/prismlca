@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<flowDataSet xmlns="http://lca.jrc.it/ILCD/Flow" xmlns:common="http://lca.jrc.it/ILCD/Common" version="1.1">
+  <flowInformation>
+    <dataSetInformation>
+      <common:UUID>33333333-3333-3333-3333-333333333333</common:UUID>
+      <name><baseName xml:lang="en">Carbon dioxide, fossil</baseName></name>
+      <classificationInformation><common:elementaryFlowCategorization name="ILCD"><common:category level="0">Emissions</common:category><common:category level="1">Emissions to air</common:category><common:category level="2">Emissions to air, unspecified</common:category></common:elementaryFlowCategorization></classificationInformation>
+    </dataSetInformation>
+    <quantitativeReference><referenceToReferenceFlowProperty>0</referenceToReferenceFlowProperty></quantitativeReference>
+  </flowInformation>
+  <modellingAndValidation><LCIMethod><typeOfDataSet>Elementary flow</typeOfDataSet></LCIMethod></modellingAndValidation>
+  <flowProperties>
+    <flowProperty dataSetInternalID="0">
+      <referenceToFlowPropertyDataSet type="flow property data set" refObjectId="55555555-5555-5555-5555-555555555555" uri="../flowproperties/55555555-5555-5555-5555-555555555555.xml">
+        <common:shortDescription xml:lang="en">Mass</common:shortDescription>
+      </referenceToFlowPropertyDataSet>
+      <meanValue>1.0</meanValue>
+    </flowProperty>
+  </flowProperties>
+</flowDataSet>

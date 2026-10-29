@@ -1,0 +1,1 @@
+Add one short paragraph before the annex tables on where the data comes from: which parts are primary data from the study and which are background datasets, the background database and its version, and the reference year and geography where the metadata records them. Two to four sentences. If a fact is not recorded, leave it out rather than guessing it.

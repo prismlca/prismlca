@@ -1,0 +1,515 @@
+/* Add-flow button + picker window */
+/* Normal-width add buttons (were full-width; deliberately narrow now, left-aligned). */
+.add-flow-btn { margin-top: 8px; width: fit-content; padding: 7px 14px; border: 1px dashed var(--prism-gray-light, #cbcbcb);
+  border-radius: 6px; background: none; color: var(--prism-navy, #2f4e66); font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.add-flow-btn:hover { border-color: var(--prism-green, #93c120); color: var(--prism-green-dark, #769a1a); background: rgba(147,193,32,0.06); }
+/* Inline variant: flows in the same wrapping row as the chips instead of dropping onto its own
+   line. Fixed 36px height (= a subject chip: 22px colour swatch + 6px×2 padding + 1px×2 border)
+   so all three add-buttons (models / database / indicator) are identical in height regardless of
+   how tall the chips in their own box happen to be. inline-flex centres the label. */
+.add-flow-btn.inline { margin-top: 0; height: 36px; display: inline-flex; align-items: center; justify-content: center; }
+.modal.sheet.flowpick-modal { width: min(820px, 96vw); max-height: 88vh; }
+.flowpick-search { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px;
+  background: var(--bg); color: var(--text); font-size: var(--fs-body); margin-bottom: 8px; }
+.flowpick-search:focus { outline: none; border-color: var(--green); }
+.flowpick-list { max-height: 44vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+.flowpick-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 90px; gap: 12px; align-items: center; width: 100%;
+  text-align: left; padding: 6px 10px; border: none; border-bottom: 1px solid var(--border); background: none; cursor: pointer; font: inherit; }
+.flowpick-row:hover { background: var(--surface-2); }
+.flowpick-row.on { background: color-mix(in srgb, var(--green) 16%, transparent); }
+.fp-name { font-size: var(--fs-body); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-cat { font-size: var(--fs-label); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-unit { font-size: var(--fs-label); color: var(--faint); text-align: right; }
+.flowpick-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.fp-sel { flex: 1; min-width: 0; font-size: var(--fs-sec); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-amt { width: 90px; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 5px;
+  background: var(--bg); color: var(--text); text-align: right; }
+.fp-amt:focus { outline: none; border-color: var(--green); }
+.flowpick-new .settings-field select { width: 220px; }
+.pnode { position: relative; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r); padding: 8px 11px; width: 210px; box-sizing: border-box; box-shadow: var(--shadow); }
+/* The green ring comes on hover already, not only once the card is clicked: the same
+   look for both, so hovering shows what clicking would hold. */
+.pnode:hover, .pnode.sel { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 32%, transparent), var(--shadow); }
+/* locked/background node: a grey that clearly lifts off the canvas (--surface-2 was ~= --bg).
+   color-mix keeps it theme-aware — darker card in light mode, lighter card in dark mode. */
+.pnode.external { background: color-mix(in srgb, var(--bg) 58%, var(--border-strong) 42%); border-style: dashed; border-color: var(--border-strong); }
+.pnode-title { font-size: var(--fs-body); font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 42px; }
+.pnode-meta { font-size: var(--fs-label); color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pnode.hot { border-left: 3px solid var(--green); }
+.pnode-color-bar { position: absolute; top: 0; left: 0; right: 0; height: 5px; border-radius: var(--r) var(--r) 0 0; }
+.pnode-color-dot { position: absolute; top: 6px; right: 7px; width: 13px; height: 13px; border-radius: 50%;
+  border: 1.5px solid var(--border-strong); background: var(--surface); cursor: pointer; padding: 0; }
+.pnode-color-dot:hover { border-color: var(--green); }
+.pnode-palette { position: absolute; top: 22px; right: 4px; z-index: 30; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;
+  padding: 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.pnode-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.pnode-swatch:hover { transform: scale(1.12); }
+.pnode-swatch.on { border-color: var(--ink, #303030); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink, #303030); }
+/* The same grey as the colour dot's ring beside it, and the same green on hover: they are two controls of one
+   row, so they carry one colour. The opacity trick is gone with the emoji — a monochrome icon does not need to
+   be faded to sit quietly. */
+.pnode-tag-btn { position: absolute; top: 4px; right: 24px; width: 16px; height: 16px; border: none;
+  background: none; padding: 0; line-height: 1; cursor: pointer; color: var(--border-strong);
+  display: inline-flex; align-items: center; justify-content: center; }
+.pnode-tag-btn svg { width: 13px; height: 13px; }
+.pnode-tag-btn:hover { color: var(--green); }
+.pnode-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.pnode-tag { font-size: var(--fs-label); line-height: 1.5; padding: 0 5px; border: 1px solid; border-radius: 8px; background: var(--surface); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tag assignment popover (from the node 🏷 button) */
+.ctx-backdrop { position: fixed; inset: 0; z-index: 90; }
+.tagmenu { position: fixed; z-index: 100; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 10px 12px; min-width: 250px; max-width: 320px; }
+.tagmenu-title { margin-bottom: 8px; }
+.tagmenu-empty { font-size: var(--fs-sec); color: var(--faint); margin-bottom: 8px; }
+.tagmenu-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tagmenu-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; }
+.tagmenu-group { flex: 0 0 82px; font-size: var(--fs-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tagmenu-row .search-sel { flex: 1; min-width: 0; }
+.tagmenu-add { flex: none; width: 24px; height: 26px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--surface); color: var(--muted); cursor: pointer; padding: 0; }
+.tagmenu-add:hover { border-color: var(--green); color: var(--green-ink); }
+.tagmenu-addrow { display: flex; gap: 6px; align-items: center; margin: 4px 0 6px 15px; }
+.tagmenu-addrow input { flex: 1; min-width: 0; padding: 4px 7px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-sec); }
+.tagmenu-addrow input:focus { outline: none; border-color: var(--green); }
+.tagmenu-newgroup { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
+
+/* Toolbar buttons with an icon + label */
+.btn.ico-label { display: inline-flex; align-items: center; gap: 6px; }
+.btn.ico-label svg { flex: none; }
+/* The model toolbar needs ~1370 px with every label written out, and the default window is 1280 wide:
+   Redo, Export, Calculate, the dark-mode switch and Settings sat off-screen to the right. Below 1600 px the
+   toolbar buttons keep their icon and tooltip and drop the word; and the
+   bar may wrap as a last resort, so nothing is ever cut off. */
+.topbar { flex-wrap: wrap; row-gap: 6px; }
+@media (max-width: 1600px) {
+  .topbar .btn.ico-label .btn-word, .topbar .btn.primary .btn-word { display: none; }
+  .topbar .btn.ico-label, .topbar .btn.primary { gap: 0; }
+}
+.rb-meta { margin-left: 10px; font-size: var(--fs-sec); opacity: .82; }
+
+/* Tag highlight (leuchten) */
+.pnode.hl { border-color: var(--green); box-shadow: 0 0 0 2px var(--green), 0 0 16px 3px color-mix(in srgb, var(--green) 55%, transparent); }
+.hl-tool { position: relative; display: inline-flex; }
+.hl-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 8px 10px; min-width: 190px; max-height: 340px; overflow: auto; }
+.hl-empty { font-size: var(--fs-sec); color: var(--faint); }
+.hl-group { margin-bottom: 6px; }
+.hl-group-name { margin-bottom: 3px; }
+.hl-val { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: none; color: var(--text); font-size: var(--fs-body); padding: 3px 5px; border-radius: var(--r-sm); cursor: pointer; }
+.hl-val:hover { background: var(--surface-2); }
+.hl-val.on { background: var(--green-soft); color: var(--green-ink); font-weight: 600; }
+.hl-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.hl-clear { margin-top: 4px; width: 100%; text-align: left; background: none; border: none; color: var(--bad); font-size: var(--fs-sec); cursor: pointer; padding: 3px 5px; }
+.hl-clear:hover { text-decoration: underline; }
+
+/* Stacked-bar shared legend (Overview results) */
+.stack-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 4px 0 10px; font-size: var(--fs-sec); color: var(--muted); }
+.stack-leg-item { display: inline-flex; align-items: center; gap: 5px; }
+.stack-leg-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.cs-warn { margin-left: 6px; font-size: var(--fs-label); color: var(--wait); cursor: help; white-space: nowrap; }
+.pnode .share { float: right; margin-left: 8px; font-size: var(--fs-label); font-weight: 700; color: var(--green-ink);
+  background: var(--green-soft); border-radius: 5px; padding: 0 6px; }
+
+.result-bar { display: flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: var(--fs-body);
+  background: var(--green-soft); color: var(--text); border-bottom: 1px solid var(--border); }
+.result-bar b { font-size: var(--fs-base); }
+.rb-clear { margin-left: auto; color: var(--green-ink); font-weight: 600; cursor: pointer; text-decoration: underline; }
+
+/* ---- study views (parameters / scenarios) ---- */
+.navitem.disabled { opacity: 0.5; }
+.navitem:not(.disabled) { cursor: pointer; }
+.view { grid-column: 1 / -1; padding: 22px 26px; overflow: auto; }
+.view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.view-head h2 { margin: 0; font-size: var(--fs-title); letter-spacing: -0.01em; }
+.view .srow { padding: 0; align-items: center; }
+.mono { font-family: var(--mono); font-size: var(--fs-sec); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- Parameters page: grouped list ----
+   The page is a list of groups, each one a card: a header band that folds it away, and inside it one row
+   per parameter carrying the four things you need at once — the value, the formula behind it, what it
+   means, and which processes it drives. The card grid this replaced stacked those four vertically and fit
+   three parameters on a screen; a real model has dozens. */
+
+/* Toolbar: what you search for and what you create on the left, the rarely-needed recompute parked on the
+   right. Sticky, so scrolling a long list never scrolls the search box away. */
+.ptool { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px;
+  padding: 16px 0 12px; background: var(--bg); box-shadow: 0 6px 6px -6px var(--bg); }
+.ptool .btn { flex: none; }
+.ptool .btn svg { width: 13px; height: 13px; }
+.psearch { position: relative; display: flex; align-items: center; flex: 1; min-width: 130px; max-width: 380px; }
+.psearch > svg { position: absolute; left: 10px; font-size: 14px; color: var(--faint); pointer-events: none; }
+.pview .psearch input { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); padding: 6px 26px 6px 30px; font: inherit; font-size: var(--fs-body); }
+.pview .psearch input:focus { outline: none; border-color: var(--green); }
+.psearch-x { position: absolute; right: 5px; border: 0; background: none; color: var(--faint); cursor: pointer;
+  font-size: 11px; line-height: 1; padding: 3px; }
+.psearch-x:hover { color: var(--text); }
+.pview .pnewgrp input { width: 150px; background: var(--surface); color: var(--text); border: 1px solid var(--green);
+  border-radius: var(--r-sm); padding: 6px 8px; font: inherit; font-size: var(--fs-body); outline: none; }
+
+/* New parameter: named fields rather than a row of bare placeholders — "or formula" is not something you
+   guess from grey text inside a box. */
+.pnew { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green);
+  border-radius: var(--r); box-shadow: var(--shadow); padding: 12px 14px; margin-bottom: 14px; }
+.pnew-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.pnew-f { display: flex; flex-direction: column; gap: 4px; width: 92px; }
+.pnew-f.wide { flex: 1; width: auto; min-width: 170px; }
+.pnew-f.sel { width: 150px; }  /* a group name has to be readable in the closed select */
+.pview .pnew-f input, .pview .pnew-f select { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 6px 8px; font: inherit; font-size: var(--fs-body); }
+.pview .pnew-f input:focus, .pview .pnew-f select:focus { outline: none; border-color: var(--green); }
+.pview .pnew-f input.num { text-align: right; width: 100%; }
+.pview .pnew-f input:disabled { opacity: .5; }
+.pnew-acts { display: flex; gap: 8px; margin-top: 12px; }
+
+.pblank { background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
+  padding: 22px 24px; text-align: center; }
+.pblank p { margin: 0 auto; max-width: 48ch; }
+.pblank .hint-sm { margin-top: 6px; }
+
+/* One group = one card. */
+.pgrp { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: 12px; }
+.pgrp-head { display: flex; align-items: center; gap: 9px; padding: 9px 14px; background: var(--surface-2);
+  cursor: pointer; user-select: none; }
+.pgrp-head:hover { background: var(--surface-3); }
+.pgrp.drop { border-color: var(--green); }
+.pgrp.drop > .pgrp-head { background: color-mix(in srgb, var(--green) 20%, var(--surface)); }
+/* The caret is the one thing that says a group opens — the same mark the report accordion turns. */
+.pgrp-car { flex: none; display: inline-flex; align-items: center; border: 0; background: none; padding: 0; cursor: pointer; }
+/* The same drawn chevron the model-list folders turn, not a text glyph. A ▸ renders at whatever
+   weight the font feels like and sits on the text baseline; the icon matches the rest of the icon
+   set and lines up with what it labels (a more uniform look). */
+.pgrp .car { flex: none; display: inline-flex; align-items: center; color: var(--faint); transition: transform .16s; }
+.pgrp .car svg { width: 13px; height: 13px; }
+.pgrp.open .car { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .pgrp .car { transition: none; } }
+.pgrp-name { flex: none; font-size: var(--fs-body); font-weight: 600; letter-spacing: -.005em; color: var(--text); }
+.pview .pgrp-rename { width: 170px; font: inherit; font-size: var(--fs-body); font-weight: 600; padding: 2px 7px;
+  border: 1px solid var(--green); border-radius: var(--r-sm); background: var(--bg); color: var(--text); outline: none; }
+.pgrp-n { flex: none; font-size: var(--fs-label); font-weight: 600; color: var(--muted); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+/* Folded, a group still says what it holds — which often answers the question without opening it. */
+.pgrp-sum { flex: 1; min-width: 0; font-size: var(--fs-sec); color: var(--faint); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.pgrp-drop { margin-left: auto; font-size: var(--fs-sec); font-weight: 600; color: var(--green-ink); }
+/* On hover, so a resting page is the parameters and not a wall of buttons. */
+.pgrp-acts { margin-left: auto; display: flex; gap: 3px; flex: none; opacity: 0; transition: opacity .12s; }
+.pgrp-head:hover .pgrp-acts, .pgrp-acts:focus-within { opacity: 1; }
+.pgrp-drop ~ .pgrp-acts { display: none; }  /* a drag is under way — the heading is a drop target now */
+.pgrp-empty { padding: 11px 15px; }
+
+/* The row grid. The column header uses the same template, so the two line up. */
+/* The two row actions sit in a column of their own directly behind the name, not at the far right:
+   there they were a click across the whole row from the thing they act on, and with rows of differing
+   height nothing lined them up. */
+/* Description and "Used by" are both flexible (1.55 : 1). With a fixed maximum on the Used-by
+   column, it took its 310px in a 1280px window before the 1fr column got anything at all — grid
+   hands free space to non-flexible tracks first, up to their limit. The description then stayed
+   ten pixels wide and broke into single letters. */
+.prow { display: grid; grid-template-columns: minmax(130px, 200px) 50px 128px minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 12px; align-items: start; padding: 9px 14px; }
+.prow-head { padding-top: 7px; padding-bottom: 7px; border-top: 1px solid var(--border); }
+/* Below about 1200px window width the row gets tight — the column headers then truncate instead of
+   overwriting each other. */
+.prow-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The row is not grabbable as a whole any more — its first column is, which is where the six dots
+   sit. So the grab cursor covers that column and nothing else, and the dots are the sign rather than the
+   target: nine pixels is not a target. */
+.prow-item { border-top: 1px solid var(--border); }
+.prow-item .pc-name { cursor: grab; }
+.prow-item .pc-name:active { cursor: grabbing; }
+.prow-item:hover { background: var(--surface-2); }
+.prow-item.editing { background: color-mix(in srgb, var(--green) 7%, transparent); }
+.prow-item input, .prow-item textarea, .prow-item select { cursor: auto; }
+.prow-item button, .prow-item .act-icon { cursor: pointer; }
+
+.pc-name { display: flex; align-items: center; min-width: 0; padding-top: 2px; }
+.pc-name b { min-width: 0; font-weight: 600; font-size: var(--fs-body); overflow-wrap: anywhere; }
+.prow-item .pdrag-handle { opacity: 0; transition: opacity .12s; }
+.prow-item:hover .pdrag-handle { opacity: 1; }
+
+.pc-val { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pc-val-line { display: flex; align-items: center; gap: 6px; }
+.pview .pc-val input, .pview .pc-val input.num { width: 80px; text-align: right; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 3px 6px; font: inherit;
+  font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.pview .pc-val input:focus { outline: none; border-color: var(--green); }
+.pc-unit { font-size: var(--fs-sec); color: var(--muted); }
+.pc-computed { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; font-size: var(--fs-body);
+  font-weight: 600; font-variant-numeric: tabular-nums; }
+/* A computed value with its formula hidden is a number you cannot argue with, so the formula is shown. */
+.pc-formula { color: var(--purple); font-size: var(--fs-label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pc-desc { padding-top: 3px; font-size: var(--fs-body); color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.pc-desc-add { border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-sec); font-style: italic;
+  color: var(--faint); cursor: pointer; text-align: left; opacity: 0; }
+.prow-item:hover .pc-desc-add, .pc-desc-add:focus { opacity: 1; }
+.pc-desc-add:hover { color: var(--green-ink); }
+
+/* What a parameter drives: one row per process, each a jump to it on the canvas. The "no process" case is
+   marked rather than left blank — an unused parameter is usually a leftover, and a blank space says
+   nothing at all. */
+.pc-uses { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding-top: 1px; }
+.pc-use { display: flex; align-items: center; gap: 5px; width: 100%; border: 0; background: none;
+  border-radius: 5px; padding: 2px 5px 2px 3px; font: inherit; font-size: var(--fs-sec); color: var(--muted);
+  text-align: left; cursor: pointer; }
+.pc-use svg { flex: none; width: 12px; height: 12px; opacity: .6; }
+.pc-use .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-use .n { margin-left: auto; flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
+.pc-use:hover:not(:disabled) { background: var(--surface-3); color: var(--green-ink); }
+.pc-use:hover:not(:disabled) svg { opacity: 1; }
+.pc-use:disabled { cursor: default; }
+/* A dependent parameter, not a process: nowhere to jump to, so it is a label with the same metrics
+   as the buttons beside it, set in the code face that names a parameter everywhere else. */
+.pc-use-param { cursor: default; font-family: var(--mono); padding-left: 5px; }
+.pc-use-none { padding: 2px 3px; font-size: var(--fs-sec); font-style: italic; color: var(--wait); }
+
+.pc-act { display: flex; gap: 2px; padding-top: 1px; opacity: 0; transition: opacity .12s; }
+.prow-item:hover .pc-act, .prow-item.editing .pc-act, .pc-act:focus-within { opacity: 1; }
+
+/* Edit panel: one strip under its own row, on the row's tint so it reads as belonging to that row and not
+   to the next one. */
+.prow-edit { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px 14px 12px; }
+.pedit-f { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 200px; }
+.pedit-f.narrow { flex: none; width: 110px; min-width: 0; }
+.pview .pedit-f input, .pview .pedit-f textarea.pmulti { width: 100%; box-sizing: border-box; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 5px 8px;
+  font: inherit; font-size: var(--fs-body); }
+.pedit-f textarea.pmulti { resize: vertical; min-height: 34px; line-height: 1.5; }
+.pedit-f textarea.pmulti.mono { font-family: ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
+.pview .pedit-f input:focus, .pview .pedit-f textarea.pmulti:focus { outline: none; border-color: var(--green); }
+
+.fx-badge { color: var(--purple); font-style: italic; font-weight: 700; cursor: help; }
+
+/* ---- what a parameter's value is allowed to be (Excel's data validation, for parameters) ----
+   The rule is enforced by the backend on every path that writes a value; these are the marks that keep a
+   refused value from being typed in the first place. */
+/* A refused field keeps what it had and says why underneath — the value is never replaced by one the rule
+   forbids, so the message has to explain a field that changed back. */
+.pview input.refused, .num.refused { border-color: var(--bad); }
+/* Under the field, across the rest of the row: in the value column a sentence either stacked one
+   word per line or reached over the description beside it. As its own grid cell starting at column 3 it sits
+   under the value and under the rule's own phrase — which is where you look to see what would have been
+   allowed — and wraps like text. */
+.pc-refused { grid-column: 3 / -1; margin-top: 2px; font-size: var(--fs-label); color: var(--bad); }
+.pnew-refused { margin: 8px 0 0; }
+/* The rule as a phrase under the value, for the kinds that are a condition rather than a choice. */
+.pc-rule { font-size: var(--fs-label); color: var(--faint); }
+/* And for the kind that lists its values: the field *is* the list. A dropdown says "one of these"
+   without a word of explanation, and nothing else can be typed — which is the rule. */
+.pview .pc-pick, .pc-pick { width: 100%; max-width: 110px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 4px 6px; font: inherit;
+  font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.pc-pick:focus { outline: none; border-color: var(--green); }
+.pc-pick:disabled { opacity: .5; }
+.scen-ov-refused { margin: 8px 12px 0; }
+
+/* The rule editor, in the parameter's edit strip: a kind, and whatever that kind needs. */
+.prule { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; width: 100%;
+  padding-top: 10px; border-top: 1px dashed var(--border); }
+.prule-hint { flex: 1 1 100%; margin: 0; }
+.prule-list { flex: 1 1 220px; min-width: 0; }
+/* What the semicolons became. The point of showing it: a syntax you cannot see the result of is a syntax
+   you get wrong — "0.25, 0.5" silently becomes one value. */
+.prule-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.prule-chip { display: inline-flex; align-items: center; gap: 3px; background: var(--surface-2);
+  border: 1px solid var(--border-strong); border-radius: 999px; padding: 1px 4px 1px 8px;
+  font-size: var(--fs-label); font-variant-numeric: tabular-nums; color: var(--text); }
+.prule-chip > button { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 10px;
+  line-height: 1; padding: 0 2px; }
+.prule-chip > button:hover { color: var(--bad); }
+
+/* Six-dot drag grip (3 columns × 2 rows). */
+/* The generated-lists row in the chapter list: not a chapter, so quieter than one — it marks
+   WHERE the typesetter's contents/figure/table lists sit in the reading order. */
+/* The generated front-matter row wears the same anatomy as its neighbours — handle, title box,
+   kind tag — so it does not jump out of the list. The dashed border is the one
+   signal that nothing here can be typed; sizing mirrors .rsec-title's input chrome so the row
+   height matches. */
+.rsec-generated-label { flex: 1 1 11em; min-width: 0; font-size: var(--fs-body); color: var(--muted);
+  padding: 5px 7px; border: 1px dashed var(--border-strong); border-radius: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The pinned handle (front matter): visible but inert — the chapter cannot be dragged. */
+.pdrag-handle.pinned { opacity: 0.25; cursor: default; }
+/* Upright, two columns over three rows: the usual grip of a vertical list, and narrower than three across. */
+.pdrag-handle { display: inline-grid; grid-template-columns: repeat(2, 3px); gap: 2px; margin-right: 8px;
+  flex: none; cursor: grab; vertical-align: middle; }
+.pdrag-handle i { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
+
+/* Two-column Parameters page: scrolling main + a static help side panel (inspector-style). */
+.view.pview { display: flex; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
+.pmain { flex: 1; min-width: 0; overflow-y: auto; padding: 0 24px 26px; }
+.pside { width: var(--side-w); flex: none; overflow-y: auto; padding: 18px 18px 26px; background: var(--surface); border-left: 1px solid var(--border); }
+.pside .rp-title { font-size: var(--fs-body); font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.pside-list { margin: 6px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.pside-list li { font-size: var(--fs-body); color: var(--muted); line-height: 1.5; }
+
+/* Audit log inside the Parameters / Scenarios side panels (the wrap is otherwise sized for the
+   flex canvas inspector): let the side panel scroll, and separate it with a full-width rule that
+   spans the whole panel (negative margins cancel the panel's 18px side padding). */
+.pside .audit-wrap, .scen-side .audit-wrap { flex: none; overflow: visible;
+  margin: 18px -18px 0; padding: 14px 18px 0; border-top: 1px solid var(--border); }
+
+/* Scenarios page: two columns — a management list (left) + an inspector-like side panel (right). */
+.view.scen-view { display: flex; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
+.scen-main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px; }
+.scen-side { width: var(--side-w); flex: none; overflow-y: auto; padding: 18px 18px 26px; background: var(--surface);
+  border-left: 1px solid var(--border); }
+.scen-side .rp-title { font-size: var(--fs-body); font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.scen-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.scen-detail-head .rp-title { margin-bottom: 0; min-width: 0; overflow-wrap: anywhere; }
+.scen-detail-head .scen-card-actions { flex: none; }
+.scen-detail-desc { font-size: var(--fs-body); color: var(--muted); margin: 2px 0 14px; line-height: 1.5; }
+.scen-ov-detail { display: flex; flex-direction: column; gap: 10px; }
+.scen-ov-line-name { font-weight: 600; font-size: var(--fs-body); color: var(--text); }
+.scen-ov-line-vals { display: flex; align-items: baseline; gap: 8px; margin-top: 1px; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.scen-ov-line-vals .base { color: var(--faint); }
+.scen-ov-line-vals .arrow { color: var(--muted); }
+.scen-ov-line-vals .to { color: var(--prism-green-dark, #769a1a); font-weight: 700; }
+.scen-help p { font-size: var(--fs-body); color: var(--muted); line-height: 1.55; margin: 9px 0; }
+.scen-help p b { color: var(--text); font-weight: 600; }
+.scen-help code { font-size: var(--fs-sec); }
+/* Compact cards, several per row (max width via the grid track). Every row as tall as the tallest
+   card, so a card without a description is not shorter than the others. */
+.scen-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 340px)); grid-auto-rows: 1fr; gap: 12px; margin-top: 14px; }
+.scen-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); padding: 11px 13px; box-shadow: var(--shadow); cursor: pointer; }
+.scen-card.sel { border-color: var(--prism-green, #93c120); box-shadow: 0 0 0 1px var(--prism-green, #93c120), var(--shadow); }
+.scen-card-main { min-width: 0; flex: 1; } /* keeps the actions on the bottom edge of a stretched card */
+.scen-card-name { font-weight: 600; font-size: var(--fs-body); color: var(--text); overflow-wrap: anywhere; }
+.scen-card-desc { font-size: var(--fs-sec); color: var(--muted); margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.scen-card-count { font-size: var(--fs-label); color: var(--faint); margin-top: 5px; }
+/* A variant that returns the baseline: said on the card, because the number that shows it is
+   three clicks away in the results. */
+.scen-card-warn { color: var(--prism-warning, #ffae00); }
+.scen-ov-same {
+  margin-left: 8px; font-weight: 400; font-size: var(--fs-label); color: var(--prism-warning, #ffae00);
+}
+.scen-card-actions { display: flex; gap: 4px; margin-top: 2px; }
+
+.modal.sheet.scenario-modal { width: min(560px, 94vw); max-height: 88vh; }
+.scen-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.scen-field input, .scen-field textarea { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: var(--fs-body); resize: vertical; }
+.scen-ov-head { font-size: var(--fs-sec); color: var(--muted); margin: 4px 0 6px; }
+.scen-ov-list { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; }
+.scen-ov-group-name { background: var(--surface-2); padding: 5px 12px; position: sticky; top: 0; }
+.scen-ov-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, auto) 150px; align-items: center; gap: 8px; padding: 5px 12px; font-size: var(--fs-body); }
+.scen-ov-row.on { background: color-mix(in srgb, var(--prism-green, #93c120) 8%, transparent); }
+.scen-ov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scen-ov-base { font-size: var(--fs-sec); color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* A formula shown beside its value: an override replaces it, so it has to be seen. */
+.scen-ov-base { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.scen-fx { font-family: var(--mono); font-size: var(--fs-sec); color: var(--muted); }
+.scen-ov-input { display: block; min-width: 0; }
+.scen-ov-input.refused input { border-color: var(--bad) !important; }
+.scen-ov-input .fx-problem { font-size: var(--fs-sec); }
+.scen-ov-row .scen-ov-input input.num { text-align: left; }
+.scen-ov-replaces { font-size: var(--fs-sec); color: var(--muted); margin-top: 1px; }
+.scen-ov-row input.num { width: 100%; box-sizing: border-box; text-align: right; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: var(--fs-body); }
+.scen-ov-row input.num:disabled { opacity: .45; }
+
+/* The default for a field on a page — a starting point, not a decision, so it carries no specificity:
+   :where() counts as zero, and any rule with a class of its own overrides it. Written as `.view input`
+   it was specificity-tied with every page rule (`.scen-field input`, `.dr-field > input`, …) and won on
+   source order alone — those pages declared their own size and padding and rendered these instead. */
+:where(.view) input, :where(.view) select { background: var(--bg); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 7px; font: inherit; font-size: var(--fs-body); }
+:where(.view) input:where(.num) { text-align: right; width: 90px; }
+
+.cmp { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+.cmp-row { display: grid; grid-template-columns: 150px 1fr 160px; align-items: center; gap: 10px; font-size: var(--fs-body); }
+.cmp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.subjpick { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.subjrow { display: flex; gap: 7px; align-items: center; border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: var(--fs-body); cursor: pointer; max-width: 320px; }
+.subjrow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart { height: 360px; margin-top: 12px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+
+
+/* LCIA page: like Parameters/Scenarios — a scrolling main column plus a static help side panel,
+   shared by both tabs (Compare factors, Manage methods). */
+.view.lcia-view { display: flex; padding: 0; overflow: hidden; flex: 1; min-height: 0; }
+.lcia-main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px; }
+.lcia-side { width: var(--side-w); flex: none; overflow-y: auto; padding: 18px 18px 26px; background: var(--surface);
+  border-left: 1px solid var(--border); }
+.lcia-side .rp-title { font-size: var(--fs-body); font-weight: 700; color: var(--text); margin-bottom: 8px; }
+
+/* Add-flow sheet: the tabs sit directly under the head, inset like the body; the body opens with the
+   search field, so it gets the head's air above it. */
+.flowpick-modal > .flow-tabs { margin: 6px 22px 0; }
+.flowpick-modal .sheet-body { padding-top: 12px; }
+.flowpick-modal .sheet-body .settings-notice { margin: 10px 0 0; }
+.flowpick-modal .sheet-foot .acts { align-items: center; }
+
+/* Scenario editor sheet: the body is a column again, so the override list keeps its own scroll
+   (flex: 1; min-height: 0 above) instead of handing it to the body. */
+.scenario-modal .sheet-body { display: flex; flex-direction: column; min-height: 0; padding-top: 14px; }
+
+/* The "add processes from this model" sheet: a long process list scrolls inside its own box, so the
+   find field above it stays in view. */
+.subjpick-sheet .subjpick { max-height: 52vh; overflow-y: auto; align-content: flex-start; }
+
+/* V430: a description that cites its sources (URLs) made one parameter row 740 px high. It is clamped to
+   three lines; the "more" toggle opens the whole text in place, and long URLs break rather than widen. */
+.pc-desc-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  overflow: hidden; overflow-wrap: anywhere; word-break: break-word; }
+.pc-desc-text.open { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+.pc-desc-more { border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-sec);
+  color: var(--green-ink); cursor: pointer; }
+.pc-desc-more:hover { text-decoration: underline; }
+.pc-desc-more:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; border-radius: 2px; }
+
+/* Long units ("dimensionless", "kg CO2-eq/kWh") ran out of the 128px value column into the comment beside
+   it, because the value line never wrapped. Now the unit drops below the field when it does not fit, and a
+   unit longer than the whole column breaks inside itself. */
+.pc-val-line { flex-wrap: wrap; row-gap: 2px; }
+.pc-unit { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+/* The tag menu grows a row per tag group and opens below a box anywhere on the canvas, so it is capped at
+   the window: the title and the new-group line stay, the groups between them scroll.
+   TagMenu.tsx also moves the menu back inside the window when it would run past an edge. */
+.tagmenu { display: flex; flex-direction: column; max-height: calc(100vh - 16px); }
+.tagmenu-title, .tagmenu-empty, .tagmenu-newgroup { flex: none; }
+.tagmenu-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px; }
+/* "New model" and "new activity" in a narrow toolbar: the framed plus is everyone's "create" mark, but
+   with the words gone the two buttons looked the same, so below the breakpoint each shows a plus beside
+   what it creates. */
+.btn .ico-narrow { display: none; }
+.btn .ico-wide, .btn .ico-narrow { line-height: 0; }
+@media (max-width: 1600px) {
+  .topbar .btn .ico-wide { display: none; }
+  .topbar .btn .ico-narrow { display: inline-flex; }
+}
+/* "Clear highlight" heads the menu now (it used to trail the list): space and a rule below it. */
+.hl-menu > .hl-clear { margin: 0 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--border); border-radius: 0; }
+/* Stacked-bars legend: a CPC class name runs to eighty characters. Cut each entry, full name on hover; a
+   legend past fifteen entries folds behind "+N more" (StackLegend in Results.tsx). */
+.stack-leg-item { max-width: 260px; min-width: 0; }
+.stack-leg-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.stack-leg-more { background: none; border: none; padding: 0; font: inherit; color: var(--green-ink, var(--text));
+  text-decoration: underline; cursor: pointer; }
+/* Unfolded long legend: a few lines, then it scrolls; the "Show fewer" link stands below it. */
+.stack-legend.open { max-height: 150px; overflow-y: auto; margin-bottom: 4px; }
+.stack-leg-foot { margin: 0 0 10px; font-size: var(--fs-sec); }
+
+/* A button inside a subject chip (the "+ Add" of the add-processes sheet, the × of a chosen subject) keeps
+   its size: the name gives way — it already ellipsises — instead of the button breaking into "+" over
+   "Add" and standing twice as tall as its neighbours. */
+.subjrow > button { flex: none; white-space: nowrap; }
+
+/* A box's inherited value — in effect for its inputs, not held by them: the same chip in its group's colour,
+   dashed, so a box under a Production process reads Production and still says that the tag lives
+   elsewhere (lib/occurrences.ts). */
+.pnode-tag.inherited { border-style: dashed; font-style: italic; }
+
+/* A tag group the open model uses (lib/tagGroupsUsed.ts): listed first and marked by this chip, in the Tags
+   window and in a box's tag menu. Green like a tag, but quiet: it labels the group, it is not a tag. The menu is
+   a little wider than it was so the name cell holds a name and the chip; a long name is still cut short. */
+.tag-used-chip { display: inline-block; flex: none; font-size: var(--fs-label); font-weight: 500; line-height: 1.4;
+  padding: 0 6px; border-radius: 999px; background: var(--green-soft); color: var(--green-ink); }
+.tagmenu { max-width: 360px; }
+.tagmenu-group { display: flex; align-items: center; gap: 4px; flex-basis: 146px; }
+.tagmenu-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

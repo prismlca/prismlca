@@ -1,0 +1,149 @@
+/* Detailed results — D3 contribution tree */
+.dr { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+/* The flex gap already spaces the rows — neutralise the block-layout margin the calcbar carries
+   on the Results page, where sibling margins collapse (else the calcbar gap grows to 28px). */
+.dr .calcbar { margin-top: 0; }
+.dr .dr-ind-row { flex-direction: column; align-items: stretch; }
+.dr-full { width: 100%; }
+.dr-ind-row { display: flex; gap: 12px; align-items: flex-end; }
+.dr-sel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dr-sel .subj-subhead { margin: 0; }
+.dr-bgrow { display: flex; gap: 6px; align-items: center; }
+.dr-bgrow .search-sel { flex: 1; min-width: 0; }
+.dr-field { display: grid; grid-template-columns: 1fr 104px; align-items: center; gap: 8px; font-size: var(--fs-sec); color: var(--muted); margin-top: 6px; }
+.dr-field > input, .dr-field > select { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 3px 6px; font: inherit; font-size: var(--fs-sec); }
+.dr-field > input[type="checkbox"] { width: auto; justify-self: start; margin: 0; }
+.dr-field > input:focus, .dr-field > select:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.dr-agg { border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+.dr-agg-title { font-size: var(--fs-body); color: var(--muted); }
+.dr-agg-bar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: var(--surface-2); }
+.dr-agg-seg { height: 100%; }
+.dr-agg-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-sec); color: var(--text); }
+.dr-agg-item { display: inline-flex; align-items: center; gap: 6px; }
+.dr-agg-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.dr-agg-val { color: var(--faint); }
+.dr-agg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.dr-agg-chart { height: 300px; width: 100%; }
+.dr-total { display: flex; align-items: baseline; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.dr-total-val { font-size: var(--fs-title); font-weight: 700; color: var(--prism-navy, #2f4e66); letter-spacing: -0.01em; }
+.dr-total-unit { font-size: var(--fs-sec); color: var(--muted); }
+
+.dr-tree-wrap { flex: 1; min-height: 0; display: flex; }
+/* Canvas row inside the tree column: white host + optional flows panel, exactly host-height.
+   The row TAKES the height rather than being given one — see .ctree3-host for why. */
+.ctree3-mid { display: flex; gap: 12px; align-items: stretch; flex: 1; min-height: 0; }
+.ctree3-mid .ctree3-host { flex: 1; min-width: 0; }
+
+/* Elementary-flows side panel (opt-in via Calculation → Breakdown by elementary flows).
+   Height mirrors .ctree3-host exactly so long lists scroll INSIDE the panel (its own scrollbar
+   via .dr-flows-list) instead of stretching the row past the tree canvas. */
+.dr-flows-panel { width: 320px; flex: none; min-height: 300px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 8px; box-sizing: border-box;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 10px 12px; }
+.dr-flows-head { display: flex; align-items: center; gap: 6px; }
+.dr-flows-save:disabled { color: var(--faint); cursor: default; background: none; }
+.dr-flows-scope { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--muted); min-height: 20px; }
+.dr-flows-scope-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-flows-total { font-size: var(--fs-title); font-weight: 700; color: var(--prism-navy, #2f4e66); letter-spacing: -0.01em;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.dr-flows-total span { font-size: var(--fs-label); font-weight: 400; color: var(--muted); }
+.dr-flows-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+.dr-flow { border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+.dr-flow:last-child { border-bottom: none; }
+.dr-flow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--fs-sec); }
+.dr-flow-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-flow-share { color: var(--green-ink, #769a1a); font-weight: 700; flex: none; }
+.dr-flow-cat { font-size: var(--fs-label); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-flow-bar { height: 3px; background: var(--surface-2); border-radius: 2px; margin: 3px 0 2px; overflow: hidden; }
+.dr-flow-bar span { display: block; height: 100%; background: var(--prism-green, #93c120); border-radius: 2px; }
+.dr-flow-val { font-size: var(--fs-label); color: var(--muted); }
+.dr-flows-hint { font-size: var(--fs-label); color: var(--faint); }
+/* Selected subtree (only meaningful while the flows panel is on): green outline plus the
+   dark-grey glow the canvas cards use — the panel consolidates ALL descendants' flows. */
+.dr-tree-wrap.flows-on .ctree3-svg .cnode.sel .cnode-card { stroke: var(--green); stroke-width: 2px;
+  filter: drop-shadow(0 3px 8px rgba(20, 32, 28, .38)); }
+
+/* D3 tree */
+.ctree3 { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; flex: 1; min-height: 0; }
+.ctree3-toolbar { display: flex; gap: 8px; align-items: center; }
+.ctree3-meta { margin-left: auto; font-size: var(--fs-sec); color: var(--faint); }
+.ctree3-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: var(--fs-sec); color: var(--muted); }
+.ctree3-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.ctree3-legend .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+/* Full available height, not a slice of the viewport. `62vh` left a fixed band of empty stage under
+   the canvas on a tall window and squeezed both boxes on a short one, because it measured the SCREEN
+   rather than the space this row actually has — which is the stage minus the toolbar and the legend,
+   and the legend is one line or three depending on the model. The column and the
+   row above now pass their height down, so `100%` here means "whatever is left". */
+/* `--r-lg`, like every other result surface — the table wrap and the chart cards on the overview tab
+   use it, and these two were the only 10px boxes in the results. The stale banner sits above them and
+   is set in the same radius; two of them a few pixels apart read as a mistake. */
+.ctree3-host { position: relative; width: 100%; height: 100%; min-height: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.ctree3-svg { display: block; width: 100%; height: 100%; cursor: grab; }
+.ctree3-svg:active { cursor: grabbing; }
+/* Screen colours of the tree: theme tokens throughout, so the tree follows dark mode like the
+   rest of the app (it used to be the light palette verbatim — white cards on the dark canvas).
+   The PNG export keeps its own frozen light palette on purpose (TREE_EXPORT_CSS): an exported
+   picture for a report must not depend on whoever exported it having dark mode on.
+   The root card is filled with --navy, which is a LIGHT accent in the dark theme — so its text
+   uses --surface (dark ink there), not literal white. color-mix stands in for the old hand-picked
+   companions (#3d5f7a ≈ navy raised towards the surface; the collapsed stroke between border and
+   faint). */
+.ctree3-svg .link { fill: none; stroke: var(--border-strong); stroke-opacity: 0.9; }
+.ctree3-svg .cnode { cursor: pointer; }
+/* The card, per `design/detailed-results-nodes.html` (compact variant): white body, the ISIC colour
+   as a bar along the top, the name over up to two lines, one meta line, and the share as a
+   percentage over a two-segment bar. Light values are hardcoded on purpose — the same SVG is
+   serialised into the PNG export (see TREE_EXPORT_CSS), which is a picture for a report, not a
+   screen that follows the theme. The board under it is white for the same reason. */
+.ctree3-svg .cnode .cnode-card { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1px; }
+.ctree3-svg .cnode:hover .cnode-card { stroke: var(--green); }
+/* No dashed outline for a folded card (house rule: the line around a box is always solid).
+   That it holds a hidden subtree is said by the chevron and the count beside it, which name how much
+   is hidden — something a broken line never could. */
+.ctree3-svg .cnode.collapsed .cnode-card { stroke: color-mix(in srgb, var(--border-strong) 65%, var(--faint)); }
+.ctree3-svg .cnode.root .cnode-card { fill: var(--navy); stroke: var(--navy); }
+.ctree3-svg .cnode .nm { font-size: 12px; font-weight: 600; fill: var(--text); pointer-events: none; }
+.ctree3-svg .cnode .meta { font-size: 10px; fill: var(--faint); pointer-events: none; }
+.ctree3-svg .cnode .val { font-size: 10.5px; fill: var(--muted); pointer-events: none; }
+.ctree3-svg .cnode .pct { font-size: 12px; font-weight: 700; fill: var(--text); pointer-events: none; }
+.ctree3-svg .cnode .bar-track { fill: var(--surface-3); pointer-events: none; }
+.ctree3-svg .cnode .bar-fill, .ctree3-svg .cnode .bar-direct { pointer-events: none; }
+.ctree3-svg .cnode .meta-dot, .ctree3-svg .cnode .cnode-topbar { pointer-events: none; }
+.ctree3-svg .cnode.root .nm { fill: var(--surface); }
+.ctree3-svg .cnode.root .meta, .ctree3-svg .cnode.root .val { fill: color-mix(in srgb, var(--surface) 72%, transparent); }
+.ctree3-svg .cnode.root .pct { fill: var(--surface); }
+.ctree3-svg .cnode.root .bar-track { fill: color-mix(in srgb, var(--surface) 18%, transparent); }
+/* Right-hand expand/collapse zone — visually set off from the card body (which scopes the
+   elementary-flows breakdown instead). */
+/* The ⓘ on a background process card — same doorway as the info button in the model search. */
+.ctree3-svg .cnode .cnode-info { cursor: pointer; opacity: 0; }
+.ctree3-svg .cnode:hover .cnode-info { opacity: 1; }
+.ctree3-svg .cnode .cnode-info circle { fill: color-mix(in srgb, var(--surface) 90%, transparent); stroke: color-mix(in srgb, var(--navy) 45%, transparent); stroke-width: 1px; }
+.ctree3-svg .cnode .cnode-info:hover circle { stroke: var(--green); }
+.ctree3-svg .cnode .cnode-info text { font-size: 10px; font-weight: 700; fill: var(--navy); pointer-events: none; }
+.ctree3-svg .cnode .chev-zone { fill: var(--surface-2); stroke: var(--border); stroke-width: 1px; cursor: pointer; }
+.ctree3-svg .cnode:hover .chev-zone { stroke: var(--green); }
+/* Zone fill is set inline per node (muted card colour) — hover via filter, not fill. */
+.ctree3-svg .cnode .chev-zone:hover { filter: brightness(1.12); }
+.ctree3-svg .cnode.collapsed .chev-zone { stroke: color-mix(in srgb, var(--border-strong) 65%, var(--faint)); }
+.ctree3-svg .cnode.root .chev-zone { fill: color-mix(in srgb, var(--navy) 90%, var(--surface)); stroke: var(--navy); }
+.ctree3-svg .cnode .chev { font-size: 14px; fill: var(--muted); pointer-events: none; }
+.ctree3-svg .cnode .chev-n { font-size: 9.5px; fill: var(--muted); pointer-events: none; }
+.ctree3-svg .cnode.root .chev, .ctree3-svg .cnode.root .chev-n { fill: color-mix(in srgb, var(--surface) 92%, transparent); }
+/* Root-card companions — the controller leaves these to CSS (data nodes keep their inline ISIC
+   colour); ≈ the old hand-picked #3d5f7a / white washes. */
+.ctree3-svg .cnode.root .cnode-topbar { fill: color-mix(in srgb, var(--navy) 90%, var(--surface)); }
+.ctree3-svg .cnode.root .meta-dot { fill: color-mix(in srgb, var(--surface) 72%, transparent); }
+.ctree3-svg .cnode.root .bar-fill { fill: color-mix(in srgb, var(--surface) 45%, transparent); }
+.ctree3-svg .cnode.root .bar-direct { fill: var(--surface); }
+/* Match the canvas (React Flow) controls exactly: container look + .react-flow__controls-button */
+.ctree3-controls { position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.ctree3-controls .react-flow__controls-button { display: flex; align-items: center; justify-content: center; }
+.ctree3-info { position: absolute; right: 14px; bottom: 14px; max-width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; font-size: var(--fs-sec); line-height: 1.5; color: var(--text); pointer-events: none; opacity: 0; transition: opacity 140ms; box-shadow: var(--shadow-lg); }
+.ctree3-info.show { opacity: 1; }
+.ctree3-info .name { font-weight: 600; font-size: var(--fs-body); margin-bottom: 6px; line-height: 1.3; }
+.ctree3-info .row { display: flex; justify-content: space-between; gap: 10px; }
+.ctree3-info .row span:first-child { color: var(--faint); }
+.ctree3-foot { font-size: var(--fs-label); color: var(--faint); text-align: right; }

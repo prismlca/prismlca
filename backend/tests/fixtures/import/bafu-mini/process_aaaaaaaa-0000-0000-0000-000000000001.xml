@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ecoSpold>
+  <dataset generator="prism-test" number="1001" timestamp="2026-01-01 00:00:00">
+    <metaInformation>
+      <processInformation>
+        <referenceFunction amount="1" category="test" datasetRelatesToProduct="true" generalComment="Invented fixture, BAFU structure without BAFU data. UUID: aaaaaaaa-0000-0000-0000-000000000001" infrastructureProcess="false" name="Test widget, at plant" subCategory="widgets" unit="kg"/>
+        <geography location="CH"/>
+        <technology text="none"/>
+        <timePeriod dataValidForEntirePeriod="true">
+          <startDate>2015-01</startDate>
+          <endDate>2020</endDate>
+        </timePeriod>
+        <dataSetInformation impactAssessmentResult="false" type="1" version="1"/>
+      </processInformation>
+    </metaInformation>
+    <flowData>
+      <exchange category="test" location="CH" meanValue="1.0" name="Test widget, at plant" number="1001" subCategory="widgets" uncertaintyType="0" unit="kg">
+        <outputGroup>0</outputGroup>
+      </exchange>
+      <exchange category="test" location="CH" meanValue="2.0" name="Test bolt, at plant" number="1002" subCategory="widgets" uncertaintyType="0" unit="kg">
+        <inputGroup>5</inputGroup>
+      </exchange>
+      <exchange CASNumber="000124-38-9" category="emissions to air" formula="CO2" meanValue="0.5" name="Carbon dioxide, fossil" number="1" subCategory="high. pop." uncertaintyType="1" standardDeviation95="1.1" unit="kg">
+        <outputGroup>4</outputGroup>
+      </exchange>
+      <exchange CASNumber="000115-07-1" category="emissions to air" formula="C3H6" meanValue="0.001" name="Propene" number="2" subCategory="high. pop." uncertaintyType="0" unit="kg">
+        <outputGroup>4</outputGroup>
+      </exchange>
+      <exchange CASNumber="" category="emissions to water" formula="" meanValue="3.0" name="Water" number="3" subCategory="river" uncertaintyType="0" unit="kg">
+        <outputGroup>4</outputGroup>
+      </exchange>
+      <exchange CASNumber="" category="non material emissions" formula="" meanValue="0.2" name="Noise, test vehicle" number="4" subCategory="unspecified" uncertaintyType="0" unit="km">
+        <outputGroup>4</outputGroup>
+      </exchange>
+    </flowData>
+  </dataset>
+</ecoSpold>

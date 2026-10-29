@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<flowPropertyDataSet xmlns="http://lca.jrc.it/ILCD/FlowProperty" xmlns:common="http://lca.jrc.it/ILCD/Common" version="1.1">
+  <flowPropertiesInformation><dataSetInformation><common:UUID>66666666-6666-6666-6666-666666666666</common:UUID>
+    <common:name xml:lang="en">Energy</common:name></dataSetInformation>
+    <quantitativeReference><referenceToReferenceUnitGroup type="unit group data set" refObjectId="88888888-8888-8888-8888-888888888888" uri="../unitgroups/88888888-8888-8888-8888-888888888888.xml"/></quantitativeReference>
+  </flowPropertiesInformation>
+</flowPropertyDataSet>

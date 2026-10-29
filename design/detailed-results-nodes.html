@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>PrismLCA — detailed-results nodes, redesign proposal</title>
+<!-- The binding palette. Every colour below resolves to a token from this file. -->
+<link rel="stylesheet" href="prism-theme.css">
+<style>
+/* ---------------------------------------------------------------------------
+ * The app's working tokens, as index.css derives them from the brand palette.
+ * Copied so this page looks exactly like the product, not approximately.
+ * ------------------------------------------------------------------------- */
+@font-face {
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../frontend/src/renderer/src/assets/fonts/NotoSansVariable.woff2") format("woff2");
+}
+:root {
+  --bg: #f3f5f2; --surface: #ffffff; --surface-2: #f4f6f1; --surface-3: #eef1ec;
+  --border: #e0e4dd; --border-strong: #cfd5cb;
+  --text: #26313a; --muted: #5f6b6f; --faint: #8b968f;
+  --green: var(--prism-green); --green-ink: #5f8410; --green-soft: #eaf3d6;
+  --navy: var(--prism-navy); --navy-soft: #e5ecf1; --purple: var(--prism-purple); --purple-soft: #f0e4ec;
+  --ok: #3a9d5d; --wait: #d18a00; --bad: var(--prism-alert); --info: var(--prism-info);
+  --shadow: 0 1px 2px rgba(20,32,28,.06), 0 4px 16px rgba(20,32,28,.05);
+  --shadow-lg: 0 10px 34px rgba(20,32,28,.14);
+  --r: 8px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --fs-label: 11px; --fs-sec: 12px; --fs-body: 13px; --fs-base: 14px; --fs-title: 17px; --fs-page: 26px;
+  /* ISIC section colours — the identity a results node already carries today. */
+  --isic-a: #639922; --isic-c: #534AB7; --isic-d: #BA7517; --isic-e: #A32D2D; --isic-h: #378ADD;
+}
+:root[data-theme='dark'] {
+  --bg: #131c24; --surface: #1a262f; --surface-2: #1f2d38; --surface-3: #243541;
+  --border: #2c3d49; --border-strong: #38505f;
+  --text: #e7edf0; --muted: #a4b4bf; --faint: #74868f;
+  --green: #a6d42e; --green-ink: #b9e34a; --green-soft: #26331a;
+  --navy: #7ea6c4; --navy-soft: #1e2f3c;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.3);
+  --shadow-lg: 0 10px 34px rgba(0,0,0,.45);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Noto Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: var(--fs-base); }
+
+/* Page furniture — not part of the proposal, just enough to read it by. */
+.page { padding: 22px 26px 40px; }
+.page-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+h1 { font-size: var(--fs-page); font-weight: 600; margin: 0; letter-spacing: -.01em; }
+.page-h .tag { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .08em;
+  color: var(--green-ink); background: var(--green-soft); border-radius: 4px; padding: 2px 7px; font-weight: 600; }
+.lede { max-width: 92ch; color: var(--muted); font-size: var(--fs-body); line-height: 1.6; margin: 6px 0 18px; }
+h2 { font-size: var(--fs-title); font-weight: 600; margin: 26px 0 4px; display: flex; align-items: center; gap: 9px; }
+h2::before { content: ''; width: 9px; height: 9px; border-radius: 3px; background: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft); flex: none; }
+h2 + p { margin: 0 0 12px; color: var(--muted); font-size: var(--fs-body); max-width: 92ch; line-height: 1.6; }
+.theme-toggle { margin-left: auto; font-size: var(--fs-body); background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r); padding: 5px 11px; cursor: pointer; color: var(--text); }
+
+/* The canvas the tree lives on: the model canvas's dot grid, same as the Model page. */
+.canvas { position: relative; background:
+    radial-gradient(circle at 1px 1px, var(--border-strong) 1px, transparent 0) 0 0 / 18px 18px,
+    var(--bg);
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 26px 22px; overflow-x: auto; }
+
+/* ---------------------------------------------------------------------------
+ * THE PROPOSAL: one results node.
+ *
+ * Mixture, as asked: the card body, the rounded corners, the colour bar and the
+ * type scale come from the model canvas (`.pnode`); the anatomy — title, meta
+ * line, a rule, a percentage bar and a row of figures with their own column
+ * heads — comes from the Double Loop screenshot; the expand/collapse zone with
+ * its chevron is the one this tree already has, only on a white card now.
+ * ------------------------------------------------------------------------- */
+.rnode {
+  position: relative; width: 272px; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: var(--r);
+  box-shadow: var(--shadow); padding: 0 0 9px; --accent: var(--isic-c);
+}
+/* The colour bar of the canvas node, carrying the ISIC section instead of a user colour. */
+.rnode-bar { height: 5px; border-radius: var(--r) var(--r) 0 0; background: var(--accent); }
+.rnode-body { padding: 8px 33px 0 11px; }
+/* The zone and the ⓘ float over the card's right edge, so every block below reserves their width —
+   without it the share percentage ran underneath the chevron (caught in the first render). */
+.rnode-title { font-size: var(--fs-body); font-weight: 600; line-height: 1.3; padding-right: 20px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The screenshot's second line: what kind of thing this is. Here: ISIC section and geography. */
+.rnode-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px;
+  font-size: var(--fs-label); color: var(--faint); white-space: nowrap; overflow: hidden; }
+.rnode-meta .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.rnode-meta .sep { color: var(--border-strong); }
+.rnode-meta .chip { border: 1px solid var(--border); border-radius: 7px; padding: 0 5px; color: var(--muted); }
+.rnode-rule { height: 1px; background: var(--border); margin: 9px 0 0; }
+
+/* The percentage bar from the screenshot — the one thing this card is really about.
+   Two segments, because an LCA share is two facts: what this branch carries in total,
+   and how much of it is emitted by this process itself. */
+.rnode-share { padding: 9px 33px 0 11px; }
+.rnode-share-h { display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-label); color: var(--muted); }
+.rnode-share-h b { margin-left: auto; flex: none; font-size: var(--fs-body); color: var(--text); font-variant-numeric: tabular-nums; }
+.rnode-bar-track { position: relative; height: 6px; border-radius: 3px; background: var(--surface-3); margin-top: 5px; overflow: hidden; }
+.rnode-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 42%, var(--surface)); }
+.rnode-bar-direct { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+
+/* The figure row: the screenshot's three columns, with LCA's three numbers. */
+.rnode-figs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 7px; padding: 10px 33px 0 11px; }
+.rnode-fig-h { font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
+.rnode-fig-v { font-size: var(--fs-body); font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.rnode-fig-u { font-size: var(--fs-label); color: var(--faint); }
+
+/* The expand/collapse zone this tree already has: right edge, rounded into the card, chevron on it.
+   Kept as its own hit area — clicking the card scopes the flows panel, clicking here folds the branch. */
+.rnode-zone { position: absolute; top: 5px; right: 0; bottom: 0; width: 26px;
+  border-left: 1px solid var(--border); border-radius: 0 var(--r) var(--r) 0;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; color: var(--muted); }
+.rnode-zone:hover { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--text); }
+.rnode-zone .chev { font-size: 15px; line-height: 1; }
+.rnode-zone .n { font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+
+/* The ⓘ of the current design: background datasets have documentation, foreground ones do not. */
+.rnode-info { position: absolute; top: 11px; right: 33px; width: 15px; height: 15px; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted);
+  font-size: 10px; font-weight: 700; display: grid; place-items: center; cursor: pointer; }
+.rnode-info:hover { border-color: var(--green); color: var(--green-ink); }
+
+/* States, all of them conventions this tree or the canvas already uses. */
+/* A leaf has no zone, so it has no width to reserve either. */
+.rnode.leaf .rnode-body, .rnode.leaf .rnode-share, .rnode.leaf .rnode-figs { padding-right: 11px; }
+.rnode.leaf .rnode-title { padding-right: 20px; }
+/* A folded card keeps the same solid outline as every other box (house rule). What it holds is said
+   by the chevron and the count beside it. */
+.rnode.collapsed { border-color: var(--border-strong); }
+.rnode.sel { border-color: var(--green);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 32%, transparent), var(--shadow); }
+/* The root is the accent card. Its ink is `--surface`, not white: `--navy` is a *dark* blue in the
+   light theme and a *light* one in the dark theme, so hardcoded white text became white-on-light the
+   moment the theme flipped (caught in the dark-mode render). One token, both directions. */
+.rnode.root { background: var(--navy); border-color: var(--navy); color: var(--surface); }
+.rnode.root .rnode-bar { background: color-mix(in srgb, var(--surface) 34%, var(--navy)); }
+.rnode.root .rnode-meta, .rnode.root .rnode-fig-h, .rnode.root .rnode-fig-u,
+.rnode.root .rnode-share-h { color: color-mix(in srgb, var(--surface) 68%, transparent); }
+.rnode.root .rnode-share-h b { color: var(--surface); }
+.rnode.root .rnode-rule { background: color-mix(in srgb, var(--surface) 22%, transparent); }
+.rnode.root .rnode-bar-track { background: color-mix(in srgb, var(--surface) 16%, transparent); }
+.rnode.root .rnode-bar-fill { background: color-mix(in srgb, var(--surface) 45%, transparent); }
+.rnode.root .rnode-bar-direct { background: var(--surface); }
+.rnode.root .rnode-zone { background: color-mix(in srgb, var(--surface) 12%, transparent);
+  border-left-color: color-mix(in srgb, var(--surface) 22%, transparent); color: var(--surface); }
+.rnode.root .rnode-meta .chip { border-color: color-mix(in srgb, var(--surface) 30%, transparent); color: var(--surface); }
+/* No mark for a process of the model itself: the meta line says "Model process" in words, and the
+   green left edge this once had means something else on the canvas (a node carrying a share of the
+   result). One sign, two meanings, was worse than no sign. */
+
+/* The compact rung, for tiers four and deeper where a full card would drown the tree. */
+.rnode.compact { width: 216px; padding-bottom: 8px; }
+.rnode.compact .rnode-figs, .rnode.compact .rnode-rule { display: none; }
+.rnode.compact .rnode-share { padding-top: 7px; }
+
+/* Tree scaffolding for the mock-up: tiers as columns, links as SVG curves behind the cards. */
+.tree { position: relative; display: flex; gap: 76px; align-items: flex-start; min-width: 1180px; }
+.tier { display: flex; flex-direction: column; gap: 16px; }
+.tier.mid { margin-top: 26px; }
+.tree svg.links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.tree svg.links path { fill: none; stroke: var(--border-strong); stroke-width: 1.5; }
+.strip { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.cap { font-size: var(--fs-label); color: var(--faint); margin: 0 0 6px; }
+.note { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green);
+  border-radius: var(--r); padding: 11px 14px; margin: 14px 0 0; font-size: var(--fs-body);
+  color: var(--muted); line-height: 1.6; max-width: 96ch; }
+.note b { color: var(--text); }
+ul.tight { margin: 6px 0 0; padding-left: 20px; }
+ul.tight li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-h">
+    <h1>Detailed results — node redesign</h1>
+    <span class="tag">proposal, not shipped</span>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">Toggle dark</button>
+  </div>
+  <p class="lede">
+    The contribution tree keeps its shape — one card per process, tiers left to right, a chevron that folds a
+    branch away. What changes is the card: today it is a 200×42 block in its ISIC colour with a name, a
+    percentage and a hairline bar, and everything else is only in the hover panel. Here it becomes a white
+    canvas-style card that says what the tree is for: <b>how much of the total this branch carries, how much of
+    that this process emits itself, and what it takes to get there.</b> Numbers below are the PVC-window model,
+    IPCC 2021 GWP100.
+  </p>
+
+  <h2>The tree</h2>
+  <p>Root, two open tiers and one folded branch — the same interaction as today: the card body scopes the
+     elementary-flow panel, the zone on the right folds the subtree.</p>
+
+  <div class="canvas">
+    <div class="tree">
+      <svg class="links"></svg>
+
+      <!-- Tier 0 — the functional unit. Navy, as today. -->
+      <div class="tier">
+        <div class="rnode root" data-node="fu" style="--accent: var(--navy)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">PVC window 100×120 — cradle-to-grave</div>
+            <div class="rnode-meta"><span class="chip">Functional unit</span><span class="sep">·</span><span>1 unit · 30 kg</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Total</span><b>100%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:100%"></div><div class="rnode-bar-direct" style="width:2.1%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Total</div><div class="rnode-fig-v">62.4</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">1.31</div><div class="rnode-fig-u">2.1%</div></div>
+            <div><div class="rnode-fig-h">Upstream</div><div class="rnode-fig-v">61.1</div><div class="rnode-fig-u">97.9%</div></div>
+          </div>
+          <div class="rnode-zone" title="Fold this branch"><span class="chev">◂</span></div>
+        </div>
+      </div>
+
+      <!-- Tier 1 -->
+      <div class="tier mid">
+        <div class="rnode" data-node="pvc" data-parent="fu" style="--accent: var(--isic-c)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">PVC profile, extruded — frame &amp; sash</div>
+            <div class="rnode-meta"><span class="dot"></span><span>C · Manufacturing</span><span class="sep">·</span><span>RER</span><span class="sep">·</span><span class="chip">Model process</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>34.9%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:34.9%"></div><div class="rnode-bar-direct" style="width:1.6%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">21.8</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">0.98</div><div class="rnode-fig-u">4.5%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">3.95</div><div class="rnode-fig-u">kg</div></div>
+          </div>
+          <div class="rnode-zone" title="Fold this branch"><span class="chev">◂</span></div>
+        </div>
+
+        <div class="rnode sel" data-node="glass" data-parent="fu" style="--accent: var(--isic-c)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Flat glass, coated — insulating glazing unit</div>
+            <div class="rnode-meta"><span class="dot"></span><span>C · Manufacturing</span><span class="sep">·</span><span>RER</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>29.0%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:29%"></div><div class="rnode-bar-direct" style="width:6.4%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">18.1</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">4.02</div><div class="rnode-fig-u">22.2%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">20.9</div><div class="rnode-fig-u">kg</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">7</span></div>
+        </div>
+
+        <div class="rnode collapsed" data-node="lorry" data-parent="fu" style="--accent: var(--isic-h)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Transport, freight, lorry 16–32 t, EURO6</div>
+            <div class="rnode-meta"><span class="dot"></span><span>H · Transport</span><span class="sep">·</span><span>RER</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>7.8%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:7.8%"></div><div class="rnode-bar-direct" style="width:5.9%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">4.87</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">3.68</div><div class="rnode-fig-u">75.6%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">120</div><div class="rnode-fig-u">tkm</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">12</span></div>
+        </div>
+
+        <div class="rnode" data-node="inc" data-parent="fu" style="--accent: var(--isic-e)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Municipal waste incineration, PVC</div>
+            <div class="rnode-meta"><span class="dot"></span><span>E · Water &amp; waste</span><span class="sep">·</span><span>CH</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>5.1%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:5.1%"></div><div class="rnode-bar-direct" style="width:4.6%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">3.19</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">2.87</div><div class="rnode-fig-u">90.0%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">30</div><div class="rnode-fig-u">kg</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">4</span></div>
+        </div>
+      </div>
+
+      <!-- Tier 2 — compact rung -->
+      <div class="tier" style="margin-top: 44px">
+        <div class="rnode compact" data-node="pvcresin" data-parent="pvc" style="--accent: var(--isic-d)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Polyvinylchloride, bulk polymerised</div>
+            <div class="rnode-meta"><span class="dot"></span><span>D · Chemicals</span><span class="sep">·</span><span>RER</span></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>15.2 kg CO₂-Eq</span><b>24.4%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:24.4%"></div><div class="rnode-bar-direct" style="width:9.1%"></div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">9</span></div>
+        </div>
+        <div class="rnode compact" data-node="elec" data-parent="pvc" style="--accent: var(--isic-a)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Electricity, medium voltage, market</div>
+            <div class="rnode-meta"><span class="dot"></span><span>A · Energy</span><span class="sep">·</span><span>DE</span></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>6.55 kg CO₂-Eq</span><b>10.5%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:10.5%"></div><div class="rnode-bar-direct" style="width:0.4%"></div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">23</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>What the bar says.</b> The pale fill is this branch's share of the total; the solid head is the part this
+    process emits <i>itself</i>. So a card whose bar is almost entirely solid is a hotspot you can act on, and one
+    that is almost entirely pale is a doorway — the impact sits further upstream, behind the chevron. That is the
+    one question the current node cannot answer without hovering it.
+  </div>
+
+  <h2>States</h2>
+  <p>Every state is a convention this tree or the canvas already uses — nothing new to learn.</p>
+  <div class="canvas">
+    <div class="strip">
+      <div><p class="cap">Leaf — nothing to unfold, no zone</p>
+        <div class="rnode leaf" style="--accent: var(--isic-d)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Sodium chloride, powder</div>
+            <div class="rnode-meta"><span class="dot"></span><span>D · Chemicals</span><span class="sep">·</span><span>RER</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>0.4%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:0.4%"></div><div class="rnode-bar-direct" style="width:0.4%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">0.25</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">0.25</div><div class="rnode-fig-u">100%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">1.4</div><div class="rnode-fig-u">kg</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+        </div>
+      </div>
+      <div><p class="cap">Folded — same solid outline, and the count of what is hidden</p>
+        <div class="rnode collapsed" style="--accent: var(--isic-c)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Steel, low-alloyed, hot rolled</div>
+            <div class="rnode-meta"><span class="dot"></span><span>C · Manufacturing</span><span class="sep">·</span><span>Europe</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>10.2%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:10.2%"></div><div class="rnode-bar-direct" style="width:7.7%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">6.37</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">4.81</div><div class="rnode-fig-u">75.5%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">2.5</div><div class="rnode-fig-u">kg</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone" title="Unfold this branch"><span class="chev">▸</span><span class="n">18</span></div>
+        </div>
+      </div>
+      <div><p class="cap">Selected — the canvas's green ring; scopes the flows panel</p>
+        <div class="rnode sel" style="--accent: var(--isic-h)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Transport, freight train</div>
+            <div class="rnode-meta"><span class="dot"></span><span>H · Transport</span><span class="sep">·</span><span>Europe</span></div>
+            <div class="rnode-rule"></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>Share of total</span><b>1.9%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:1.9%"></div><div class="rnode-bar-direct" style="width:1.5%"></div></div>
+          </div>
+          <div class="rnode-figs">
+            <div><div class="rnode-fig-h">Cumulative</div><div class="rnode-fig-v">1.19</div><div class="rnode-fig-u">kg CO₂-Eq</div></div>
+            <div><div class="rnode-fig-h">Direct</div><div class="rnode-fig-v">0.94</div><div class="rnode-fig-u">79.0%</div></div>
+            <div><div class="rnode-fig-h">Amount</div><div class="rnode-fig-v">48</div><div class="rnode-fig-u">tkm</div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone"><span class="chev">▸</span><span class="n">6</span></div>
+        </div>
+      </div>
+      <div><p class="cap">Compact — tier four and deeper</p>
+        <div class="rnode compact" style="--accent: var(--isic-e)">
+          <div class="rnode-bar"></div>
+          <div class="rnode-body">
+            <div class="rnode-title">Treatment of wastewater, average</div>
+            <div class="rnode-meta"><span class="dot"></span><span>E · Water &amp; waste</span><span class="sep">·</span><span>CH</span></div>
+          </div>
+          <div class="rnode-share">
+            <div class="rnode-share-h"><span>0.51 kg CO₂-Eq</span><b>0.8%</b></div>
+            <div class="rnode-bar-track"><div class="rnode-bar-fill" style="width:0.8%"></div><div class="rnode-bar-direct" style="width:0.6%"></div></div>
+          </div>
+          <button class="rnode-info" title="Process details">i</button>
+          <div class="rnode-zone"><span class="chev">▸</span><span class="n">3</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Decisions worth your yes or no</h2>
+  <div class="note">
+    <ul class="tight">
+      <li><b>White card, colour on the edge.</b> Today the whole card is the ISIC colour and the text is white on
+        it — which is why it can hold two lines and no figures. The canvas's answer is a white card with a 5 px
+        colour bar; that frees the surface for numbers and keeps the section readable at a glance.</li>
+      <li><b>Two segments in one bar</b> (branch share, and the direct part inside it) instead of two bars. One
+        row, one question: is this a hotspot or a doorway?</li>
+      <li><b>Three figures, and which three.</b> Cumulative, direct, amount — the same three a reviewer asks for.
+        Share of parent stays in the hover panel; it is a comparison, not a property of the node.</li>
+      <li><b>No mark for your own processes beyond the words.</b> The meta line says “Model process”; the
+        green left edge that first stood there means “carries a share of the result” on the canvas, and one
+        sign with two meanings is worse than none.</li>
+      <li><b>No dashed outlines.</b> A folded card is not drawn with a broken line; the chevron and the
+        number beside it say what is hidden, and they say <i>how much</i>, which a dashed border cannot.</li>
+      <li><b>The zone keeps its two meanings</b> (card = flows panel, zone = fold) and now shows how many
+        children are hidden, which the chevron alone never said.</li>
+      <li><b>The compact rung keeps the same reading order</b> — value on the left, share bold on the right —
+        so the eye does not have to relearn the card halfway down the tree.</li>
+      <li><b>Two sizes.</b> Full card for the first three tiers, compact from the fourth — a full card on a
+        23-child tier reads as a wall. If you would rather have one size everywhere, say so and it goes.</li>
+      <li><b>Wider than the canvas node</b> (272 px against 210): three columns of figures need it. The tier gap
+        grows with it, so a deep tree gets wider — the fit-to-view button already handles that.</li>
+    </ul>
+  </div>
+</div>
+<script>
+/* The links are drawn from the cards' real boxes: hand-written coordinates were wrong the moment a
+   title wrapped to two lines. Parent right edge → child left edge, one cubic each, the same curve the
+   tree uses today. */
+function drawLinks() {
+  const tree = document.querySelector('.tree')
+  const svg = tree.querySelector('svg.links')
+  const box = tree.getBoundingClientRect()
+  svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`)
+  svg.innerHTML = ''
+  const at = (el) => {
+    const r = el.getBoundingClientRect()
+    return { l: r.left - box.left, r: r.right - box.left, m: r.top - box.top + r.height / 2 }
+  }
+  for (const child of tree.querySelectorAll('[data-parent]')) {
+    const parent = tree.querySelector(`[data-node="${child.dataset.parent}"]`)
+    if (!parent) continue
+    const a = at(parent), b = at(child)
+    const dx = (b.l - a.r) / 2
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', `M${a.r},${a.m} C${a.r + dx},${a.m} ${b.l - dx},${b.m} ${b.l},${b.m}`)
+    svg.appendChild(path)
+  }
+}
+addEventListener('load', drawLinks)
+addEventListener('resize', drawLinks)
+document.fonts?.ready.then(drawLinks)
+</script>
+</body>
+</html>

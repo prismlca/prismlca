@@ -1,0 +1,368 @@
+.crumb { color: var(--muted); font-weight: 400; } .crumb b { color: var(--text); font-weight: 600; }
+/* The model picker sizes itself to the longest model name in the project — 350 px for one line of the
+   toolbar. It shrinks to 140 px before anything wraps and grows back when there is room. */
+.topbar .crumb { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 200px; max-width: 360px; min-width: 0; white-space: nowrap; }
+.topbar .crumb select { flex: 1 1 140px; min-width: 140px; max-width: 320px; text-overflow: ellipsis; }
+.topbar select, .search-sel { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 4px 7px; font: inherit; font-size: var(--fs-sec); }
+/* The LCIA-method picker must not push the pills into wrapping: it shrinks (ellipsis) instead.
+   The cap was 620px and a full method name ("CML v4.8 2016 no LT · acidification no LT · …") drew
+   575 of them, which is a lot of toolbar for a control you read once and then ignore. 480 is about
+   a sixth off that, still wide enough for the family and the indicator before the ellipsis,
+   and the whole name is one hover away in the title. */
+.topbar .search-sel { max-width: 480px; min-width: 120px; flex: 1 1 120px; text-overflow: ellipsis; }
+/* Its flex-basis is the narrow end, not the full name: a wrapping bar decides on base widths, and a
+   480 px basis pushed the whole button group onto a second row at 1280 px. */
+
+/* The hint above the search filters when a place name appears in the search text: geography is in
+   neither of the two indexes, so the word contributes nothing. Warning colour like `.wb-error`, but
+   without a pointer and without a click — a hint, not a bolt; the search runs anyway, exactly as
+   the user typed it (never override it). */
+/* The same spot, two tones: quietly the rule before anyone types — loudly the place name that was
+   found. One slot, so the bar does not jump when it switches. */
+.geo-note {
+  color: var(--faint); font-size: var(--fs-label); line-height: 1.4;
+  /* Flush with the text INSIDE the search field: its box has a 12 px margin, 1 px border and 10 px
+     padding, which makes 23 px — here 12 + 11. And pulled close under the field so the line
+     belongs to it. */
+  margin: -6px 12px 10px; padding: 0 11px;
+}
+.geo-hint {
+  background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad);
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, transparent); border-radius: var(--r-sm);
+  /* The same text edge as `.geo-note` and the search field: 12 px margin + 1 px border + 10 px. */
+  margin: -6px 12px 10px; padding: 6px 10px; font-size: var(--fs-sec); line-height: 1.45;
+}
+
+.wb-error { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); border-bottom: 1px solid var(--bad); padding: 7px 16px; font-size: var(--fs-body); cursor: pointer; }
+/* One line for a write that outlives a second — the same place the error and the note take. */
+/* Floats instead of taking a line: in the flow it pushed the canvas down by its own height for as long as
+   a slow write ran, and back up after — the canvas "wobbled" on every formula commit. */
+.wb-busy { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 90;
+  display: flex; align-items: center; gap: 8px; background: var(--surface-2); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow-lg); padding: 6px 14px;
+  font-size: var(--fs-body); pointer-events: none; }
+.wb-note { background: var(--navy-soft); color: var(--navy); border-bottom: 1px solid color-mix(in srgb, var(--navy) 30%, transparent); padding: 7px 16px; font-size: var(--fs-body); cursor: pointer; }
+.wb-ask { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--navy-soft); color: var(--navy); border-bottom: 1px solid color-mix(in srgb, var(--navy) 30%, transparent); padding: 7px 16px; font-size: var(--fs-body); }
+.recalc-hint { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: var(--fs-sec); }
+.recalc-info { display: inline-flex; align-items: center; cursor: help; color: var(--muted); }
+.recalc-info svg { width: 14px; height: 14px; }
+.recalc-info:hover { color: var(--navy); }
+
+/* LCIA characterization-factor comparison */
+.lcia-view .ind-picker { margin: 6px 0 0; border-top: none; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.lcia-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 6px; }
+.lcia-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--navy-soft); color: var(--navy); border-radius: 12px; padding: 3px 8px; font-size: var(--fs-sec); }
+.lcia-chip-unit { color: var(--muted); }
+.lcia-chip-x { border: none; background: none; color: var(--navy); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 0 0 2px; }
+.lcia-chip-x:hover { color: var(--bad); }
+.lcia-table-wrap { margin-top: 12px; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.lcia-table-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+.lcia-table-head .flowpick-search { max-width: 280px; }
+.lcia-count { color: var(--muted); font-size: var(--fs-sec); }
+.lcia-export { margin-left: auto; }
+.lcia-table-scroll { overflow: auto; max-height: calc(100vh - 340px); border: 1px solid var(--border); border-radius: 8px; }
+.lcia-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+.lcia-table th, .lcia-table td { padding: 5px 9px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.lcia-table thead th { position: sticky; top: 0; background: var(--surface-3); color: var(--navy); z-index: 1; vertical-align: bottom; }
+.lcia-table .lcia-cf-th { text-align: right; }
+.lcia-th-unit { color: var(--muted); font-weight: 400; }
+.lcia-table tbody tr:nth-child(even) { background: var(--surface-2); }
+.lcia-cats { color: var(--muted); }
+.lcia-table td.lcia-cf { text-align: right; font-variant-numeric: tabular-nums; }
+.lcia-na { color: var(--border-strong); }
+
+/* LCIA custom-method manager (tabs live in the topbar as .rtabs, like Results) */
+.card-plain { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); padding: 14px; }
+.lcia-mm-cols { display: grid; grid-template-columns: minmax(230px, 0.65fr) minmax(380px, 1.7fr); gap: 12px; margin-top: 12px; align-items: start; }
+/* The action bar heads the card: its rule runs edge to edge through the card's padding. */
+.lcia-mm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 -14px 12px; padding: 0 14px 12px; border-bottom: 1px solid var(--border); }
+/* Head, description and method rows share one 2px rhythm, and the head is boxed like a row (same
+   padding, same .lcia-mrow-act), so every edit/delete pair sits in one column at even steps. */
+.lcia-fam { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
+/* Families are parted by a rule that stops at the rows' inset, short of the card's edges, so it
+   reads as a break inside the list and not as a second header rule. Absolute, so it adds no flex gap. */
+.lcia-fam + .lcia-fam { position: relative; padding-top: 12px; }
+.lcia-fam + .lcia-fam::before { content: ''; position: absolute; top: 0; left: 6px; right: 6px; border-top: 1px solid var(--border); }
+.lcia-fam-head { display: flex; align-items: center; gap: 8px; padding: 3px 6px; }
+.lcia-fam-head .lcia-mrow-act { margin-left: auto; }
+.lcia-fam-name { font-weight: 600; font-size: var(--fs-body); color: var(--navy); }
+.lcia-fam-count { font-size: var(--fs-body); color: var(--faint); flex: none; }
+.lcia-fam-desc { font-size: var(--fs-sec); color: var(--faint); padding: 0 6px; }
+.lcia-fam-empty { font-size: var(--fs-sec); color: var(--faint); padding: 4px 2px; }
+.lcia-fam-methods .lcia-fam-empty { padding: 4px 6px; }
+.lcia-fam-methods { display: flex; flex-direction: column; gap: 2px; }
+.lcia-mrow { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; }
+.lcia-mrow.clickable { cursor: pointer; }
+.lcia-mrow:hover { background: var(--surface-2); }
+.lcia-mrow.active { background: var(--navy-soft); }
+.lcia-mrow-name { flex: 1; min-width: 0; font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcia-mrow-unit { font-size: var(--fs-label); color: var(--faint); flex: none; }
+.lcia-mrow-act { display: flex; gap: 3px; flex: none; }
+.lcia-ed-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.lcia-ed-name { font-weight: 600; color: var(--navy); }
+.lcia-ed-unit { font-size: var(--fs-sec); color: var(--muted); }
+.lcia-addflow { position: relative; margin-bottom: 8px; }
+/* The add field is as wide as the filter field of the Compare tab. The table's filter sits at the row's
+   right end in the add field's size: the same height, font, padding and frame, and a square magnifier as
+   tall. Heights are fixed because the two fields would otherwise take their height from different fonts. */
+.lcia-addflow-row { display: flex; align-items: center; gap: 12px; }
+.lcia-addflow-row .flowpick-search { max-width: 280px; height: 36px; margin-bottom: 0; }
+.lcia-addflow-row .flow-search { margin-left: auto; gap: 8px; }
+.lcia-addflow-row .flow-search-input { height: 36px; font-size: var(--fs-body); padding: 8px 0; border-radius: 6px; }
+.lcia-addflow-row .flow-search.open .flow-search-input { width: 280px; padding: 8px 10px; }
+.lcia-addflow-row .flow-search-input:focus { border-color: var(--green); }
+.lcia-addflow-row .flow-search-btn { flex: none; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--muted); background: var(--bg); border: 1px solid var(--border-strong); border-radius: 6px; }
+.lcia-addflow-row .flow-search-btn:hover, .lcia-addflow-row .flow-search-btn.on { color: var(--navy); border-color: var(--navy); }
+.lcia-addflow-hits { max-height: 200px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; margin-top: 4px; }
+.lcia-hit { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none; cursor: pointer; padding: 5px 8px; font-size: var(--fs-sec); border-bottom: 1px solid var(--border); }
+.lcia-hit:last-child { border-bottom: none; }
+.lcia-hit:hover { background: var(--surface-2); }
+.lcia-hit:disabled { opacity: .5; cursor: default; }
+.lcia-hit-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcia-hit-cat { color: var(--faint); font-size: var(--fs-label); white-space: nowrap; flex: none; }
+.lcia-hit-add { color: var(--green); font-weight: 700; margin-left: auto; flex: none; }
+.lcia-ed-scroll { overflow: auto; max-height: calc(100vh - 360px); border: 1px solid var(--border); border-radius: 8px; }
+.lcia-cf-input { width: 110px; text-align: right; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 6px; font-variant-numeric: tabular-nums; }
+.lcia-cf-input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+/* A sheet capped at 88vh: with many indicators ticked the name fields scroll in the body instead of
+   pushing the foot off-screen. */
+.modal.sheet.lcia-dup { width: min(520px, 92vw); max-height: 88vh; }
+.lcia-dup .sheet-body { padding-top: 14px; }
+.lcia-dup-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; margin: 6px 0 10px; }
+.lcia-dup-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: var(--fs-body); cursor: pointer; border-bottom: 1px solid var(--border); }
+.lcia-dup-row:last-child { border-bottom: none; }
+.lcia-dup-row:hover { background: var(--surface-2); }
+.lcia-dup-row.on { background: var(--navy-soft); }
+.lcia-dup-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcia-dup-names { max-height: 200px; overflow-y: auto; }
+
+.work { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr var(--side-w); }
+.panel { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.panel.right { border-right: none; border-left: 1px solid var(--border); }
+.panel-h { padding: 12px 14px 6px; }
+.panel-b { padding: 0 12px 12px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+
+/* search sidebar: fixed width + filters */
+.search-panel { position: relative; }
+.filters { padding: 8px 12px 4px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.type-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.tchip { border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--muted);
+  border-radius: 999px; padding: 3px 10px; font-size: var(--fs-sec); cursor: pointer; }
+.tchip.on { background: var(--prism-green, #93c120); border-color: var(--prism-green, #93c120); color: #fff; font-weight: 600; }
+.region-box input { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: var(--fs-body); }
+.region-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.rchip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-3); color: var(--ink);
+  border-radius: 999px; padding: 2px 4px 2px 9px; font-size: var(--fs-sec); }
+.rchip button { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+.rchip button:hover { color: var(--bad, #cc4b37); }
+.search { margin: 4px 12px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 7px 10px; background: var(--surface-2); color: var(--faint); }
+.search input { border: none; background: transparent; font: inherit; color: var(--text); width: 100%; outline: none; }
+.srow { display: flex; gap: 6px; padding: 0 12px; }
+/* Which databases a search covers. A row each, because the names are long and a wrapped checkbox
+   list reads as noise; the Index button only appears on a row that needs one. */
+.search-dbs { display: flex; flex-direction: column; gap: 2px; padding: 6px 12px 8px; }
+.search-db { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); cursor: pointer; }
+.search-db input { flex: none; margin: 0; }
+.search-db-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name does not stretch, so "(list all)" sits against the word it belongs to instead of
+   drifting to the far edge of the panel. What is pushed right is the Index button, which belongs
+   to the row rather than to the name. */
+.search-db .btn.sm, .search-db .settings-hint { flex: none; margin-left: auto; }
+/* A link, not a button: it does not change anything, it shows you something. */
+.search-db-all { flex: none; color: var(--navy); cursor: pointer; text-decoration: underline; }
+.search-db-all:hover { color: var(--green-ink); }
+.search-listing { padding: 4px 12px 6px; font-size: var(--fs-sec); color: var(--muted); }
+/* What the answer says about itself: weak match, a word no result carries, a dataset the region
+   filter hid. Quiet on purpose — these are facts about the list, not errors. */
+.search-notes { margin: 0; padding: 2px 12px 6px 26px; font-size: var(--fs-sec); color: var(--muted); }
+/* What the chosen regions actually do. Quiet, but not optional: one region outranks relevance, and
+   without saying so the first page of hits reads as a bad search rather than as a region you asked for. */
+.region-note { margin-top: 4px; font-size: var(--fs-sec); color: var(--muted); }
+.search-notes li { margin: 2px 0; }
+/* The database dropdown fills the row, so dropdown+Index+Search spans exactly the same width as
+   the search input above and the region filter below (all inset 12px). */
+.search-panel .srow .search-sel { flex: 1; min-width: 0; }
+/* Index-build progress: its own row right below the search row / Index button. */
+.idx-progress { margin: 6px 12px 0; }
+.idx-progress-bar { height: 5px; border-radius: 3px; background: var(--bg-muted); overflow: hidden; }
+.idx-progress-bar span { display: block; height: 100%; border-radius: 3px; background: var(--prism-green, #93c120); transition: width .6s ease; }
+.idx-progress-num { font-size: var(--fs-label); color: var(--faint); margin-top: 3px; }
+/* "This database is not indexed / stale" nudge under the search row. */
+.idx-hint {
+  margin: 6px 12px 0; padding: 6px 8px; border-radius: 7px; font-size: var(--fs-sec); line-height: 1.45;
+  background: color-mix(in srgb, var(--prism-warning, #ffae00) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--prism-warning, #ffae00) 45%, var(--border));
+  color: var(--ink);
+}
+.search input:disabled { opacity: .6; }
+.search-status { display: flex; align-items: flex-start; gap: 8px; padding: 10px 4px; font-size: var(--fs-body); color: var(--faint); }
+.search-status em { font-style: normal; color: var(--faint); opacity: .8; }
+.spinner { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 1px; border: 2px solid var(--border-strong);
+  border-top-color: var(--prism-green, #93c120); border-radius: 50%; animation: prism-spin .7s linear infinite; }
+@keyframes prism-spin { to { transform: rotate(360deg); } }
+
+/* A busy label that is alive. "Writing…" on a button sat perfectly still for three minutes and read
+   as a hung click; the three dots are the cheapest possible sign that something is still happening.
+   The dots are a pseudo-element so the label itself stays plain text (and stays translatable), and
+   the width is reserved with `1.1ch` so the button does not wobble under the cursor as they cycle. */
+.dots::after {
+  content: '…';
+  display: inline-block;
+  width: 1.1ch;
+  text-align: left;
+  animation: prism-dots 1.2s steps(1, end) infinite;
+}
+@keyframes prism-dots {
+  0%   { content: '.'; }
+  33%  { content: '..'; }
+  66%  { content: '…'; }
+}
+/* Motion is a nice-to-have; a still ellipsis is the honest fallback. */
+@media (prefers-reduced-motion: reduce) {
+  .dots::after { animation: none; content: '…'; }
+}
+/* Spinner plus a running clock, inline in a line of text (the report foot's "checking what changed · 42 s"). */
+.busy-clock { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.busy-clock .spinner { width: 12px; height: 12px; margin-top: 0; }
+@media (prefers-reduced-motion: reduce) { .busy-clock .spinner { animation: none; } }
+.res { border: 1px solid var(--border); border-radius: var(--r); padding: 9px 10px; background: var(--surface); }
+.res:hover { border-color: var(--green); box-shadow: var(--shadow); }
+.res .nm { font-weight: 600; font-size: var(--fs-body); margin-bottom: 5px; line-height: 1.3; }
+.chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: var(--fs-label); font-weight: 600; padding: 2px 7px; border-radius: 5px; background: var(--surface-3); color: var(--muted); }
+.chip.muted { background: transparent; color: var(--faint); font-weight: 400; }
+/* A reused distance that is incomplete: a road leg not measured, a ferry in it, or an unchecked route. */
+.chip.warn { background: transparent; color: var(--wait); font-weight: 600; box-shadow: inset 0 0 0 1px var(--wait); }
+/* A hit below the similarity threshold. Not a warning colour: it is offered on purpose, because a
+   cosine cannot tell "not in this database" from "named differently in it". */
+.chip.weak { background: transparent; color: var(--faint); font-weight: 400; box-shadow: inset 0 0 0 1px var(--surface-3); }
+/* A hit from the user's own library — same names as ecoinvent, different owner. */
+/* Whose dataset: ecoinvent navy, BAFU violet, My processes yellow — one colour per source, the same in
+   search hits, inspector and details. */
+.chip.lib { background: var(--yellow-soft); color: var(--yellow); }
+/* Which background a hit comes from — shown only while more than one background is ticked. */
+.chip.bg { background: var(--navy-soft); color: var(--navy); }
+.chip.bg.bafu { background: var(--violet-soft); color: var(--violet); }
+/* An eyebrow that also names the dataset's source: the chip sits flush right and keeps its own case. */
+.eyebrow.with-chip { display: flex; align-items: center; gap: 8px; }
+.eyebrow.with-chip .chip { margin-left: auto; text-transform: none; letter-spacing: 0; }
+/* A region nobody has chosen yet — the one control in the review that blocks the commit. */
+.imp-row select.region-pending { border-color: var(--prism-warning); color: var(--prism-warning); }
+/* The import's busy line: spinner + elapsed seconds — a long read must not look like a hang. */
+.imp-busy { display: flex; align-items: center; gap: 8px; }
+.imp-spinner {
+  flex: none; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--green);
+  animation: imp-spin .8s linear infinite;
+}
+@keyframes imp-spin { to { transform: rotate(360deg); } }
+.imp-busy-s { color: var(--faint); font-variant-numeric: tabular-nums; }
+/* The same line, standing in a button row instead of under one: no trailing margin, and free to
+   shrink and wrap rather than push the stop button onto its own line. */
+.imp-busy-inline { margin: 0; flex: 1; min-width: 0; align-items: center; }
+.imp-stop { flex: none; }
+/* Bar, count and the way out on ONE line, so the bar's middle sits on the middle of the button
+   that started it. Stacked — the way the index build draws it — the count pushes the bar up and
+   the row reads as three things at three heights. */
+.imp-readbar { display: flex; align-items: center; gap: 8px; }
+/* Thicker than the 5px hairline the index build uses: there it stands alone under a heading, here
+   it stands between a 34px button and a 24px square, and a hairline between those two reads as a
+   crack rather than as a bar. */
+.imp-readbar .idx-progress-bar { flex: 1; min-width: 0; height: 10px; border-radius: 5px; }
+.imp-readbar .idx-progress-bar span { border-radius: 5px; }
+.imp-readbar .idx-progress-num { flex: none; margin-top: 0; font-variant-numeric: tabular-nums; }
+/* The stop square off a tape deck: small and square, sized to the bar rather than to the button
+   beside it. Scoped to `.ico` so the review step's labelled Stop keeps its own shape. */
+.btn.ico.imp-stop {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: var(--r-sm);
+}
+/* The square carries the button's own border colour, not its text colour: at full ink a 11px
+   filled block beside a green primary reads as an alarm, and stopping a read is not one. It
+   follows the border on hover, so the whole button lights up as one thing. */
+.btn.ico.imp-stop svg { width: 11px; height: 11px; color: var(--border-strong); }
+.btn.ico.imp-stop:hover:not(:disabled) svg { color: var(--faint); }
+
+/* type-to-find geography picker (search filter + collapsed-result region choice) */
+/* `min-width: 0` with a preferred 90px, not a hard 78px floor (on a market dataset the Add button
+   dropped to a second line). The minimums of a market row added up to exactly the row's width — 24px type
+   chip + 78px picker + 147px amount + 43px button + three 6px gaps = 310px in a 310px row — so the button had
+   nowhere to go but the next line. The picker is the one item here that reads fine a little narrower, so it is
+   the one that yields. The *basis* is what matters, not the minimum: a flex line is broken on each item's
+   hypothetical size — flex-basis clamped by min/max — so a 78px floor (or a 90px basis) still forced the break
+   before any shrinking was considered. At 60px the row fits, and the picker then grows into whatever is left,
+   which on a 680px dialog is about 130px. */
+.geocombo { position: relative; flex: 1 1 70px; min-width: 0; }
+.geocombo > input { width: 100%; min-width: 0; box-sizing: border-box; padding: 4px 7px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: var(--fs-sec); }
+.geocombo > input:focus { outline: none; border-color: var(--green); }
+/* Drawn in a portal on `document.body` (see GeoCombo): inside the search dialog `.modal` is a containing
+   block for fixed descendants — its open animation leaves an identity transform behind — and the list used to
+   be offset by the dialog's own position, off the bottom right of the window. */
+.geocombo-list { position: fixed; z-index: 200; max-height: 280px; overflow-y: auto; box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.28); padding: 4px; }
+.geocombo-grp { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: .04em; color: var(--faint);
+  padding: 6px 8px 2px; position: sticky; top: 0; background: var(--surface); }
+.geocombo-list button { display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 5px 8px; font-size: var(--fs-body); color: var(--ink); border-radius: 4px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.geocombo-list button:hover { background: var(--surface-2); }
+.geocombo-list button.on { color: var(--green); font-weight: 600; }
+.geocombo-empty { padding: 8px; font-size: var(--fs-sec); color: var(--faint); }
+.chip.t-P { background: var(--navy-soft); color: var(--navy); }
+.chip.t-M { background: var(--green-soft); color: var(--green-ink); }
+.chip.t-G { background: var(--purple-soft); color: var(--purple); }
+
+
+/* External agents (MCP): the banner under the toolbar and the drawer with sessions and cards.
+   Same family as .wb-ask above — a question from an external client is the same kind of thing as
+   one from the chat, only its way to the answer is the drawer, not a chat. */
+.wb-xa { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--navy-soft); color: var(--navy); border-bottom: 1px solid color-mix(in srgb, var(--navy) 30%, transparent); padding: 7px 16px; font-size: var(--fs-body); }
+.xa-panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--panel); color: var(--text); border-left: 1px solid var(--border); box-shadow: -8px 0 24px color-mix(in srgb, var(--navy) 25%, transparent); z-index: 60; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.xa-head { display: flex; align-items: center; justify-content: space-between; }
+.xa-head h3 { margin: 0; }
+.xa-muted { color: var(--muted); font-size: var(--fs-label); }
+.xa-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--navy-soft); display: flex; flex-direction: column; gap: 8px; }
+.xa-approval { border-color: color-mix(in srgb, var(--prism-warning) 60%, transparent); }
+.xa-card-head { font-size: var(--fs-body); }
+.xa-q-text { font-weight: 600; }
+.xa-q-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.xa-card-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.xa-args { margin: 0; max-height: 120px; overflow: auto; font-size: var(--fs-label); white-space: pre-wrap; word-break: break-all; }
+.xa-session { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.xa-session-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.xa-session-head .btn { margin-left: auto; }
+.xa-approval-mode { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-label); }
+.xa-calls { margin: 0; padding-left: 22px; font-size: var(--fs-label); display: flex; flex-direction: column; gap: 3px; }
+.xa-calls li.err code { color: var(--prism-alert); }
+.xa-calls li.soft code { color: var(--prism-warning); }
+.xa-effect { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.xa-detail { color: var(--muted); }
+.xa-launch { margin: 0; }
+/* What the search added to the query ("Also searched as polyethylene terephthalate · Search only for
+   “PET”"). Same quiet register as the notes: a fact about the answer, with one way back. */
+.search-asked { padding: 2px 12px 4px; font-size: var(--fs-sec); color: var(--muted); }
+.search-asked b { color: var(--ink); font-weight: 600; }
+/* The search panel's build line: what is indexed on the left, the time left for it on the right; and
+   under it, once, what the build is for. */
+.idx-progress-num.idx-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px;
+  font-variant-numeric: tabular-nums; }
+.idx-progress-num.idx-line b { color: var(--text); font-weight: 600; }
+.idx-note { margin-top: 6px; padding: 6px 8px; border-radius: 6px; background: var(--green-soft);
+  font-size: var(--fs-label); line-height: 1.45; color: var(--text); }
+
+/* LCIA comparison: factors that agree within a row, on a soft green — the cell carries it, so it sits above
+   the row's zebra stripe. */
+.lcia-table td.lcia-same { background: var(--green-soft); }
+/* The comparison's sortable headers are buttons (keyboard-reachable), dressed as the header text they sit in. */
+.lcia-table .th-sort-btn { all: unset; cursor: pointer; text-align: inherit; }
+.lcia-table .th-sort-btn:hover { color: var(--green-ink); }
+.lcia-table .th-sort-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 2px; }
+
+/* A question in the drawer with its own-answer row (askAnswers.tsx) beneath the options: the row keeps
+   the compact size of the drawer's buttons while closed, the opened field takes the card's width. */
+.xa-q { display: flex; flex-direction: column; gap: 6px; }
+.xa-q .chat-ask-own { align-self: flex-start; padding: 4px 9px; font-size: var(--fs-sec); }

@@ -1,0 +1,2466 @@
+{
+  "generated_by": "frontend/scripts/dump-tool-manifest.ts (npm run tools:manifest)",
+  "note": "Canonical capability surface of the PrismLCA assistant. surface=\"api\" tools are thin wrappers around the local FastAPI and are portable to an external MCP server; surface=\"ui\" tools drive the Electron renderer and only work inside the app; surface=\"subagent\" tools are backed by a nested LLM research loop (web search only) and would have to be reimplemented, not wrapped.",
+  "tool_count": 53,
+  "tools": [
+    {
+      "name": "list_models",
+      "label": "List models & databases",
+      "group": "Read & search",
+      "description": "List all databases: the user's foreground models (writable, kind=\"foreground\"), the library (kind=\"library\") and the read-only background databases (kind=\"background\": ecoinvent and/or BAFU:20XY; kind=\"biosphere\": elementary flows). Use to find model/database names.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "get_current_model",
+      "label": "Get current model",
+      "group": "Read & search",
+      "description": "Return the foreground model currently open on the canvas (the one the user is chatting about). Prefer this database for edits unless the user names another.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "search_background",
+      "label": "Search background database",
+      "group": "Read & search",
+      "description": "Semantic + facet search over the background database(s) released to this chat (ecoinvent, BAFU:20XY — see the system prompt for which) — and, when the user released it, their own library — to find activities to use as inputs. Each hit says in \"database\" where it comes from. A hit carrying \"library\": true is the USER'S OWN dataset (imported or hand-built, maintained by them): when it is the intended supplier, prefer it and say so; do not treat it as vetted background data. Returns candidates with their database + code. Pass SEVERAL queries at once in \"queries\" when you need several datasets — one call per dataset is the usual reason a build takes hundreds of rounds; up to six per call, more is refused because the answer would be cut. Rows under \"also_present\" are NOT matches: each searched database puts its best few there even when nothing in it fits, so you can tell \"returned nothing\" from \"was never searched\". \"activity_types\" narrows a search to production datasets (\"P\"), markets (\"M\") or market groups (\"G\") — a market is what an INPUT usually links to (it carries the supply mix and transport), a production dataset is what you open to see a technology; without it all three come back. Geo-variants of one activity are folded into one hit by default (collapse_geo=true); collapse_geo=false lists every region as its own row. Keep countries and regions OUT of \"query\" — geography is not part of the search text, so a place name there finds nothing and only blurs the query; put it in \"geographies\" instead. Each hit carries \"treatment\": true when the dataset's reference product is NEGATIVE, meaning an exchange supplying it must have a negative amount — check this instead of guessing from the name. A hit does NOT carry the dataset's comment or its own inputs, and both regularly overturn the choice: a generic name can be calibrated on another application entirely (a \"printed wiring board\" on laptop boards, a \"NiMH battery\" on a laptop pack) and a dataset drawing a different named material in bulk is a product made from it, not the material. So for the few inputs that will carry the result, follow a hit with get_process_details BEFORE linking it — for a market, on the producer behind it too, because a market comment is boilerplate. WHEN THE ANSWER STARTS WITH A \"warnings\" LIST, ACT ON IT BEFORE USING ANY HIT — it repeats, in words, every honesty signal this answer carries (a signal in a small field three times fired and three times read past cost a run six queries for a material the first answer had already flagged). The individual fields remain, because the search ALWAYS returns its nearest neighbours and they look like answers. \"unmatched_terms\": parts of your query that appear in no result and carry a digit (an emission norm, a year, a size class) — that specifier does not exist, so what you got is a similar dataset; say so and pick deliberately. \"terms_not_in_results\": WORDS of your query that no result's name or reference product carries, which is the one signal for \"is this material even in here\" — it means EITHER the database names it differently (ecoinvent calls PVC \"polyvinyl chloride\", so check the hits first) OR there is no dataset and you need a proxy whose reasoning you write into the exchange comment. It does NOT by itself mean the material is absent. \"weak_match\": true means nothing resembled the query at all. Per hit, \"weak\": true marks a result below the same similarity threshold — a list can be labelled a strong match on the strength of one hit while the rest are unrelated, so trust the per-hit flag over the list-level one.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "English natural-language query, e.g. \"electricity production hard coal\""
+          },
+          "queries": {
+            "type": "array",
+            "description": "Several searches in ONE call, at most six, as plain strings — results are returned per query, in order, all under the call-level geographies/limit/activity_types. For a query that needs its OWN filter use \"filtered_queries\" instead. Pass ONE of \"query\", \"queries\" or \"filtered_queries\" — never two, and never an empty list.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filtered_queries": {
+            "type": "array",
+            "description": "Several searches in ONE call where each query carries its OWN geographies/limit/activity_types — e.g. DE waste datasets and RER chemicals in one call, which the call-level filter cannot express. Objects only; for plain strings use \"queries\".",
+            "items": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string"
+                },
+                "geographies": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limit": {
+                  "type": "number"
+                },
+                "activity_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "query"
+              ]
+            }
+          },
+          "database": {
+            "type": "string",
+            "description": "One database to search, by name; omit for the default: every background database released to this chat plus, when released, the user's own \"My processes\"."
+          },
+          "databases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Several databases to search in ONE call, by name (e.g. [\"ecoinvent-3.12-cutoff\", \"My processes\"]) — your own choice instead of the default set. Names from list_models."
+          },
+          "geographies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional geography codes, and they OUTRANK how well a dataset matches. ONE code (e.g. [\"DE\"]) puts every hit in that region first, then RER / Europe without Switzerland / GLO / RoW, then the rest — so a poor match in the region you asked for is listed above a much better one outside it. Nothing is dropped: keep reading past the requested region before concluding that nothing fits. TWO OR MORE codes are a real filter — other regions are dropped, and \"outside_geography_filter\" says when a dataset named exactly like your query exists only outside them. When something you expect is missing, search once without geographies."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results per query (default 25, or 8 when several queries are given). Without it the answer gets LONGER when several background databases are searched, so that a second one adds datasets instead of crowding out the first. Set it only when you want a specific number: your value is the total and is not scaled."
+          },
+          "activity_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Restrict to dataset types: any of \"P\" (production), \"M\" (market), \"G\" (market group). Omit for all three. The words \"production\" / \"market\" / \"market group\" are accepted too."
+          },
+          "collapse_geo": {
+            "type": "boolean",
+            "description": "Default true: the geo-variants of one activity are one hit listing its regions. false = one row per region."
+          },
+          "literal": {
+            "type": "boolean",
+            "description": "Default false. When a query carries an abbreviation (\"PET\", \"rPET\", \"HDPE\") or an everyday word the databases do not use (\"truck\" for lorry, \"gasoline\" for petrol, German words like \"LKW\"), the search also looks for it the way the databases write it, and \"searched_as\" in the answer says what it replaced. A query that asks for one transport mode (\"freight by truck\") also ranks that mode's transport services above the others. true searches only the text as typed, without either — use it when \"searched_as\" shows a reading you did not mean."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "list_activities",
+      "label": "List processes",
+      "group": "Read & search",
+      "description": "List the activities (processes) in a database. Use for a foreground model to see its processes, and to get the exact names you can then pass instead of codes. Set with_exchanges=true to read the WHOLE foreground in one call — every process with its exchanges, amounts, formulas and comments. That is the call for a final read-through (are the amounts and signs right?), which otherwise costs one request per process. Pass consumes_database + consumes_code to turn it round and list only the processes that CONSUME a given dataset, with their amounts and exchange uids — the first call of a dataset swap, since the uids feed straight into edit_exchange action=\"replace_input\".",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Database/model name; omit for the model open on the canvas."
+          },
+          "with_exchanges": {
+            "type": "boolean",
+            "description": "true = include each activity's exchanges. The open foreground model only — never ask this of a background database."
+          },
+          "consumes_database": {
+            "type": "string",
+            "description": "With consumes_code: list only processes consuming THIS dataset."
+          },
+          "consumes_code": {
+            "type": "string",
+            "description": "Code of the dataset to find the consumers of."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_process_details",
+      "label": "Get process details",
+      "group": "Read & search",
+      "description": "Full detail of one or more activities: fields, ISIC/CPC classification, and their exchanges (inputs/outputs) with uids, formulas and comments. \"reference_amount\" and \"treatment\" tell you the sign of the reference product — decisive for how an exchange supplying this activity must be signed. READ \"service_note\" WHEN IT IS THERE: it quotes the dataset saying that it covers the PROCESSING only and NOT the material being processed (extrusion, rolling, drawing, coating, dyeing, canning). Such a dataset is priced per kilogram and looks exactly like a material, but supplies none — the material is a SECOND exchange next to it, and leaving it out silently removes the main ingredient (measured: an aluminium frame modelled with 0.95 kg of \"section bar extrusion\" alone lost 12.2 of its 22.8 kg CO2e). For a market the note names the supplier it came from. Checking what a market really mixes (which geographies, in what share) is what its exchanges are for. Pass \"codes\" to look up SEVERAL at once, and summary=true when you only need unit, location, reference product and sign rather than every exchange. detail=\"review\" adds what a critical review asks and the build does not: the dataset's system boundary (included activities), product information, synonyms, validity period and source file, and per exchange its production volume and uncertainty distribution — use it when documenting or reviewing a dataset, not when linking one. For a unit conversion (a dataset billed in m³ when you have kilograms) call get_flow_properties instead of assuming a density.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Database name; omit for the model open on the canvas."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code — or use \"name\" instead."
+          },
+          "codes": {
+            "type": "array",
+            "description": "Several activity codes in ONE call — verifying the datasets behind a build is six or seven lookups, and one call each is one round each. ALL of them are looked up in the SAME database: pass \"database\" explicitly when they are background datasets, because it otherwise defaults to the model open on the canvas and every code comes back \"not found\".",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string",
+            "description": "Process name instead of the code; must match exactly one process."
+          },
+          "location": {
+            "type": "string",
+            "description": "Location, to disambiguate a name used in several regions."
+          },
+          "summary": {
+            "type": "boolean",
+            "description": "true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product. Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange."
+          },
+          "detail": {
+            "type": "string",
+            "description": "\"review\" = add the critical-review fields (system boundary, product information, synonyms, validity, per-exchange production volume and uncertainty). Omit for the normal read."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_flow_properties",
+      "label": "Get flow properties",
+      "group": "Read & search",
+      "description": "Reference-product flow properties (carbon content, dry mass, wet mass, price, heating value, …) of an activity. THIS IS WHERE A DENSITY COMES FROM: for a dataset measured in m³, \"wet mass\" and \"dry mass\" are the kilograms in one cubic metre — look it up here instead of assuming a textbook value, and quote it. Measured 2026-08-12: a model assumed 700 kg/m³ for MDF to convert its own kilograms into the m³ the dataset bills in, while the dataset itself carried wet mass 684 kg/m³. The same applies to any unit conversion you are about to do by hand (kg↔m³, carbon content for a biogenic balance, heating value for an energy recovery credit). Pass \"input\" (the name or code of one of the activity's inputs) to read THAT input's properties instead — the heating value of the gas a boiler burns, the carbon content of the plastic a moulding draws — without opening the input's own dataset first.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Database name; omit for the model open on the canvas."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code — or use \"name\" instead."
+          },
+          "name": {
+            "type": "string",
+            "description": "Process name instead of the code."
+          },
+          "location": {
+            "type": "string",
+            "description": "Location, to disambiguate a name used in several regions."
+          },
+          "input": {
+            "type": "string",
+            "description": "Optional: name (or code) of one of the activity's technosphere inputs — its properties are returned instead of the reference product's. A substring of the name works when it matches one input."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_model_graph",
+      "label": "Get model graph",
+      "group": "Read & search",
+      "description": "The node+edge graph of a foreground model (what the canvas shows): processes and their links.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Foreground model name; omit for the model open on the canvas."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "list_methods",
+      "label": "List impact methods",
+      "group": "Read & search",
+      "description": "Find LCIA methods. Filter with a query — matching is forgiving, so \"EF 3.1 climate change\", \"EF v3.1 climate\", \"ef3.1 gwp\" all find the same method. With no query (or families=true) you get the CATALOGUE: every method family with its indicator count, so you can pick a family and then query inside it instead of guessing names. Use the returned method array as the \"method\" argument to calculate. Prefer entries with recommended:true — recommended:false marks specialist variants (biogenic-only, \"no LT\", GWP20/500, SLCF) that are easy to pick by mistake and give misleading totals.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Optional filter text; punctuation, case and a \"v\" before a version are ignored."
+          },
+          "queries": {
+            "type": "array",
+            "description": "Several filter texts in ONE call — use this whenever a study needs more than one indicator (climate + eutrophication + acidification was three calls).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "families": {
+            "type": "boolean",
+            "description": "true = return only the list of families with their indicator counts."
+          },
+          "recommended_only": {
+            "type": "boolean",
+            "description": "true = leave out the specialist variants (biogenic-only, \"no LT\", GWP20/500, SLCF) and return only the ones this advice points at. A family answers with dozens of tuples otherwise, and a study normally wants one of them."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "search_elementary_flows",
+      "label": "Search elementary flows",
+      "group": "Read & search",
+      "description": "MODELLING use: find a biosphere (elementary) flow — emissions to air/water/soil, resource withdrawals — to attach as a direct exchange on a foreground process. Returns database+code for edit_exchange action=\"add\" type=\"biosphere\". To add a flow to your own LCIA method instead, use search_biosphere_flows (it returns the \"ref\" string that edit_lcia_method action=\"set_factor\" needs).",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Flow name text, e.g. \"Carbon dioxide, fossil\"."
+          },
+          "queries": {
+            "type": "array",
+            "description": "Several flow names in ONE call — a use phase usually needs a handful at once (N2O, ammonia, nitrate, phosphate), and one call each is one round each.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "direction": {
+            "type": "string",
+            "description": "Optional: \"output\" = emissions to nature, \"input\" = resources from nature."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results per query (default 15)."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "list_tags",
+      "label": "List tags",
+      "group": "Read & search",
+      "description": "List tag groups (dimensions) and their allowed values, or one activity's assigned tags.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Optional — with code, returns that activity's tags."
+          },
+          "code": {
+            "type": "string",
+            "description": "Optional activity code."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "check_model_health",
+      "label": "Check model health",
+      "group": "Read & search",
+      "description": "Run the structural model-health linter on a foreground model: missing units, unlinked/orphaned references, circular links, duplicate flows, missing reference products, mass balance and unit dimensions. Use after building/changing a model to verify it is sound. The answer lists \"checks_run\", so a quiet result can be read as \"checked and fine\" rather than \"not checked\".",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Foreground model name; omit for the model open on the canvas."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_audit",
+      "label": "Read audit log",
+      "group": "Read & search",
+      "description": "Recent audit-log entries (who/what changed, incl. AI actions) and undo/redo availability.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "get_skill",
+      "label": "Load a skill",
+      "group": "Read & search",
+      "description": "Load the full instructions of one or more skills by name (the skills are listed in your system prompt). Call this before carrying out a task that matches a skill. Pass \"names\" to load SEVERAL at once — a build usually needs three to five, and one call per skill is three to five wasted rounds; they all come from the same lookup either way.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "One skill name as listed."
+          },
+          "names": {
+            "type": "array",
+            "description": "Several skill names at once — preferred when you know you need more than one.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "calculate",
+      "label": "Calculate impact score",
+      "group": "Calculate",
+      "description": "Compute the LCIA score of an activity for one or more methods. Get method arrays from list_methods — or pass \"method_family\" (\"EF v3.1\", \"IPCC 2021\", \"ReCiPe 2016\") to score EVERY standard indicator of that family in one call, without listing them first. Pass \"codes\" to score SEVERAL activities in one call — comparing a handful of background datasets is what a proxy decision is made of, and one call each is one round each. \"direct_split\": true adds how much of each score the activity emits ITSELF (\"direct\": its own combustion or process emissions) versus what its inputs bring (\"upstream\") — the gate-to-gate check; a market or an assembly is ~0 % direct, a boiler ~80 %.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Database name; omit for the model open on the canvas."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code."
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Several activity codes in ONE call, all in \"database\"; results are returned per code, in order."
+          },
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A single method as its string tuple (from list_methods)."
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Multiple methods at once."
+          },
+          "method_family": {
+            "type": "string",
+            "description": "A whole LCIA method family by name, e.g. \"EF v3.1\" — every standard indicator of it, no \"no LT\" or \"incl. biogenic\" twins unless you name such a family. Replaces method/methods."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Reference amount (default 1)."
+          },
+          "direct_split": {
+            "type": "boolean",
+            "description": "true = also return \"direct\" (the activity's own emissions), \"upstream\" and \"direct_share\" per score."
+          },
+          "job": {
+            "type": "string",
+            "description": "Background mode for a LONG calculation (a whole method family, many methods): \"start\" answers at once with a job_id; \"status\" reports progress; \"result\" returns the scores when done; \"cancel\" stops it between methods. Omit for an immediate answer. One code per job."
+          },
+          "job_id": {
+            "type": "string",
+            "description": "The job to read or cancel (job=\"status\" | \"result\" | \"cancel\")."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "compare",
+      "label": "Compare processes",
+      "group": "Calculate",
+      "description": "Compare several subjects across several methods (matrix of scores). Put the BASELINE or reference first: every other subject gets its difference to it in percent (\"vs_first\"), and per indicator the subject with the smallest impact is named (\"lowest_per_indicator\"). Pass \"methods\" as tuples from list_methods, or \"method_family\" (\"EF v3.1\") for every standard indicator of a family at once. Set show_ranking=false when the subjects are NOT alternatives with the same functional unit (a part against the whole, scope subtotals against a total) — a \"lowest\" is meaningless there.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subjects": {
+            "type": "array",
+            "description": "Subjects to compare.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "database": {
+                  "type": "string",
+                  "description": "db"
+                },
+                "code": {
+                  "type": "string",
+                  "description": "code"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "optional label"
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "amount"
+                }
+              },
+              "required": [
+                "database",
+                "code"
+              ]
+            }
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Method tuples. Either this or method_family."
+          },
+          "method_family": {
+            "type": "string",
+            "description": "A whole method family by name (\"EF v3.1\", \"IPCC 2021\") as the indicator rows."
+          },
+          "normalize_to_first": {
+            "type": "boolean",
+            "description": "true = also give each score as a ratio to the first subject (reference = 1)."
+          },
+          "show_ranking": {
+            "type": "boolean",
+            "description": "Default true. false = no \"lowest_per_indicator\" — for part/whole comparisons."
+          }
+        },
+        "required": [
+          "subjects"
+        ]
+      }
+    },
+    {
+      "name": "delete_model",
+      "label": "Delete model",
+      "group": "Edit model",
+      "description": "Delete a whole foreground model and all its processes. Destructive and NOT undoable — say what you are about to delete and why before you call it.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model name."
+          }
+        },
+        "required": [
+          "database"
+        ]
+      }
+    },
+    {
+      "name": "create_process",
+      "label": "Create process",
+      "group": "Edit model",
+      "description": "Create one or several foreground processes in a model. Pass \"processes\" to create a batch in a single call (a process given in the top-level fields beside the list is created too). The answer carries each new process's \"code\" — batch included — so never go looking for it with another call. ALWAYS write the \"comment\" here, in the creating call: it is the material the report's inventory chapter is WRITTEN from — not printed verbatim, so it need not be polished, but nothing missing from it can appear in the report — and describing processes \"later\" reliably means never — say what the process represents and where each figure comes from (own data / your own estimate, said plainly / a source with publisher, year and URL).",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Foreground model name; omit for the model open on the canvas."
+          },
+          "name": {
+            "type": "string",
+            "description": "Process name."
+          },
+          "product": {
+            "type": "string",
+            "description": "Reference product (optional)."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit (default \"unit\")."
+          },
+          "location": {
+            "type": "string",
+            "description": "Location (default GLO)."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Description: what it represents and where its data comes from, with sources."
+          },
+          "processes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Process name."
+                },
+                "product": {
+                  "type": "string",
+                  "description": "Reference product."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Unit."
+                },
+                "location": {
+                  "type": "string",
+                  "description": "Location."
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Description with sources."
+                }
+              }
+            },
+            "description": "Several processes at once; each item takes the same fields as above."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edit_process",
+      "label": "Edit process",
+      "group": "Edit model",
+      "description": "Edit fields of a foreground process (name, product, unit, location, comment). The comment is the process DESCRIPTION and report chapters are handed it verbatim: say what the process represents and where its data comes from — the user's data, your own estimate (say so), or web research with title, publisher, year and URL. Write one for every foreground process you create.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model name; omit for the model open on the canvas."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code — or identify the process by \"current_name\"."
+          },
+          "current_name": {
+            "type": "string",
+            "description": "Existing process name instead of the code; must match exactly one."
+          },
+          "location": {
+            "type": "string",
+            "description": "Location, to disambiguate a name used in several regions."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name (optional)."
+          },
+          "product": {
+            "type": "string",
+            "description": "New reference product (optional)."
+          },
+          "unit": {
+            "type": "string",
+            "description": "New unit (optional)."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Description of the process: what it represents and where its data comes from, with sources for anything researched. Replaces the existing text."
+          },
+          "processes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "description": "Activity code."
+                },
+                "current_name": {
+                  "type": "string",
+                  "description": "Existing name instead of the code."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "New name."
+                },
+                "product": {
+                  "type": "string",
+                  "description": "New reference product."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "New unit."
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "New description with sources."
+                }
+              }
+            },
+            "description": "Edit several processes in one call; each item takes the same fields (a process identified in the top-level fields beside the list is edited too)."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "delete_process",
+      "label": "Delete process",
+      "group": "Edit model",
+      "description": "Delete a foreground process. Destructive — confirm intent with the user first. If the process is consumed by others, the call is rejected (delete_blocked) unless force=true; forcing removes the consumer inputs too (undo restores them).",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model name."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Delete even if other processes consume it (their inputs are removed; undo restores them). Confirm with the user before forcing."
+          }
+        },
+        "required": [
+          "database",
+          "code"
+        ]
+      }
+    },
+    {
+      "name": "set_classification",
+      "label": "Set classification",
+      "group": "Edit model",
+      "description": "Set the ISIC section and/or CPC class of a foreground process (for stacked-bar breakdowns).",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model name."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code."
+          },
+          "isic": {
+            "type": "string",
+            "description": "ISIC section letter A–U."
+          },
+          "cpc": {
+            "type": "string",
+            "description": "CPC code."
+          },
+          "cpc_name": {
+            "type": "string",
+            "description": "CPC name."
+          }
+        },
+        "required": [
+          "database",
+          "code"
+        ]
+      }
+    },
+    {
+      "name": "set_flow_properties",
+      "label": "Set flow properties",
+      "group": "Edit model",
+      "description": "Set flow properties (carbon content, dry mass, price, …) on a foreground process's reference product. Property names/units must match the ecoinvent vocabulary — check the current ones with get_flow_properties first.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Foreground model name."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Map of property name → {amount, unit}, e.g. {\"carbon content, fossil\": {\"amount\": 0.5, \"unit\": \"kg\"}}.",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "description": "Value."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Unit."
+                }
+              },
+              "required": [
+                "amount",
+                "unit"
+              ]
+            }
+          }
+        },
+        "required": [
+          "database",
+          "code",
+          "properties"
+        ]
+      }
+    },
+    {
+      "name": "evaluate_formula",
+      "label": "Try a formula",
+      "group": "Parameters",
+      "description": "What would this formula come to? Evaluates an expression against the open model's current parameter values and returns the number — WITHOUT storing anything. Use it before writing a parameterised exchange instead of working the arithmetic out yourself, and for what-if questions: \"overrides\" substitutes values for this evaluation only ({\"d_last_mile\": 20}). Reports which parameters it used, and names any it does not know rather than failing vaguely.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "formula": {
+            "type": "string",
+            "description": "The expression, e.g. \"mass_fertiliser * n_content * 44/28\"."
+          },
+          "overrides": {
+            "type": "object",
+            "description": "Parameter values to substitute for this evaluation only; nothing is saved.",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "formula"
+        ]
+      }
+    },
+    {
+      "name": "list_parameters",
+      "label": "List parameters",
+      "group": "Parameters",
+      "description": "List the active model's parameters (named variables usable in exchange formulas): name, value or formula, unit, group, comment, and — when the modeller set one — \"allowed\", what the value is allowed to be (\"greater than 0\", \"between 0 and 1\", \"one of 0.25, 0.5, 0.75\"). Parameters are model-scoped: without \"database\" this lists the open model's, with it another model's (a comparison model's, to reuse the same names and values). Read this before writing a value or a formula: a value outside \"allowed\" is refused, and this is where you see the rule before you hit it. Set comments_only=true to get just names + comments + allowed, or with_usage=true to also see WHICH exchanges each parameter drives — the blast radius before you change one, and the way to spot a parameter nothing uses.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model to read; omit for the open model."
+          },
+          "comments_only": {
+            "type": "boolean",
+            "description": "Return only name + comment for each parameter (default false)."
+          },
+          "with_usage": {
+            "type": "boolean",
+            "description": "Also list the exchanges whose formula references each parameter."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "list_scenarios",
+      "label": "List scenarios",
+      "group": "Scenarios",
+      "description": "List a model's scenarios (named parameter-override sets): id, name, description and overrides (each a number or a formula string). Scenarios are model-scoped: without \"database\" this lists the open model's, with it another model's. Read this to get a scenario id before comparing, editing a value, duplicating or deleting.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model to read; omit for the open model."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "compare_scenarios",
+      "label": "Compare scenarios",
+      "group": "Scenarios",
+      "description": "Score an activity for the baseline and one or more of the active model's scenarios. Returns the baseline first, then each scenario. Pass \"methods\" (a list of tuples) to score SEVERAL indicators in one call — a sensitivity reported for one indicator because the others would have cost a call each is a thinner study, not a decision. Get scenario ids from list_scenarios; get the method tuples from list_methods. A result row with \"replaces_formula\" names the parameters whose own formula that scenario's override replaced.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Activity code (the reference product to score)."
+          },
+          "scenario_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scenario ids to include alongside the baseline."
+          },
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "LCIA method tuple (from list_methods). Omit to use the first method the model has already been calculated with, or the study's default indicator if it has one — pass it explicitly whenever the answer names an indicator."
+          },
+          "methods": {
+            "type": "array",
+            "description": "Several LCIA method tuples at once; results are returned per indicator, in order.",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "LCIA method tuple."
+            }
+          },
+          "amount": {
+            "type": "number",
+            "description": "Functional-unit amount (default 1)."
+          }
+        },
+        "required": [
+          "code",
+          "scenario_ids"
+        ]
+      }
+    },
+    {
+      "name": "get_characterization_factors",
+      "label": "Compare characterization factors",
+      "group": "Calculate",
+      "description": "Inspect/compare the characterization factors of up to 4 LCIA indicators: returns each characterised flow with its factor per method (null where a method doesn't cover it). Give method tuples from list_methods. Use flow_query to narrow to a flow (e.g. \"methane\") — the flow set is otherwise very large.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "methods": {
+            "type": "array",
+            "description": "Up to 4 LCIA method tuples (each an array of strings, from list_methods).",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "flow_query": {
+            "type": "string",
+            "description": "Optional substring to filter flows by name/compartment (recommended)."
+          },
+          "flow_queries": {
+            "type": "array",
+            "description": "Several flows in ONE call, each checked against all the given methods. Verifying a use phase means four or five flows — that was four or five calls.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "methods"
+        ]
+      }
+    },
+    {
+      "name": "list_method_families",
+      "label": "List method families",
+      "group": "LCIA methods",
+      "description": "List all LCIA method families and their indicators; \"editable\"=true marks YOUR custom methods (imported methods are read-only), \"custom\"=true marks your own families. Read this before editing/duplicating a method.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "get_method_factors",
+      "label": "Read method factors",
+      "group": "LCIA methods",
+      "description": "Read one LCIA method's flows and characterization factors (and whether it is editable). Pass the method tuple.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Method tuple (from list_methods / list_method_families)."
+          }
+        },
+        "required": [
+          "method"
+        ]
+      }
+    },
+    {
+      "name": "search_biosphere_flows",
+      "label": "Search flows for a method",
+      "group": "LCIA methods",
+      "description": "LCIA-METHOD use: find a biosphere (elementary) flow to characterise in one of YOUR custom LCIA methods. Relevance-ranked; returns each flow's \"ref\" (an id as a string — pass it back unchanged) for edit_lcia_method action=\"set_factor\". To attach a flow as an emission on a process instead, use search_elementary_flows.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text, e.g. \"methane air\"."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 30)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "research_bom",
+      "label": "Research a bill of materials",
+      "group": "Research",
+      "description": "Research a product's BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, standard, year, intended use, anything the user stated) into \"context\", or the research will be about a generic product instead of theirs. Pass total_mass_kg whenever known: the result is mass-balance checked against it. Naming the components you want makes it much more accurate. READ THE BALANCE BEFORE BUILDING: \"balance_ok\" is true/false/null and **null means it could not be checked** — because a component could not be researched, so the list is incomplete by construction. \"coverage\" says how many of the requested components came back, \"residual_kg\" is the stated total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. Items may carry \"mass_range_kg\" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text.",
+      "surface": "subagent",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "The product to research, as specific as possible (e.g. \"0.5 l PET single-use water bottle\")."
+          },
+          "context": {
+            "type": "string",
+            "description": "Everything relevant you already know but the sub-agent cannot see: dimensions, volume/capacity, market or region, standard/model number, year, intended use, user constraints."
+          },
+          "total_mass_kg": {
+            "type": "number",
+            "description": "Total product mass in kg, if known — enables the mass-balance check."
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Components to research individually (e.g. [\"bottle body\",\"cap\",\"label\"]). Omit to let the research enumerate them."
+          },
+          "max_components": {
+            "type": "number",
+            "description": "Cap on components researched (default 8, max 8)."
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bare hosts to restrict the web search to, e.g. [\"meffert.de\",\"hornbach.de\"] — ONLY when you already know where the document lives (the manufacturer's site, the retailer page that links the safety data sheet, a register the result named under \"suggested_domains\"). Leave it out otherwise: a restricted search that misses the host returns \"not found\", not a wider search."
+          }
+        },
+        "required": [
+          "product"
+        ]
+      }
+    },
+    {
+      "name": "research_web",
+      "label": "Research a question on the web",
+      "group": "Research",
+      "description": "Research a question on the web in an ISOLATED context and get back short, sourced findings — for LCA facts you cannot get from the databases: end-of-life split rates, material compositions, prices, recycling quotas, regulatory limits (transport distances have their own tool when it is offered). Three ways to the web, and this is the most expensive: every leg is a sub-agent with its own paid search and takes MINUTES. ALREADY HAVE THE ADDRESS? If an inline web tool (web_fetch) is offered to you, call it yourself — a safety data sheet the user linked, a standard, a statistics page — and read the document instead of hoping a search finds it again; if no such tool is offered, hand the URL to research_web. ONE OR TWO FACTS? Search inline yourself and keep the full wording in front of you. USE research_web when the question is broad or covers several items, because the raw pages would otherwise flood this conversation and crowd out the model you are building. You may hand it URLs too — put them in the question or in \"context\" and it opens them — but for a single known document the inline fetch is the shorter road. Never invent an address: a wrong one costs a leg and comes back empty. The sub-agent shares NONE of this conversation, so put the relevant specifics (product, region, year, scope) into \"context\". Every statement it returns carries a source URL — unsourced statements are discarded rather than guessed, so a thin result means the facts were not findable, not that they are zero.",
+      "surface": "subagent",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question, specific and answerable (name the material/region/year you need)."
+          },
+          "questions": {
+            "type": "array",
+            "description": "Several independent questions in ONE call, as plain strings; the researchers run in parallel and results come back per question, in order. Prefer this over one call per question — each leg takes minutes, so asking them one after another spends that time twice. Every question shares the call-level \"context\"; for a question that needs its OWN context use \"detailed_questions\" instead. Pass ONE of \"question\", \"questions\" or \"detailed_questions\" — never two, never an empty list. There IS a ceiling on how many run in one call (a limit the user sets in Settings → AI → Limits): anything beyond it is NOT researched and comes back listed under \"not_researched\", so ask the most decisive questions first and read that field before assuming you have an answer to all of them.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detailed_questions": {
+            "type": "array",
+            "description": "Several questions in ONE call where each carries its OWN context on top of the call-level one: [{question, context?}]. Objects only; for plain strings use \"questions\". Same ceiling as \"questions\".",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string"
+                },
+                "context": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "question"
+              ]
+            }
+          },
+          "context": {
+            "type": "string",
+            "description": "What you already know that the sub-agent cannot see: product, region/market, year, system boundaries, user constraints. Shared by every question in \"questions\"."
+          },
+          "allow_unsourced": {
+            "type": "boolean",
+            "description": "Accept statements without a source URL (default false). Only for questions where no citable source can be expected."
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Bare hosts to restrict the web search to, e.g. [\"meffert.de\",\"hornbach.de\"] — ONLY when you already know where the document lives (the manufacturer's site, the retailer page that links the safety data sheet, a register the result named under \"suggested_domains\"). Leave it out otherwise: a restricted search that misses the host returns \"not found\", not a wider search. Applies to every question in the call."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "distances",
+      "label": "Transport distances",
+      "group": "Research",
+      "description": "Distance in kilometres between two places for a transport leg: mode=\"road\" (routed, heavy goods vehicle), \"sea\" (sailed route over the shipping-lane network), \"air\" (great-circle) or \"rail\" (great-circle × a circuity factor — it says NOTHING about whether rail infrastructure exists; repeat that caveat when you use it). Pass up to 10 pairs in ONE call; a place is a name, an address or \"lat, lon\". In air mode an airport can be its IATA/ICAO code (\"FRA\", \"EDDF\"), in sea mode a port its UN/LOCODE (\"DEHAM\") or a name with \"port\"/\"airport\" in it (\"Shanghai Pudong Airport\") — these resolve from a local catalogue, no geocoding, and a terminal name several places share comes back as an error listing the codes; a plain city name is geocoded as a place, as in the other modes. Each result gives km (already adjusted per the GLEC conventions the user configured — this is the figure for the exchange), raw_km, the adjustment applied, and the resolved place name so you can see a wrong match; add a country code to a pair when a name is ambiguous. Air: one pair per flight leg — a trip with a stopover is two pairs. For sea, the default is the shortest route (usually Suez); pass via=\"cape\" per pair for the routing around Africa and say in the process comment which the study assumes. Distances are ONE WAY. Air and sea run terminal to terminal: for a place that is not itself an airport/port, the result has \"access\" — the ROAD legs from the place to its airport/port and from the arrival terminal on, already measured, each with its own km, adjustment and ferry check (do not look them up again); km is the flight or voyage only, so book each access leg as a separate road transport. Without from_terminal / to_terminal the nearest major terminal by straight line is taken (\"chosen\": \"nearest\"); name the assumed terminal in your answer and the process comment. A far pick (straight_km in the hundreds) is only a guess. Decide yourself where you can: if one gateway is the usual one for this relation (a major hub that freight from the region typically uses), call again with it as from_terminal / to_terminal and state it as your assumption. Ask the user only when several terminals are about equally plausible and the choice would change the result noticeably. An access leg with \"error\" was NOT measured. A road result with \"crossing\" drove part of the way on a ferry or a vehicle shuttle train: that part is NOT in km — tell the user and model it as its own leg once they know which; \"crossings\": \"unresolved\" means the route could not be checked — say so. Put the adjustment and the resolved places into the process comment. A pair listed under \"skipped\" or carrying \"error\" was NOT measured: say so and ask, never fill a distance in yourself. When the user has already given a distance, use theirs and do not look it up.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "One of: road | sea | air | rail."
+          },
+          "pairs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "description": "Origin: place name, address, or \"lat, lon\"."
+                },
+                "to": {
+                  "type": "string",
+                  "description": "Destination: place name, address, or \"lat, lon\"."
+                },
+                "from_country": {
+                  "type": "string",
+                  "description": "Optional ISO-3166 alpha-2 code to disambiguate the origin, e.g. \"DE\"."
+                },
+                "to_country": {
+                  "type": "string",
+                  "description": "Optional ISO-3166 alpha-2 code to disambiguate the destination."
+                },
+                "from_terminal": {
+                  "type": "string",
+                  "description": "Air/sea only, optional: the airport or port the origin uses, as a code (\"FRA\", \"DEHAM\") or name. Default: the nearest major one."
+                },
+                "to_terminal": {
+                  "type": "string",
+                  "description": "Air/sea only, optional: the airport or port the destination uses. Default: the nearest major one."
+                },
+                "via": {
+                  "type": "string",
+                  "description": "Sea only: \"shortest\" (default — the network's shortest route, usually via Suez) or \"cape\" for the routing around the Cape of Good Hope that much Asia–Europe traffic has used since late 2023 (Suez and Panama avoided). Which one the study assumes is a decision to record."
+                }
+              }
+            },
+            "description": "The legs to measure, in order; at most 10 per call."
+          }
+        },
+        "required": [
+          "mode",
+          "pairs"
+        ]
+      }
+    },
+    {
+      "name": "eurostat_eol",
+      "label": "Eurostat EoL statistics",
+      "group": "Research",
+      "description": "Official Eurostat waste statistics for end-of-life (EoL) modelling in Europe: the real treatment mix (landfill, incineration, energy recovery, recycling, backfilling) as tonnes, kg per capita and shares. Use it when the user asks for an actual EoL split, recycling or collection rate for an EU country or the EU. Four tables: \"env_wasoper\" — final treatment of ALL waste GENERATED in the country, industrial waste included, trade-corrected (imports/exports), major mineral waste excluded, percent unit, no breakdown by material: a coarse fallback, not the default for a product; \"env_wastrt\" — waste TREATED in the country’s plants regardless of origin, by EWC-Stat waste category (pass waste_code, e.g. W074 plastics, W071 glass, W072 paper & cardboard, W061 ferrous metals, W075 wood, W076 textiles; TOTAL when omitted); \"env_waspac\" — packaging waste generated and recycled by material (waste_code W150102 plastic, W150101 paper & cardboard, W150107 glass, W150104 metallic, W150103 wooden; W1501 = all), with recycling RATES — prefer the \"2025 target\" rate, measured after sorting. Which table fits is decided by the product's FUNCTION, not its material: anything that contains, protects or carries goods on their way to the user — bottle, film, can, crate, carton, pallet, sack — is packaging waste (Directive 94/62/EC), so take env_waspac with its material code. The same material in a non-packaging product — a PET fibre in a fleece, a PVC window frame, a wooden chair — is NOT packaging, and the route it is thrown away by decides: with household waste → env_wasmun, its incineration and landfill shares (residual waste is not recycled); collected separately as that material (scrap metal at a recycling yard) → env_wastrt with the waste code. env_wastrt pools every waste of that material treated in the country, industrial scrap and imports included, so for a PET bottle it reads 80 % recycling where packaging shows 51 %; \"env_wasmun\" — municipal (household) waste generated and treated, no material breakdown. country is Eurostat’s geo code (ISO-2: DE, FR, IT …, EL for Greece; EU27_2020 for the EU); leave it out for ALL reporting countries at once. year defaults to the latest with data; env_wasoper and env_wastrt exist for EVEN years only. The answer is a table (columns country, operation, unit, value, flags) plus lookups for the codes. Always read flags_and_status.warning: a value flagged p (provisional), e (estimated), i (imputed) or b (break in series) is not final — tell the user so before using it. Keep the unit with every figure (tonnes vs. percent vs. kg per capita). Recycling figures are amounts entering sorting/recycling, not secondary material produced: say that sorting losses still have to be accounted for in the recycling datasets. A cell under not_available (confidential, missing) is unknown — never zero. When the shares you derive leave a remainder (e.g. 0.4 % \"other recovery\"), keep it as its own parameter such as eol_other rather than folding it into landfill or incineration to make the split sum to 1 — say what it is. Several countries, materials or years: pass them as `queries` in ONE call (each item its own dataset/country/year/waste_code, at most 10) instead of calling repeatedly; a time series is one item per year.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dataset": {
+            "type": "string",
+            "enum": [
+              "env_wasoper",
+              "env_wastrt",
+              "env_waspac",
+              "env_wasmun"
+            ],
+            "description": "Which table: env_waspac (packaging) | env_wasmun (municipal waste: products thrown away with household waste) | env_wastrt (by waste category: material collected separately) | env_wasoper (all waste of the country, coarse fallback)."
+          },
+          "country": {
+            "type": "string",
+            "description": "Eurostat geo code: ISO-2 such as \"DE\", \"FR\" (Greece is \"EL\"), or \"EU27_2020\" for the EU aggregate. Omit for every reporting country."
+          },
+          "year": {
+            "type": "number",
+            "description": "Four-digit year, e.g. 2022. Omit for the latest year with data."
+          },
+          "waste_code": {
+            "type": "string",
+            "description": "Only for env_wastrt (EWC-Stat, e.g. \"W074\" plastics) and env_waspac (e.g. \"W150102\" plastic packaging). Omit for the total. An unknown code answers with the list of known ones."
+          },
+          "queries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "dataset": {
+                  "type": "string",
+                  "enum": [
+                    "env_wasoper",
+                    "env_wastrt",
+                    "env_waspac",
+                    "env_wasmun"
+                  ],
+                  "description": "The table for this item."
+                },
+                "country": {
+                  "type": "string",
+                  "description": "Eurostat geo code for this item; omit for every reporting country."
+                },
+                "year": {
+                  "type": "number",
+                  "description": "Four-digit year; omit for the latest with data."
+                },
+                "waste_code": {
+                  "type": "string",
+                  "description": "Waste category (env_wastrt) or packaging material (env_waspac); omit for the total."
+                }
+              }
+            },
+            "description": "Several lookups in ONE call — several countries, materials or years; each item takes the same four fields (dataset required per item). At most 10; answered per item, in order. Give each item a country: an item without one lists every country (~25,000 characters), and once the answers reach 60000 characters the remaining items are reported as not included (already fetched, so a follow-up call for them is instant)."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "review_model",
+      "label": "Review the model critically",
+      "group": "Research",
+      "description": "Get an independent, critical second opinion on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model's review log, stamped against the model state, so the report can state that a review happened and whether the model changed afterwards. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with \"resolutions\" to record each finding's outcome — fixed things are visible in the model, but \"rejected, because …\" and \"still open\" exist nowhere else, and the report prints the open ones in its Limitations chapter. With \"resolutions\" present nothing is re-reviewed; the call only records.",
+      "surface": "subagent",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model to review; defaults to the open model."
+          },
+          "code": {
+            "type": "string",
+            "description": "Reference process for the hotspot analysis (the product system's final activity)."
+          },
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "LCIA method tuple for the hotspot analysis, from list_methods."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Functional-unit amount for the hotspot analysis (default 1)."
+          },
+          "review_id": {
+            "type": "string",
+            "description": "With \"resolutions\": the review_id the review call returned, so the outcomes land on THAT review — omitted, they attach to the latest review of the model, which may be another chat's."
+          },
+          "resolutions": {
+            "type": "array",
+            "description": "Record-only mode: your outcome per review finding, after you acted on the review. One entry per finding you want the study to be able to show.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "finding": {
+                  "type": "string",
+                  "description": "The finding, in one sentence (your words, not a quote of the whole point)."
+                },
+                "resolution": {
+                  "type": "string",
+                  "enum": [
+                    "fixed",
+                    "rejected",
+                    "open"
+                  ],
+                  "description": "fixed = changed the model; rejected = will not act, say why; open = cannot be settled here — data nobody has, a decision that is the user's. Not open: what one more call would settle (open the dataset, recompute the figure) — do it; and a baseline that contradicts your own comment or limitation — make the two agree."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why rejected, or what keeps it open. Required in spirit for anything but \"fixed\"."
+                }
+              },
+              "required": [
+                "finding",
+                "resolution"
+              ]
+            }
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "set_chat_title",
+      "label": "Name the chat",
+      "group": "Canvas & UI",
+      "description": "Name THIS conversation with a short, punchy title (3–6 words). Call this once at the very start of a new chat. The title is used only as the chat label — do not mention it in your reply to the user.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short, punchy chat title."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "ask_user",
+      "label": "Ask the user",
+      "group": "Canvas & UI",
+      "description": "Ask the user to clarify something, with 2–5 predefined answer options per question, shown as clickable buttons in the chat; the run pauses until they answer. The card always offers a field for the user's own words as well, so never add an \"Other\" or \"Something else\" option yourself — spend the slots on real choices. An answer marked free_text was typed by the user rather than picked: act on what it says (it may name a choice you did not offer); free_text on the whole result means one typed reply answers the whole form. Use it for decisions that materially affect the work (functional unit, system boundaries, geography, method choice, which of several search matches to use, confirming destructive actions) — never when the answer is obvious, already given, or genuinely open-ended. ASK EVERYTHING YOU ALREADY KNOW YOU NEED IN ONE CALL: pass \"questions\" (up to 4) and they are shown as a single form. Every extra call stops the run and waits for a human who may be away for hours — this is the one place where a wasted round costs someone their attention, not just tokens.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "The question — one short sentence."
+          },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "description": "2–5 answer options.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "Short option label (a few words)."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Optional one-line explanation of the option."
+                }
+              },
+              "required": [
+                "label"
+              ]
+            }
+          },
+          "multi_select": {
+            "type": "boolean",
+            "description": "Default false, which is what nearly every question wants: the options are alternatives and exactly ONE is chosen. Set true only when the options genuinely combine and picking several at once is meaningful (e.g. \"which life-cycle stages should be included?\"). If choosing two of them would contradict each other, leave it false."
+          },
+          "questions": {
+            "type": "array",
+            "maxItems": 4,
+            "description": "Up to 4 questions asked TOGETHER as one form. Use this whenever you already know you need more than one answer before you can start — each extra call is another wait on a human. FOUR SLOTS, SO SPEND THEM ON WHAT CANNOT BE CHANGED LATER: what the study is measured PER (the functional unit) and where the numbers will COME FROM outrank any question about scope, because a scope decision can be revisited on a finished model and these two cannot. Measured 2026-08-13: a wall-paint study spent all its questions on scope details, silently made itself \"one bucket\" instead of a painted area, and estimated a recipe it could have researched.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question — one short sentence."
+                },
+                "options": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 5,
+                  "description": "2–5 answer options.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "description": "Short option label (a few words)."
+                      },
+                      "description": {
+                        "type": "string",
+                        "description": "Optional one-line explanation."
+                      }
+                    },
+                    "required": [
+                      "label"
+                    ]
+                  }
+                },
+                "multi_select": {
+                  "type": "boolean",
+                  "description": "See above; exactly one is the normal case."
+                }
+              },
+              "required": [
+                "question",
+                "options"
+              ]
+            }
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_canvas",
+      "label": "Read canvas",
+      "group": "Canvas & UI",
+      "description": "What is actually drawn on the canvas right now: foreground activities AND the read-only background reference boxes (which the model graph does not list). Use this — not just get_model_graph — to know if the canvas is truly empty before saying so.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "screenshot_canvas",
+      "label": "Screenshot canvas",
+      "group": "Canvas & UI",
+      "description": "Capture what the canvas currently shows, to visually inspect the model. Only useful on vision-capable models.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "calculate_in_canvas",
+      "label": "Calculate in canvas",
+      "group": "Canvas & UI",
+      "description": "Trigger the canvas \"Calculate\" for a process in the active model with a chosen method — shows the result banner + Sankey overlay to the user. Pass the process code (or omit it to use the user's current selection). FIRE-AND-FORGET: it returns as soon as the calculation is started, carries no score, and is not confirmation that anything was drawn — so never report to the user what the canvas now shows on the strength of this call. Use `calculate` for the number.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Method tuple from list_methods."
+          },
+          "code": {
+            "type": "string",
+            "description": "Process code in the active model (optional — defaults to the selected process)."
+          }
+        },
+        "required": [
+          "method"
+        ]
+      }
+    },
+    {
+      "name": "setup_results",
+      "label": "Set up results view",
+      "group": "Canvas & UI",
+      "description": "Configure the Results page for the user — subjects (processes, each once per scenario for grouped bars), indicators (\"methods\"), stacked bars and split-by — on tab=\"overview\" (comparison charts) or \"detailed\" (contribution tree). Without run=true it only prepares: the page is not switched to (canvas_view action=\"open_page\" page=\"results\" does that) and nothing is calculated until the user presses Calculate. With run=true the page opens and the calculation starts. Returns what the view actually holds — compare that with what you asked for.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tab": {
+            "type": "string",
+            "description": "\"overview\" or \"detailed\"."
+          },
+          "subjects": {
+            "type": "array",
+            "description": "Subjects {database, code, scenario?}. Give the SAME process once per scenario to compare them side by side (scenario ids from list_scenarios); omit \"scenario\" for the baseline.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "database": {
+                  "type": "string",
+                  "description": "db"
+                },
+                "code": {
+                  "type": "string",
+                  "description": "code"
+                },
+                "scenario": {
+                  "type": "string",
+                  "description": "Scenario id — omit for the baseline."
+                }
+              },
+              "required": [
+                "database",
+                "code"
+              ]
+            }
+          },
+          "methods": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "description": "Method tuples."
+          },
+          "stacked": {
+            "type": "boolean",
+            "description": "Overview: stacked bars on/off."
+          },
+          "split_by": {
+            "type": "string",
+            "description": "Overview stacked split: \"isic\" | \"cpc\" | \"tag:<group>\"."
+          },
+          "run": {
+            "type": "boolean",
+            "description": "true = also start the calculation and switch the user to the Results page, as if they had pressed Calculate. FIRE-AND-FORGET: the answer carries no scores — use `calculate` or `compare` for numbers."
+          }
+        },
+        "required": [
+          "tab"
+        ]
+      }
+    },
+    {
+      "name": "edit_scenario",
+      "label": "Create / change scenario",
+      "group": "Scenarios",
+      "description": "Create or change scenarios of the active model (a scenario is a named set of parameter overrides). action=\"create\" needs name (+ optional description/overrides); \"set_value\" sets ONE override (id, param, value); \"duplicate\" and \"delete\" take the id. Pass \"scenarios\" to create a WHOLE SET in one call — a sensitivity analysis is normally four or five of them, and one call each is one round each. An override is a number, or a formula over the model's parameters written as a string. Either one REPLACES the parameter's own formula while the scenario is applied. For a parameter computed from others you can override its inputs instead (its formula then follows them) — choose by what the scenario means. Read ids with list_scenarios; score them with compare_scenarios. Undoable.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: create | set_value | duplicate | delete."
+          },
+          "name": {
+            "type": "string",
+            "description": "Scenario name (action=create)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description (action=create)."
+          },
+          "overrides": {
+            "type": "object",
+            "description": "Parameter overrides (action=create) as name → number or formula string, e.g. {\"recycling_rate\": 0.8} or {\"pkg_mass\": \"1.2 * bottles * 0.02\"}. A formula is evaluated with the model's parameters and refused if it names an unknown one or refers to itself.",
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "description": "Several scenarios to create in ONE call, each {name, description?, overrides}. Only for action=\"create\"; the top-level fields are ignored when this is given.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "overrides": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          },
+          "id": {
+            "type": "string",
+            "description": "Scenario id (all actions except create)."
+          },
+          "param": {
+            "type": "string",
+            "description": "Parameter name (action=set_value)."
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Override value (action=set_value): a number, or a formula string."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "edit_lcia_method",
+      "label": "Create / change LCIA method",
+      "group": "LCIA methods",
+      "description": "Create or change one of YOUR custom LCIA methods (imported methods are read-only). action=\"duplicate\" copies an existing method (src, family, name); \"create\" makes an empty one (family, name, optional unit); \"rename\" takes method + name; \"set_factor\" sets a flow's factor (method, ref, cf — get ref from search_biosphere_flows); \"remove_flow\" drops a flow (method, ref); \"delete\" removes the method. Not undoable.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: create | duplicate | rename | set_factor | remove_flow | delete."
+          },
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The custom method tuple (all actions except create/duplicate)."
+          },
+          "src": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Source method tuple to copy (action=duplicate)."
+          },
+          "family": {
+            "type": "string",
+            "description": "Target family — one of your own (action=create/duplicate)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Indicator name (action=create/duplicate/rename)."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Optional unit, e.g. \"kg CO2-eq\" (action=create)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional family description (action=create/duplicate)."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Flow ref from search_biosphere_flows or get_method_factors (action=set_factor/remove_flow) — a string of digits, passed back EXACTLY as given (it is a 64-bit id; as a number it would be rounded)."
+          },
+          "cf": {
+            "type": "number",
+            "description": "Characterization factor (action=set_factor)."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "manage_method_family",
+      "label": "Manage method family",
+      "group": "LCIA methods",
+      "description": "Create, describe, rename or delete one of YOUR LCIA method families (imported families are protected). `family` always names the family you act on: action=\"upsert\" creates it or sets its description; \"rename\" additionally takes the new name in `name` and moves the family's methods; \"delete\" removes the family and its methods after asking the user. Not undoable.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: upsert | rename | delete."
+          },
+          "family": {
+            "type": "string",
+            "description": "The family to act on (all actions); for rename this is its CURRENT name."
+          },
+          "name": {
+            "type": "string",
+            "description": "New family name (action=rename only)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description (action=upsert/rename)."
+          }
+        },
+        "required": [
+          "action",
+          "family"
+        ]
+      }
+    },
+    {
+      "name": "manage_model",
+      "label": "Create / copy / rename model",
+      "group": "Edit model",
+      "description": "Create, copy or rename a foreground model. action=\"create\" takes name (+ optional goal/scope); \"duplicate\" takes source + name; \"rename\" takes database + name. NOT undoable. Deleting a model is the separate delete_model tool.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: create | duplicate | rename."
+          },
+          "name": {
+            "type": "string",
+            "description": "New model name (all actions)."
+          },
+          "goal": {
+            "type": "string",
+            "description": "Optional goal text (action=create)."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Optional scope text (action=create)."
+          },
+          "source": {
+            "type": "string",
+            "description": "Model to copy (action=duplicate)."
+          },
+          "database": {
+            "type": "string",
+            "description": "Model to rename (action=rename)."
+          }
+        },
+        "required": [
+          "action",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "edit_parameter",
+      "label": "Create / change parameter",
+      "group": "Parameters",
+      "description": "Create, update or delete parameters of the active model. action=\"set\" (the default — omit it and you get \"set\") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and \"A if cond else B\"), plus optional unit, group and comment. action=\"delete\" removes it (fails if a formula still references it). Pass \"parameters\" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule the modeller set — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read \"allowed\" rather than discovering the rule from a refusal. You cannot set or change a rule: it is the modeller's decision about their own study, so if a number you were given breaks one, say which parameter and what it allows, and ask.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "set (default) | delete."
+          },
+          "name": {
+            "type": "string",
+            "description": "Parameter name (letters, digits, underscores)."
+          },
+          "value": {
+            "type": "number",
+            "description": "Fixed numeric value (action=set; omit when passing a formula)."
+          },
+          "formula": {
+            "type": "string",
+            "description": "Formula instead of a fixed value, e.g. \"mass * (1 - recycled_share)\"."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Optional unit label."
+          },
+          "group": {
+            "type": "string",
+            "description": "Optional grouping label."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Optional note on meaning, source or assumptions."
+          },
+          "parameters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Parameter name."
+                },
+                "value": {
+                  "type": "number",
+                  "description": "Fixed numeric value."
+                },
+                "formula": {
+                  "type": "string",
+                  "description": "Formula instead of a value."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Unit label."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "Grouping label."
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Note on meaning, source or assumptions."
+                }
+              }
+            },
+            "description": "Several parameters at once (all are \"set\"); each item takes the fields above."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "edit_tags",
+      "label": "Manage & assign tags",
+      "group": "Tags",
+      "description": "Manage tag groups and assign tags. action=\"create_group\" creates a dimension (name); \"add_value\" adds an allowed value to a group (group, value); \"assign\" tags processes (keys, group, value — omit value to clear); \"merge_value\" folds one value of a group into another (group, value, into — every process carrying it is retagged, the old value disappears from the group); \"merge_group\" folds one dimension into another (name, into — its values and tags move). Merging is how a vocabulary that grew four spellings of one phase (\"Use\", \"Use Phase\", \"Usage Phase\") is cleaned up without untagging anything; there is deliberately no delete — tags are used across models. Tagging a whole model by life-cycle phase is ONE call: pass \"assignments\", a list of { keys, value } (the values are created if the group allows them), instead of one assign per phase. Tags drive the per-phase result breakdowns. Undoable.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: create_group | add_value | assign | merge_value | merge_group."
+          },
+          "name": {
+            "type": "string",
+            "description": "Tag-group name (action=create_group; the group to fold away on merge_group)."
+          },
+          "group": {
+            "type": "string",
+            "description": "Tag group / dimension (action=add_value/assign/merge_value, and the default group for \"assignments\")."
+          },
+          "value": {
+            "type": "string",
+            "description": "Tag value (action=add_value/assign/merge_value; omit on assign to clear)."
+          },
+          "into": {
+            "type": "string",
+            "description": "The value (merge_value) or group (merge_group) that absorbs the other."
+          },
+          "keys": {
+            "type": "array",
+            "description": "A list of what to tag (action=assign): processes { database, code } and/or INPUTS of a process { uid } — the exchange uid from get_model_graph or get_process_details. Tag an input when it belongs to another phase than the process consuming it: steel consumed by a manufacturing process counts as \"Raw materials\" while the process counts as \"Production\". Only inputs from outside the model (background, library, another model) can be tagged; a process of this model and a background dataset itself are refused.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "database": {
+                  "type": "string",
+                  "description": "Database of the process (or of the model holding the input)."
+                },
+                "code": {
+                  "type": "string",
+                  "description": "Process code."
+                },
+                "uid": {
+                  "type": "string",
+                  "description": "Exchange uid of an input, instead of database/code."
+                }
+              },
+              "required": []
+            }
+          },
+          "assignments": {
+            "type": "array",
+            "description": "Several assignments in one call — each { keys, value, group? }. Use this whenever processes get DIFFERENT values of the same dimension (one per life-cycle phase); \"keys\" alone only batches processes that share one value. Missing values are added to the group automatically.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "keys": {
+                  "type": "array",
+                  "description": "Processes { database, code } or inputs { uid } for this value.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "database": {
+                        "type": "string",
+                        "description": "Database of the process."
+                      },
+                      "code": {
+                        "type": "string",
+                        "description": "Process code."
+                      },
+                      "uid": {
+                        "type": "string",
+                        "description": "Exchange uid of an input, instead of database/code."
+                      }
+                    },
+                    "required": []
+                  }
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Tag value for these processes; omit to clear."
+                },
+                "group": {
+                  "type": "string",
+                  "description": "Tag group, if it differs from the top-level \"group\"."
+                }
+              },
+              "required": [
+                "keys"
+              ]
+            }
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "canvas_view",
+      "label": "Change the canvas view",
+      "group": "Canvas & UI",
+      "description": "Change what the app shows, without touching the model. action=\"jump\" centres and selects a process (code); \"layout\" re-arranges all nodes; \"clear\" removes the read-only background reference boxes from the VIEW (nothing is deleted); \"remove\" removes one of them (code); \"show\" brings the PrismLCA window to the front — do this before a question or a confirmation the user must answer there; \"open_model\" opens another model (database) and makes it the active one; \"open_page\" opens a page (page): overview, model, parameters, scenarios, lcia, results or report.",
+      "surface": "ui",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: jump | layout | clear | remove | show | open_model | open_page."
+          },
+          "code": {
+            "type": "string",
+            "description": "Process/reference code (action=jump/remove)."
+          },
+          "database": {
+            "type": "string",
+            "description": "Model to open (action=open_model)."
+          },
+          "page": {
+            "type": "string",
+            "description": "Page to open (action=open_page): overview | model | parameters | scenarios | lcia | results | report."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "history",
+      "label": "Undo / redo",
+      "group": "History",
+      "description": "Undo or redo the last model change (processes, exchanges, tags, parameters, scenarios) of the model this session works on — a newest change in another model is refused and named, never taken back. Model-level operations (create/rename/delete a model) and custom LCIA methods are NOT undoable. action=\"undo\" | \"redo\".",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: undo | redo."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "explain_result",
+      "label": "Explain a result",
+      "group": "Calculate",
+      "description": "Explain WHY a score is what it is. mode=\"tree\" gives the contribution tree (which processes carry the impact; optional aggregate_by=\"tag:<dimension>\" or \"geo\" for a per-phase breakdown, and \"scenario\" to see the tree under a scenario's overrides); mode=\"flows\" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode=\"inventory\" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass (\"how many grams of glycerine are in one tube\"); mode=\"matrix\" is the HOTSPOT MATRIX — the processes down the rows, the indicators in \"methods\" across, each cell a process's OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use \"matrix\" for the hotspot chapter and for any trade-off question across several indicators; \"tree\" for where a single indicator's impact sits in the supply chain. Pass \"methods\" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "One of: tree | flows | inventory | matrix."
+          },
+          "database": {
+            "type": "string",
+            "description": "Model/database name; omit for the model open on the canvas."
+          },
+          "code": {
+            "type": "string",
+            "description": "Activity code."
+          },
+          "method": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "LCIA method tuple."
+          },
+          "methods": {
+            "type": "array",
+            "description": "Several LCIA method tuples at once; results are returned per indicator, in order.",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "LCIA method tuple."
+            }
+          },
+          "amount": {
+            "type": "number",
+            "description": "Functional-unit amount (default 1)."
+          },
+          "aggregate_by": {
+            "type": "string",
+            "description": "mode=tree only: \"tag:<dimension>\" or \"geo\". ADDS a grouped breakdown; it does not replace anything, so the same answer still carries the flat contributor list. One call gives you both views — asking again without it repeats work you already have."
+          },
+          "scenario": {
+            "type": "string",
+            "description": "mode=tree only: a scenario id from list_scenarios — the tree is then computed with that scenario's parameter overrides. This is how you show WHERE a scenario's difference comes from; compare_scenarios only gives the totals."
+          },
+          "scenarios": {
+            "type": "array",
+            "description": "mode=tree only: several scenario ids at once, one tree each, in order — and pass \"aggregate_by\" with them to get the phases per scenario, which is the comparison a sensitivity chapter is written from. Include the baseline by leaving one entry empty.",
+            "items": {
+              "type": "string",
+              "description": "Scenario id from list_scenarios; \"\" for the baseline."
+            }
+          },
+          "top_n": {
+            "type": "number",
+            "description": "How many rows to return: flows for mode=\"flows\" (default 20), contributors for mode=\"tree\" (default 25), processes for mode=\"matrix\" (default 30). The tree is also cut at a 1 % contribution and a depth limit, so a process missing from it is BELOW the cutoff, not absent from the model."
+          },
+          "cutoff": {
+            "type": "number",
+            "description": "mode=matrix only: the share (0.01 = 1 %) a process must reach in at least ONE indicator to get a row. Default 0.01."
+          },
+          "direct_split": {
+            "type": "boolean",
+            "description": "mode=flows only: true = each flow also carries \"direct\", the part the activity emits itself, and the answer the direct/upstream split of the total."
+          },
+          "phase": {
+            "type": "object",
+            "properties": {
+              "dimension": {
+                "type": "string",
+                "description": "Tag group, e.g. \"Life-cycle phase\"."
+              },
+              "value": {
+                "type": "string",
+                "description": "Tag value, e.g. \"Raw materials\"."
+              }
+            },
+            "required": [
+              "dimension",
+              "value"
+            ],
+            "description": "mode=flows only: the flows of ONE tag value (a life-cycle phase), wherever its processes and inputs sit in the model."
+          }
+        },
+        "required": [
+          "mode",
+          "code"
+        ]
+      }
+    },
+    {
+      "name": "model_info",
+      "label": "Read / update goal & scope",
+      "group": "Read & search",
+      "description": "Read or update a model's study metadata (goal & scope, functional unit, geography and reference year, system boundaries, cut-off criteria, process and system allocation, notes, the people involved — author, organisation, commissioner, critical review, which appear on the report cover — and \"limitations\", what you could not resolve). action=\"get\" reads it — do this before substantive modelling; \"set\" merges only the fields you pass (undoable). This is the study's contract and your brief, and it is the ONLY channel from you to whoever writes the report: they never see this conversation.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "One of: get | set."
+          },
+          "database": {
+            "type": "string",
+            "description": "Model name; defaults to the open model."
+          },
+          "language": {
+            "type": "string",
+            "description": "The language the study is DOCUMENTED in (en | de | fr | es | pt; default en). Set it once at the start — from what the user asked for, or the language of the conversation — and then write ALL study documentation in it consistently: these fields, process comments, scenario names and descriptions, parameter comments. A report in another language translates from it mechanically, so mixed-language documentation ends up as a mixed-language document."
+          },
+          "goal": {
+            "type": "string",
+            "description": "Goal of the study."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Scope description."
+          },
+          "functional_unit": {
+            "type": "string",
+            "description": "The functional unit."
+          },
+          "geography": {
+            "type": "string",
+            "description": "Where the product is made and where it is sold or used, e.g. \"made in Poland, sold in Germany\" — the market every dataset choice has to match. The brief or the user names it; the language of the conversation does not, so ask when neither does."
+          },
+          "reference_year": {
+            "type": "string",
+            "description": "The year or period the data should represent, e.g. \"2025\"."
+          },
+          "system_boundaries": {
+            "type": "string",
+            "description": "What is in and out of the system."
+          },
+          "cutoff_criteria": {
+            "type": "string",
+            "description": "Cut-off rules applied."
+          },
+          "allocation": {
+            "type": "string",
+            "description": "Process allocation: how a multi-output process is split between its products (mass, economic, energy)."
+          },
+          "system_allocation": {
+            "type": "string",
+            "description": "System allocation: how end-of-life burdens and credits are handled (cut-off, avoided burden, 50/50, circular footprint formula)."
+          },
+          "author": {
+            "type": "string",
+            "description": "Who wrote the study."
+          },
+          "organisation": {
+            "type": "string",
+            "description": "The organisation carrying out the study."
+          },
+          "commissioner": {
+            "type": "string",
+            "description": "Who the study was carried out for."
+          },
+          "date": {
+            "type": "string",
+            "description": "Study date, ISO format."
+          },
+          "limitations": {
+            "type": "array",
+            "description": "What YOU could not resolve while building this model — the judgements that belong to the study rather than to any one process, and that no process comment has room for: an allocation you had to choose, an assumption the result turns out to rest on, something deliberately left out, data the user could not supply. The report prints them in its Limitations chapter beside the ones it can check for itself. A proxy's reasoning does NOT go here — that belongs in the process comment, which the inventory chapter prints. REPLACES the whole list, so pass the ones that still apply — or use \"add_limitations\" to append one without resending the rest, which is what you want the second time.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "One statement, in full sentences, as a reader will read it in the report."
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "limitation | assumption | exclusion | data_gap. Defaults to limitation."
+                },
+                "subject": {
+                  "type": "string",
+                  "description": "Optional: what it is about — a process name, a parameter, a life-cycle phase."
+                }
+              },
+              "required": [
+                "text"
+              ]
+            }
+          },
+          "add_limitations": {
+            "type": "array",
+            "description": "With action=set. APPENDS to the recorded limitations instead of replacing them — use this for one that occurs to you later, so you do not have to resend the existing ones correctly from memory. Duplicates (same text) are dropped. Same entry shape as \"limitations\"; pass one or the other, never both.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "description": "One statement, in full sentences, as a reader will read it in the report."
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "limitation | assumption | exclusion | data_gap. Defaults to limitation."
+                },
+                "subject": {
+                  "type": "string",
+                  "description": "Optional: what it is about — a process name, a parameter, a life-cycle phase."
+                }
+              },
+              "required": [
+                "text"
+              ]
+            }
+          },
+          "critical_review": {
+            "type": "string",
+            "description": "Who reviewed the study and when. Leaving it empty is meaningful: a public comparative assertion without a recorded review has to say so (ISO 14044 §7.3.3)."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Any other study notes."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "edit_exchange",
+      "label": "Add / change exchange",
+      "group": "Edit model",
+      "description": "Add, change, annotate or remove inputs/exchanges on a foreground process. action=\"add\" links an input (input_database/code plus amount OR formula, and you may pass comment in the SAME call — no follow-up needed); \"set_amount\" (amount); \"set_formula\" (formula — empty detaches it and keeps the number); \"set_comment\" (comment). \"set_amount\" and \"set_formula\" also take a comment in the same call and answer `commented: true`, so changing a number and saying why is ONE call; \"remove\"; \"replace_input\" swaps the dataset behind an existing exchange for another one (new_input_code, optional new_input_database) and CARRIES OVER its amount, formula and comment unless you pass new ones — that is the one call to reach for when a review says a dataset was the wrong choice. ADD RETURNS THE NEW EXCHANGE'S uid, so never re-read the process just to find it. Say WHICH process with activity_code (or activity_name), and which exchange inside it with \"uid\" or input_database/input_code — except that a \"uid\" ALONE is enough, because it identifies the exchange on its own and the process is looked up for you. input_database is required for action=\"add\" even when the input is another process of the same model: pass the active model's database name. Pass \"exchanges\" to do a whole batch in one call — and then the top-level \"activity_code\"/\"activity_name\"/\"activity_database\", \"action\", \"type\" and \"input_database\" act as DEFAULTS for every item, so name the process once instead of on all nine rows; an item that says something else wins. What names a single exchange (uid, input_code, amount, formula, comment) belongs on the item and is ignored at the top level. The comment is where the REASON for an amount belongs — why a waste flow has the sign it has, why a proxy dataset stands in, what a formula expresses. Undoable.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "add | set_amount | set_formula | set_comment | remove | replace_input."
+          },
+          "new_input_code": {
+            "type": "string",
+            "description": "Replacement dataset code (action=replace_input)."
+          },
+          "new_input_database": {
+            "type": "string",
+            "description": "Replacement dataset database (action=replace_input; defaults to the old one's)."
+          },
+          "activity_database": {
+            "type": "string",
+            "description": "Foreground model holding the exchange; omit for the open model."
+          },
+          "activity_code": {
+            "type": "string",
+            "description": "Activity code holding the exchange — or use \"activity_name\"."
+          },
+          "activity_name": {
+            "type": "string",
+            "description": "Name of the activity holding the exchange, instead of its code."
+          },
+          "input_database": {
+            "type": "string",
+            "description": "Input's database (required for action=add — the active model's own name for a link to another process of this model; or to identify an existing exchange)."
+          },
+          "input_code": {
+            "type": "string",
+            "description": "Input's code (action=add, or to identify an existing exchange)."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Amount (action=add/set_amount). Optional on \"add\" when you pass a formula — the formula is evaluated and its result becomes the amount."
+          },
+          "type": {
+            "type": "string",
+            "description": "\"technosphere\" (default) or \"biosphere\" (action=add). Biosphere flows take formulas exactly like technosphere ones — parameterise field emissions instead of typing constants."
+          },
+          "uid": {
+            "type": "string",
+            "description": "Exchange uid, instead of input_database/input_code. Enough on its own: the process holding it is looked up, so activity_code/activity_name is optional when you have a uid."
+          },
+          "formula": {
+            "type": "string",
+            "description": "Formula expression; empty clears it. May be passed with action=add, where it also supplies the amount. Works for biosphere flows too."
+          },
+          "comment": {
+            "type": "string",
+            "description": "Why this amount/sign/proxy — may be passed with action=add."
+          },
+          "tags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "action=add: tags of the new input itself, { \"<tag group>\": \"<value>\" } — e.g. { \"Life-cycle phase\": \"Raw materials\" } for steel that a manufacturing process consumes. Only for an input from OUTSIDE the model (background, library, another model); a process of this model is tagged on the process (edit_tags)."
+          },
+          "exchanges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "add | set_amount | set_formula | set_comment | remove | replace_input."
+                },
+                "new_input_code": {
+                  "type": "string",
+                  "description": "Replacement dataset code (action=replace_input)."
+                },
+                "new_input_database": {
+                  "type": "string",
+                  "description": "Replacement dataset database (action=replace_input)."
+                },
+                "activity_code": {
+                  "type": "string",
+                  "description": "Activity code holding the exchange."
+                },
+                "activity_name": {
+                  "type": "string",
+                  "description": "Activity name instead of the code."
+                },
+                "input_database": {
+                  "type": "string",
+                  "description": "Input's database."
+                },
+                "input_code": {
+                  "type": "string",
+                  "description": "Input's code."
+                },
+                "amount": {
+                  "type": "number",
+                  "description": "Amount. Optional on \"add\" when a formula is given."
+                },
+                "type": {
+                  "type": "string",
+                  "description": "technosphere (default) or biosphere. Biosphere flows take formulas too."
+                },
+                "uid": {
+                  "type": "string",
+                  "description": "Exchange uid."
+                },
+                "formula": {
+                  "type": "string",
+                  "description": "Formula expression; on \"add\" it also supplies the amount."
+                },
+                "comment": {
+                  "type": "string",
+                  "description": "Reason for this amount/sign/proxy."
+                },
+                "tags": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "action=add: tags of the new input, { \"<tag group>\": \"<value>\" } (inputs from outside the model only)."
+                }
+              }
+            },
+            "description": "Several exchange edits in one call; each item takes the same fields."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "lookup",
+      "label": "Look up vocabularies",
+      "group": "Read & search",
+      "description": "Look something up that you need in order to work. kind=\"geographies\" lists the regions present in a database (needs database) with their plain names (RER = Europe, GLO = global, RoW = rest of world) and whether each is an aggregate region or a country — use them to filter searches, and pass \"query\" to find a region by name (\"europe\" finds RER); kind=\"classification\" looks up valid ISIC sections and CPC classes (optional query) for set_classification; kind=\"source\" reads a file the user attached to this conversation (needs source: the id printed with the file). Read the file whenever you are asked what it says and its content is no longer in front of you — never answer about an attachment from memory.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "One of: geographies | classification | source."
+          },
+          "database": {
+            "type": "string",
+            "description": "Database name (kind=geographies)."
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional filter on code or name (kind=geographies, kind=classification)."
+          },
+          "source": {
+            "type": "string",
+            "description": "The attachment id printed with the file, e.g. \"3f9c1a2b4d5e-spec.pdf\" (kind=source)."
+          },
+          "pages": {
+            "type": "string",
+            "description": "Optional, PDFs only: narrows the read to those pages, e.g. \"12\" or \"12-14\" or \"1,4,9-11\". Omit it to read the whole file — narrowing is cheaper when you already know where to look, never a condition for reading (kind=source)."
+          },
+          "sheet": {
+            "type": "string",
+            "description": "Optional, spreadsheets only: narrows the read to one sheet by name; omit for all of them (kind=source)."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    {
+      "name": "plan",
+      "label": "Task plan",
+      "group": "Plan",
+      "description": "Keep the task plan the user sees beside the chat. Send the WHOLE list every time — it replaces the previous one. Each step is an object with exactly the fields \"step\" (a short imperative sentence), \"status\" (pending | in_progress | blocked | completed | skipped) and optionally \"note\". Exactly one step is in_progress while work remains; a step that cannot proceed is blocked (with a note); a dropped step is skipped (with a note). Mark steps completed the moment they are done — never before, and never because you meant to do them. Several steps may be completed in one call. Close the last step together with your final answer, not before it. If the plan changes or an unfinished step is dropped, say why in explanation. The user sees the list beside the chat, so do not repeat it in prose. Not for questions, lookups or single edits — only for work that takes more than a handful of tool calls.",
+      "surface": "api",
+      "mutating": false,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "3–6 words naming the task; required on the first call of a chat (max 60 characters)."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Why the plan changed. Required when a step that was not completed/skipped disappears or is reworded, and when the list is emptied to withdraw the plan (max 300 characters)."
+          },
+          "steps": {
+            "type": "array",
+            "maxItems": 20,
+            "description": "The complete list, in order (max 20 steps). An empty list withdraws the plan.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "step": {
+                  "type": "string",
+                  "description": "One short imperative sentence, 5–7 words (max 120 characters)."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "in_progress",
+                    "blocked",
+                    "completed",
+                    "skipped"
+                  ],
+                  "description": "The step’s state."
+                },
+                "note": {
+                  "type": "string",
+                  "description": "Required on blocked (what blocks it) and skipped (why it is dropped); optional on completed (what came out). Max 300 characters."
+                }
+              },
+              "required": [
+                "step",
+                "status"
+              ]
+            }
+          }
+        },
+        "required": [
+          "steps"
+        ]
+      }
+    }
+  ]
+}

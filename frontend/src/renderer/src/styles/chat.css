@@ -1,0 +1,614 @@
+.chat-bar {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+  padding: 6px; box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+}
+/* Composer, claude.ai-style: the input line on top at full width, a controls row underneath —
+   "+" flyout left (attach + per-chat toggles), mic and send right. */
+.chat-bar-controls { display: flex; align-items: center; gap: 6px; }
+.chat-bar-spacer { flex: 1; }
+/* The active chat model, quiet, right of the spacer and left of the mic — a picker, not a caption. */
+.chat-model-wrap { position: relative; min-width: 0; }
+/* Height and rounding are the mic button's, so the hover box next to it is the same box — hence the numbers
+   rather than a padding that happens to land near 34px. */
+.chat-bar-model {
+  display: flex; align-items: center; gap: 3px; max-width: 190px;
+  height: 34px; padding: 0 8px; border-radius: 9px;
+  border: none; background: transparent; color: var(--faint); cursor: pointer;
+  font: inherit; font-size: var(--fs-label);
+}
+.chat-bar-model:hover, .chat-bar-model.on { background: var(--bg-muted); color: var(--muted); }
+.chat-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-bar-model svg { flex: none; }
+/* Opens upward like the "+" menu, but anchored to its right edge — it sits at the end of the row. */
+.chat-model-menu { left: auto; right: 0; min-width: 240px; max-width: 320px; }
+.chat-model-item.on { background: var(--green-soft); }
+.chat-model-tick { flex: none; width: 12px; color: var(--green-ink); }
+.chat-model-desc { display: block; color: var(--faint); font-size: var(--fs-label);
+  overflow: hidden; text-overflow: ellipsis; }
+.chat-plus-wrap { position: relative; }
+.chat-plus.on { color: var(--green-ink); background: var(--green-soft); }
+.chat-plus-menu {
+  position: absolute; bottom: 40px; left: 0; z-index: 30; min-width: 210px;
+  display: flex; flex-direction: column; gap: 2px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+  box-shadow: 0 6px 22px rgba(0,0,0,0.18);
+}
+.chat-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  border: none; background: transparent; cursor: pointer; border-radius: 7px;
+  padding: 7px 9px; color: var(--text); font: inherit; font-size: var(--fs-sec);
+}
+.chat-menu-item:hover:not(:disabled) { background: var(--bg-muted); }
+.chat-menu-item:disabled { opacity: .5; cursor: default; }
+.chat-menu-item svg { flex: none; color: var(--faint); }
+/* The little slider switch on a menu toggle — left = off, right = on. */
+.chat-menu-switch {
+  margin-left: auto; flex: none; width: 28px; height: 16px; border-radius: 999px;
+  background: var(--border-strong); position: relative; transition: background .15s ease;
+}
+.chat-menu-switch i {
+  position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--surface); transition: left .15s ease;
+}
+.chat-menu-switch.on { background: var(--green); }
+.chat-menu-switch.on i { left: 14px; }
+/* Skills flyout: a second menu opening to the right of its "Skills" row. The 4px gap is bridged by
+   the wrapper's own padding so the pointer never leaves it on the way over. */
+.chat-menu-sub { position: relative; }
+.chat-menu-item.open { background: var(--bg-muted); }
+.chat-menu-chevron { margin-left: auto; color: var(--faint); font-size: 15px; line-height: 1; }
+.chat-submenu {
+  bottom: -4px; left: 100%; margin-left: 4px; min-width: 220px; max-width: 320px;
+  max-height: min(60vh, 560px); overflow-y: auto;
+}
+.chat-submenu::before { content: ''; position: absolute; left: -6px; top: 0; bottom: 0; width: 6px; }
+.chat-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-menu-empty { padding: 7px 9px; color: var(--faint); font-size: var(--fs-sec); }
+.chat-menu-divider { height: 1px; margin: 2px 4px; background: var(--border); }
+.chat-attach-btn {
+  flex: none; width: 34px; height: 34px; border-radius: 9px; border: none; cursor: pointer;
+  background: var(--bg-muted); color: var(--faint);
+  display: grid; place-items: center;
+}
+.chat-attach-btn:hover:not(:disabled) { color: var(--green); background: var(--green-soft); }
+.chat-attach-btn:disabled { opacity: .5; cursor: default; }
+.chat-attach {
+  display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--text);
+  background: var(--green-soft); border-radius: 8px; padding: 4px 8px; align-self: flex-start; max-width: 100%;
+}
+.chat-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-attach-x { border: none; background: transparent; color: var(--faint); cursor: pointer; padding: 0 2px; }
+.chat-attach-x:hover { color: var(--prism-alert, #cc4b37); }
+/* Several files per message: the chips wrap rather than squeezing, so a long name stays readable. */
+.chat-attach-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chat-attach-busy { color: var(--faint); }
+/* The same chip once the message is out: it sits inside the tinted user bubble, so it needs its own
+   ground to stay a distinct object, and it hangs BELOW the prose instead of above the input. */
+.chat-attach-list.sent { margin: 6px 0 0; }
+.chat-attach.sent { background: var(--surface); color: var(--text); padding: 2px 4px 2px 8px; }
+/* The name is the way back to the file itself, so it behaves like one: a button, not a label. */
+.chat-attach-open {
+  display: flex; align-items: center; gap: 6px; min-width: 0; cursor: pointer;
+  border: none; background: transparent; color: inherit; font: inherit; padding: 2px 0; text-align: left;
+}
+.chat-attach-open:hover .chat-attach-name { text-decoration: underline; }
+.chat-attach.sent .chat-attach-x { display: inline-flex; align-items: center; padding: 2px 4px; }
+.chat-attach.sent .chat-attach-x:hover { color: var(--green-ink); }
+/* What a big file will cost, said where it is added and not after it was sent. */
+.chat-attach-note { color: var(--faint); font-size: var(--fs-label); }
+.chat-attach.bad { background: var(--bg-muted); }
+.chat-attach-note.bad { color: var(--bad); }
+.chat-drop-hint {
+  position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; pointer-events: none;
+  border: 2px dashed var(--green); border-radius: 12px; background: var(--green-soft);
+  color: var(--green-ink); font-size: var(--fs-sec);
+}
+
+/* Search-result info button + the process-details window */
+.res-info {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; line-height: 0;
+  border: none; cursor: pointer; padding: 3px 5px; border-radius: 5px;
+  background: var(--surface-3); color: var(--muted);
+}
+.res-info:hover:not(:disabled) { background: var(--navy-soft); color: var(--navy); }
+/* Whatever icon lands in the chip renders at chip size — the pencil arrived at its default 16px
+   and stood out from its 13px neighbours. */
+.res-info svg { width: 13px; height: 13px; }
+.res-info:disabled { opacity: .4; cursor: default; }
+
+/* Process details is a standard sheet now (head + tab strip + scrolling body). The height is fixed so
+   switching tabs does not resize the window — the Results tab is laid out against that height. */
+.modal.sheet.pdet-modal { width: min(880px, 94vw); height: min(86vh, 720px); }
+.sheet-head .pdet-title { margin: 3px 0 0; }
+.pdet-sub { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sec); color: var(--muted); flex-wrap: wrap; margin-top: 7px; }
+.pdet-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 0; padding: 0 22px; flex: none; }
+.pdet-tab { border: none; background: transparent; cursor: pointer; padding: 9px 12px; font: inherit; font-size: var(--fs-body); color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .12s; }
+.pdet-tab:hover { color: var(--text); }
+.pdet-tab.on { color: var(--navy); border-bottom-color: var(--green); font-weight: 600; }
+.pdet-body { padding: 4px 22px 22px; }
+.pdet-section { margin-bottom: 18px; }
+/* Same grammar as the model window's section heads: sticky, ruled, with the swatch from modal.css. */
+.pdet-section-h { position: sticky; top: 0; z-index: 2; background: var(--surface); display: flex; align-items: center; gap: 9px;
+  padding: 14px 0 8px; margin-bottom: 10px; border-bottom: 1px solid var(--border); }
+.pdet-comment { font-size: var(--fs-body); line-height: 1.55; color: var(--text); margin: 0 0 6px; white-space: pre-wrap; }
+.pdet-para { margin: 0 0 11px; line-height: 1.55; }
+.pdet-para:last-child { margin-bottom: 0; }
+.pdet-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sec); }
+.pdet-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pdet-table td:first-child { color: var(--faint); white-space: nowrap; width: 1%; }
+.pdet-table th { text-align: left; padding: 6px 10px; color: var(--faint); font-weight: 600; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.pdet-flows { display: flex; flex-direction: column; }
+.pdet-flow-wrap { border-bottom: 1px solid var(--border); }
+.pdet-flow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: var(--fs-body); }
+.pdet-flow-left { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.pdet-flow-cmt { flex: none; border: none; background: transparent; cursor: pointer; color: var(--faint); line-height: 0; padding: 0 2px; }
+.pdet-flow-cmt:hover, .pdet-flow-cmt.on { color: var(--green); }
+.pdet-flow-comment { font-size: var(--fs-body); line-height: 1.5; color: var(--text); background: var(--surface-2); border-radius: 6px; padding: 6px 9px; margin: 0 0 6px 2px; white-space: pre-wrap; }
+.pdet-flow-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdet-flow-geo { flex: none; font-size: var(--fs-label); color: var(--faint); }
+.pdet-flow-cat { flex: none; font-size: var(--fs-label); color: var(--purple); }
+.pdet-flow-amt { font-variant-numeric: tabular-nums; }
+.pdet-flow-unit { color: var(--faint); font-size: var(--fs-sec); min-width: 46px; }
+/* The top row and the columns row share the same 2-column grid so the description sits exactly
+   under the family dropdown and the indicator list exactly under the filter. */
+.pdet-res { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.pdet-res-top { display: grid; grid-template-columns: 300px 1fr; gap: 12px; align-items: end; }
+.pdet-field { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-sec); color: var(--faint); min-width: 0; }
+.pdet-field select, .pdet-filter { width: 100%; box-sizing: border-box; height: 34px; padding: 0 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.pdet-res-actions { display: flex; align-items: center; gap: 12px; font-size: var(--fs-sec); flex: none; }
+.pdet-res-cols { display: grid; grid-template-columns: 300px 1fr; gap: 12px; height: 255px; align-items: stretch; }
+.pdet-res-right { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.pdet-res-right .pdet-res-list { flex: 1; min-height: 0; }
+.pdet-res-list { overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px; }
+.pdet-res-info { overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface-2); }
+.pdet-picker-foot { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+/* Only the results list scrolls (never the whole window); no horizontal scroll — long indicator
+   names are truncated with an ellipsis and shown in full on hover (title). */
+.pdet-res-tab { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.pdet-res-tab .pdet-res { flex: none; }
+.pdet-res-scores { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.pdet-scores-table { table-layout: fixed; width: 100%; }
+.pdet-scores-table th.td-score, .pdet-scores-table td.td-score { width: 150px; text-align: right; }
+.pdet-scores-table th:last-child, .pdet-scores-table .pdet-score-unit { width: 120px; }
+.pdet-scores-table .pdet-score-name, .pdet-scores-table .pdet-score-unit {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-input {
+  /* Full width of the column — flex:1 was the OLD row layout's "take the rest beside the buttons",
+     and in the column it overrode the JS-measured height, so the box never grew. */
+  width: 100%; resize: none; border: none; outline: none; background: transparent;
+  color: var(--text); font: inherit; font-size: var(--fs-body); line-height: 1.4;
+  padding: 6px 8px; max-height: 200px; overflow-y: auto;
+}
+.chat-input:disabled { color: var(--faint); }
+/* The placeholder must never wrap: in the narrow collapsed pill a wrapped placeholder would be
+   clipped (and used to drive the auto-grow measurement to two lines). Ellipsize instead. */
+.chat-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Voice input: pulsing red mic while recording, equalizer waves while transcribing. */
+.chat-mic.rec {
+  color: #fff; background: var(--prism-alert, #cc4b37);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(204, 75, 55, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(204, 75, 55, 0); }
+}
+.chat-voice-status {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--faint); font-size: var(--fs-body); font-style: italic;
+}
+.chat-voice-waves { display: inline-flex; align-items: center; gap: 2px; height: 16px; }
+.chat-voice-waves i {
+  width: 3px; height: 14px; border-radius: 2px; background: var(--green);
+  animation: voice-wave 1s ease-in-out infinite;
+}
+.chat-voice-waves i:nth-child(2) { animation-delay: .12s; }
+.chat-voice-waves i:nth-child(3) { animation-delay: .24s; }
+.chat-voice-waves i:nth-child(4) { animation-delay: .36s; }
+.chat-voice-waves i:nth-child(5) { animation-delay: .48s; }
+@keyframes voice-wave {
+  0%, 100% { transform: scaleY(.25); }
+  50% { transform: scaleY(1); }
+}
+
+.chat-send {
+  flex: none; width: 34px; height: 34px; border-radius: 9px; border: none; cursor: pointer;
+  background: var(--green); color: #fff; font-size: 15px; line-height: 1; display: grid; place-items: center;
+}
+.chat-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
+.chat-send.stop { background: var(--prism-alert, #cc4b37); }
+
+.chat-panel {
+  /* The jump button hangs off the panel, not the transcript: inside a scrolling box it would
+     scroll away with the content it is there to escape. */
+  position: relative;
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); /* opaque, matching .chat-bar below */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.16);
+}
+.chat-resize { height: 8px; cursor: ns-resize; flex: none; }
+.chat-resize::after {
+  content: ''; display: block; width: 40px; height: 3px; margin: 2px auto 0;
+  border-radius: 2px; background: var(--faint); opacity: .5;
+}
+.chat-head {
+  display: flex; align-items: center; gap: 4px; padding: 2px 6px 6px; position: relative;
+  border-bottom: 1px solid var(--border);
+}
+.chat-head-btn {
+  border: none; background: transparent; color: var(--text); cursor: pointer;
+  font-size: var(--fs-sec); padding: 4px 8px; border-radius: 7px; max-width: 60%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chat-head-btn:hover { background: var(--surface-2); }
+/* Quiet "· powered by <model>" after the chat title. */
+.chat-head-powered { font-size: var(--fs-label); color: var(--faint); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; min-width: 0; margin: 0 4px; cursor: default; }
+.chat-head-spacer { flex: 1; }
+/* z-index 3: over the pinned run bar, which sits right where the list drops down (see `.chat-runbar`). */
+.chat-list {
+  position: absolute; top: 34px; left: 6px; z-index: 3; min-width: 220px; max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+}
+.chat-list-empty { color: var(--faint); font-size: var(--fs-sec); padding: 8px; }
+.chat-list-item { display: flex; align-items: center; gap: 4px; border-radius: 7px; }
+.chat-list-item.on { background: var(--green-soft); }
+.chat-list-open { flex: 1; text-align: left; border: none; background: transparent; color: var(--text); cursor: pointer; padding: 6px 8px; font-size: var(--fs-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-list-del { border: none; background: transparent; color: var(--faint); cursor: pointer; padding: 4px 6px; }
+.chat-list-running { color: var(--faint); font-size: var(--fs-sec); font-style: italic; padding: 0 4px; white-space: nowrap; }
+/* "1 other run": a run in another chat, and the way to it. Quiet until hovered, the pulse says it is live. */
+.chat-head-elsewhere {
+  display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--muted);
+  font-size: var(--fs-sec); white-space: nowrap; padding: 4px 8px; border-radius: 7px; cursor: pointer;
+}
+.chat-head-elsewhere:hover { background: var(--surface-2); color: var(--text); }
+.chat-list-del:hover { color: var(--prism-alert, #cc4b37); }
+
+.chat-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+/* Back to the newest message, shown only while there is somewhere to go. Sits over the last line
+   of the transcript rather than taking a row of its own, which is why it carries a shadow. */
+.chat-jump {
+  position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted);
+  cursor: pointer; z-index: 3; box-shadow: 0 2px 8px rgba(20,32,28,.16);
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease,
+    transform 120ms ease, box-shadow 120ms ease;
+}
+.chat-jump:hover { background: var(--surface-2); border-color: var(--green); color: var(--text);
+  transform: translateX(-50%) scale(1.08); box-shadow: 0 3px 12px rgba(20,32,28,.22); }
+.chat-jump:active { transform: translateX(-50%) scale(0.96); }
+.chat-hint { color: var(--text); opacity: .85; font-size: var(--fs-body); line-height: 1.5; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.chat-msg { border-radius: 10px; padding: 7px 11px; font-size: var(--fs-body); line-height: 1.5; max-width: 92%; word-wrap: break-word; }
+.chat-msg.user { align-self: flex-end; background: color-mix(in srgb, var(--green) 16%, var(--surface)); color: var(--ink); }
+.chat-msg.assistant { align-self: flex-start; background: var(--surface-2); color: var(--text); }
+.chat-msg.assistant :is(p, ul, ol, table) { margin: .35em 0; }
+/* Links in the brand's link colour, visited included — the browser's visited purple was unreadable on
+   the dark surface. */
+.chat-msg a, .chat-msg a:visited { color: var(--green-ink); text-decoration: underline; text-underline-offset: 2px; }
+.chat-msg a:hover { color: var(--green); }
+.chat-msg.assistant :is(h1, h2, h3) { margin: .5em 0 .3em; font-size: 1.02em; color: var(--navy); }
+.chat-msg.assistant code { background: var(--surface-3); border-radius: 4px; padding: 0 3px; font-size: .92em; }
+.chat-msg.assistant pre { background: var(--surface-3); border-radius: 8px; padding: 8px; overflow-x: auto; }
+/* Markdown tables: header tint, zebra rows, and horizontal scroll for wide ones
+   (display:block makes the table itself the scroll container — no wrapper needed). */
+.chat-msg.assistant table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; }
+.chat-msg.assistant th, .chat-msg.assistant td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; }
+.chat-msg.assistant th { background: var(--surface-3); color: var(--navy); font-weight: 600; white-space: nowrap; }
+.chat-msg.assistant tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-3) 55%, transparent); }
+/* A process the assistant names, as a jump to it on the canvas: running text on a dotted line with an
+   arrow after the name, so a paragraph that names five processes still reads as prose. It used to be a
+   green, bold chip. Web links stay green text on a solid line, so the two remain
+   apart. An inline span, not a button — a button lays out as an inline block, and a long process name
+   could not wrap. */
+.chat-proclink {
+  cursor: pointer; border-radius: 4px; padding: 0 2px; margin: 0 -2px;
+  text-decoration: underline dotted; text-decoration-thickness: 1.5px; text-underline-offset: 3px;
+  text-decoration-color: var(--faint);
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  transition: background-color .12s ease, text-decoration-color .12s ease;
+}
+.chat-proclink:hover { background: var(--green-soft); text-decoration-color: var(--green-ink); }
+.chat-proclink:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+/* The arrow hangs on the last word, so it never opens a line on its own. */
+.chat-proclink-tail { white-space: nowrap; }
+.chat-proclink svg {
+  width: .9em; height: .9em; margin-left: .24em; vertical-align: -.12em;
+  stroke-width: 2.2; color: var(--green-ink);
+}
+/* "The model is thinking" between two tool rounds. It was a single grey ellipsis at 12px, which was
+   overlooked completely — the one moment in a run where nothing else moves needs the clearest
+   sign in the panel, not the faintest. Three dots in the accent colour, each a beat behind the last, so
+   the movement travels and reads as waiting rather than as a stuck glyph. */
+.chat-thinking { display: flex; gap: 5px; align-items: center; padding: 4px 0 6px; }
+.chat-thinking i {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+  animation: chat-thinking 1.2s ease-in-out infinite;
+}
+.chat-thinking i:nth-child(2) { animation-delay: .18s; }
+.chat-thinking i:nth-child(3) { animation-delay: .36s; }
+@keyframes chat-thinking {
+  0%, 100% { opacity: .22; transform: translateY(1px) scale(.82); }
+  40% { opacity: 1; transform: translateY(-1px) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-thinking i { animation: none; opacity: .9; }
+}
+/* The run status, pinned inside the scroll container so it survives any amount of transcript above
+   it. Opaque background on purpose: it sits over the messages it is pinned above.
+   It used to be --surface-2 — the exact colour of an assistant message — so on a long run the bar
+   and the bubble scrolling under it merged into one shape with no edge between them. A pinned
+   element is on a layer of its own, so it is dressed like one: the panel's own surface (which
+   neither bubble uses — the assistant's is --surface-2, the user's a green tint), the stronger
+   border, and a shadow that does the separating whatever happens to slide beneath it. */
+.chat-runbar {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  margin: -2px 0 8px; padding: 5px 8px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(20,32,28,.10);
+  font-size: var(--fs-sec); color: var(--text);
+}
+/* The transcript's own 10px gutter sits above the pinned bar, and lines scrolled through it. It did
+   not show while the bar was the same colour as the messages; against a bar that now stands off the
+   page it read as text leaking out from behind. This paints that strip in the panel's surface, so
+   the bar is the top of the transcript rather than a card with something sliding past over it.
+   An absolutely positioned child is placed against the PADDING box, so the bar's own 1px top border
+   lives at -1px and a mask starting at 0 paints straight over it — the box then had a border on
+   three sides and an open top edge. It stops one pixel short. */
+.chat-runbar::before {
+  content: ''; position: absolute; left: -11px; right: -11px; top: -14px; height: 13px;
+  background: var(--surface); pointer-events: none;
+}
+.chat-runbar-what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* Only the label gives way. Every flex item shrinks by default, so a long label — a research agent's
+   question — squeezed the clock, the call count and the context level below their width, and their
+   spaces broke ("12" over "s"): the bar went two lines tall and jumped with every tick. */
+.chat-runbar > :not(.chat-runbar-what) { flex-shrink: 0; white-space: nowrap; }
+.chat-runbar-note { font-weight: 400; color: var(--faint); }
+.chat-runbar-count { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* A finished turn's calls, folded to one line. Forty expanded rows per answer turn the transcript into
+   a list of tool names with the reply lost inside it. */
+.chat-traces-sum {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 6px; padding: 2px 0;
+  background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-sec); color: var(--faint); text-align: left;
+}
+.chat-traces-sum:hover { color: var(--ink); }
+.chat-traces-sum-caret { font-size: 9px; color: var(--border-strong); }
+
+/* Tool trace: one collapsed line per call, expandable to arguments + result preview. */
+.chat-traces { display: flex; flex-direction: column; gap: 3px; margin-bottom: 6px; }
+.chat-trace { font-size: var(--fs-sec); border-left: 2px solid var(--border-strong); padding-left: 8px; }
+.chat-trace > summary {
+  cursor: pointer; display: flex; align-items: center; gap: 6px;
+  color: var(--faint); list-style: none; padding: 1px 0;
+}
+.chat-trace > summary::marker, .chat-trace > summary::-webkit-details-marker { display: none; }
+.chat-trace > summary::before { content: '▸'; font-size: 9px; color: var(--border-strong); }
+.chat-trace[open] > summary::before { content: '▾'; }
+.chat-trace > summary:hover { color: var(--ink); }
+.chat-trace-name { font-weight: 600; }
+/* The attribution line of a distances call — beside the row, visible whether the row is open or not. */
+.chat-trace-notice { font-size: var(--fs-label); color: var(--faint); border-left: 2px solid var(--border-strong); padding: 1px 0 3px 8px; line-height: 1.4; }
+.chat-trace-ms { color: var(--border-strong); }
+.chat-trace-tag {
+  font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+  border-radius: 4px; padding: 0 4px;
+}
+/* Rejected = the tool returned {"error": …}; failed = it threw. Both told the model "no", which is
+   what you want to see at a glance, but they are not the same thing. */
+.chat-trace.rejected { border-left-color: var(--prism-warning, #ffae00); }
+.chat-trace.rejected .chat-trace-tag {
+  background: color-mix(in srgb, var(--prism-warning, #ffae00) 20%, var(--surface));
+  color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, var(--ink));
+}
+.chat-trace.error { border-left-color: var(--prism-alert, #cc4b37); }
+.chat-trace.error .chat-trace-tag {
+  background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface));
+  color: var(--prism-alert, #cc4b37);
+}
+.chat-trace.running { border-left-color: var(--green); }
+.chat-trace.running .chat-trace-tag { color: var(--green-ink); background: var(--green-soft); }
+/* A running call needs something that moves. The seconds counter alone reads as a static number for
+   the first second, and a tool call that takes minutes must not be indistinguishable from a dead run. */
+.chat-trace-pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  flex: 0 0 auto; animation: chat-pulse 1.4s ease-in-out infinite;
+}
+.chat-trace-ms.live { color: var(--green-ink); font-variant-numeric: tabular-nums; }
+@keyframes chat-pulse {
+  0%, 100% { opacity: .25; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-trace-pulse { animation: none; opacity: .9; }
+}
+.chat-trace-detail { color: var(--ink); padding: 2px 0 4px; line-height: 1.45; }
+.chat-trace-pre {
+  margin: 0 0 4px; padding: 6px 8px; background: var(--surface-3); border-radius: 6px;
+  font-size: var(--fs-sec); line-height: 1.4; max-height: 220px; overflow: auto; white-space: pre-wrap;
+  word-break: break-word; color: var(--ink);
+}
+.chat-trace-pre.result { color: var(--faint); }
+/* ask_user question card: the assistant's clickable multiple-choice question */
+.chat-ask {
+  align-self: flex-start; max-width: 92%; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.chat-ask-q { font-size: var(--fs-body); font-weight: 600; color: var(--ink); line-height: 1.45; }
+/* Several questions in one card: a rule and a number keep each option list tied to its question. */
+.chat-ask-item { display: flex; flex-direction: column; gap: 6px; }
+.chat-ask-item + .chat-ask-item { border-top: 1px solid var(--border); padding-top: 10px; }
+.chat-ask-num { color: var(--faint); font-weight: 600; margin-right: 5px; }
+.chat-ask-opts { display: flex; flex-direction: column; gap: 6px; }
+.chat-ask-opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: var(--fs-body);
+}
+.chat-ask-opt:hover { border-color: var(--green); background: var(--green-soft); }
+.chat-ask-opt.on { background: var(--green-soft); color: var(--green-ink); border-color: var(--green); }
+.chat-ask-label { font-weight: 600; }
+.chat-ask-desc { font-size: var(--fs-sec); color: var(--faint); }
+.chat-ask-opt.on .chat-ask-desc { color: var(--green-ink); opacity: .8; }
+.chat-ask-confirm {
+  align-self: flex-start; border: none; cursor: pointer; border-radius: 8px; padding: 5px 12px;
+  background: var(--green); color: #fff; font-family: inherit; font-size: var(--fs-body); font-weight: 600;
+}
+.chat-ask-confirm:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
+.chat-error { font-size: var(--fs-body); color: var(--prism-alert, #cc4b37); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+
+
+/* Key/value metadata (classification, fields) as a bordered card: the key column faint, the rows
+   ruled, the whole thing clipped to the radius so the first and last row sit flush. */
+.pdet-kv { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; border-collapse: separate; border-spacing: 0; }
+.pdet-kv tr:last-child td { border-bottom: none; }
+.pdet-kv td:first-child { background: var(--surface-2); font-weight: 600; color: var(--muted); }
+.pdet-kv td { overflow-wrap: anywhere; }
+.pdet-scores-table { border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; border-collapse: separate; border-spacing: 0; }
+.pdet-scores-table tr:last-child td { border-bottom: none; }
+.pdet-empty-flush { padding: 0; }
+
+/* The context meter on the run bar: how full the model's window is, from the provider's own count.
+   `.full` from the condensing threshold on — older tool results are summaries from there. */
+.chat-runbar-ctx { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chat-runbar-ctx.full { color: var(--prism-alert, #cc4b37); }
+
+/* The confirmation card before an irreversible action: the question card's material, two buttons. */
+.chat-ask-actions { display: flex; gap: 8px; }
+.chat-ask-decline {
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  border-radius: 8px; padding: 5px 12px; cursor: pointer; font-family: inherit; font-size: var(--fs-body); font-weight: 600;
+}
+.chat-ask-decline:hover { border-color: var(--prism-alert, #cc4b37); color: var(--prism-alert, #cc4b37); }
+.chat-ask-args summary { font-size: var(--fs-sec); color: var(--faint); cursor: pointer; }
+.chat-ask-args .chat-trace-pre { margin-top: 4px; }
+
+/* A message queued while the run works (ChatComposer): an attachment chip's shape, with a clock
+   (ClockIcon) in the note's green. */
+.chat-queued { background: var(--green-soft); border-color: var(--green); }
+.chat-queued .chat-attach-note { color: var(--green-ink); opacity: .8; }
+.chat-queued > svg { color: var(--green-ink); }
+.chat-send.queue { opacity: .85; margin-right: 4px; }
+
+/* The model menu: an Effort row pinned above the list (`.chat-model-head`, outside
+   the scroll box, so it neither scrolls away nor clips its flyout), then the scrolling model list.
+   The menu hugs the right edge of the composer, so the effort flyout opens to the LEFT. */
+.chat-model-list { display: flex; flex-direction: column; gap: 2px; max-height: min(60vh, 420px); overflow-y: auto; }
+.chat-model-head .chat-menu-item:disabled { opacity: .6; }
+.chat-effort-sub { left: auto; right: 100%; margin-left: 0; margin-right: 4px; min-width: 150px; bottom: -4px; }
+.chat-effort-sub::before { left: auto; right: -6px; }
+.chat-bar-model { max-width: 240px; }
+/* The swap icon sits in the tick slot and takes the tick's width, so "Change provider" lines up with
+   the rows below it. The two flyouts hold at most seven short rows: no scroll box, and so no
+   horizontal scrollbar from the hover bridge (`::before`) that reaches outside their box. They open
+   to the LEFT because the dock sits in the window's bottom-right corner — the plan card does the
+   same, for the same reason. */
+.chat-model-head .chat-model-tick { display: inline-flex; align-items: center; justify-content: center; }
+.chat-model-head .chat-model-tick svg { width: 12px; height: 12px; }
+.chat-effort-sub { overflow: visible; max-height: none; }
+/* The effort dial in the model menu (components/EffortScale.tsx, EffortDial): the Settings scale
+   stood upright. Default at the foot, the top level at the head, every step named beside the track
+   at its own height; the chosen one is green. The native range is turned vertical with
+   writing-mode, so up means more, keyboard included. The fill wears the shared gradient bottom-up,
+   sized to the track, so the top level shows all of it. */
+.chat-effort-dial { padding: 8px 12px; min-width: 0; width: 150px; align-items: flex-start; }
+.effort-dial { display: flex; align-items: stretch; gap: 10px; width: 100%; }
+.effort-dial-track {
+  --thumb: 16px; --frac: 0;
+  position: relative; flex: none; width: 22px; height: 150px; container-type: size;
+}
+.effort-dial-track::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 7px; width: 8px; border-radius: 4px;
+  background: var(--bg-muted);
+}
+.effort-dial-track .effort-fill {
+  position: absolute; left: 7px; bottom: 0; width: 8px; border-radius: 4px; top: auto;
+  height: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--frac));
+  background-color: transparent;
+  background-image: linear-gradient(0deg, var(--purple), var(--navy), var(--green));
+  background-size: 100% 100cqh; background-position: left bottom; background-repeat: no-repeat;
+  transition: height .15s ease;
+}
+.effort-dial-track input[type=range] {
+  -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 22px; height: 100%;
+  margin: 0; padding: 0; border: none; background: transparent; cursor: pointer;
+  writing-mode: vertical-lr; direction: rtl;
+}
+.effort-dial-track input[type=range]::-webkit-slider-runnable-track { width: 22px; background: transparent; }
+.effort-dial-track input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: var(--thumb); height: var(--thumb); margin-left: 3px;
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--green);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.effort-dial-track input[type=range]:focus { outline: none; }
+.effort-dial-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--green); outline-offset: 2px; }
+/* The names: each sits at the thumb's height for its step (`--at` in 0..1), centred on it. */
+.effort-dial-names { --thumb: 16px; position: relative; flex: 1; min-width: 0; }
+.effort-dial-name {
+  position: absolute; left: 0; transform: translateY(50%);
+  bottom: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--at));
+  border: none; background: transparent; padding: 0; font: inherit; font-size: var(--fs-label);
+  color: var(--faint); cursor: pointer; white-space: nowrap; line-height: 1;
+}
+.effort-dial-name:hover { color: var(--text); }
+.effort-dial-name.on { color: var(--green-ink); font-weight: 600; }
+/* The effort part of the composer button keeps the width of its widest word, so the button — and
+   the menu hanging off it — does not shift while the thumb is dragged. */
+.chat-model-effort { display: inline-block; min-width: 7ch; }
+/* A tick right of the track for every step (the softer
+   1px trial was too faint), outside the fill so the gradient never covers it. */
+.effort-dial-tick {
+  position: absolute; left: 18px; width: 5px; height: 2px; border-radius: 1px; transform: translateY(50%);
+  bottom: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--at));
+  background: var(--border-strong);
+}
+
+/* The chips' leading icons (ClockIcon, PaperclipIcon, AlertIcon): Feather strokes
+   instead of the ⏳/📎/⚠ emoji, which the system emoji font drew in colour. They sit beside the name
+   and never shrink; a file that could not be read wears the error colour. */
+.chat-attach > svg, .chat-attach-open > svg { flex: none; }
+.chat-attach.bad > svg { color: var(--bad); }
+
+/* The details window's "Properties" beside "Reference product": the inspector's link (FieldLink), at the
+   right of the section head, in its own case and weight rather than the head's small capitals. */
+.pdet-section-h .field-link { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+/* ask_user's own answer (AskUserCard): closed, a dashed row under the options — quieter than an option,
+   so the agent's choices stay the first read; opened, a field in the option's shape that turns green
+   once it holds an answer. */
+.chat-ask-own {
+  display: flex; align-items: center; gap: 6px; text-align: left;
+  border: 1px dashed var(--border-strong); background: transparent; color: var(--muted);
+  border-radius: 8px; padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: var(--fs-body);
+}
+.chat-ask-own:hover { border-color: var(--green); color: var(--green-ink); }
+.chat-ask-own svg, .chat-ask-own-head svg { width: 13px; height: 13px; flex: none; }
+.chat-ask-own-box {
+  display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border-strong);
+  background: var(--surface); border-radius: 8px; padding: 6px 8px 6px 10px;
+}
+.chat-ask-own-box:focus-within { border-color: var(--green); }
+.chat-ask-own-box.on { border-color: var(--green); background: var(--green-soft); }
+.chat-ask-own-head { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sec); color: var(--muted); }
+.chat-ask-own-box.on .chat-ask-own-head { color: var(--green-ink); }
+.chat-ask-own-row { display: flex; align-items: flex-end; gap: 6px; }
+.chat-ask-own-row textarea {
+  flex: 1; min-width: 0; resize: none; border: none; outline: none; background: transparent; color: var(--ink);
+  font-family: inherit; font-size: var(--fs-body); line-height: 1.45; padding: 2px 0;
+  field-sizing: content; min-height: 2lh; max-height: 8lh;
+}
+.chat-ask-own-row textarea::placeholder { color: var(--faint); }
+.chat-ask-send {
+  border: none; cursor: pointer; border-radius: 6px; padding: 4px 10px; background: var(--green); color: #fff;
+  font-family: inherit; font-size: var(--fs-sec); font-weight: 600;
+}
+.chat-ask-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }

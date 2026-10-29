@@ -1,0 +1,247 @@
+# PrismLCA release workflow: tag in, draft release with installers and checks out.
+#
+# Started by pushing a tag vX.Y.Z (`npm run release` in frontend/ does that), or by hand ON a tag:
+#   gh workflow run release.yml --ref v0.9.0
+# A run on anything but refs/tags/vX.Y.Z stops in its first step; a spike tag vX.Y.Z-spike.N rehearses the
+# pipeline and yields a draft pre-release that is deleted afterwards. The result is a DRAFT release; only
+# the maintainer publishes it, after the release checklist. No job here publishes anything.
+#
+# Unsigned for v0.9.0. The Windows signing job on the self-hosted release VM
+# (runner label prism-release-win) comes with v0.9.1.
+#
+# Every action is pinned to a commit SHA (version in the comment); the workflow tripwire
+# frontend/scripts/release/workflows.test.ts enforces that and the other workflow rules.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PRISM_BUILD_KIND: release
+  NODE_VERSION: '22'
+
+jobs:
+  verify:
+    name: Tag, tests, licences, audit
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: The ref is a tag vX.Y.Z that every version source agrees with
+        run: node frontend/scripts/release/ci.mjs verify-tag
+      - name: CHANGELOG.md has a section for this version
+        run: node frontend/scripts/release/ci.mjs notes "${GITHUB_REF_NAME#v}" > /dev/null
+      - name: Backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra build
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Backend lint and tests
+        working-directory: backend
+        run: |
+          uv run ruff check src tests scripts
+          uv run pytest -n auto -q
+      - name: Third-party notices are current
+        working-directory: backend
+        run: uv run python scripts/third_party_notices.py --check
+      - name: Frontend typecheck, lint and tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npx vitest run
+      - name: Electron line supported and on its newest patch
+        run: node frontend/scripts/release/ci.mjs electron-support
+      - name: Nothing shipped has an open advisory
+        run: node frontend/scripts/release/ci.mjs audit
+
+  linux:
+    name: Linux AppImage and deb
+    needs: verify
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      # The backend bundle, the unpacked app, AppImage, deb and the two unpacked copies the checks read
+      # need more than a hosted runner has free; a first run died with "No space left on device".
+      - name: Room on the runner
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Backend bundle (PyInstaller onedir)
+        working-directory: backend
+        run: |
+          uv sync --locked --extra build
+          uv run pyinstaller prism_backend.spec --noconfirm
+          dist/prism-lca-backend/prism-lca-backend --solver-check | tee solver.txt
+          grep -q "Intel oneMKL" solver.txt
+          # Every library the backend loads on demand must import in the bundle, not only at start-up.
+          dist/prism-lca-backend/prism-lca-backend --bundle-check
+      - name: AppImage and deb
+        working-directory: frontend
+        run: |
+          npm ci
+          npx electron-vite build
+          npx electron-builder --linux AppImage deb --publish never
+          # Only the packages travel on; the PyInstaller work dir and the unpacked app are spent.
+          rm -rf release/linux-unpacked ../backend/build
+          df -h /
+      - name: Check the packages as shipped
+        working-directory: frontend
+        run: |
+          (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/frontend/release/PrismLCA-*.AppImage --appimage-extract > /dev/null)
+          node scripts/release/ci.mjs check-artifacts appimage "$RUNNER_TEMP/squashfs-root"
+          dpkg-deb -x release/prism-lca_*_amd64.deb "$RUNNER_TEMP/deb"
+          node scripts/release/ci.mjs check-artifacts deb "$RUNNER_TEMP/deb/opt/PrismLCA"
+          rm -rf "$RUNNER_TEMP/deb"
+      - name: The packaged app starts on an empty machine
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb > /dev/null
+          PRISM_SMOKE=1 XDG_CONFIG_HOME="$RUNNER_TEMP/cfg" PRISM_DATA_DIR="$RUNNER_TEMP/data" \
+            BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
+            xvfb-run -a "$RUNNER_TEMP/squashfs-root/prism-lca" --no-sandbox
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            frontend/release/*.AppImage
+            frontend/release/*.deb
+            frontend/release/latest-linux.yml
+
+  windows:
+    name: Windows installer (unsigned until v0.9.1)
+    needs: verify
+    runs-on: windows-2022
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Backend bundle (PyInstaller onedir)
+        working-directory: backend
+        run: |
+          uv sync --locked --extra build
+          uv run pyinstaller prism_backend.spec --noconfirm
+          dist/prism-lca-backend/prism-lca-backend.exe --solver-check | tee solver.txt
+          grep -q "Intel oneMKL" solver.txt
+          dist/prism-lca-backend/prism-lca-backend.exe --bundle-check
+      - name: NSIS installer
+        working-directory: frontend
+        run: |
+          npm ci
+          npx electron-vite build
+          npx electron-builder --win nsis --publish never
+      - name: Check the package as shipped
+        working-directory: frontend
+        run: node scripts/release/ci.mjs check-artifacts win release/win-unpacked
+      - name: The packaged app starts on an empty machine
+        working-directory: frontend
+        run: |
+          PRISM_SMOKE=1 PRISM_DATA_DIR="$RUNNER_TEMP/data" BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
+            release/win-unpacked/PrismLCA.exe --user-data-dir="$RUNNER_TEMP/cfg"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            frontend/release/*.exe
+            frontend/release/*.exe.blockmap
+            frontend/release/latest.yml
+
+  draft:
+    name: Draft release (published by hand)
+    needs: [linux, windows]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    # The maintainer approves this job before anything is written to the repo. Environments with required
+    # reviewers exist for public repos on GitHub Free; in the private phase the run waits on nothing.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Source archive of exactly this tag (AGPL §6)
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          git archive --format=tar.gz --prefix="PrismLCA-$V/" -o "dist/PrismLCA-$V-source.tar.gz" "$GITHUB_REF_NAME"
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: dist/sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Checksums and build information
+        run: |
+          node frontend/scripts/release/ci.mjs build-info dist > build-info.txt
+          mv build-info.txt dist/
+          (cd dist && sha256sum -- * > SHA256SUMS)
+      - name: Provenance attestations (public repo only)
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Create the DRAFT release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          # A spike tag rehearses the pipeline: its draft is marked pre-release and deleted afterwards.
+          PRE=()
+          case "$V" in *-spike.*) PRE=(--prerelease) ;; esac
+          node frontend/scripts/release/ci.mjs notes "$V" > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --draft "${PRE[@]}" --verify-tag \
+            --title "PrismLCA $V" --notes-file notes.md

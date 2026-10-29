@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 724 2172" width="724" height="2172">
+<!-- The prism facets for the dark sidebar, drawn as vectors after the design draft of 07.09.2026 (724x2172):
+     a navy ground, four soft glows (lilac, blue, green, blue foot) and six translucent sheets whose edges
+     are the five measured lines A (long, down-right), B/D (meeting at the left edge), C and E. Vector so it
+     stays smooth at any size and resolution; the drawn picture carried grain and JPEG blocking. -->
+<defs>
+  <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#1c2838"/><stop offset=".5" stop-color="#17242f"/><stop offset="1" stop-color="#162632"/>
+  </linearGradient>
+  <!-- glows: soft, mostly outside the sheets, they carry the colour -->
+  <radialGradient id="lilac" cx="-30" cy="880" r="520" gradientUnits="userSpaceOnUse" gradientTransform="translate(-30 880) scale(.78 1.25) translate(30 -880)">
+    <stop offset="0" stop-color="#7d6fc8" stop-opacity=".58"/><stop offset=".35" stop-color="#6a62b8" stop-opacity=".30"/><stop offset=".65" stop-color="#5f5aa8" stop-opacity=".10"/><stop offset=".85" stop-color="#5f5aa8" stop-opacity=".025"/><stop offset="1" stop-color="#5f5aa8" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="green" cx="-60" cy="1400" r="400" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#8fb648" stop-opacity=".56"/><stop offset=".45" stop-color="#7a9c48" stop-opacity=".2"/><stop offset=".75" stop-color="#7a9c48" stop-opacity=".04"/><stop offset="1" stop-color="#7a9c48" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="blue" cx="60" cy="1400" r="480" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#3f7fb8" stop-opacity=".38"/><stop offset=".5" stop-color="#2f5f8f" stop-opacity=".14"/><stop offset=".8" stop-color="#2f5f8f" stop-opacity=".03"/><stop offset="1" stop-color="#2f5f8f" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="foot" cx="-30" cy="1990" r="340" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#4a90c8" stop-opacity=".42"/><stop offset=".55" stop-color="#3a7fb0" stop-opacity=".12"/><stop offset="1" stop-color="#3a6f9f" stop-opacity="0"/>
+  </radialGradient>
+  <!-- sheet fills: brighter inside the edges, fading to nothing toward the right -->
+  <linearGradient id="underA" x1="0" y1="1500" x2="724" y2="1500" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#4a8ab0" stop-opacity=".10"/><stop offset=".7" stop-color="#3a6a90" stop-opacity=".03"/><stop offset="1" stop-color="#3a6a90" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="bandfill" x1="60" y1="1600" x2="700" y2="1250" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#4a92c0" stop-opacity=".26"/><stop offset=".45" stop-color="#3a7094" stop-opacity=".13"/><stop offset="1" stop-color="#2a4a68" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="greenfill" x1="0" y1="1400" x2="270" y2="1640" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#9cc44e" stop-opacity=".22"/><stop offset="1" stop-color="#6f8f4a" stop-opacity=".02"/>
+  </linearGradient>
+  <linearGradient id="tealfill" x1="0" y1="1900" x2="540" y2="1900" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#3a9098" stop-opacity=".14"/><stop offset="1" stop-color="#2a5a70" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="footfill" x1="0" y1="2000" x2="420" y2="2172" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#4f97d0" stop-opacity=".22"/><stop offset="1" stop-color="#3a6f9f" stop-opacity=".04"/>
+  </linearGradient>
+  <linearGradient id="lilacfill" x1="0" y1="850" x2="0" y2="1095" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#8d7fdc" stop-opacity=".06"/><stop offset="1" stop-color="#8d7fdc" stop-opacity=".30"/>
+  </linearGradient>
+  <linearGradient id="edgeB" x1="0" y1="1095" x2="430" y2="480" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ffffff" stop-opacity=".10"/><stop offset=".4" stop-color="#ffffff" stop-opacity=".06"/><stop offset=".75" stop-color="#ffffff" stop-opacity="0"/>
+  </linearGradient>
+</defs>
+<rect width="724" height="2172" fill="url(#base)"/>
+<!-- everything above the ground at 80 %: the whole picture a fifth weaker -->
+<g opacity=".8">
+<rect width="724" height="2172" fill="url(#lilac)"/>
+<rect width="724" height="2172" fill="url(#blue)"/>
+<rect width="724" height="2172" fill="url(#green)"/>
+<rect width="724" height="2172" fill="url(#foot)"/>
+<polygon points="0,819 724,1780 724,2172 0,2172" fill="url(#underA)"/>
+<polygon points="0,819 100,952 0,1095" fill="url(#lilacfill)"/>
+<polygon points="100,952 724,1780 724,2172 538,2172 0,1094" fill="url(#bandfill)"/>
+<polygon points="0,1094 271,1640 0,1940" fill="url(#greenfill)"/>
+<polygon points="271,1640 538,2172 425,2172 0,1917 0,1940" fill="url(#tealfill)"/>
+<polygon points="0,1917 425,2172 0,2172" fill="url(#footfill)"/>
+<g stroke="#ffffff" stroke-width="2.4" fill="none" stroke-linecap="round">
+  <line x1="0" y1="819" x2="724" y2="1780" stroke-opacity=".12"/>
+  <line x1="430" y1="480" x2="0" y2="1095" stroke="url(#edgeB)"/>
+  <line x1="0" y1="1094" x2="538" y2="2172" stroke-opacity=".12"/>
+  <line x1="520" y1="1362" x2="0" y2="1940" stroke-opacity=".10"/>
+  <line x1="0" y1="1917" x2="425" y2="2172" stroke-opacity=".10"/>
+</g>
+</g>
+</svg>

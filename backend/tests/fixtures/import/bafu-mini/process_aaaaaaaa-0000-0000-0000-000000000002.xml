@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ecoSpold>
+  <dataset generator="prism-test" number="1002" timestamp="2026-01-01 00:00:00">
+    <metaInformation>
+      <processInformation>
+        <referenceFunction amount="1" category="test" datasetRelatesToProduct="true" generalComment="Invented fixture. UUID: aaaaaaaa-0000-0000-0000-000000000002" infrastructureProcess="false" name="Test bolt, at plant" subCategory="widgets" unit="kg"/>
+        <geography location="RER"/>
+        <technology text="none"/>
+        <timePeriod dataValidForEntirePeriod="true">
+          <startDate>2019</startDate>
+          <endDate>2019</endDate>
+        </timePeriod>
+        <dataSetInformation impactAssessmentResult="false" type="1" version="1"/>
+      </processInformation>
+    </metaInformation>
+    <flowData>
+      <exchange category="test" location="RER" meanValue="1.0" name="Test bolt, at plant" number="1002" subCategory="widgets" uncertaintyType="0" unit="kg">
+        <outputGroup>0</outputGroup>
+      </exchange>
+      <exchange CASNumber="000124-38-9" category="emissions to air" formula="CO2" meanValue="0.1" name="Carbon dioxide, fossil" number="1" subCategory="high. pop." uncertaintyType="0" unit="kg">
+        <outputGroup>4</outputGroup>
+      </exchange>
+      <exchange CASNumber="007440-23-5" category="emissions to water" formula="Na" meanValue="0.01" name="Sodium" number="5" subCategory="river" uncertaintyType="0" unit="kg">
+        <outputGroup>4</outputGroup>
+      </exchange>
+      <exchange CASNumber="" category="resources" formula="" meanValue="0.3" name="Coal, hard, unspecified" number="6" subCategory="in ground" uncertaintyType="0" unit="kg">
+        <inputGroup>4</inputGroup>
+      </exchange>
+      <exchange CASNumber="" category="emissions to air" formula="" meanValue="4.0" name="Heat, waste" number="7" subCategory="high. pop." uncertaintyType="0" unit="MJ">
+        <outputGroup>4</outputGroup>
+      </exchange>
+    </flowData>
+  </dataset>
+</ecoSpold>

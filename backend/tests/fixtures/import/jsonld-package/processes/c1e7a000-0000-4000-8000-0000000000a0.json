@@ -1,0 +1,90 @@
+{
+  "@type": "Process",
+  "@id": "c1e7a000-0000-4000-8000-0000000000a0",
+  "name": "widget assembly",
+  "processType": "UNIT_PROCESS",
+  "description": "Hand-written fixture (PrismLCA). Not real data.",
+  "location": {
+    "@type": "Location",
+    "@id": "c1e7a000-0000-4000-8000-0000000000de",
+    "name": "Germany"
+  },
+  "exchanges": [
+    {
+      "@type": "Exchange",
+      "internalId": 1,
+      "amount": 1.0,
+      "isInput": false,
+      "isQuantitativeReference": true,
+      "flow": {
+        "@type": "Flow",
+        "@id": "c1e7a000-0000-4000-8000-0000000000f1",
+        "name": "widget",
+        "flowType": "PRODUCT_FLOW",
+        "refUnit": "kg"
+      },
+      "unit": {
+        "@type": "Unit",
+        "@id": "c1e7a000-0000-4000-8000-000000000011",
+        "name": "kg"
+      },
+      "flowProperty": {
+        "@type": "FlowProperty",
+        "@id": "c1e7a000-0000-4000-8000-000000000002",
+        "name": "Mass"
+      }
+    },
+    {
+      "@type": "Exchange",
+      "internalId": 2,
+      "amount": 2.0,
+      "isInput": true,
+      "flow": {
+        "@type": "Flow",
+        "@id": "c1e7a000-0000-4000-8000-0000000000f2",
+        "name": "steel part",
+        "flowType": "PRODUCT_FLOW",
+        "refUnit": "kg"
+      },
+      "unit": {
+        "@type": "Unit",
+        "@id": "c1e7a000-0000-4000-8000-000000000011",
+        "name": "kg"
+      },
+      "flowProperty": {
+        "@type": "FlowProperty",
+        "@id": "c1e7a000-0000-4000-8000-000000000002",
+        "name": "Mass"
+      },
+      "defaultProvider": {
+        "@type": "Process",
+        "@id": "c1e7a000-0000-4000-8000-0000000000b0",
+        "name": "steel part production"
+      }
+    },
+    {
+      "@type": "Exchange",
+      "internalId": 3,
+      "amount": 100.0,
+      "isInput": false,
+      "flow": {
+        "@type": "Flow",
+        "@id": "c1e7a000-0000-4000-8000-0000000000f3",
+        "name": "Carbon dioxide, fossil",
+        "flowType": "ELEMENTARY_FLOW",
+        "refUnit": "kg",
+        "category": "Elementary flows/Emission to air/unspecified"
+      },
+      "unit": {
+        "@type": "Unit",
+        "@id": "c1e7a000-0000-4000-8000-000000000012",
+        "name": "g"
+      },
+      "flowProperty": {
+        "@type": "FlowProperty",
+        "@id": "c1e7a000-0000-4000-8000-000000000002",
+        "name": "Mass"
+      }
+    }
+  ]
+}

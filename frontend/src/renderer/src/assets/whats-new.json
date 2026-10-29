@@ -1,0 +1,1032 @@
+[
+  {
+    "date": "2026-10-28",
+    "title": "Your own answer to the assistant's questions",
+    "details": "Question cards from the assistant, and from external agents in the External agents drawer, now have a Something else… row under each question's options. Click it to open a text field and answer in your own words when none of the options fits. Enter sends, Escape closes the field."
+  },
+  {
+    "date": "2026-10-28",
+    "title": "Exchange comments reach the report",
+    "details": "The reasons you or the assistant note on a single exchange — why this dataset and not its equivalent, why a proxy country, why a waste flow carries its sign — now go to the writers of the inventory, the interpretation checks and the interpretation. Change such a comment and those chapters show Needs update."
+  },
+  {
+    "date": "2026-10-27",
+    "title": "Introduction and literature in reports",
+    "details": "New reports start with an Introduction, the background before the goal and scope, and an Interpretation. Their writers search the web through your provider — regulation, the market, published LCAs of comparable products — unless you untick Search the literature under the chapter, and cite what they find in words, listed in the References. A report exported before you approve it says DRAFT across every page."
+  },
+  {
+    "date": "2026-10-27",
+    "title": "A second reader for every chapter",
+    "details": "When the report writer drafts a chapter, a second model (your Review model) now reads it as it will print, against the figures and the study, and the two settle its points between them before the chapter is stored. Only a broken placeholder, unit or typed number still stops a chapter on its own; word checks such as “the largest” are left to the reader."
+  },
+  {
+    "date": "2026-10-25",
+    "title": "Undo for the canvas layout",
+    "details": "Undo and Redo now also take back how the canvas is arranged: moving boxes, Auto-layout (the assistant’s too), node colours and group boxes — in the order you made the changes, mixed with your model edits, from the toolbar or with Ctrl+Z. The Tags window and a box’s tag menu list the tag groups this model uses first, marked “used”."
+  },
+  {
+    "date": "2026-10-25",
+    "title": "Comparison models ready on Results",
+    "details": "A model you have linked as a comparison model, in the Info dialog or with + in the chat, now waits under Other models on the Results page: tick it and its reference process joins the comparison. A double-click on a flow in Add input flow or Add output flow adds it straight away."
+  },
+  {
+    "date": "2026-10-25",
+    "title": "Rounded to read, exact to edit",
+    "details": "Amount fields for exchanges, parameters and flow properties show the number rounded to your Settings digits and switch to the full stored value when you click into them, so an edit always starts from every digit. Results now has a rounding field of its own under Settings → General, for the Detailed results page and a dataset's scores."
+  },
+  {
+    "date": "2026-10-25",
+    "title": "Results: other models and tag splits",
+    "details": "“+ Add from other model” now adds a model by its reference process: the dialog shows that one process and you confirm it, instead of offering every process of the model. Stacked bars start split by the model’s own tag family when its processes carry tags, else by ISIC, and the split you choose is kept per model."
+  },
+  {
+    "date": "2026-10-25",
+    "title": "Five new report themes",
+    "details": "Gradient strip, Ribbons, Flows, Planes and Facets are new report themes, and each works out the extra tones its cover needs from your colour set. Network is now the default, Shapes and card has lost its three circles, and Study report is called Declining emissions. Pick a theme under Appearance in the report."
+  },
+  {
+    "date": "2026-10-24",
+    "title": "Products on the canvas arrows",
+    "details": "Every arrow on the canvas now names the product it carries, under its amount and unit. Both lines have a switch under Settings → Modelling, so a crowded canvas can show only the amounts, only the products or neither."
+  },
+  {
+    "date": "2026-10-24",
+    "title": "Compare LCIA factors: agree and sort",
+    "details": "LCIA → Compare factors compares up to three indicators. Factors that are the same within a row are tinted green, so agreement stands out, and every column header sorts the table — text alphabetically, factors by size. Export keeps the order."
+  },
+  {
+    "date": "2026-10-24",
+    "title": "Double-click to copy a number",
+    "details": "Double-click an amount of a background dataset on the inspector's Inputs or Outputs tab, or a result in the Results table, to copy it. The full, unrounded value goes to the clipboard with your computer's decimal separator, ready to paste into a spreadsheet."
+  },
+  {
+    "date": "2026-10-24",
+    "title": "Short report titles, deleting reports",
+    "details": "The short report has a Title & language group of its own, like the full report: a title and subtitle for the cover, kept per model, and the language. Full reports can now be deleted — the bin beside New report removes the open one after asking, written chapters included."
+  },
+  {
+    "date": "2026-10-23",
+    "title": "Colour sets of your own",
+    "details": "The + beside Colours under Appearance adds a colour set of your own: a name and three colours — accent, deep tone and paper — chosen with the colour picker or typed as hex. Your sets are kept on this computer and offered to every report; hover over one and click ✕ to remove it. Under the sets, White page background prints any set on pure white."
+  },
+  {
+    "date": "2026-10-23",
+    "title": "Reference product in one block",
+    "details": "The inspector shows what a process makes as one block above its flows: product, amount and unit together, with Properties beside the heading, and a negative amount marked Treatment. New processes get a location in the dialog and open straight in the inspector; the toolbar button that creates them is now called Process."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "The assistant stays in its model",
+    "details": "The built-in assistant now works only on the model whose chat it runs in: it reads, changes and may rename that model, but opens, creates, copies or deletes no other. Comparison models linked and switched on in the chat's + menu it can read, never change; your library it links but does not edit. External agents over MCP are not limited this way."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "Qwen3.8 Max as open weights",
+    "details": "The Qwen3.8 Max entry failed on every call while “Only use providers that keep nothing” was on, because its only provider, Alibaba, has no zero-retention endpoint. Its open-weight variant, Qwen3.8 2.4T A95B, takes its place: four zero-retention providers, the same price and a million tokens of context — but no image input, so it takes no canvas screenshots."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "Flow comments in the inspector",
+    "details": "Inputs and outputs in the inspector keep their comment behind a speech bubble. On your own processes it opens a field for why an amount is what it is; a green bubble marks a flow that already has one. On background datasets the bubble appears wherever the source left a note on the flow, and a click shows it under the row."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "No sleep during long tasks",
+    "details": "While PrismLCA imports a database, builds the search index, calculates, or the assistant or report writer is working, the computer no longer goes to sleep on its own — an import started in the evening is finished in the morning. Only while plugged in; the screen may still turn off. Switch it off under Settings → General."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "Filter and sort flow lists",
+    "details": "In the process details window every list of inputs and outputs with four or more entries has a magnifier: it slides out a filter that matches name, location and compartment. Beside it, A–Z and 9–1 sort the list; a second click reverses the order, a third restores it. The same sort sits in the inspector and in Detailed Results."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "A phase for each input",
+    "details": "A dataset can now stand on the canvas once per phase it serves: drop it again for a second box, tag that box, and every input drawn from it carries the tag. Steel can hang on Manufacturing and still count as Raw materials. The breakdown by tag is solved exactly, also for loops, and Explain result shows the flows of one phase. The health check warns about a process nothing uses, which therefore never reaches the result."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "From first start straight to work",
+    "details": "The first-start screen offers ecoinvent and BAFU as two cards, and the import dialog walks through numbered steps. When an import finishes, Start opens the Overview, and Also import BAFU… (or ecoinvent…) adds the second database right away. While the search index is built, the search panel names the database and shows the time left; ecoinvent's index now takes about a third less time to build."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "An ecoinvent import you can follow and stop",
+    "details": "The ecoinvent import now counts the datasets it has read, shows how long it has been running and has a Cancel button until it starts writing; a cancelled import leaves nothing half-written. You can also choose the extracted release folder itself, and PrismLCA finds its datasets folder."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "Search finds abbreviations and markets",
+    "details": "Searching “PET” or “rPET” now also searches the material as the database spells it, so granulates come first instead of wastewater that merely carries the abbreviation; a line above the results says what was added, with “Search only for …” to take your text as typed. A material's market, the dataset an input usually links to, now ranks ahead of single production routes far more often, on your existing index."
+  },
+  {
+    "date": "2026-10-22",
+    "title": "Clearer exchanges on the canvas",
+    "details": "Connecting two boxes by hand now shows which flow the exchange carries, where it comes from, what it goes into and the unit the amount is counted in; clicking an arrow to change its amount shows the same. A process brought back with Undo returns to the spot it was deleted from, and a model created from the start page opens straight on its canvas."
+  },
+  {
+    "date": "2026-10-17",
+    "title": "Model info saves when it closes",
+    "details": "Goal & scope and the other study fields no longer have a Save button: the sheet saves what you changed when it closes, with Close, the ✕, Esc or a click beside it, as one step that Undo takes back. Before, Esc or a stray click threw the text away without asking."
+  },
+  {
+    "date": "2026-10-16",
+    "title": "Gemini 4 Argon",
+    "details": "Google's new flagship is in the model list, rated by Artificial Analysis close to GPT-6 Astra at the price of GPT-6.1 Sol. Google now keeps prompts briefly for abuse monitoring on all its endpoints, so Gemini models join Claude and GPT in the zero-retention exceptions, ticked by default; Settings → AI → Limits makes Google strict."
+  },
+  {
+    "date": "2026-10-15",
+    "title": "Undo and the log per model",
+    "details": "The audit log beside the canvas now shows the open model's changes, like Parameters and Scenarios; workspace-wide actions such as a new tag group appear in every model, marked. Undo takes back only the open model's changes; when a newer structural change in another model holds it, the tooltip says where."
+  },
+  {
+    "date": "2026-10-15",
+    "title": "Clearer distance results",
+    "details": "The Distances sheet now shows one row per leg — road to the airport or port, the flight or voyage, the road onwards — each with its kilometres and a copy button. A warning that changes a figure stays under its row; how each figure was adjusted folds out under “How these figures were made”."
+  },
+  {
+    "date": "2026-10-15",
+    "title": "Location suggestions",
+    "details": "The Location field of your own processes stays free text and now suggests every location your background databases and your own models use. Type a code or a name — “germ” finds DE · Germany — and the locations your models already use come first."
+  },
+  {
+    "date": "2026-10-15",
+    "title": "Canvas fits itself after the assistant",
+    "details": "After an assistant turn that added or removed processes or links, the canvas fits the whole model into view once the answer is complete; turns that only look things up leave your view alone. In a narrow window the new-model and new-activity buttons show where they add, the tag menu scrolls and stays inside the window, and the Tag highlighter lists only the tags this canvas carries."
+  },
+  {
+    "date": "2026-10-14",
+    "title": "Hand tool on the canvas",
+    "details": "The four-arrow button at the top right of the canvas switches to a hand: a left-drag now moves the canvas, even over a process. Its icon turns into the pointer; click it again or press Esc to select with the mouse again. Holding Space or the middle mouse button pans as before."
+  },
+  {
+    "date": "2026-10-14",
+    "title": "Claude Haiku 5.5",
+    "details": "The model list now offers Claude Haiku 5.5: the cheapest price class, on a par with GPT-6 Luna, and the stronger of the two on the Artificial Analysis intelligence index. It keeps a plan card like the other inexpensive models."
+  },
+  {
+    "date": "2026-10-12",
+    "title": "Restore backups, import spreadsheets, Ctrl+Z",
+    "details": "A workspace backup can now be restored from the Workspace block (the upload icon next to the backup icon); it becomes a workspace of its own and never replaces one. Import a model also takes the spreadsheet that Export as a spreadsheet writes. Ctrl+Z and Ctrl+Shift+Z undo and redo outside text fields."
+  },
+  {
+    "date": "2026-10-09",
+    "title": "Deleting a model always asks",
+    "details": "Deleting a model, a custom LCIA method or a method family now asks in the PrismLCA window in every approval mode, for the built-in chat and for external agents alike: none of the three can be undone. The external agents' third mode is therefore called Ask only before deleting."
+  },
+  {
+    "date": "2026-10-09",
+    "title": "GPT-6.1 Sol is the default chat model",
+    "details": "A fresh installation now chats with GPT-6.1 Sol on OpenRouter too, as it already did with an OpenAI key. On a measured modelling task it finished without a failed call in a third of GLM 5.3 Flash's time, at about $0.64. OpenAI models are exempt from the zero-retention request by default, so these chats run under OpenAI's retention terms; Settings → AI → Limits makes it strict."
+  },
+  {
+    "date": "2026-10-09",
+    "title": "GPT-6 Luna matches imports; a reply limit for the writer",
+    "details": "The material assignment for imported datasets now runs on GPT-6 Luna unless you pick another model: on real USLCI data it placed nearly as many flows as before, in a tenth of the time and at an eighth of the cost. Settings → AI → Limits gains a second ceiling, Max tokens per writer reply (default 100,000), so chapters get more room than the chat."
+  },
+  {
+    "date": "2026-10-09",
+    "title": "Bridge mass and volume in the import review",
+    "details": "When a process import matches a line to a flow that measures another quantity, such as kilograms of water against cubic metres, the row now asks for the figure: “1 kg = … cubic meter, because …”. It applies once both fields are filled, is written into the dataset's notes, and keeps the row in the Low band."
+  },
+  {
+    "date": "2026-10-08",
+    "title": "Workspaces",
+    "details": "What the app used to call a project is now a workspace: one background database and the models built on it, picked bottom-left in the sidebar. Only Brightway and the Activity Browser say project for this; in SimaPro, openLCA or Umberto a project is the study, which is a model here. A fresh installation now asks for a workspace name before the first import and proposes Main."
+  },
+  {
+    "date": "2026-10-08",
+    "title": "Effort and provider in the chat",
+    "details": "The model picker in the composer reads “Sonnet 5.5 (Claude): High”; its Effort row opens an upright slider with Default at the foot and the model’s highest documented level at the head, every step named beside it. With keys for both providers stored, a Change provider row switches between OpenRouter and OpenAI and the list follows. Settings → AI → Models shows the effort as a scale styled like the progress bars."
+  },
+  {
+    "date": "2026-10-08",
+    "title": "Save charts into one folder",
+    "details": "Results → Save charts asks for a folder once and writes every chart shown into it as PNG — per indicator, radar and heatmap — instead of opening one save dialog per chart. A name already taken gets a number rather than being overwritten, and the page head says how many charts went where."
+  },
+  {
+    "date": "2026-10-08",
+    "title": "Research cites what the search engine found",
+    "details": "Web and bill-of-materials research now carry the pages the search engine actually returned, with the excerpt each figure was read from. A finding that rests only on blogs or forums names where an official confirmation would live, and its follow-up searches exactly there. A component without a findable mass is listed as unresolved and keeps the mass balance from reading “balanced”."
+  },
+  {
+    "date": "2026-10-06",
+    "title": "Web lookups made visible and capped",
+    "details": "When the assistant searches the web or opens a page inside a reply, the reply now carries a “Web lookups by the provider” row saying how many searches and fetches ran — each one makes the model read the whole conversation again, which is what made some rounds cost three to four times the usual. Settings → AI → Chat caps how many lookups one reply may run (default 8 of each kind)."
+  },
+  {
+    "date": "2026-10-05",
+    "title": "Chats out of sight, pre-filled reports, places bound to their country",
+    "details": "When the assistant finishes or fails in a chat you are not looking at, a row under the toolbar says so on every page; Open jumps to that chat. A new report starts from what the Results page shows and in the study's language. A transport place that names its country (“Ningbo Port, China”) is looked up inside that country, a region word decides between namesakes, and a named port on a road leg starts at the port; a place that does not exist there is an error, not a look-alike elsewhere."
+  },
+  {
+    "date": "2026-10-04",
+    "title": "External agents: results, progress, tidy start-up",
+    "details": "An agent driving PrismLCA over MCP can now set up the Results page and start its calculation, and picks the databases it searches itself instead of inheriting the chat's switches. While a question or approval card waits for you, it hears so every half minute; the card closes after 15 minutes. Listing PrismLCA's tools no longer starts the app, and an instance the bridge started closes after ten idle minutes unless you press Keep open."
+  },
+  {
+    "date": "2026-10-04",
+    "title": "Merge tags and tag groups",
+    "details": "A vocabulary that grew several spellings of one phase (“Use”, “Use Phase”, “Usage Phase”) or parallel groups can now be folded together in the Tags window: ⇢ on a tag merges it into another tag of the group, “Merge into…” next to a group moves its tags and values into another group. Processes keep their phase — nothing is untagged — and both steps are undoable. The assistant and external agents can merge too (edit_tags), but still cannot delete."
+  },
+  {
+    "date": "2026-10-04",
+    "title": "Expert release for written chapters",
+    "details": "A chapter a model wrote now carries “expert review pending” until you press Release on its row (or Release all in the foot): the check verifies figures, units and placeholders, you verify the meaning. The release lapses when the wording or the figures move — the badge says which — and Render PDF and Export sources ask before a document with unreleased chapters leaves the app."
+  },
+  {
+    "date": "2026-10-03",
+    "title": "Talk to the assistant while it works",
+    "details": "Type while a run is going and press Enter: the message waits as a chip above the input and reaches the assistant after its current step, quoted in the answer where it arrived. The ✕ on the chip takes it back; Stop still interrupts. A message left over when a run ends waits for your next message to the chat and is never sent on its own."
+  },
+  {
+    "date": "2026-10-03",
+    "title": "A confirmation card before irreversible actions",
+    "details": "Deleting or renaming a model and changing or deleting a custom LCIA method now show a card in the chat; the call runs only when you press Allow. Everything on the undo stack — process edits, a process delete, undo — runs as before. Switch the card off under Settings → AI → Limits if you would rather be asked in the conversation."
+  },
+  {
+    "date": "2026-10-03",
+    "title": "Reasoning effort and a context meter",
+    "details": "Settings → AI → Models has a “Reasoning effort” choice per chat model with the levels its vendor documents; “Default” keeps the API’s own setting. The run bar shows how full the model’s context is after every step, and the chat header keeps the level the last turn ended at."
+  },
+  {
+    "date": "2026-10-01",
+    "title": "Plan card and Continue",
+    "details": "On longer tasks the assistant keeps a checklist that appears as a card beside the chat: the current step highlighted, finished ones dimmed; collapse it to a pill with the progress count. Cheaper and mid-range models keep a plan, top models such as Opus 5.5 or Sonnet 5.5 work without one and show no card. When a run stops early — round or cost limit, Stop, or PrismLCA closed mid-run — a Continue button picks it up again, after a cost stop with a confirmation of the amount."
+  },
+  {
+    "date": "2026-10-01",
+    "title": "Newer AI models",
+    "details": "The model list now offers Claude Opus 5.5 and Sonnet 5.5, GPT-6.1 Sol and GPT-6 Luna (also directly via OpenAI, with GPT-6 Astra), Gemini 3.8 Flash, DeepSeek V4.1 Flash and Xiaomi MiMo-V2.6-Pro; their predecessors, Hunyuan Hy3 and Nemotron are gone. Ratings are freshly pulled — a dash under Agentic means Artificial Analysis has not scored that model yet."
+  },
+  {
+    "date": "2026-10-01",
+    "title": "External agents can drive PrismLCA (MCP)",
+    "details": "Switch on the MCP server under Settings → AI → MCP and it writes the configuration for Claude Code, Codex and Claude Desktop/Cowork (preview first, backup kept) and tests the connection. The client uses the same tools as the assistant, every change lands in the audit log under its name, and it asks you in the app before anything that cannot be undone. The External agents panel shows who is connected and what they did."
+  },
+  {
+    "date": "2026-09-30",
+    "title": "Privacy notice, licence sheets, manual updates",
+    "details": "A Privacy notice on the start page, in Settings and in the tour lists every connection PrismLCA can make, what it sends and to whom. Licence and third-party notices now open in the app as well, and Settings → About gathers all three with the source link. Updates are checked only when you press Check for updates there, and the first start asks before downloading the search model."
+  },
+  {
+    "date": "2026-09-29",
+    "title": "Start page: last models and news",
+    "details": "Two cards now sit under the counts on the start page. Last models lists the five models you opened most recently — a click reopens one. Latest news shows the feed from prismlca.com, but only when you allow it: a button loads it once, and the switch at the end of the tour or under Settings → Display → Start page loads it at every start. A banner below leads to the Substack."
+  },
+  {
+    "date": "2026-09-29",
+    "title": "Chat toggles start clean per chat",
+    "details": "The switches in the composer's + menu (Web access, Distances, Eurostat, background databases, My processes) now belong to one chat: what you set before the first message stays with that chat, and every new chat starts from the defaults again, on every model. With Web access switched off under Settings → AI → Chat, the row leaves the menu instead of showing a switch that does nothing."
+  },
+  {
+    "date": "2026-09-29",
+    "title": "Distances: ferries, terminals, road legs",
+    "details": "Road routes show a ferry or shuttle-train crossing as its own leg. Air and sea now run airport to airport and port to port, with the road to and from the terminals delivered as separate legs — the nearest major terminal unless you name one (IATA/ICAO, UN/LOCODE or “Port of …”). Sea distances get the GLEC v3.2 factor of 1.15; both are switchable under Settings → Transport distances → DAF."
+  },
+  {
+    "date": "2026-09-29",
+    "title": "Import: packages, co-products and waste",
+    "details": "Import now reads openLCA JSON-LD packages and splits SimaPro and JSON-LD multi-output processes by their allocation factors; a supplier delivered in the same package is linked directly. Co-products are no longer booked as purchases — a checkbox books them as substitution — and a waste a process gives off goes to its treatment, so the treatment's burden is added."
+  },
+  {
+    "date": "2026-09-28",
+    "title": "Formulas in scenarios",
+    "details": "A scenario override on a parameter that has a formula now really takes effect: it replaces the formula while the scenario is computed, and the formula comes back afterwards. An override can also be a formula itself, such as 1.2 * distance. The scenario editor shows each parameter's formula beside its value."
+  },
+  {
+    "date": "2026-09-11",
+    "title": "A foldable sidebar, rounded formula results",
+    "details": "The button beside the PrismLCA mark folds the left rail to a strip of icons; one click on the panel below brings it back. Formula results no longer print every digit: they follow their own rounding setting under Settings → Display, starting at six significant digits, with the full value on hover."
+  },
+  {
+    "date": "2026-09-11",
+    "title": "A new start page",
+    "details": "Overview opens on the prism facets instead of a card: the name, what PrismLCA is for, and three buttons — Handbook and GitHub open in your browser, the third one starts the first-run tour again. Underneath, the five counts of what this installation holds, and two boxes for the project news page and the Substack newsletter."
+  },
+  {
+    "date": "2026-09-10",
+    "title": "Zero data retention, with exceptions",
+    "details": "The privacy setting now enforces both halves: providers that do not collect your data, which is what stops them training on it, and endpoints that retain nothing at all. The second rule is stricter than some models can meet, so exceptions for Anthropic and OpenAI sit underneath it, ticked by default — that is what keeps Claude Fable 5.1 available. Untick one to make that vendor strict too."
+  },
+  {
+    "date": "2026-09-10",
+    "title": "Add a model yourself",
+    "details": "Under the cost table, Add model… opens all 437 models OpenRouter serves. Search by name or id, and each row shows price, context window, image support and whether the model has a zero-retention endpoint — without one it cannot be served while the privacy rule is on. One click adds it, no restart; the trash icon takes it out again. Your models are marked with a pencil and stay unrated."
+  },
+  {
+    "date": "2026-09-10",
+    "title": "GPT-5.6 without a second key",
+    "details": "Sol, Terra and Luna now appear in the OpenRouter list too, so you can reach them without adding an OpenAI key — and Sol costs half as much that way ($2/$10 per 1M against OpenAI's own $4/$20). The free MiniMax M3 entry is gone: that promotion ended and no provider serves it any more, while the paid M3 above it is the same model. Prices also show now for models OpenRouter serves without listing."
+  },
+  {
+    "date": "2026-09-10",
+    "title": "Regions, models and search limits",
+    "details": "A hit that exists in many regions now shows the ones you would reach for first — GLO, then RER and Europe without Switzerland, then RoW — instead of whichever came first out of the database. The assistant gets more room per search and splits wide batches instead of losing them. Haiku 4.5 is gone from the model list, and Sonnet 5 is listed with its real million-token window."
+  },
+  {
+    "date": "2026-09-10",
+    "title": "Searching several databases at once",
+    "details": "Ticking a second database used to hand it every other slot, so a search for \"grape\" put two unrelated datasets straight under the right one. All ticked databases are now ranked as one list, and a second background makes the list longer rather than shorter. Each keeps a few slots so a small library stays visible, and hits below the similarity threshold are marked."
+  },
+  {
+    "date": "2026-09-09",
+    "title": "Stop a running import",
+    "details": "Reading a big package matched for minutes with no way out but closing the window, which left the pass running behind it. There is a stop square beside the progress bar now; it gives up at the next row and writes nothing. The step also names the formats it takes with their file endings, and shows the picked path as a chip you can actually read."
+  },
+  {
+    "date": "2026-09-09",
+    "title": "A guided tour on first start",
+    "details": "The first launch now opens a click-through tour: that PrismLCA models and reports without any AI, how to bring your own background data (ecoinvent and BAFU:20XY), what the left rail means, which three features reach the internet and how to switch them off, and — if you enable the assistant — keys, model choice and who pays the bill. Overview has \"Take the tour again\"."
+  },
+  {
+    "date": "2026-09-07",
+    "title": "Assistant reads results across indicators",
+    "details": "The assistant's analysis tools gained a hotspot matrix of processes × indicators in one call, a direct-versus-upstream split of any score, a whole method family (“EF v3.1”) scored at once, comparisons with percent deltas to the baseline, search filtered to markets or production datasets, a review level on dataset details, an input's own flow properties, and region names next to codes."
+  },
+  {
+    "date": "2026-09-07",
+    "title": "Formula fields complete parameter names",
+    "details": "Type in a formula field — on a flow in the process inspector or on a parameter — and the model's parameter names pop up as you type; take one with the arrow keys and Enter or Tab. The field also reads the formula before it is sent: an unknown or misspelled name, a decimal comma, ^ instead of **, or an unclosed bracket is refused right there, with the text still in the field."
+  },
+  {
+    "date": "2026-09-07",
+    "title": "Several variants in Detailed results",
+    "details": "Under Variants, tick the baseline and any number of scenarios instead of one. The contribution tree shows the first ticked variant; from the second on, the panel under it draws grouped bars — one bar per variant within each phase, as in the report's contribution chapter — or the variants' totals when no group-by is set."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "Short reports on the report pipeline",
+    "details": "Short reports (w/o AI) now run through the same pipeline as full reports: tick the chapters, compare scenarios or other processes, split the contribution by several tag families, pick theme, colours and language, and page through the typeset preview. Every chapter is built from the model's data; no assistant writes a line."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "System model figure and hotspot tables",
+    "details": "A new report chapter draws the model as a graph — your processes, their links and the first tier of background datasets — coloured by a tag family or by share of the leading indicator. Under each contribution breakdown a table names the background datasets with the largest direct share, and the sensitivity check gains a per-variant change table."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "A banner when the assistant has a question",
+    "details": "When the assistant asks you something while you are in another model, on another page or have the chat collapsed, a banner under the toolbar says so and names the model. “Go to chat” takes you there and shows the question. The assistant now waits up to thirty minutes for an answer instead of ten."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "Broad searches show every dataset",
+    "details": "A search such as electricity used to return six ecoinvent datasets: the electricity markets exist in 175 regions each and filled the candidate list before wind, nuclear or hydro could appear, so BAFU seemed to dominate the merged results. The list is now counted in datasets, not regions — a broad term returns the full fifty per database, each market still one row with its regions."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "Two assistants, two models, at once",
+    "details": "Start the assistant in one model, switch to another and give it a task there too: each chat runs on its own, and Send and Stop apply to the chat on screen. The chat header counts runs still going elsewhere and names their model. An assistant whose model is not on screen keeps modelling but leaves the visible canvas alone."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "Comparison models brief the assistant",
+    "details": "Link two models that will stand side by side on the Results page — in the chat's “+” menu under Comparison models, or in the model's Info dialog. The assistant in each model's chat is then briefed on the other: functional unit, boundaries, tag vocabulary, shared assumptions such as default transport distances — and asks before either model deviates. Each chat can switch a linked model off in the “+” menu."
+  },
+  {
+    "date": "2026-09-06",
+    "title": "Faster parameter edits, keyboard in dialogs",
+    "details": "Changing a parameter, duplicating or importing a model now takes well under a second in large workspaces instead of ten and more; a \"Working…\" line appears under the toolbar for anything that runs longer than a second. Escape closes any dialog and Enter submits the small forms. The region list of a search hit now offers every region of the dataset, and numbers use English thousands separators everywhere. Every progress bar now wears the start screen's colours."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Declining emissions theme",
+    "details": "A new report theme, and the one a new report now starts on: a typographic cover with the kind of document, a large title and the study's details in a row over three curves at the foot, all in shades of the colour set's accent. Logos sit on white cards at the top; without any, the title rule moves up. Find it under Appearance in the report's sidebar."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Preferred background database",
+    "details": "With more than one background database switched on in a chat, you can say which one the assistant should take when both hold a fitting dataset: Settings → Modelling → Background databases. It goes elsewhere only when the preferred one has no fit, and says so in the exchange comment; on “Let the assistant decide” it names its choice and why."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Sea routes around the Cape, suggestions while typing",
+    "details": "Sea legs can be routed around the Cape of Good Hope instead of through Suez — a chip in the Distances panel, an option per pair for the assistant, and a decision to record either way. While openrouteservice geocodes, place suggestions appear as you type; a click on a recent lookup puts it back into the fields. In Settings, Transport distances is now a group of four pages like AI, and both groups fold away until you open them."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Eurostat end-of-life statistics",
+    "details": "The assistant can now look up official Eurostat waste statistics for end-of-life scenarios: a country's real treatment mix (landfill, incineration, energy recovery, recycling), treatment by waste category, packaging recycling rates and municipal waste — one country, several in one call, or all at once. Provisional or estimated figures are flagged so it warns you. Free, no key; switch it per chat in the + menu or app-wide under Settings → AI → Chat."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Bundles carry your own datasets",
+    "details": "A .prism bundle now carries the datasets from My processes that the model draws on (the sender's own data, never background data), with their provenance. On import they land in the receiver's My processes as one import; a dataset already there is kept, a name clash gets a free code, and the import's undo removes exactly what it brought."
+  },
+  {
+    "date": "2026-09-05",
+    "title": "Transport distances",
+    "details": "Transport legs get their kilometres inside PrismLCA: a Distances button on the Model, Parameters and Scenarios pages looks up road (routed), sea (sailed route), air and rail distances between two places, with a copy button and the last five lookups. The assistant has the same as a tool. Bring your own openrouteservice key (free) or Mapbox token under Settings → Transport distances, where the GLEC adjustments, limits and costs live."
+  },
+  {
+    "date": "2026-09-04",
+    "title": "One dataset search everywhere",
+    "details": "Both Results tabs now add datasets through a single \"+ Add from database\" button that opens the model view's search as a dialog: the same checkboxes per background database and My processes, the same region picker and source chips. The ticked databases are shared with the model view's search panel, so a box ticked in one place is ticked in the other."
+  },
+  {
+    "date": "2026-09-04",
+    "title": "BAFU:20XY as a second background database",
+    "details": "PrismLCA now imports the free Swiss LCI database (BAFU:20XY, ecoSpold 1) beside ecoinvent — or first, with ecoinvent recommended. The first-start screen offers both; the Background panel offers only the missing one and can remove either. Imports show a progress bar, end with a summary, and keep the search indexes current (new flows are appended). In the chat's + menu each background has its own switch."
+  },
+  {
+    "date": "2026-09-03",
+    "title": "Skills in the chat's + menu",
+    "details": "The + menu under the chat input now has a Skills row: hover it and every skill appears with its on/off switch, the same switches as Settings → AI → Skills, without leaving the chat. Add skill at the end of the list opens Settings straight on the Skills page, where a skill is written."
+  },
+  {
+    "date": "2026-09-03",
+    "title": "Import matching got fast, visible and stoppable",
+    "details": "The AI assignment now asks four batches at a time — 92 flows in 35 seconds instead of four minutes — and a Stop button next to the progress bar ends a run early, keeping every answer already given. The reading step draws a live progress bar too, counting rows as the rules match them, and a structurally broken EcoSpold 1 file (wrong element order, missing geography) is repaired and read instead of refused."
+  },
+  {
+    "date": "2026-09-02",
+    "title": "Smarter import matching, regions your call",
+    "details": "The import assistant now reads ecoinvent's own synonyms, bridges unit mismatches with flow properties the source file states (a density, a calorific value) and knows US units like lb, gal, scf and Btu. When an input matches a dataset that exists in many regions and the file names none, the review asks you to Select region… — the region decides electricity mixes and distances, so it is never guessed."
+  },
+  {
+    "date": "2026-09-02",
+    "title": "The assistant knows My processes",
+    "details": "Chat searches now include your own library alongside the background databases — additively, never displacing background hits — and every hit from it is marked as yours. A switch in the composer's + menu releases or withholds the library per conversation, off by default. Library datasets can also be compared on the Results page."
+  },
+  {
+    "date": "2026-09-01",
+    "title": "Your library, and imports from other software",
+    "details": "Every workspace now has a library called My processes: datasets you build by hand and everything imported through Overview → Processes (SimaPro CSV, openLCA JSON-LD, EcoSpold 1 and 2, ILCD). It is live — a change reaches every model drawing on it. Right-click a process on the canvas → Move to library to turn it into such a shared dataset; the model keeps a link to it."
+  },
+  {
+    "date": "2026-09-01",
+    "title": "Attach files to the assistant",
+    "details": "Drop several files on the chat or pick them with the paperclip: PDFs and images go to the model as they are, spreadsheets and Word documents are converted for it. Attachments are stored with the workspace and stay under the sent message, so a long or reloaded conversation can open one again by page or sheet, and large files say what they will cost before you send them."
+  },
+  {
+    "date": "2026-09-01",
+    "title": "The cost limit now covers report writing",
+    "details": "Settings → AI's \"Cost limit per run\" reaches the chapter writers too — a Write all, a translation or a correction stops when the run hits the ceiling and says which limit it was. Chapters already written are kept. The default is now $15 rather than $2, which was low enough to end an ordinary run on a capable model."
+  },
+  {
+    "date": "2026-08-31",
+    "title": "Reports carry figure and table lists",
+    "details": "New reports print a List of Figures and a List of Tables right after the contents — page numbers come from the same Typst outline machinery as the contents, so they can never drift. The executive summary opens the document before the contents, the abbreviations follow the lists as front matter, and either list disappears by itself when the document has nothing of its kind."
+  },
+  {
+    "date": "2026-08-30",
+    "title": "The health check catches two end-of-life traps",
+    "details": "Two new warnings: an end-of-life process that BUYS a recyclate-producing dataset (under cut-off the recycled share leaves burden-free — disposal must not pay for pellets it never uses), and a process whose reference amount, contents and demand only fit together scaled — the check now names the factor by which materials would enter the result."
+  },
+  {
+    "date": "2026-08-30",
+    "title": "OpenAI as a direct provider",
+    "details": "Settings → AI → Provider now offers OpenAI directly beside OpenRouter: one switch, its own API key, and the GPT-5.6 models under the (now separate) Models page — web search, voice input and the cost ledger keep working. Keys and model choices of the inactive provider stay stored, costs under OpenAI are computed from list prices and shown as estimates, and Usage & costs splits its table by provider with a tab."
+  },
+  {
+    "date": "2026-08-30",
+    "title": "The audit log speaks in names",
+    "details": "Audit lines now say what a person can check: flow and process names instead of internal ids, and the old value beside the new one — \"Set amount of 'Steel supply' in 'Frame production' to 9 kg (was 2.5)\" instead of \"Set exchange 3f2a1b09 amount to 9\". Comments show a short excerpt, scenario and tag lines name their targets."
+  },
+  {
+    "date": "2026-08-30",
+    "title": "Undo a whole assistant turn",
+    "details": "The audit log now draws all changes the assistant made in one chat message as one dashed group, and when the next thing to undo belongs to such a turn, PrismLCA asks whether to take back the whole turn in one go or only the last change — redo asks the same. The whole turn is only offered while nothing else has changed the model since."
+  },
+  {
+    "date": "2026-08-29",
+    "title": "Research grades its sources and runs in parallel",
+    "details": "Every web-research finding now names its source's class (official, industry, media, community) and the researcher's confidence, and an answer resting only on blogs gets one extra pass for an official confirmation. Several searches or research questions run side by side instead of one after another, and a leg that runs out of time returns what it already wrote. The health check compares researched component masses with what the model books."
+  },
+  {
+    "date": "2026-08-28",
+    "title": "Web access on by default",
+    "details": "Web access in the chat now starts on. It lets the assistant search and open a link you paste — a data sheet, a standard, a statistics page; with it off, it answered from memory instead of looking. Turn it off per chat, or app-wide under Settings → AI → Chat."
+  },
+  {
+    "date": "2026-08-28",
+    "title": "Does the model match the brief?",
+    "details": "The health check now compares the quantities your scope states against the ones the model books. Where the scope says 0.25 kg and nothing carries it while a parameter sits exactly a thousand times away, that is a unit slip — the one error class every other check is blind to, because a model with a consistent slip is self-consistent."
+  },
+  {
+    "date": "2026-08-28",
+    "title": "Chapters that read like a person wrote them",
+    "details": "Chapter writers now write as an LCA consultant for a practitioner who checks the numbers, get the report's table of contents and know where the functional unit, boundary and method are already settled — so they name them instead of defining them again. A chapter can open the background datasets it mentions while writing, and once it passes the check, one more pass deletes filler. A report never describes its own making."
+  },
+  {
+    "date": "2026-08-28",
+    "title": "What a chat has used",
+    "details": "The chat header now shows the conversation's token total instead of the model name, which the input line already says: In, the share of it the provider served from its cache, and Out. It counts every turn including the models the assistant calls on the side, and it survives a reload."
+  },
+  {
+    "date": "2026-08-26",
+    "title": "The inventory chapter is written, not pasted",
+    "details": "Process notes are working notes, so the Life cycle inventory chapter is now written from them instead of printing them under fifteen headings. The table of processes stays; the description beside it is prose. Print the notes raw again under Process descriptions in the chapter's options."
+  },
+  {
+    "date": "2026-08-26",
+    "title": "Writer report",
+    "details": "What the check says about a written chapter now collects into one sheet, which opens after Rewrite all chapters and from the badge on any chapter. The chapter list itself is one line per chapter: the buttons drop below the name only under the pointer, so fifteen chapters no longer cost fifteen extra lines."
+  },
+  {
+    "date": "2026-08-25",
+    "title": "Excel exports that come apart",
+    "details": "The Results switch is now called Stacked bars / disaggregated exports, because it does both: with it on, Export Excel writes one row per life-cycle phase (or ISIC/CPC class) for every subject, plus a bold Total row, and a second column names the part. The subject repeats on each of its rows instead of being merged, so the sheet can be sorted, filtered and pivoted."
+  },
+  {
+    "date": "2026-08-25",
+    "title": "Folders for the model list",
+    "details": "Group the models on Overview by what they are for: the folder button beside Model and Import makes one, and a model moves into it by dragging. New models and imports can pick a folder while you create them, a copy lands beside its original, and a rename takes its folder along. Deleting a folder keeps every model in it — they go back to Unsorted."
+  },
+  {
+    "date": "2026-08-25",
+    "title": "Checks that ask whether a number does anything",
+    "details": "The model health check has three new questions: an exchange whose formula lands on zero, a parameter whose chain of formulas reaches no exchange at all, and a scenario that moves a value nothing depends on. And under Functional unit in Model info, Reference quantity divides the model by a parameter — so a per-kWh study is calculated per kWh, and yield scenarios finally move the result."
+  },
+  {
+    "date": "2026-08-25",
+    "title": "A new node in the contribution tree",
+    "details": "Detailed results draws every process as a card: the name over two lines, what kind of process it is and where it sits, the impact with its unit, and the share as a percentage over a bar whose solid head is the part that process emits itself — pale means the impact is further upstream. A folded branch now says how many processes are hidden under it."
+  },
+  {
+    "date": "2026-08-24",
+    "title": "Rename a model",
+    "details": "A model's name can now be changed in Model info — the ℹ button on its card or in the model toolbar. The pencil behind the name turns it into a field: ✓ or Enter renames, ✕ or Esc discards, and a name already in use is refused with the reason. Parameters, scenarios, tags, reports, chats, the canvas arrangement and the model's history all follow the new name."
+  },
+  {
+    "date": "2026-08-24",
+    "title": "History per model",
+    "details": "The audit list in Parameters and Scenarios shows only the open model's entries, follows the model through a rename, and a copy or bundle import says which model it came from. Report actions — writing, correcting, translating, exporting — appear there too, naming the chapter and the model that wrote it, but never the chapter text. Undo and Redo grey out when there is nothing to take back and name the step they would undo."
+  },
+  {
+    "date": "2026-08-24",
+    "title": "Ranking claims are checked",
+    "details": "A sentence that calls something the largest can pin that claim: {{rank:…}} prints the member's name, works for contribution groups, datasets and variants, and reports the chapter when the ranking changes hands, where one replacement puts it right. Claims made in words alone are watched too: when a lead changes hands, the sentence is quoted on the chapter's row and handed to the correction model as it stands."
+  },
+  {
+    "date": "2026-08-23",
+    "title": "Grouping on the model canvas",
+    "details": "Select several processes and the leftmost canvas button turns into Group: a soft tinted box behind them, in a colour no other group uses. Recolour it from the dot in its corner, rename it from its right-click menu and move it by its top strip; where two boxes overlap you see both colours. Auto-layout keeps each group together, the Tags window can draw one box per tag, and groups are stored with the model."
+  },
+  {
+    "date": "2026-08-23",
+    "title": "A minimap on the model canvas",
+    "details": "The bottom-right corner now carries a map of the whole model, with an outline showing the part you are looking at as you pan and zoom. It reads like the canvas: locked background processes grey, tagged ones green, your own colours kept. Click to centre the view there. Drop a dataset on the map and the process lands where the map points, not under the map. Resting the pointer on it enlarges it; opening the chat takes the corner back."
+  },
+  {
+    "date": "2026-08-23",
+    "title": "Writing one chapter asks first, and shows progress",
+    "details": "Write on a chapter that already holds text now asks before replacing it, naming the paid call and the way back: the old wording is kept as the previous version, so “what changed” shows it and “Put it back” restores it. An empty chapter is written straight away. While it writes, the row says whether the model is thinking, counts the characters as they arrive and names each lookup and the check, with a clock beside it."
+  },
+  {
+    "date": "2026-08-23",
+    "title": "A variant's name is its own",
+    "details": "Two variants of one process used to print the same column header, because both fell back to the process name. PrismLCA now adds only what separates them — the parameter state, the location, the reference product, a number as a last resort — and translates the name everywhere it is printed, so the results table and the prose beside it agree."
+  },
+  {
+    "date": "2026-08-22",
+    "title": "Correction rounds that learn",
+    "details": "A correction round now gets every objection the save check would raise, not just the one that started it, and a refused batch is retried one replacement at a time, free, so the good ones are kept. Where a sentence cannot be reworded, the chapter is marked “no rewording found” with the model's reason, and the plan offers a rewrite instead of the same paid correction again."
+  },
+  {
+    "date": "2026-08-21",
+    "title": "The report check catches more",
+    "details": "The freshness check now flags a chapter that points at a switched-off figure, says “not checked” when it could not run, pins scenarios and datasets by identity so a deleted one is reported as missing, and reads every study field for a method the study no longer uses. Indicators are named in the shortest form unique within their method family, and charts print numbers in the report language's format, like the tables."
+  },
+  {
+    "date": "2026-08-21",
+    "title": "Was the study critically reviewed? — now a question, not a guess",
+    "details": "A published comparative report has to state whether it was critically reviewed. PrismLCA read that off the free-text “Critical review” field, where anything at all counted as “a review is recorded” — so “no critical review (internal screening study)” suppressed the note saying one is required. Model info now asks outright: not recorded / no / yes. Only an explicit yes suppresses it, and the assistant cannot set the answer."
+  },
+  {
+    "date": "2026-08-19",
+    "title": "Accept a chapter as it stands",
+    "details": "When a cited figure changes places in a ranking, the check says a wording like “the largest” may no longer be true — it cannot read sentences, and staying quiet would be worse. Until now there was no way to answer a “may”, so a correct chapter left you a choice between a paid rewrite and a report that stays yellow. Such a chapter now has “Accept as it is”: it re-stamps the record against today's numbers, changes not a word, costs nothing, and reports again the next time these numbers move."
+  },
+  {
+    "date": "2026-08-18",
+    "title": "Chapters quote what they were given",
+    "details": "Every chapter now receives the datasets behind each indicator it writes about, so it no longer fills gaps from memory; a dataset name in quotes or italics that appears nowhere in its material is refused. A parameter's own value written out in the prose is asked for as a placeholder, in whichever unit it is written, so 42 g and 0.042 kg go stale together."
+  },
+  {
+    "date": "2026-08-18",
+    "title": "A note that states a parameter's value is checked against it",
+    "details": "Process notes are written once and read forever, and they tend to spell a figure out (“pallet share per bottle: 42 g”). Change the parameter and the note states a number that no longer holds. The health check now reads each note against the parameter it names and reports the note that has fallen behind; units are levelled, and a rounded value is not a disagreement."
+  },
+  {
+    "date": "2026-08-18",
+    "title": "A scenario that changes nothing says so",
+    "details": "A scenario set to the value the model already has is the baseline under another name: every comparison returns zero and the report draws two bars of the same height. Creating such an override is now refused, with the parameter named. The other way in cannot be refused — a scenario can be meaningful when typed and lose its point later, when the baseline moves onto it — so the list marks those overrides as “same as the model” and the sensitivity check says which variant returned the baseline result."
+  },
+  {
+    "date": "2026-08-18",
+    "title": "Usage & costs by kind of work",
+    "details": "Every request is now booked under its kind of work — modelling, reporting, embedding, speech — with the all-time split above the cost table and the monthly split in each tooltip; embedding costs from the backend are counted too. A new column shows output and reasoning tokens, where the price of a short prompt sits, and a request whose provider reports no usage still counts as a call."
+  },
+  {
+    "date": "2026-08-17",
+    "title": "The study's language, and its texts translated",
+    "details": "Model info has a Study language field. When a report is in another language, Translate study texts carries the study's own words — process notes, scenario names, goal & scope — into it before chapters are written, and stores the translations on the report, so the model stays untouched. PrismLCA also reads the language off the study's prose and offers it, never applies it silently."
+  },
+  {
+    "date": "2026-08-17",
+    "title": "The name and the number have to match",
+    "details": "The worst error a report can carry looks fine: a sentence naming one dataset and printing another's figure, each half right on its own. Before a chapter is stored, PrismLCA now checks that the dataset a sentence names is the one its figure is bound to; a mismatch blocks the chapter and names the two it confused. No model is involved, and a proposed correction is shown as the document will print it."
+  },
+  {
+    "date": "2026-08-17",
+    "title": "Faster previews and corrections",
+    "details": "A report preview used to factorise the matrix about thirteen times for three parameter states; it now computes each state once, and switching theme or colour set recomputes nothing, so a look switch previews in seconds. “Correct all” works on flagged chapters at the same time instead of one after another — five finish in roughly the time of one — and counts along as it goes."
+  },
+  {
+    "date": "2026-08-17",
+    "title": "The report page keeps track",
+    "details": "A chapter goes on being written while you are on another page, and the report page now keeps its progress, its Cancel button and its badges for your return instead of offering Write again for a call still in flight. After Render PDF the pane follows the download: the real path once the file lands, and plainly nothing saved when you cancel."
+  },
+  {
+    "date": "2026-08-17",
+    "title": "Spell checking — offline, in the report languages",
+    "details": "Every text field is spell-checked, and the dictionaries for the five report languages ship with PrismLCA: nothing is downloaded and no request leaves the machine. Chromium would otherwise fetch them from a Google CDN on first use; that path is off for good, and without the bundled files checking turns off. Which languages are checked is a setting, and right-clicking a marked word offers corrections and Add to dictionary."
+  },
+  {
+    "date": "2026-08-16",
+    "title": "Who wrote this — the chapters and the study fields say so",
+    "details": "A quiet line under the report picker names the model that wrote the chapters, recorded per chapter and re-stamped only when that chapter is rewritten, so a report whose rewrites mixed models names every one involved; a hand-edited chapter drops out, because those words are yours. Study fields the assistant fills carry the same stamp in Model info. It is provenance, not a form field: a user edit neither sets nor clears it, and a request that merely claims a model is not believed."
+  },
+  {
+    "date": "2026-08-16",
+    "title": "Previews and long runs say where they stand",
+    "details": "A preview typeset before the chapters were rewritten now carries a banner saying the report has moved on, and paging through it keeps the warning. Write all chapters fills a bar per finished chapter and shimmers while one is in flight, because minutes between two completions otherwise look like a hang."
+  },
+  {
+    "date": "2026-08-15",
+    "title": "Research and review reach the report",
+    "details": "Research is now recorded against the model and printed under “Sources researched during modelling” instead of surviving only as links inside a comment. An internal review is kept with its findings and their outcomes, so the Limitations chapter can state what is still open, and the chapter writers receive the check figures, ranking trade-offs and process notes their prompts refer to."
+  },
+  {
+    "date": "2026-08-14",
+    "title": "Where did the material get its shape?",
+    "details": "A material dataset ends at the material: turning steel into a jar lid or granulate into a housing is a separate ecoinvent activity, and two studies in a row shipped without one — sheet rolling and deep drawing would have added 45 % to that lid. The health check now looks for bulk metal or plastic with no forming step anywhere in the model and names what it found. It stays quiet when the linked dataset already includes the shaping or the model has the step elsewhere."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "Did anybody read the dataset?",
+    "details": "Dataset names hide what a dataset was built for: a circuit board modelled on desktop and laptop computers stood in for a garden lamp's 5 g driver board and carried 44 % of the result, and a laptop NiMH battery stood in for one AA cell. PrismLCA now tracks which background datasets a chat has actually opened; the contribution list and the critical-review dossier name the unopened ones above a tenth of the result that your processes link directly."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "The chat stays where you put it",
+    "details": "Opening a chat, or switching between chats, now starts at the newest message. While a run streams, the transcript follows only while you are at the bottom — scroll up and it stays put, and a round button with a downward arrow above the input takes you back. Sending a message always returns you to the end."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "Research, review and summaries on models you choose",
+    "details": "The assistant's helpers used to run on a fixed cheap model whatever you chose, each billing under its own name in your cost table. Web research, the critical review and the summariser now each have their own model choice under Settings → AI. Research wants a model that searches well; a review is worth most from a model other than the one that built the study, and the panel warns when you pick the same."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "Short lookups show the largest inputs",
+    "details": "A wall-paint study used an acrylic dispersion as its binder that is really a pigmented coating base, with 0.25 kg titanium dioxide per kilogram — and nothing in its name, unit or class said so. A dataset lookup's short form now shows the largest inputs, where that difference sits. The contribution list prints each activity once, with a count of how many supply chains reach it, instead of once per chain."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "A dataset that sells you the shaping, not the metal",
+    "details": "In ecoinvent a profile or a moulded part is two exchanges, the material and the forming, and the forming dataset is priced per kilogram and reads exactly like a material: an aluminium frame modelled on extrusion alone held 12 grams of aluminium. PrismLCA now quotes ecoinvent's own statement that a dataset covers only the processing — about 370 activities, from plastics converting to rolling and casting — and a market inherits it from its main supplier."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "Search names what it could not find",
+    "details": "Semantic search always answers with its nearest neighbours, even when your material is not in the database: a EURO 6 car returns a EURO 5 one, polyisobutylene returns straw, and the score cannot tell — EPDM, absent, outscores PVC, present. Results now name the words no hit carries, material names included, mark each hit against the similarity bar, and warn when the best result covers half or less of what you named."
+  },
+  {
+    "date": "2026-08-13",
+    "title": "Where do the numbers come from?",
+    "details": "A complete cradle-to-grave study rested on twenty parameters, fourteen of them starting with “assumption”, and every check passed. The health check now counts how many parameters and comments carry a link or a DOI and how many state a bare number. It does not judge — a screening study on typical values is legitimate, it just has to say so — and points at the research tools and the contribution list, so sourcing starts with the figures that carry the result."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "A failed review no longer looks like a passed one",
+    "details": "A reviewer that returned no text used to read like a clean verdict, and a study once went out unreviewed on it. A failed review now gets a second attempt asking for plain prose, and the answer tells “nothing found” from “said nothing” and “could not be reached”, saying in as many words that a failed review is not a clean one."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "Numbers that say which number they are",
+    "details": "The contribution list ranked processes by what they emit themselves but printed the share of their whole upstream chain beside it, so the share column added up to 123 %. Both quantities now carry their own names, with a line saying that the cumulative ones overlap and must never be summed."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "Research that admits what it is missing",
+    "details": "Bill-of-materials research runs one researcher per component. When two of six ran out of time, the answer still said “balance ok”, and the missing mass ended up on the wrong part. The balance now reads “could not be checked” whenever a component is missing and states the unaccounted mass, and a component that runs out of time gets one more attempt with a narrower question."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "The reviewer sees the whole model",
+    "details": "The critical review used to see only process names, units and locations — no amounts, formulas or comments — and reported as missing things that were present, each costing the assistant a round to disprove. It now receives the whole foreground with amounts and formulas, and is told that absence below the hotspot cutoff is not absence. It can also ask what one functional unit pulls in and which processes use a given dataset."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "A market now says what it mixes, while you are still choosing it",
+    "details": "A dataset named market for glycerine is an average of whoever supplies that market, and GLO means a global average, not global data. Search results now carry a market's biggest suppliers with their shares and regions, so you see the mix before you link it; the transport a market buys is left out. The check that flags one product from two datasets now reads a deliberate blend — amounts that add up, or both exchanges explained — as a note."
+  },
+  {
+    "date": "2026-08-12",
+    "title": "AI settings split; Opus 5 joins",
+    "details": "Settings → AI is split by the question you are asking: Provider & model holds the key, the model choices and their prices; Limits holds the round and cost budget, reply length, research width, provider speed and the zero-data-retention switch; spending has its own page, Usage & costs. The model list gained Opus 5, and Kimi K2.6 leaves it."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "Ask for a faster provider",
+    "details": "The same model on the same prompt can run at four tokens a second on one provider and twenty on the next. Requests now carry a preferred provider speed, 20 tokens a second by default, under Settings → AI → Limits (0 switches it off). It is a preference, not a filter: endpoints that manage the speed are favoured, and when none does, the request goes out as before. Qwen3.8 Max also joins the model list, with a million tokens of context."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "The assistant remembers what it actually did",
+    "details": "Follow-up questions — why that dataset?, change the last-mile allocation — used to be answered from the assistant's own summaries, because its tool calls and their results were dropped when a turn ended. The conversation now carries them forward and shrinks them only under real context pressure, oldest first and summarised, so the assistant can explain its choices and act on a follow-up without re-reading the whole model first."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "A formula is enough",
+    "details": "Attaching a parameterised amount no longer needs a number worked out by hand beside the formula: the engine evaluates it, and a wrong expression takes the half-made exchange away again rather than leaving a silent zero. A new tool answers what a formula would come to against the model's current parameters, names the ones it used, and takes substitutions for what-if questions — and if the distance were 20 km? — without saving anything."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "Every question the assistant has, in one form",
+    "details": "Clarifying questions now come together on a single card with an Answer button, instead of three questions minutes apart that each stop the run until somebody answers; the assistant is told to ask everything it already knows it needs. Skills, impact methods, elementary flows, characterisation factors and process details also take several at once, and a whole foreground model reads in one call."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "Which provider served your run",
+    "details": "The provider that actually served a run now appears on its line beside the call count and the cost, and stays with the message — from inside the app a slow provider and a slow model look identical. Web research takes several questions at once, each a researcher with its own paid search, so Settings → AI caps how many run in parallel, four by default; the assistant is told which questions went unanswered."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "A long run is readable while it runs",
+    "details": "A build that takes a quarter of an hour used to be a list of tool names until the turn ended. Every call now fills in its duration and result as soon as it completes. The clock beside the running tool counts the call, not the turn, and a reasoning model that thinks for minutes shows its reasoning growing instead of a bare “Thinking” — the amount, never the text."
+  },
+  {
+    "date": "2026-08-11",
+    "title": "The assistant does in one call what used to take a dozen",
+    "details": "Tagging a model by phase used to take one call per phase; tags now take a whole list of assignments and add missing values on the way. Web research runs several questions at the same time, contribution analysis and scenario comparison take several indicators per call, and replacing the dataset behind an exchange is one step that keeps amount, formula and comment — adding the new link before dropping the old one."
+  },
+  {
+    "date": "2026-08-03",
+    "title": "Every indicator gets its own contribution breakdown",
+    "details": "The contribution chapter used to break down only the leading indicator, so a chapter asked about all three filled the gap by guessing. Every computed indicator now gets its own table and, when the report compares variants, its own chart with the baseline and every scenario side by side. Under Edit you can switch single indicators off, and those are not computed either — which is where the time goes on a large comparison."
+  },
+  {
+    "date": "2026-08-03",
+    "title": "The bibliography now lists the sources your study looked up",
+    "details": "References used to list only what the calculation used, not what the study researched — the masses, split rates and doses whose links sit in process and parameter comments. Sources cited in this study now collects every link from your process notes, parameter comments and declared limitations, once each, and says where it was cited. It is a plain collector: no model is asked and nothing can be invented."
+  },
+  {
+    "date": "2026-08-03",
+    "title": "What the assistant could not resolve now reaches your report",
+    "details": "Judgements about the study — the allocation that had to be chosen, the assumption the result rests on, what was left out, a figure the client could not supply — used to stay in the chat. The assistant now records them as it meets them, and the Limitations chapter prints them under Declared by the study, apart from the report's own checks under Checked by the report. They live with goal and scope, so every chapter can draw on them and a bundle carries them."
+  },
+  {
+    "date": "2026-08-03",
+    "title": "The assistant asks you the questions that decide the number",
+    "details": "Some choices are not data anybody can look up — how much of a shower belongs to one hair wash, where the use phase stops, whether the functional unit is a wash or a bottle. The assistant now puts such decisions to you as clickable options before it models them: if you would later disagree and the headline number would change, it was yours to decide. The end-of-life guidance gained a worked example of the cut-off approach."
+  },
+  {
+    "date": "2026-08-03",
+    "title": "The assistant tests the assumption your result rests on",
+    "details": "Where one phase carries more than about half the score, the study really rests on one assumption. The assistant now builds a scenario that varies it over its plausible range, scores it against the baseline and reports the spread instead of one number — “0.149 kg CO2-Eq, 0.098 with a heat pump”. If the deciding figure is not a parameter yet, it makes one first, and it stops at two or three scenarios."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "The health check catches a process that is counted twice",
+    "details": "Move a life-cycle phase under the reference process, forget the link it hung from before, and both are live: the amounts add up and the total comes out too high, with every single number plausible. The health check now reports a process that the reference process and something else both consume (Counted twice via two paths), names both consumers and says to keep one; a shared intermediate that two phases draw on is not flagged."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "A phase tag on the reference process",
+    "details": "The health check flags a phase tag on the reference process itself: that node is the functional unit and sits above everything, so its tag becomes the value every untagged activity in the model falls back to. Structure warnings also reach the report's completeness section, so a study cannot quietly ship with them."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "A deliverable with a hole in it now refuses to leave",
+    "details": "Exporting a PDF or a hand-off bundle used to succeed even when a placeholder would print as “[missing: …]”. Both now refuse and name the gaps, with Export anyway beside the message for a draft; the preview stays open as the place where gaps are found. Every chapter also keeps the lookups a quoted fact was checked against, so “why was this accepted” has an answer in the app."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "A report now says what was modelled, not only what it scores",
+    "details": "New chapter: Life cycle inventory, between goal & scope and the results, where ISO 14044 puts it. It lists the processes your model is made of, reference product first, with the note recorded against each: what it represents, which background dataset stands in, why that proxy holds and its source. Under Edit you choose processes, datasets, parameters or elementary flows. Limitations joins the starting structure too."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "The results chapter turns its table, and draws fewer charts",
+    "details": "Eleven indicators as columns on a portrait page printed every word on its own line. The results table now turns as soon as there are more indicators than variants — indicators down the side, variants across — so a row is one indicator in one unit; Edit lets you choose either way. The same panel decides how many indicators get a bar chart of their own: all, the leading one, or none."
+  },
+  {
+    "date": "2026-08-02",
+    "title": "Goal and scope is written, not dumped",
+    "details": "The Goal and scope chapter used to print your metadata fields verbatim with prose underneath, saying everything twice. Now the prose replaces them; an unwritten chapter still shows the fields. The writer may leave out a field that is not a scope statement, but must name it, and Scope & indicators lists the fields ISO 14044 §5.2 expects that the study has not recorded. Whether the study was critically reviewed is always printed."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "Write all shows you the run before it costs anything",
+    "details": "Write all chapters now opens on the run itself: every chapter, what would happen to it and why, with a tick to take any one off. Empty and out-of-date chapters start ticked; the rest are listed greyed with their reason, and a chapter waiting on a setting names it. A fresh staleness check runs when the dialog opens, nothing is written or paid for until you press Run, and afterwards the note counts what actually happened."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "See what a chapter says before you typeset it",
+    "details": "A chapter holds {{results.0.score}}; the document prints 1.32 kg CO₂-eq. Show with the numbers puts the chapter below the editor as the document will read it, every placeholder resolved by the same substitution the PDF uses. Each figure is faintly underlined with its path on hover — green when the sentence is pinned to that member, red where a pointer leads nowhere — at no model or calculation cost."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "What did this chapter say before?",
+    "details": "Every change to a chapter's text now keeps the wording it replaced, and the chapter offers what changed beside its name: old and new side by side, added words highlighted, removed ones struck through, and Put it back. It is one step back, not a history — and since putting a version back is an ordinary edit, the door swings both ways."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "Re-link, correct all, and a mark for “I have read this”",
+    "details": "Re-link appears when the target of a sentence was only renamed: no model, no cost, not one word changed, and the “[missing: …]” hole closes. Correct all puts the proposed replacements for every flagged chapter on one screen. Mark as read records the wording you have seen, so a chapter that moves afterwards says changed since you read it and shows exactly what — something to check before you send a report."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "Correct a sentence, not a chapter",
+    "details": "Next to Write, a chapter with a finding offers Correct…: a model changes only the wordings the finding condemns, and the rest stays word for word — a three-word diff is checked in seconds, a regenerated chapter must be re-read. Each replacement must match once, keep every placeholder and pass the same check, and you see the diff with a reason. A passage that rephrasing cannot save is flagged for a rewrite instead."
+  },
+  {
+    "date": "2026-08-01",
+    "title": "A chapter now says how it went out of date",
+    "details": "One badge, “numbers moved”, used to mean the same whether a share nudged by a tenth of a percent or the impact method changed. Chapters are now judged only against what they cite. Moved figures need nothing, since placeholders print the new number; a share leaving its size class or a ranking swap asks you to check the wording; a method or value the report no longer has marks the chapter out of date, and the badge says which."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Background data has a place of its own",
+    "details": "A Background button on the Overview shows what a workspace stands on: the inventory, the elementary flows and their list, the impact methods (yours counted) and your models. From there you import a release or add missing impact methods. Start over deletes the background data so a release can be imported again; your models are kept, the warning counts the exchanges that will point nowhere, and confirming takes a one-time code."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "The impact methods arrive with the import",
+    "details": "First-run setup asks for the LCIA Implementation workbook next to your datasets folder and writes the impact methods itself — before, a fresh workspace had 26,000 activities and not one method. A workspace that already has its inventory can be given methods on their own, and a flow that cannot be linked stops the import with the closest match named, instead of a half-linked method set. An interrupted import is recognised as such."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Back up a whole workspace",
+    "details": "Write the entire workspace to a .tar.gz — every model, the background database, the search indexes and everything PrismLCA keeps beside Brightway: tags, scenarios, goal & scope, reports, canvas arrangements, history. It says roughly how large the archive will be and that it contains your licensed background data, so it is for you, not for sending on; to share a model, use the .prism export."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "The spreadsheet round trip keeps the formulas",
+    "details": "Exporting a model to the two-sheet Excel format now keeps formulas, uncertainty distributions, exchange comments and tags, and reading it back applies all four. What a spreadsheet cannot hold — parameters, scenarios, goal & scope, reports, the canvas — is listed in the export dialog, beside the .prism export that keeps everything. A formula naming a parameter the target model lacks is kept, and the import names it."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Send someone a model, or take one in",
+    "details": "Export any model from the Overview as a .prism file: processes, parameters, tags, scenarios, goal & scope, report definitions and the canvas, optionally with chats and history. Background datasets travel as references, so the file stays small and carries no licensed data. Import shows what is in the file and whether every reference resolves before anything is written, and arrives as one undoable step."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Your canvas arrangement belongs to the model",
+    "details": "Where you put the boxes, which background datasets you pinned beside them, the colours you painted and how Results and Detailed results are set up used to live in the browser's own store — lost on another machine, on a reinstall or with a rename. All of it is stored with the model now and can travel in a model export; the canvas still draws from a local copy immediately."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Your API key goes in Settings",
+    "details": "Paste your OpenRouter key under Settings → AI → Provider & model and it applies at once, no restart. It is stored in your operating system's credential store and never comes back out — the field shows a mask. Above it, in plain words: what leaves your machine, that your own terms with OpenRouter apply, and that the bill is yours, so set a spending limit on the key."
+  },
+  {
+    "date": "2026-07-31",
+    "title": "Your name, your logo, your client's logo",
+    "details": "Set your name, organisation and logo once under Settings → Reporting and every report carries them; the author line reads Authors when the field names more than one person. A report can override any of it, and the client's logo belongs to the report. An empty logo field prints no mark at all, and you set the logo's height (5–25 mm), not its width — a logo that can be squashed will be."
+  },
+  {
+    "date": "2026-07-30",
+    "title": "Seven report themes, picked from a gallery",
+    "details": "A theme is the whole look of the document — cover, headings, tables, figures — picked from a gallery of real title pages under Appearance, three to a row, each typeset in your colour set. Network draws your process network on the cover, Shapes and card deals a circle composition, Serif and rule is the quiet one, Panel and year the loud one. Upload your own .typ and it gets a preview like any other."
+  },
+  {
+    "date": "2026-07-30",
+    "title": "One colour set, every theme",
+    "details": "A theme decides the layout; the colour is a set of its own, and the one you pick repaints every theme — the gallery re-renders each cover in it. Nine sets, among them PrismLCA, Teal & amber, Brick & slate, Indigo & rose and Cloud & matcha, each shown by accent, deep tone and paper; the set travels into the PDF, the charts and an exported Typst project as palette.typ."
+  },
+  {
+    "date": "2026-07-30",
+    "title": "A parameter can say what its value is allowed to be",
+    "details": "Data validation, as a spreadsheet has it: a parameter can be only positive, only negative, within a range, or one of a list such as 0.25; 0.5; 0.75, which turns it into a dropdown. A breaking value cannot be entered — by hand, through a formula, in a scenario or an imported workbook — and the assistant is told each rule but cannot set one."
+  },
+  {
+    "date": "2026-07-30",
+    "title": "The parameter page is a searchable list",
+    "details": "Every parameter is one row — value, formula, unit, comment and the processes it drives beside each other — inside a group card that folds away and, while shut, names what it holds. The search box matches all of it, including the processes, and hides the groups without a hit. Each row says which processes use it, with how many of their inputs it drives and a click that opens the model with that process centred; one that no formula references says so."
+  },
+  {
+    "date": "2026-07-30",
+    "title": "Each chapter decides what it draws",
+    "details": "Each report chapter carries its own list of up to six figures — bar chart, stacked bars, heatmap or radar — instead of three report-wide switches. Heatmap and radar scale every indicator to its own highest value, which puts incomparable units side by side without weighting them, and what cannot be drawn from the current data says why."
+  },
+  {
+    "date": "2026-07-29",
+    "title": "Results and report in a sidebar",
+    "details": "Results and the report editor keep their controls in an accordion rail the height of the window — one group open at a time, each saying what it holds while closed — with Calculate, Preview and Render PDF pinned at the foot. Results opens on your model's reference process, offers Baseline beside the scenarios, and lines its charts up on one twelve-column grid."
+  },
+  {
+    "date": "2026-07-29",
+    "title": "Model info is a sheet, and says how much of the brief is filled in",
+    "details": "Model info groups the study metadata the way ISO 14044 does, each section naming its clause, with a ring and an n/m count for how much is filled — the report chapters and the assistant's brief are written from it. Only the three fields ISO requires are marked Required, and windows across the app share the same sheet."
+  },
+  {
+    "date": "2026-07-29",
+    "title": "A separate model for writing the report",
+    "details": "Report chapters now have their own model setting. Tool work is long and mechanical, so a cheap model does the chat well; a chapter goes to a client and is read by a person, and deserves a stronger one. The old hint said the chat model applied only to the chat, so a cheap chat model quietly wrote client reports too."
+  },
+  {
+    "date": "2026-07-29",
+    "title": "The chat says what it is doing, and what it cost",
+    "details": "Every tool the assistant uses appears as its own line — click it open for what it sent and what came back — and the trace stays with the message. A call a tool refused is marked differently from one that failed, and each turn shows what it cost, with the share the provider served from its cache in the ledger."
+  },
+  {
+    "date": "2026-07-29",
+    "title": "The health check finds what a model hides",
+    "details": "Beyond missing units and unlinked flows it now names the three faults that survive review: double counting, where the same burden enters twice by two routes; exchanges pointing the wrong way; and mass that appears out of nowhere, where a process puts out more than it takes in. Each finding quotes the number behind it, so there is nothing to chase that is not backed by a figure."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "Reports: a document you keep, not a look you take",
+    "details": "Short reports are the quick look and store nothing. A full report is a document: it keeps its own name, language, theme, variants, indicators and chapter list, so you re-render it when the numbers change, and one model can hold several. It starts with the chapters ISO 14044 asks for, arranges them by drag, takes structural templates you bring, and comes out as a typeset PDF in five languages or a Typst project."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "The assistant writes a chapter — after investigating",
+    "details": "A chapter is written after the assistant has queried the results, the inventory and the study metadata, so it cites what the model says. You can edit the prompt behind any chapter and comment on what it wrote for a rewrite; a refused chapter is kept as a draft, and writing can be cancelled mid-run. Bold, italics and lists survive into the typeset page, and each writer knows which tables and figures are printed with its chapter."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "Numbers in a report are never typed out",
+    "details": "Every figure in a chapter comes from the calculation, not from the model writing it down: the report does the arithmetic a comparison needs — differences, shares, percentages against a reference — and prints numbers with the precision the data actually support rather than a fixed number of decimals. Charts follow the same rule."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "What an LCA may not claim, checked",
+    "details": "ISO 14044 forbids a comparative assertion built on aggregated indicators, and forbids calling a single-indicator result an LCA. A check reads what each chapter claims — not just the numbers it quotes — and flags the sentence that oversteps, covering the three interpretation checks (completeness, sensitivity, consistency) and the limitations note you cannot drop from a comparative study."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "The parts a study needs, kept up to date",
+    "details": "A bibliography that cites the datasets and methods the report actually used, a glossary that grows with the document, and an abbreviations chapter resolved for you. The annex takes its inventory length on the chapter itself — 25 rows by default, the largest by contribution, or every characterised flow of the reference process, which on an ecoinvent model is a few thousand rows and tens of pages. Elementary flows are in the export in full."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "Contribution analysis compares your variants",
+    "details": "The contribution tree carries every variant side by side, and a click on any node opens that process's details without leaving the page. The chart is grouped by default — the groups on the axis, one bar per variant, and a bold Total group carrying each variant's sum — or stacked, which turns it round and shows the composition at a glance."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "The assistant works in batches, and by name",
+    "details": "Instead of one call per exchange it edits in batches, addresses processes by name rather than by internal id, and reports what it changed as a list. A cradle-to-grave model with every transport genuinely takes a few hundred calls; when the round budget runs out it stops and says so, and you tell it to continue."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "Processes and exchanges carry their documentation",
+    "details": "A foreground process takes a description, and an exchange takes a comment — where the number came from, which assumption it rests on, what was excluded. Two allocation decisions are recorded per process, which is what a reviewer asks for first and what the report prints in its methods chapter."
+  },
+  {
+    "date": "2026-07-27",
+    "title": "Scenarios: your own, from Excel, and in the results",
+    "details": "A scenario is a named set of parameter overrides, stored with the model, edited as you type, and importable from an Excel workbook — where every cell is validated before anything is written, so a bad sheet changes nothing. Tick any number of them on Results or Detailed results to compare them against each other and against the untouched model."
+  },
+  {
+    "date": "2026-07-26",
+    "title": "The assistant researches what the databases cannot give you",
+    "details": "End-of-life split rates, material compositions, transport distances: a separate helper searches the web and returns short findings, each with a source URL, and drops what it cannot source instead of estimating. Describe a product without composition data and it researches the bill of materials against the total mass; it can also review a finished model, with a second reviewer challenging it."
+  },
+  {
+    "date": "2026-07-26",
+    "title": "A cost limit, and a ledger to check it against",
+    "details": "One run may spend at most what you set (default $2; 0 switches it off) — helper runs count towards the same limit, and the assistant stops and says so when it is reached. A reply-length cap is the backstop the cost limit cannot be, since that one settles up between tool rounds. Costs shows real spend per model and month."
+  },
+  {
+    "date": "2026-07-24",
+    "title": "Create your own LCIA methods, and inspect the factors",
+    "details": "Build a method from characterization factors of your own, or from a shipped one you adjust, and use it like any other. The LCIA page shows the factors behind a method and compares two of them side by side, which is how you find out why two “climate change” variants disagree. Recommended indicators are marked, so a first calculation does not start with a shopping list."
+  },
+  {
+    "date": "2026-07-23",
+    "title": "Workspaces, models, and an Overview to start from",
+    "details": "Create and delete workspaces, duplicate a model to try a variant without touching the original, and compare subjects across models in one calculation. The Overview page opens on your models with their size and their reference process, the study's progress, and this feed."
+  },
+  {
+    "date": "2026-07-21",
+    "title": "Tags, and results split by the life cycle",
+    "details": "Tag processes freely — life-cycle phase, site, supplier, anything — and split or group any chart and any contribution breakdown by a tag family. Elementary-flow contributions are shown per flow and exported to Excel. Only families actually in use are offered, so a split never draws one bar called untagged."
+  },
+  {
+    "date": "2026-07-21",
+    "title": "The canvas handles like a diagram tool",
+    "details": "Right-click to add a process where you clicked, select several nodes at once, read each arrow's unit on the arrow, and keep flow lists sorted the way you left them. Units autocomplete, and strict mode refuses a typo like “KG” unless you deliberately allow free text. Canvas references survive a restart."
+  },
+  {
+    "date": "2026-07-19",
+    "title": "Voice input for the chat",
+    "details": "Dictate instead of typing; the recording is transcribed automatically. Pin your spoken language so a German sentence is not quietly translated to English."
+  },
+  {
+    "date": "2026-07-19",
+    "title": "Skills the assistant follows",
+    "details": "Knowledge sheets rather than one long prompt: goal & scope, model building, choosing a proxy dataset, parameters & formulas, bills of materials, end-of-life, interpreting results, critical review. The built-in ones ship with the app and can be read in full; add your own house rules as a new skill."
+  },
+  {
+    "date": "2026-07-18",
+    "title": "An assistant inside the app",
+    "details": "A chat beside the canvas that can actually build: it searches datasets, adds and connects processes, sets parameters, calculates, tags, and reads the results back to you — through the same API and the same validation your own clicks go through, so everything it does is audited and undoable."
+  }
+]

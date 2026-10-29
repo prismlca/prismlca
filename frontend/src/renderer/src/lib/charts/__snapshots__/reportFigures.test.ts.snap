@@ -1,0 +1,787 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the pinned report figure options > bar, horizontal and vertical, light and dark 1`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#14181c",
+    "fontSize": 11
+  },
+  "grid": {
+    "left": 15,
+    "right": 76,
+    "top": 10,
+    "bottom": 26,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "value",
+    "name": "kg CO2-Eq",
+    "nameLocation": "end",
+    "nameGap": 8,
+    "axisLabel": {
+      "color": "#5c636b",
+      "formatter": "[function]"
+    },
+    "nameTextStyle": {
+      "color": "#5c636b"
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "splitLine": {
+      "show": true,
+      "lineStyle": {
+        "color": "rgba(20,24,28,0.12)"
+      }
+    }
+  },
+  "yAxis": {
+    "type": "category",
+    "data": [
+      "Production",
+      "Transport"
+    ],
+    "axisTick": {
+      "show": false
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "axisLabel": {
+      "color": "#5c636b",
+      "fontSize": 12,
+      "lineHeight": 13,
+      "width": 65,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "interval": 0,
+      "formatter": "[function]"
+    }
+  },
+  "series": [
+    {
+      "type": "bar",
+      "data": [
+        3.2,
+        0.8
+      ],
+      "barMaxWidth": 76,
+      "itemStyle": {
+        "color": "#93c120"
+      },
+      "label": {
+        "show": true,
+        "position": "right",
+        "color": "#14181c",
+        "textBorderWidth": 0,
+        "formatter": "[function]"
+      }
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > bar, horizontal and vertical, light and dark 2`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#ecedee",
+    "fontSize": 11
+  },
+  "grid": {
+    "left": 12,
+    "right": 16,
+    "top": 26,
+    "bottom": 10,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "category",
+    "data": [
+      "Production",
+      "Transport"
+    ],
+    "axisTick": {
+      "show": false
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#3a4149"
+      }
+    },
+    "axisLabel": {
+      "color": "#8b949c",
+      "fontSize": 12,
+      "lineHeight": 13,
+      "width": 65,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "interval": 0,
+      "formatter": "[function]",
+      "rotate": 0
+    }
+  },
+  "yAxis": {
+    "type": "value",
+    "name": "kg CO2-Eq",
+    "nameLocation": "end",
+    "nameGap": 8,
+    "axisLabel": {
+      "color": "#8b949c",
+      "formatter": "[function]"
+    },
+    "nameTextStyle": {
+      "color": "#8b949c"
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#3a4149"
+      }
+    },
+    "splitLine": {
+      "show": true,
+      "lineStyle": {
+        "color": "rgba(236,237,238,0.14)"
+      }
+    }
+  },
+  "series": [
+    {
+      "type": "bar",
+      "data": [
+        3.2,
+        0.8
+      ],
+      "barMaxWidth": 76,
+      "itemStyle": {
+        "color": "#93c120"
+      },
+      "label": {
+        "show": true,
+        "position": "top",
+        "color": "#ecedee",
+        "textBorderWidth": 0,
+        "formatter": "[function]"
+      }
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > grouped and stacked contribution, with the credit segment below the axis 1`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#14181c",
+    "fontSize": 11
+  },
+  "legend": {
+    "top": 0,
+    "left": "center",
+    "width": 660,
+    "textStyle": {
+      "color": "#14181c",
+      "fontSize": 10
+    },
+    "data": [
+      {
+        "name": "Baseline",
+        "textStyle": {
+          "width": 42,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "Long distribution (1200 km)",
+        "textStyle": {
+          "width": 138,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      }
+    ]
+  },
+  "grid": {
+    "left": 12,
+    "right": 16,
+    "top": 47,
+    "bottom": 12,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "category",
+    "data": [
+      "Production",
+      "Transport",
+      "End of life",
+      "Gesamt"
+    ],
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "axisLabel": {
+      "color": "#5c636b",
+      "width": 90,
+      "overflow": "break",
+      "interval": 0,
+      "lineHeight": 12,
+      "rotate": 0,
+      "formatter": "[function]",
+      "rich": {
+        "t": {
+          "fontWeight": "bold",
+          "color": "#14181c",
+          "lineHeight": 12
+        }
+      }
+    }
+  },
+  "yAxis": {
+    "type": "value",
+    "name": "kg CO2-Eq",
+    "nameLocation": "end",
+    "nameGap": 10,
+    "nameTextStyle": {
+      "color": "#5c636b"
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "splitLine": {
+      "show": true,
+      "lineStyle": {
+        "color": "rgba(20,24,28,0.12)"
+      }
+    },
+    "axisLabel": {
+      "color": "#5c636b",
+      "formatter": "[function]"
+    }
+  },
+  "series": [
+    {
+      "type": "bar",
+      "name": "Baseline",
+      "data": [
+        3.2,
+        0.8,
+        -0.4,
+        3.6
+      ],
+      "itemStyle": {
+        "color": "#93c120"
+      }
+    },
+    {
+      "type": "bar",
+      "name": "Long distribution (1200 km)",
+      "data": [
+        3.2,
+        1.9,
+        -0.4,
+        4.699999999999999
+      ],
+      "itemStyle": {
+        "color": "#2f4e66"
+      }
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > grouped and stacked contribution, with the credit segment below the axis 2`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#14181c",
+    "fontSize": 11
+  },
+  "legend": {
+    "top": 0,
+    "left": "center",
+    "width": 660,
+    "textStyle": {
+      "color": "#14181c",
+      "fontSize": 10
+    },
+    "data": [
+      {
+        "name": "Production",
+        "textStyle": {
+          "width": 54,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "Transport",
+        "textStyle": {
+          "width": 49,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "End of life",
+        "textStyle": {
+          "width": 49,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      }
+    ]
+  },
+  "grid": {
+    "left": 12,
+    "right": 16,
+    "top": 47,
+    "bottom": 12,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "category",
+    "data": [
+      "Baseline",
+      "Long distribution (1200 km)"
+    ],
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "axisLabel": {
+      "color": "#5c636b",
+      "fontSize": 12,
+      "lineHeight": 13,
+      "width": 100,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "interval": 0,
+      "formatter": "[function]",
+      "rotate": 0
+    }
+  },
+  "yAxis": {
+    "type": "value",
+    "name": "kg CO2-Eq",
+    "nameLocation": "end",
+    "nameGap": 10,
+    "nameTextStyle": {
+      "color": "#5c636b"
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#cdd1cc"
+      }
+    },
+    "splitLine": {
+      "show": true,
+      "lineStyle": {
+        "color": "rgba(20,24,28,0.12)"
+      }
+    },
+    "axisLabel": {
+      "color": "#5c636b",
+      "formatter": "[function]"
+    }
+  },
+  "series": [
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "stack": "contribution",
+      "name": "Production",
+      "data": [
+        3.2,
+        3.2
+      ],
+      "itemStyle": {
+        "color": "#93c120"
+      }
+    },
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "stack": "contribution",
+      "name": "Transport",
+      "data": [
+        0.8,
+        1.9
+      ],
+      "itemStyle": {
+        "color": "#2f4e66"
+      }
+    },
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "stack": "contribution",
+      "name": "End of life",
+      "data": [
+        -0.4,
+        -0.4
+      ],
+      "itemStyle": {
+        "color": "#3ca272"
+      }
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > grouped and stacked contribution, with the credit segment below the axis 3`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#ecedee",
+    "fontSize": 11
+  },
+  "legend": {
+    "top": 0,
+    "left": "center",
+    "width": 660,
+    "textStyle": {
+      "color": "#ecedee",
+      "fontSize": 10
+    },
+    "data": [
+      {
+        "name": "Production",
+        "textStyle": {
+          "width": 54,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "Transport",
+        "textStyle": {
+          "width": 49,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "End of life",
+        "textStyle": {
+          "width": 49,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      }
+    ]
+  },
+  "grid": {
+    "left": 22,
+    "right": 73,
+    "top": 29,
+    "bottom": 12,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "value",
+    "name": "kg CO2-Eq",
+    "nameLocation": "end",
+    "nameGap": 10,
+    "nameTextStyle": {
+      "color": "#8b949c"
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "#3a4149"
+      }
+    },
+    "splitLine": {
+      "show": true,
+      "lineStyle": {
+        "color": "rgba(236,237,238,0.14)"
+      }
+    },
+    "axisLabel": {
+      "color": "#8b949c",
+      "formatter": "[function]"
+    }
+  },
+  "yAxis": {
+    "type": "category",
+    "data": [
+      "Baseline",
+      "Long distribution (1200 km)"
+    ],
+    "axisLine": {
+      "lineStyle": {
+        "color": "#3a4149"
+      }
+    },
+    "axisLabel": {
+      "color": "#8b949c",
+      "fontSize": 12,
+      "lineHeight": 13,
+      "width": 100,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "interval": 0,
+      "formatter": "[function]"
+    }
+  },
+  "series": [
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "name": "Production",
+      "data": [
+        3.2,
+        3.2
+      ],
+      "itemStyle": {
+        "color": "#93c120"
+      }
+    },
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "name": "Transport",
+      "data": [
+        0.8,
+        1.9
+      ],
+      "itemStyle": {
+        "color": "#2f4e66"
+      }
+    },
+    {
+      "type": "bar",
+      "barMaxWidth": 76,
+      "name": "End of life",
+      "data": [
+        -0.4,
+        -0.4
+      ],
+      "itemStyle": {
+        "color": "#3ca272"
+      }
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > radar and heatmap over subjects × indicators 1`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#14181c",
+    "fontSize": 11
+  },
+  "legend": {
+    "top": 0,
+    "left": "center",
+    "width": 660,
+    "textStyle": {
+      "color": "#14181c",
+      "fontSize": 11
+    },
+    "data": [
+      {
+        "name": "Baseline",
+        "textStyle": {
+          "width": 46,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      },
+      {
+        "name": "Long distribution (1200 km)",
+        "textStyle": {
+          "width": 152,
+          "backgroundColor": "rgba(0,0,0,0)"
+        }
+      }
+    ]
+  },
+  "radar": {
+    "center": [
+      "50%",
+      234.5
+    ],
+    "radius": 145,
+    "indicator": [
+      {
+        "name": "Climate",
+        "max": 100
+      },
+      {
+        "name": "Water",
+        "max": 100
+      }
+    ],
+    "axisName": {
+      "color": "#5c636b",
+      "fontSize": 11
+    },
+    "splitLine": {
+      "lineStyle": {
+        "color": "rgba(20,24,28,0.12)"
+      }
+    },
+    "splitArea": {
+      "show": false
+    },
+    "axisLine": {
+      "lineStyle": {
+        "color": "rgba(20,24,28,0.12)"
+      }
+    }
+  },
+  "series": [
+    {
+      "type": "radar",
+      "data": [
+        {
+          "name": "Baseline",
+          "value": [
+            76.6,
+            100
+          ],
+          "symbolSize": 3,
+          "itemStyle": {
+            "color": "#93c120"
+          },
+          "lineStyle": {
+            "color": "#93c120",
+            "width": 2
+          },
+          "areaStyle": {
+            "color": "#93c120",
+            "opacity": 0.08
+          }
+        },
+        {
+          "name": "Long distribution (1200 km)",
+          "value": [
+            100,
+            75
+          ],
+          "symbolSize": 3,
+          "itemStyle": {
+            "color": "#2f4e66"
+          },
+          "lineStyle": {
+            "color": "#2f4e66",
+            "width": 2
+          },
+          "areaStyle": {
+            "color": "#2f4e66",
+            "opacity": 0.08
+          }
+        }
+      ]
+    }
+  ]
+}"
+`;
+
+exports[`the pinned report figure options > radar and heatmap over subjects × indicators 2`] = `
+"{
+  "textStyle": {
+    "fontFamily": "IBM Plex Sans, Noto Sans, sans-serif",
+    "color": "#14181c",
+    "fontSize": 11
+  },
+  "grid": {
+    "left": 24,
+    "right": 14,
+    "top": 10,
+    "bottom": 12,
+    "containLabel": true
+  },
+  "xAxis": {
+    "type": "category",
+    "data": [
+      "Climate",
+      "Water"
+    ],
+    "splitArea": {
+      "show": true
+    },
+    "axisLabel": {
+      "color": "#14181c",
+      "fontSize": 10,
+      "lineHeight": 11,
+      "interval": 0,
+      "margin": 8,
+      "width": 100,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "formatter": "[function]"
+    }
+  },
+  "yAxis": {
+    "type": "category",
+    "data": [
+      "Baseline",
+      "Long distribution (1200 km)"
+    ],
+    "splitArea": {
+      "show": true
+    },
+    "axisLabel": {
+      "color": "#14181c",
+      "fontSize": 12,
+      "lineHeight": 13,
+      "width": 100,
+      "backgroundColor": "rgba(0,0,0,0)",
+      "interval": 0,
+      "formatter": "[function]",
+      "margin": 8
+    }
+  },
+  "visualMap": {
+    "min": 0,
+    "max": 100,
+    "calculable": false,
+    "orient": "horizontal",
+    "left": "center",
+    "bottom": 0,
+    "show": false,
+    "inRange": {
+      "color": [
+        "rgb(232, 240, 216)",
+        "rgb(255, 224, 138)",
+        "rgb(230, 126, 100)"
+      ]
+    }
+  },
+  "series": [
+    {
+      "type": "heatmap",
+      "data": [
+        [
+          0,
+          0,
+          76.6
+        ],
+        [
+          1,
+          0,
+          100
+        ],
+        [
+          0,
+          1,
+          100
+        ],
+        [
+          1,
+          1,
+          75
+        ]
+      ],
+      "label": {
+        "show": true,
+        "formatter": "[function]",
+        "fontSize": 10.5
+      },
+      "itemStyle": {
+        "borderColor": "#cdd1cc",
+        "borderWidth": 1
+      }
+    }
+  ]
+}"
+`;

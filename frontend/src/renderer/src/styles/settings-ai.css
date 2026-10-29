@@ -1,0 +1,205 @@
+.ai-skill-badge {
+  margin-left: 6px; font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--green-ink); background: var(--green-soft); border-radius: 5px; padding: 1px 5px; vertical-align: 1px;
+}
+
+/* Settings → AI: info table + skills */
+.ai-table-wrap { overflow-x: auto; margin: 4px 0 10px; }
+.ai-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sec); }
+.ai-table th, .ai-table td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.ai-table th.num, .ai-table td.num { text-align: right; }
+.ai-table td.lab { color: var(--faint); text-transform: capitalize; }
+.ai-table tbody tr.on { background: var(--green-soft); }
+/* Zebra stripes, the same recipe and the same token as the cost-tracking table below it
+   (.cost-table, line ~2981): odd rows on --surface-2 mixed to 55 %, so both tables on the page
+   read as one family rather than two conventions.
+   Scoped to the settings panel for the same reason as the hover rule below — and the three rules
+   that follow are re-stated at this same scope on purpose: the stripe outranks the unscoped
+   `.ai-table tbody tr.on` above, so without them the selected model would lose its green on every
+   odd row. Equal specificity, so source order decides: stripe, then selection, then hover. */
+.settings-panel .ai-table tbody tr:nth-child(odd) { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+.settings-panel .ai-table tbody tr.on { background: var(--green-soft); }
+/* The row under the pointer lights up: eight columns of numbers are read across, and it is easy to
+   lose the line between the model name and its rating. Mixed down from the same
+   --green-soft the selected row uses, so it reads as the house colour in both themes and still sits
+   clearly under the selected row rather than competing with it — and .on deepens on hover instead of
+   going flat, so the active model is not the one dead spot in the table.
+   Scoped to the settings panel: .ai-table is also the import wizard's matching table, which is not
+   what was asked for and has its own row states. */
+.settings-panel .ai-table tbody tr:hover { background: color-mix(in srgb, var(--green-soft) 55%, var(--surface)); }
+.settings-panel .ai-table tbody tr.on:hover { background: color-mix(in srgb, var(--green) 20%, var(--surface)); }
+.ai-table thead th { color: var(--faint); font-weight: 600; }
+.ai-skills { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.ai-skill-empty { color: var(--faint); font-size: var(--fs-sec); }
+.ai-skill { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; }
+/* The meta area is a button: clicking a skill opens the read-only Markdown viewer. */
+.ai-skill-meta {
+  flex: 1; min-width: 0; text-align: left; border: none; background: transparent;
+  color: inherit; font: inherit; padding: 0; cursor: pointer; border-radius: 6px;
+}
+.ai-skill-meta:hover .ai-skill-name { color: var(--green-ink, var(--prism-green)); }
+.ai-skill-name { font-size: var(--fs-body); font-weight: 600; }
+.ai-skill-desc { font-size: var(--fs-sec); color: var(--faint); }
+.ai-skill-del { border: none; background: transparent; color: var(--faint); cursor: pointer; }
+.ai-skill-del:hover { color: var(--prism-alert, #cc4b37); }
+.ai-skill-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.ai-skill-add input[type='text'], .ai-skill-add > input:not([type]) { flex: 1; min-width: 120px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; font: inherit; }
+.ai-skill-file { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--faint); cursor: pointer; }
+.ai-skill-file input[type='file'] { display: none; }
+.ai-skill-file span { border: 1px dashed var(--border-strong); border-radius: 6px; padding: 6px 8px; }
+/* Skill viewer: rendered Markdown of the full instructions (read-only, incl. built-ins). */
+/* A column, not one scrolling block: the built-in skills run to a thousand lines, and with the whole
+   sheet scrolling the title and the Close button scrolled away with them. Only the Markdown moves. */
+.modal.skill-view { width: min(680px, 92vw); max-height: 84vh; display: flex; flex-direction: column; }
+.modal.skill-view > h3, .skill-view-desc, .modal.skill-view > .modal-actions { flex: 0 0 auto; }
+.skill-view-desc { margin: 0 0 10px; }
+.skill-md { flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  font-size: var(--fs-body); line-height: 1.55; color: var(--text); }
+.skill-md :is(p, ul, ol, table) { margin: .4em 0; }
+.skill-md :is(h1, h2, h3) { margin: .8em 0 .35em; color: var(--navy); }
+.skill-md h1 { font-size: 1.15em; }
+.skill-md h2 { font-size: 1.06em; }
+.skill-md h3 { font-size: 1em; }
+.skill-md code { background: var(--surface-3); border-radius: 4px; padding: 0 3px; font-size: .92em; }
+.skill-md pre { background: var(--surface-3); border-radius: 8px; padding: 8px; overflow-x: auto; }
+.skill-md table { border-collapse: collapse; }
+.skill-md th, .skill-md td { border: 1px solid var(--border); padding: 2px 6px; }
+.skill-md ul, .skill-md ol { padding-left: 1.4em; }
+
+/* Settings → API-Kosten */
+/* Tag-manager window (toolbar Tag button): groups + values CRUD */
+/* A sheet now: the body scrolls between head and X, so it no longer caps its own height. */
+.modal.sheet.tagman-modal { width: min(560px, 92vw); max-height: 88vh; }
+.tagman-body { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; }
+.tagman-empty { color: var(--faint); font-size: var(--fs-body); padding: 8px 0; }
+.tagman-group { border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 10px; }
+.tagman-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tagman-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.tagman-name { font-weight: 600; font-size: var(--fs-body); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tagman-group-btn { flex: none; white-space: nowrap; }
+.tagman-del { border: none; background: transparent; color: var(--faint); cursor: pointer; padding: 2px 5px; }
+.tagman-del:hover { color: var(--bad); }
+.tagman-values { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tagman-chip { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sec); padding: 2px 4px 2px 9px;
+  border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border-strong); }
+.tagman-chip-x { border: none; background: transparent; color: var(--faint); cursor: pointer; padding: 0 4px; font-size: 11px; }
+.tagman-chip-x:hover { color: var(--bad); }
+.tagman-addvalue { display: inline-flex; align-items: center; gap: 4px; }
+.tagman-addvalue input { width: 130px; padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-sec); }
+.tagman-addgroup { display: flex; gap: 6px; }
+.tagman-addgroup input { flex: 1; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-body); }
+
+/* Settings → AI-Tools: per-tool on/off list, grouped */
+.ai-tool-group { margin-bottom: 12px; }
+.ai-tool-group-h { margin: 0 0 3px; }
+.ai-tool { display: flex; align-items: center; gap: 7px; padding: 3px 2px; font-size: var(--fs-body); cursor: pointer; }
+.ai-tool-label { font-weight: 600; }
+.ai-tool-tech { font-size: var(--fs-sec); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-tool-info { flex: none; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--border-strong);
+  color: var(--faint); font-size: 10px; font-weight: 700; line-height: 1; display: inline-grid; place-items: center; cursor: help; }
+.ai-tool-info:hover { color: var(--navy); border-color: var(--navy); }
+
+.cost-model { display: flex; align-items: center; gap: 8px; }
+.cost-logo { width: 16px; height: 16px; object-fit: contain; flex: none; }
+.cost-total td { border-top: 2px solid var(--border-strong); }
+/* Costs page: headline stat tiles + per-cell mini bar (share of the highest month cell). */
+.cost-stats { display: flex; gap: 10px; margin: 6px 0 14px; flex-wrap: wrap; }
+.cost-stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); padding: 8px 16px; min-width: 96px; }
+.cost-stat-num { font-size: var(--fs-title); font-weight: 700; color: var(--ink); }
+.cost-stat-label { font-size: var(--fs-label); color: var(--faint); }
+.cost-table tbody tr:nth-child(odd):not(.cost-total) { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+/* The same hover as the model table above — this table was striped but dead under the pointer,
+   which is the half that actually helps when you read a row across.
+   `:not(.cost-total)` is load-bearing twice over: it keeps the sum row out, as the stripe already
+   does, AND it lifts this rule to the stripe's specificity — a bare `tr:hover` would lose on every
+   odd row and light up only the even ones. */
+.cost-table tbody tr:hover:not(.cost-total) { background: color-mix(in srgb, var(--green-soft) 55%, var(--surface)); }
+.cost-cell { position: relative; }
+.cost-cell .cost-bar { position: absolute; right: 8px; bottom: 2px; height: 3px; max-width: calc(100% - 16px); border-radius: 2px; background: color-mix(in srgb, var(--green) 30%, transparent); }
+.cost-none { color: var(--faint); }
+.ai-table td.lab .cost-logo { vertical-align: middle; }
+
+
+/* Settings → AI → Chat → External agents (MCP): the connect block shown while the server runs. */
+.settings-mcp { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 10px; }
+.settings-mcp-cmd { margin: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--navy-soft); font-size: var(--fs-label); white-space: pre-wrap; word-break: break-all; user-select: all; }
+.settings-mcp-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.settings-mcp-client { border-top: 1px solid var(--border); padding: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.settings-mcp-client-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.settings-mcp-client-actions { margin-left: auto; display: flex; gap: 6px; }
+.settings-mcp-preview { max-height: 260px; overflow: auto; user-select: text; }
+/* A lone action under a preview or snippet: content-sized and right-aligned like the toolbar's
+   Calculate — a button stretched across the column by the flex container read as a banner. */
+.settings-mcp-row { display: flex; justify-content: flex-end; gap: 6px; }
+.settings-mcp-code { position: relative; }
+.settings-mcp-code .settings-mcp-cmd { padding-right: 84px; }
+.settings-mcp-copy { position: absolute; top: 6px; right: 6px; }
+/* The scrolling preview of a client's configuration file: 60 % of its earlier 260px. */
+.settings-mcp-preview { max-height: 156px; }
+/* Tag manager: inline "merge into…" picker on a chip or a group head (V385). */
+.tagman-merge-sel { font-size: var(--fs-sec); padding: 1px 4px; max-width: 14em; margin-left: 4px; }
+
+/* The reasoning-effort scale (components/EffortScale.tsx): one of the app's progress bars with a
+   thumb on it, over a row of tick labels, Default first. The track is pulled in by half a column
+   minus half the thumb so the thumb's centre lands on each label's centre; `--n` (set inline) is the
+   number of ticks, `--frac` the chosen position in 0..1. The fill ends under the thumb's centre and
+   wears the shared gradient sized to the TRACK (import-compare.css, the progress block): at the top
+   level the whole purple → navy → green range shows, lower levels reveal only its first part. */
+.effort-scale { --n: 2; width: min(100%, 360px); display: flex; flex-direction: column; gap: 4px; }
+.settings-field .effort-scale { width: 360px; max-width: 60%; }
+.effort-track {
+  --thumb: 16px; --frac: 0;
+  position: relative; container-type: inline-size; height: 22px;
+  margin: 0 calc(50% / var(--n) - var(--thumb) / 2);
+}
+.effort-track::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 6px; border-radius: 3px;
+  background: var(--bg-muted);
+}
+.effort-fill {
+  position: absolute; left: 0; top: 8px; height: 6px; border-radius: 3px;
+  width: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--frac));
+  background-color: transparent; background-image: var(--progress-gradient);
+  background-size: 100cqw 100%; background-position: left 0; background-repeat: no-repeat;
+  transition: width .15s ease;
+}
+.effort-track input[type=range] {
+  -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 22px;
+  margin: 0; padding: 0; border: none; background: transparent; cursor: pointer;
+}
+.effort-track input[type=range]::-webkit-slider-runnable-track { height: 22px; background: transparent; }
+.effort-track input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: var(--thumb); height: var(--thumb); margin-top: 3px;
+  border-radius: 50%; background: var(--surface); border: 2px solid var(--green);
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.effort-track input[type=range]:focus { outline: none; }
+.effort-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--green); outline-offset: 2px; }
+.effort-scale.locked .effort-track { opacity: .5; }
+.effort-track input[type=range]:disabled { cursor: not-allowed; }
+.effort-ticks { display: grid; grid-template-columns: repeat(var(--n), 1fr); }
+.effort-tick {
+  border: none; background: transparent; padding: 0; font: inherit; font-size: var(--fs-label);
+  color: var(--faint); text-align: center; cursor: pointer; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis;
+}
+.effort-tick:hover:not(:disabled) { color: var(--text); }
+.effort-tick.on { color: var(--green-ink); font-weight: 600; }
+.effort-tick:disabled { cursor: not-allowed; }
+.effort-note { font-size: var(--fs-label); color: var(--faint); margin-top: 2px; }
+.effort-scale.compact { width: 100%; }
+/* A tick under the track for every step, at the thumb's centre for that step — the same marks as
+   the upright dial in the chat menu. */
+.effort-tickmark {
+  position: absolute; top: 16px; width: 2px; height: 5px; border-radius: 1px; transform: translateX(-50%);
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--at));
+  background: var(--border-strong);
+}
+
+/* The Tags window lists the open model's groups first (lib/tagGroupsUsed.ts): each marked by a chip, and a
+   quiet line where the workspace's other groups begin. */
+.tagman-others { font-size: var(--fs-label); color: var(--faint); text-transform: uppercase; letter-spacing: .04em;
+  margin: 4px 0 -4px; }
+.tagman-name .tag-used-chip { margin-left: 8px; vertical-align: 1px; }

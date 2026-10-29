@@ -1,0 +1,19 @@
+out/
+dist/
+release/
+coverage/
+node_modules/
+package-lock.json
+
+# Generated from ecoinvent and marked "Do not edit by hand" — a formatter has no business here.
+src/shared/geographies.ts
+
+# CSS stays hand-formatted. The design tokens are written in grouped lines on purpose
+# (`--bg: …; --surface: …; --surface-2: …;` reads as one block of related values), and Prettier puts
+# every declaration on its own line: 8,350 insertions in one 2,747-line file, in the most-churned
+# file in the repo. That is not a formatting gain, it is losing a deliberate layout.
+*.css
+
+# Content, not code: whats-new.json is written by a script at a different indent, and reformatting it
+# would make every future entry a two-sided diff.
+src/renderer/src/assets/

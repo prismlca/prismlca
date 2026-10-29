@@ -1,0 +1,424 @@
+/* canvas */
+.stage { position: relative; min-width: 0; background: var(--bg); }
+
+/* ---------------------------------------------------------------------------
+   Overview page — model list (left), splash-styled dashboard (centre),
+   what's-new feed (right).
+--------------------------------------------------------------------------- */
+/* Search + "Model" side by side; full-width bottom border like the model page's filter block. */
+/* Two rows in one flex line: the search takes the whole first line, the three actions share the
+   second. Kept as one wrapping row rather than two containers so the gap between them is the same
+   gap — and because a fourth control squeezed the search field down to a stump when they all had to
+   fit side by side. */
+.ov-toolrow {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px;
+  padding: 4px 12px 10px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.ov-toolrow .search.ov-search { flex: 1 0 100%; min-width: 0; margin: 0; }
+/* basis 0, not auto: two buttons on one line must be halves, and with `auto` the wider label
+   ("Import processes") would take the larger half and make the row look accidental. */
+.ov-toolrow .btn { flex: 1 1 0; min-width: 0; justify-content: center; white-space: nowrap; }
+.ov-toolrow .btn.ov-wide { flex: 1 0 100%; }
+/* Below the folder list, and the full width of it — it makes the next row in that list. */
+.ov-newfolder { display: flex; width: 100%; justify-content: center; margin-top: 2px; }
+.ov-empty { color: var(--faint); font-size: var(--fs-sec); padding: 4px 2px; }
+/* --- model folders --------------------------------------------------------------------------
+   Grouping for the model list. The mockup this follows used a grey pill for the header, a purple
+   accent for the active card and emoji for the icons; all three are replaced here by the palette's
+   own roles — navy for structure, green for "this is where it would land", the stroke icon set for
+   everything that was an emoji. The indent rail stays, because it is the part that actually says
+   "these belong to that". */
+/* The Report rail's look, not the grey pills this started as: each folder is a
+   group between full-width rules, its header a transparent row whose hover tint reaches the panel's
+   edges. The negative inline margins pull the rules and the hover out into the panel's 12px padding
+   the way `.acc-grp` does with the report rail's 18px. */
+.ov-folder { display: flex; flex-direction: column; gap: 6px; margin-inline: -12px; padding-inline: 12px;
+  border-top: 1px solid var(--border); }
+.ov-folder:last-of-type { border-bottom: 1px solid var(--border); }
+/* The panel's 8px gap separates its other children; between groups the rule does the separating,
+   and a gap on top of it reads as a doubled line (same move as `.results-rail > .acc-grp`). */
+.ov-folder + .ov-folder { margin-top: -8px; }
+/* The drop target is the whole group, header and body, so a short folder is not a hairline to aim at. */
+.ov-folder.over { background: var(--green-soft); outline: 1px dashed var(--prism-green, #93c120); outline-offset: -1px; }
+.ov-folder-h { display: flex; align-items: center; gap: 6px; padding: 9px 14px; margin-inline: -12px;
+  background: none; color: var(--text); font-size: var(--fs-body); font-weight: 600;
+  user-select: none; cursor: pointer; }
+.ov-folder-h:hover { background: var(--surface-2); }
+/* The band is the click target, but the parts that do something else are not. */
+.ov-folder-h .ov-folder-renaming, .ov-folder-h .ov-folder-acts { cursor: auto; }
+.ov-folder-renaming { display: contents; }
+.ov-folder-h svg { flex: none; color: var(--muted); }
+/* Unsorted carries the same band as a folder — it is the last group in the same list and behaves
+   like one; it used to be a quiet uppercase label, which read as a section
+   heading rather than as the place a model sits when it sits nowhere. Nothing to override any more,
+   so the rule is gone. */
+.ov-folder-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ov-folder-count { flex: none; padding: 0 6px; border-radius: 9px; background: var(--surface);
+  color: var(--muted); font-size: var(--fs-label); font-weight: 600; }
+.ov-folder-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; color: var(--muted); cursor: pointer; padding: 0; line-height: 0;
+  transition: transform .14s ease; }
+.ov-folder-toggle.open { transform: rotate(90deg); }
+/* The buttons hold their place and only fade. Appearing with `display` made the header grow by a
+   pixel and shoved the count 54 px to the left as the pointer crossed it — the row wobbled.
+   `pointer-events` goes with the opacity, or an invisible delete button would sit there
+   waiting for the click that is meant to fold the folder. */
+.ov-folder-acts { display: inline-flex; gap: 2px; opacity: 0; pointer-events: none; transition: opacity .12s; }
+/* Unsorted has no rename and no delete, but it must not therefore put its count 54px further right
+   than every folder above it: the acts strip is laid out even while invisible,
+   so the group that lacks it keeps the space empty instead. `visibility` rather than a width, so the
+   two buttons stay the one place that decides how wide the column is. */
+.ov-folder-acts.placeholder { visibility: hidden; }
+.ov-folder-h:hover .ov-folder-acts,
+.ov-folder-h:focus-within .ov-folder-acts { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .ov-folder-acts { opacity: 1; pointer-events: auto; } }
+.ov-folder-rename { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text);
+  padding: 1px 6px; border: 1px solid var(--prism-green, #93c120); border-radius: 5px; background: var(--surface); }
+.ov-folder-rename:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+/* No indent rail. The mockup had one, and it does say "these belong to that" — but it costs
+   eighteen pixels of a three-hundred-pixel panel on every card, and the folder header above them
+   already says the same thing. The cards keep the full width they had before
+   folders existed. */
+.ov-folder-b { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; }
+.ov-folder-empty { padding: 7px 9px; border: 1px dashed var(--border); border-radius: 9px;
+  color: var(--faint); font-size: var(--fs-label); }
+.ov-folder-new { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; }
+.ov-folder-new input { flex: 1; min-width: 0; font: inherit; font-size: var(--fs-body); color: var(--text);
+  padding: 5px 9px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); }
+.ov-folder-new input:focus { outline: none; border-color: var(--green-ink);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
+.ov-folder-err { margin-bottom: 8px; font-size: var(--fs-label); color: var(--bad); }
+/* Carried, not gone: the card keeps its place in the list so the column does not reflow under the
+   cursor, and says it is travelling. */
+.ov-model[draggable='true'] { cursor: grab; }
+.ov-model.dragging { opacity: .45; cursor: grabbing; }
+
+.ov-model {
+  position: relative;  /* the action strip floats over this card — see .ov-model-actions */
+  display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px;
+  background: var(--surface); color: var(--text); font: inherit;
+}
+
+/* The same hover as an activity search result (.res:hover): the border goes green and the card
+   lifts, the background stays as it is. Tinting the whole card green instead was louder and said
+   less — a filled card reads as selected, and none of these is. One treatment for "the thing under
+   the pointer" across the app. */
+.ov-model:hover { border-color: var(--green); box-shadow: var(--shadow); }
+.ov-model-top { display: flex; align-items: flex-start; gap: 6px; }
+.ov-model-name { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+/* Reusable small icon-button (same look as the Overview model-card actions), for edit/duplicate/
+   delete affordances across pages. */
+.act-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; line-height: 0;
+  border: none; cursor: pointer; padding: 3px 5px; border-radius: 5px; background: var(--surface-3); color: var(--muted); }
+.act-icon svg { width: 13px; height: 13px; }  /* match the Overview model-card buttons (.ov-model-act) */
+.act-icon:hover { background: var(--navy-soft); color: var(--navy); }
+.act-icon.on { background: var(--navy-soft); color: var(--navy); }
+.act-icon.danger:hover { background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface)); color: var(--prism-alert, #cc4b37); }
+.act-icon:disabled { opacity: .45; cursor: default; }
+
+/* Four buttons beside the name cost about ninety pixels of a three-hundred-pixel panel, and the
+   folder indent took eighteen more — enough to break a study name over four lines. So they leave
+   the flow entirely and float over the card's top corner, which gives the name the full width at
+   rest; hiding them in place would have freed nothing. Shown on focus-within as well, or the
+   keyboard could reach a control nobody can see. */
+.ov-model-actions {
+  /* Top right, where they were before they floated. They once sat at the bottom, but on a wrapped
+     study name the strip covers the last few words while the pointer is on it — the top won after
+     comparing both. The card is a click target, not a reading surface. */
+  position: absolute; top: 5px; right: 6px; z-index: 1;
+  display: inline-flex; gap: 4px; padding: 2px; border-radius: 7px;
+  background: var(--surface); box-shadow: 0 0 0 4px var(--surface);
+  opacity: 0; transition: opacity .12s;
+}
+.ov-model:hover .ov-model-actions,
+.ov-model:focus-within .ov-model-actions { opacity: 1; }
+/* No hover on a touch screen means no way to reach them at all. */
+@media (hover: none) { .ov-model-actions { opacity: 1; } }
+/* Same look as the info chip on the activity search results (.res-info). */
+.ov-model-act {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; line-height: 0;
+  border: none; cursor: pointer; padding: 3px 5px; border-radius: 5px;
+  background: var(--surface-3); color: var(--muted);
+}
+.ov-model-act svg { width: 13px; height: 13px; }
+.ov-model-act:hover { background: var(--navy-soft); color: var(--navy); }
+.ov-model-act.danger:hover {
+  background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface));
+  color: var(--prism-alert, #cc4b37);
+}
+.ov-model-snippet {
+  font-size: var(--fs-sec); color: var(--faint); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Right-aligned: it is a count, and a column of counts is read by comparing them — against the
+   card's right edge they line up, under a left-aligned name they do not. And set off from the description
+   above it: the card's own 2px gap is for lines that belong together, which the name and its
+   description do — the count is a different kind of fact and reads as the card's foot. */
+.ov-model-meta { margin-top: 5px; font-size: var(--fs-label); color: var(--muted); text-align: right; }
+
+/* ---- Overview: the middle column ----
+   The prism facets from the design draft run across the whole stage, anchored top
+   right where the source picture gathers them; the house background fills what the picture does
+   not reach. What stood here before was a bordered card with the splash photograph inside it —
+   two framed pictures on top of each other, and the card forced light text colours in both themes
+   because its own gradient never changed. The content now sits ON the stage and follows the theme
+   like everything else. */
+.ov-stage {
+  display: flex; padding: 24px 28px; overflow-y: auto;
+  /* Drawn at its own size and never bigger — `cover` blew a 1672×941 picture
+     up to fill a tall narrow column and turned every facet into a wall. At `auto` the stage shows
+     the top right corner of the picture, which is where the facets are, at the scale they were
+     drawn; a stage wider or taller than the picture simply runs out into --bg.
+     The wash on top is what makes it a backdrop rather than a wallpaper: transparent in the top
+     right corner and solid --bg by the bottom left, where the text stands.
+     The second wash is sized to the PICTURE (1672×941, its natural size) rather than to the stage,
+     and that is the whole point: on a window taller than the picture the lower edge was a visible
+     line where the photograph simply stopped. Tied to the picture's own box,
+     the fade always reaches full --bg exactly where the picture ends, whatever the window does. */
+  background:
+    linear-gradient(225deg, transparent 0%, transparent 14%, var(--bg) 68%),
+    linear-gradient(to bottom, transparent 52%, var(--bg) 99%) right top / 1672px 941px no-repeat,
+    url('../assets/overview-bg.png') right top / auto no-repeat,
+    var(--bg);
+}
+/* Its own picture for the dark theme, built from the same draft: the facets lit out of a ground at
+   --bg, at about half strength. An unmodified light picture here would be a white slab. */
+/* Dark: a vector, the same call side-bg-dark.svg makes. The geometry was
+   measured off the draft — four crease lines by RANSAC on the ridge map, eleven regions, one
+   linear colour ramp fitted per region — and the SVG renders 0.53 % RMSE against the dark raster
+   in Chromium at 3.2 kB. It is not just smaller: the drawn picture carries film grain and soft
+   blotches that a dark ground shows up, and no bitmap stays smooth at every window size and pixel
+   density. The picture keeps its intrinsic 1672×941, so `background-size: auto` behaves exactly as
+   it does for the light PNG. */
+:root[data-theme='dark'] .ov-stage {
+  background:
+    linear-gradient(225deg, transparent 0%, transparent 14%, var(--bg) 68%),
+    linear-gradient(to bottom, transparent 52%, var(--bg) 99%) right top / 1672px 941px no-repeat,
+    url('../assets/overview-bg-dark.svg') right top / auto no-repeat,
+    var(--bg);
+}
+/* `margin: auto`, not `place-items: center`: a centred flex item taller than its scroll container
+   loses its top edge and cannot be scrolled back to it — auto margins collapse instead. */
+/* The vertical measures of this page (stage padding, this gap, the hero's two margins, the stats'
+   padding, the cards' padding and the row pitch below) were tightened together so that the hero, the
+   numbers, five models beside three news items and the footer fit a 1920×1080 screen without a
+   scrollbar. Measured: 1037px of content in an 893px stage before, 875px after. */
+.ov-home { margin: auto; width: min(1080px, 100%); display: flex; flex-direction: column; gap: 24px; }
+
+.ov-hero { display: flex; flex-direction: column; align-items: flex-start; }
+.ov-prism {
+  width: 58px; height: 58px; border-radius: 15px; flex: none; margin-bottom: 14px;
+  background: conic-gradient(from 210deg, #93c120, #2f4e66, #9f5987, #93c120);
+  box-shadow: 0 6px 18px rgba(47, 78, 102, .25);
+}
+.ov-hero h1 { margin: 0; font-size: var(--fs-page); line-height: 1.1; letter-spacing: -.02em;
+  font-weight: 400; color: var(--text); }
+.ov-hero h1 b { font-weight: 700; }  /* the wordmark, set the same way as the navigation's */
+.ov-tagline { margin-top: 5px; font-size: var(--fs-base); color: var(--muted); }
+.ov-tagline b { color: var(--green-ink); font-weight: 600; }
+.ov-lede { margin: 10px 0 0; max-width: 52ch; font-size: var(--fs-body); line-height: 1.55; color: var(--muted);
+  text-wrap: balance; }  /* two even lines rather than a long one and an orphan */
+.ov-cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.ov-cta .btn { padding: 10px 17px; font-size: var(--fs-base); border-radius: var(--r-md); }
+.ov-cta .btn.primary { box-shadow: 0 6px 16px color-mix(in srgb, var(--green) 32%, transparent); }
+.ov-cta .btn svg { width: 17px; height: 17px; }
+.ov-cta-logo { width: 17px; height: 17px; flex: none; }
+:root[data-theme='dark'] .ov-cta-logo { filter: invert(1); }
+/* The third button does not leave the app and should not weigh like the two that do — no frame
+   until it is pointed at. */
+.ov-cta-quiet { background: transparent; border-color: transparent; color: var(--muted); }
+.ov-cta-quiet:hover:not(:disabled) { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+
+/* One line of five numbers, divided by hairlines rather than boxed each in its own card: five
+   cards would read as five things to click. */
+.ov-stats {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px;
+  padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.ov-stat { min-width: 0; padding: 0 12px; border-left: 1px solid var(--border); }
+.ov-stat:first-child { border-left: none; padding-left: 0; }
+.ov-stat > svg { width: 20px; height: 20px; color: var(--green-ink); }
+.ov-stat-num { margin-top: 6px; font-size: var(--fs-page); font-weight: 700; color: var(--navy); line-height: 1.1; }
+.ov-stat-label { margin-top: 2px; font-size: var(--fs-body); font-weight: 600; color: var(--muted);
+  text-wrap: balance; }
+/* Only when the window gets genuinely small does the row break — three, then two. Five columns of
+   110 px still read as a row; a row of three with a hole where the fourth would be does not. The
+   hairline moves to whoever starts a row. */
+@media (max-width: 1150px) {
+  .ov-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 18px; }
+  .ov-stat:nth-child(3n + 1) { border-left: none; padding-left: 0; }
+}
+@media (max-width: 900px) {
+  .ov-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-stat { border-left: 1px solid var(--border); padding-left: 12px; }
+  .ov-stat:nth-child(2n + 1) { border-left: none; padding-left: 0; }
+}
+
+/* The icon tile of the start page's cards (below): green by default, purple for the Substack. It
+   outlived the two boxes it was drawn for (replaced by the cards). */
+.ov-box-icon {
+  display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--r-md);
+  background: var(--green-soft); color: var(--green-ink);
+}
+.ov-box-icon.substack { background: var(--purple-soft); color: var(--purple); }
+
+/* Set at --fs-sec, the same size as the What's-new descriptions in the right rail — the two footers of the
+   page should not be read at two different sizes. Both facts
+   sit at the right edge, a middle dot apart. */
+.ov-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px;
+  font-size: var(--fs-sec); color: var(--faint); }
+/* Each fact carries the mark the splash window gives it — box for the version, person for the
+   person. Both halves are inline-flex so the mark sits on the text's own line. */
+.ov-meta > span { display: inline-flex; align-items: center; gap: 6px; }
+.ov-meta svg { flex: none; width: 14px; height: 14px; }
+/* A drawn circle, not a "·": the middle dot renders as a faint speck at 12px and all but
+   disappears. Four pixels of --faint are the same weight as the text it
+   separates and are actually visible. */
+.ov-meta-sep { width: 4px; height: 4px; border-radius: 50%; background: var(--faint); flex: none; }
+.ov-meta-dev { display: inline-flex; align-items: center; }
+/* A button, not an anchor: an <a href> inside Electron navigates the window away from PrismLCA. It is
+   dressed as the link it behaves like — and it carries the footer's own colour, so the name does
+   not shout next to the version beside it. */
+.ov-meta-link {
+  appearance: none; border: 0; background: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.ov-meta-link:hover { color: var(--text); text-decoration: underline; }
+.ov-meta-link img { width: 14px; height: 14px; flex: none; }
+
+.ov-news { gap: 10px; }
+.ov-news-item { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.ov-news-item:last-child { border-bottom: none; }
+.ov-news-date { font-size: var(--fs-label); color: var(--faint); letter-spacing: .02em; }
+.ov-news-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin-top: 1px; }
+.ov-news-details { font-size: var(--fs-sec); color: var(--faint); line-height: 1.45; margin-top: 2px; }
+
+/* ---- Overview: the two cards under the numbers ----
+   "Last models" on the left, "Latest news" on the right. The page grew wider for them — at 760px
+   two cards side by side would each be a column of wrapped names. They share the translucent
+   surface of the boxes they replaced, so the facets behind still show through. */
+/* Two fifths for the models, three fifths for the news: a teaser still gets most of a line, and the
+   model rows keep room for a name (1:2 was too much). */
+.ov-cards { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 16px; align-items: start; }
+/* Stack the cards by the width they actually get, not the window's: the stage sits between two
+   side panels, so a viewport query fires far too late. Below ~860px of stage the news card could
+   not hold a teaser next to the models. */
+.ov-home { container-type: inline-size; container-name: ovhome; }
+@container ovhome (max-width: 860px) { .ov-cards { grid-template-columns: minmax(0, 1fr); } }
+.ov-card {
+  display: flex; flex-direction: column; min-width: 0;
+  padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(7px);
+}
+/* Icon tile, title and subtitle, and — on the news card — a small button pushed to the right. The
+   hairline under it is the one rule between the header and the list. */
+.ov-card-h { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border); }
+.ov-card-h .ov-box-icon { flex: none; }
+.ov-card-title { flex: 1; min-width: 0; }
+.ov-card-title h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--text); }
+.ov-card-title p { margin: 2px 0 0; font-size: var(--fs-sec); line-height: 1.4; color: var(--muted); }
+.ov-card-h > .btn { flex: none; }
+.ov-card-empty { padding: 10px 2px; font-size: var(--fs-sec); color: var(--faint); }
+
+/* The rows wear the sidebar's model card (.ov-model: border, radius, the green hover) laid out as a
+   row: name and meta line on the left, when it was opened on the right. */
+.ov-recent { display: flex; flex-direction: column; gap: 6px; }
+.ov-recent-row { flex-direction: row; align-items: center; gap: 12px; padding: 9px 12px; }
+.ov-recent-main { flex: 1; min-width: 0; }
+.ov-recent-main .ov-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.ov-recent-meta { margin-top: 2px; font-size: var(--fs-label); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-recent-when { flex: none; font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
+
+/* The news rows: date, then title over a one-line teaser, then a chevron. Buttons dressed as rows —
+   each opens its article in the browser, never in this window. */
+.ov-newsfeed { display: flex; flex-direction: column; }
+.ov-newsfeed-row {
+  appearance: none; display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0;
+  padding: 9px 6px; margin: 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0;
+  background: none; font: inherit; color: var(--text); text-align: left; cursor: pointer;
+}
+.ov-newsfeed-row:last-child { border-bottom: 0; }
+.ov-newsfeed-row:hover { background: var(--surface-2); }
+.ov-newsfeed-row:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.ov-newsfeed-row > svg { flex: none; width: 14px; height: 14px; color: var(--faint); }
+.ov-newsfeed-date { flex: none; width: 84px; font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
+.ov-newsfeed-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ov-newsfeed-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-newsfeed-teaser { font-size: var(--fs-sec); color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Before anything is loaded: the button that asks, and the sentence that says why it asks. */
+.ov-newsfeed-ask { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 8px 2px 4px; }
+.ov-newsfeed-ask p { margin: 0; font-size: var(--fs-sec); line-height: 1.45; color: var(--muted); }
+.ov-newsfeed-ask p.ov-newsfeed-err { color: var(--bad); }
+
+/* The Substack banner at the foot of the news card. The prism motif sits at the right of the
+   picture, so that is the edge `cover` keeps; the text stands on the pale left half. */
+.ov-substack {
+  display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 14px 16px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: url('../assets/substack-banner.png') right center / cover no-repeat, var(--surface);
+}
+.ov-substack-text { flex: 1; min-width: 0; }
+.ov-substack-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.ov-substack-sub { margin-top: 2px; font-size: var(--fs-sec); line-height: 1.4; color: var(--faint); }
+.ov-substack > .btn { flex: none; }
+/* The mail tile sits ON the picture, so it is an opaque white card with a shadow and the purple
+   mail icon — the pastel purple-soft tile of the old box melted into the banner. */
+.ov-substack > .ov-box-icon.substack {
+  background: var(--surface); color: var(--purple);
+  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 1px color-mix(in srgb, var(--purple) 18%, transparent);
+}
+:root[data-theme='dark'] .ov-substack > .ov-box-icon.substack {
+  background: color-mix(in srgb, var(--surface) 92%, var(--purple));
+  box-shadow: 0 1px 3px rgba(0,0,0,.35), 0 0 0 1px color-mix(in srgb, var(--purple) 35%, transparent);
+}
+/* Dark: the banner has its own dark rendering — no wash needed. */
+:root[data-theme='dark'] .ov-substack {
+  background: url('../assets/substack-banner-dark.png') right center / cover no-repeat, var(--surface);
+}
+
+/* The two cards' rows share one height and one pitch, so the n-th news line sits level with the
+   n-th model. A model row is a bordered card with a 6px gap; a news row has no
+   gap and carries its hairline inside the same pitch, so it is 6px taller and the list starts 3px
+   higher to keep the text centres level. min-height, not height: a news row without a teaser stays
+   as tall as one with, and a long name never clips. 55px is what a model row measures — two lines,
+   the padding and its two hairlines — so the floor sits exactly there and the news rows, derived
+   from it, keep the same pitch. */
+.ov-cards { --ov-row-h: 55px; }
+.ov-recent-row { box-sizing: border-box; min-height: var(--ov-row-h); }
+.ov-newsfeed { margin-top: -3px; }
+.ov-newsfeed-row { box-sizing: border-box; min-height: calc(var(--ov-row-h) + 6px); padding-top: 12px; padding-bottom: 12px; }
+
+/* The privacy notice, read in place (components/PrivacyNotice.tsx): a standard sheet — fixed head with
+   the ✕, body scrolling on its own. Opened from
+   the start page's footer, from Settings → AI → Limits → Privacy and from the tour. */
+.ov-meta-privacy { display: inline-flex; align-items: center; gap: 6px; }
+.modal.sheet.privacy-sheet { width: min(720px, 94vw); max-height: 88vh; }
+.privacy-md { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 22px 24px;
+  font-size: var(--fs-body); line-height: 1.55; }
+.privacy-md h2 { font-size: 1.05em; margin: 1.2em 0 .3em; }
+.privacy-md h3 { font-size: 1em; margin: 1em 0 .2em; }
+.privacy-md :is(p, ul, ol) { margin: .4em 0; }
+.privacy-md em { color: var(--muted); }
+
+/* Licence and third-party notices as sheets (components/LegalSheets.tsx), same frame as the privacy
+   notice. The licence is the bundled text verbatim, so it is a <pre> that wraps; the notices body is
+   the summary tables. The footer's spacer pushes the "open the file" button to the right. */
+.modal.sheet.legal-sheet { width: min(760px, 94vw); max-height: 88vh; }
+.legal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 22px 24px; }
+.legal-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono);
+  font-size: var(--fs-sec); line-height: 1.5; color: var(--text); }
+.legal-md { font-size: var(--fs-body); line-height: 1.55; }
+.legal-md h2 { font-size: 1.05em; margin: .4em 0 .3em; }
+.legal-md h3 { font-size: 1em; margin: 1em 0 .2em; }
+.legal-md table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+.legal-md th, .legal-md td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.sheet-foot-grow { flex: 1; }
+/* The what's-new list's sentinel: the next thirty entries are added when it scrolls near (Overview.tsx). */
+.ov-news-more { height: 1px; }

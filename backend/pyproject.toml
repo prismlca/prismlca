@@ -1,0 +1,127 @@
+[project]
+name = "prism-lca-backend"
+version = "0.8.0"
+description = "Local API backend for the PrismLCA desktop app (Brightway 2.5)."
+license = { text = "AGPL-3.0-only" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "platformdirs>=4.2",
+    # Brightway 2.5 engine (see docs/ARCHITEKTUR.md ADR-001). Reached only through the lazy
+    # accessors in engine/bootstrap.py (ADR-002); pinned to the same line as the ecoinvent-bw MCP server.
+    "bw2data>=4.0,<5",
+    "bw2calc>=2.0,<3",
+    "bw2io>=0.9,<1",
+    "bw2analyzer>=0.11,<1",
+    "bw_processing>=1.0",
+    "matrix_utils>=0.5",
+    "stats_arrays>=0.6",
+    # Search: local CPU embeddings — fastembed (ONNX) + sentence-transformers (bge-m3, PyTorch,
+    # multilingual DE/EN, default backend) + OpenAI/OpenRouter client.
+    "fastembed>=0.4",
+    "sentence-transformers>=3.0",
+    # Pin torch to a version the CPU wheel index actually carries (it lags PyPI): keeps uv on the
+    # +cpu build instead of pulling the much larger CUDA wheel. See [tool.uv.sources] below.
+    "torch==2.14.1",
+    "openai>=1.40",
+    "numpy>=1.26",
+    "python-multipart>=0.0.32",
+    "pypardiso>=0.4.7",
+    # Typesetting for the report module: the Typst compiler as a self-contained wheel (compiled
+    # extension, no dependencies, wheels for win/mac/linux) — no CLI binary to vendor, no subprocess.
+    "typst>=0.15",
+    # Chat attachments: one converter for everything a chat endpoint
+    # cannot take — Word, spreadsheets, and the text side of a PDF. PDFs and images additionally go
+    # to the model natively, so this is the fallback and the re-reading path, not the only route.
+    # Three extras, not `all`: the others (Azure, audio, YouTube, Outlook) are services and codecs we
+    # never call, and no OCR is installed anywhere — a scanned PDF is answered by the native route,
+    # where the model reads the page images itself. The one direct import beside markitdown is
+    # pdfminer (which `pdf` brings), for the page count and the page ranges.
+    "markitdown[docx,pdf,xlsx]>=0.1.7",
+    "searoute>=1.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    # Optional but worth it: `pytest -n auto` runs the suite in one process per core. Every worker imports
+    # conftest and therefore gets its own throwaway BRIGHTWAY2_DIR, and every test makes a uniquely named
+    # project, so the workers cannot see each other's data. Measured on 8 cores: 113s serial, 29s parallel.
+    # Deliberately NOT in `addopts` — parallel runs interleave output, which is the wrong default when you
+    # are debugging one test.
+    "pytest-xdist>=3.6",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    # Offline list-authoring aid only (scripts/report_word_forms.py): a stemmer to propose and
+    # verify inflected forms for the report claim lists. Deliberately NOT a runtime dependency —
+    # stemming at match time was measured and rejected (it collapses "wichtigste" to "wichtig"
+    # and blocked ordinary sentences). Nothing under src/ may import it.
+    "snowballstemmer>=2.2",
+]
+build = [
+    "pyinstaller>=6.10",
+]
+
+[project.scripts]
+prism-lca-backend = "prism_lca.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prism_lca"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Defaults (E4/E7/E9/F) plus: import sorting (I), bugbear real-bug patterns (B),
+# modern-syntax upgrades (UP). SIM deliberately left out — its "simplifications"
+# don't always read better.
+# C901/PLR0915 are a RATCHET (added 2026-08-31, refactor wave 4.8): before it, a 633-line
+# function linted clean. The thresholds sit just above the codebase's current worst offenders
+# OUTSIDE the four named per-file-ignores below — new code that trips them should be split,
+# not added to the ignore list.
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "C901", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.pylint]
+max-statements = 90
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's `File(...)`/`Form(...)`/`Depends(...)` defaults are the framework idiom.
+"src/prism_lca/api/**" = ["B008"]
+# Tests may be long and branchy by nature; the ratchet aims at product code.
+"tests/**" = ["C901", "PLR0915"]
+"scripts/**" = ["C901", "PLR0915"]
+# The known big four, each with its own decomposition already on the refactor roadmap:
+# compute_render_inputs (47), compare_stacked (39), check_claims (35), set_params_bulk (27).
+"src/prism_lca/engine/report_pipeline.py" = ["C901", "PLR0915"]
+"src/prism_lca/engine/lca.py" = ["C901", "PLR0915"]
+"src/prism_lca/engine/report_claims.py" = ["C901", "PLR0915"]
+"src/prism_lca/engine/params.py" = ["C901"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# .python-version pins the bundled interpreter to an exact patch, because 3.12 now receives security fixes
+# only and every one of them must reach the bundle. A uv older than the pinned build cannot install it;
+# this line makes it say so instead of failing at interpreter discovery.
+[tool.uv]
+required-version = ">=0.13.6"
+
+# CPU-only PyTorch (no CUDA) — we embed on CPU; keeps the download/bundle small.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

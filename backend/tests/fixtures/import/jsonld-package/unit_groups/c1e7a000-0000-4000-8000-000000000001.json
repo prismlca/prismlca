@@ -1,0 +1,25 @@
+{
+  "@type": "UnitGroup",
+  "@id": "c1e7a000-0000-4000-8000-000000000001",
+  "name": "Units of mass",
+  "defaultFlowProperty": {
+    "@type": "FlowProperty",
+    "@id": "c1e7a000-0000-4000-8000-000000000002",
+    "name": "Mass"
+  },
+  "units": [
+    {
+      "@type": "Unit",
+      "@id": "c1e7a000-0000-4000-8000-000000000011",
+      "name": "kg",
+      "conversionFactor": 1.0,
+      "isRefUnit": true
+    },
+    {
+      "@type": "Unit",
+      "@id": "c1e7a000-0000-4000-8000-000000000012",
+      "name": "g",
+      "conversionFactor": 0.001
+    }
+  ]
+}

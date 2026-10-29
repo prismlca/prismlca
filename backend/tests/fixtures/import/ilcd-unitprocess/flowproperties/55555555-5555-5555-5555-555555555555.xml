@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<flowPropertyDataSet xmlns="http://lca.jrc.it/ILCD/FlowProperty" xmlns:common="http://lca.jrc.it/ILCD/Common" version="1.1">
+  <flowPropertiesInformation><dataSetInformation><common:UUID>55555555-5555-5555-5555-555555555555</common:UUID>
+    <common:name xml:lang="en">Mass</common:name></dataSetInformation>
+    <quantitativeReference><referenceToReferenceUnitGroup type="unit group data set" refObjectId="77777777-7777-7777-7777-777777777777" uri="../unitgroups/77777777-7777-7777-7777-777777777777.xml"/></quantitativeReference>
+  </flowPropertiesInformation>
+</flowPropertyDataSet>

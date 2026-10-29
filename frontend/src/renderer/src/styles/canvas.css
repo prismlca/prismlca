@@ -1,0 +1,157 @@
+.stage .react-flow { height: 100%; }
+/* node expand affordance (hidden upstream tree).
+   A round button that sits half over the node's lower edge, rather than the green pill it was:
+   quiet until pointed at, so a canvas of thirty nodes is not thirty green tabs. One size for every
+   node: the upstream count it used to print made some buttons wide and some narrow, and a row of
+   them read as a ragged edge — the number lives in the tooltip now. Note it used `--prism-*` and
+   `--panel`, which are not this app's token names, so it had been running on the hex fallbacks. */
+/* Sized and placed so the part that laps onto the card lands in its 8px bottom padding and covers
+   no text: 22px tall at bottom:-14px leaves exactly 8px inside. Half-over, as the sketch had it,
+   put 13px of a 26px button across the meta line. */
+.pnode-expand { position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  /* The 1.5px at the bottom is optical centring, not spacing: flexbox centres the LINE BOX, and
+     the ink of "+" sits above its own baseline, so the glyph rendered 0.75px low (measured off a
+     12× screenshot). Padding on one side lifts the content box by half that. */
+  width: 22px; height: 22px; padding: 0 0 1.5px; border-radius: 50%;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--green-ink);
+  font-size: 15px; font-weight: 400; line-height: 1; cursor: pointer;
+  white-space: nowrap; box-shadow: 0 1px 3px rgba(20,32,28,.12); z-index: 2;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease,
+    transform 120ms ease, box-shadow 120ms ease; }
+.pnode-expand:hover { background: var(--green-soft); border-color: var(--green); color: var(--green-ink);
+  transform: translateX(-50%) scale(1.08); box-shadow: 0 2px 7px rgba(20,32,28,.18); }
+.pnode-expand:active { transform: translateX(-50%) scale(0.96); }
+/* React Flow paints TWO rectangles in the same fill: the rubber band you drag
+   (`.react-flow__selection`, unmounted on release) and this box around whatever ended up selected,
+   which it mounts *after* release — so the band appears to have stayed on screen. Selected nodes
+   already carry their own ring, so the box only repeats what they say. It must not swallow clicks
+   either, or the colour/tag buttons on selected nodes become unreachable; group-dragging is
+   unaffected, dragging ANY selected node moves them all. Painted out rather than `display: none`,
+   because React Flow focuses this element to nudge a whole selection with the arrow keys. */
+.react-flow__nodesselection, .react-flow__nodesselection-rect { pointer-events: none; }
+.react-flow__nodesselection-rect { background: transparent; border: none; }
+
+.node-menu { position: fixed; z-index: 100; background: var(--panel, #fff); color: var(--ink, #303030);
+  border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  padding: 4px; min-width: 180px; }
+.node-menu button { display: block; width: 100%; text-align: left; background: none; border: none;
+  padding: 7px 10px; font-size: var(--fs-body); color: inherit; border-radius: 4px; cursor: pointer; }
+.node-menu button:hover:not([disabled]) { background: var(--bg-muted, #f2f2f2); }
+.node-menu button[disabled] { color: var(--faint, #8a8a8a); cursor: default; }
+.node-menu button.danger { color: var(--prism-alert, #cc4b37); }
+.node-menu button.danger:hover { background: rgba(204,75,55,0.1); }
+
+/* zoom / fit controls — themed so they're visible on the light + dark canvas */
+.react-flow__controls { box-shadow: 0 2px 12px rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+.react-flow__controls-button { width: 30px; height: 30px; background: var(--surface); border: none; border-bottom: 1px solid var(--border); }
+.react-flow__controls-button:last-child { border-bottom: none; }
+.react-flow__controls-button:hover { background: var(--surface-2); }
+.react-flow__controls-button svg { fill: var(--ink); max-width: 14px; max-height: 14px; }
+
+/* The amount and unit on an arrow ("0.5 kg"). React Flow draws the label as an SVG `rect` + `text` whose
+   defaults are a white background and near-black type — on the dark canvas a white pill. Styled by
+   class rather than through `labelBgStyle`, because those are inline styles: they would have to be recomputed
+   whenever the theme flips, while `fill: var(--surface)` follows it by itself. */
+.react-flow__edge-textbg { fill: var(--surface); }
+.react-flow__edge-text { fill: var(--ink); }
+/* The arrows of the hovered or selected process (class set by highlightEdges, which also turns the line
+   green and thicker): the amount chip takes the recipe of the green chips elsewhere — soft green ground,
+   the number in the full green ink — so the flows in and out read as one with the lit card. */
+.react-flow__edge.hot .react-flow__edge-textbg { fill: var(--green-soft); }
+.react-flow__edge.hot .react-flow__edge-text { fill: var(--green-ink); font-weight: 700; }
+
+/* One cohesive horizontal control bar (like the zoom +/- controls). */
+.canvas-tools { display: flex; align-items: stretch; gap: 0; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
+.canvas-tools .btn, .canvas-tools .brush-btn { height: 30px; border: none; border-radius: 0; background: transparent;
+  color: var(--text); font-size: var(--fs-sec); font-weight: 600; padding: 0 12px; display: inline-flex; align-items: center; }
+.canvas-tools > * + * { border-left: 1px solid var(--border) !important; }
+.canvas-tools > .btn:first-child { border-radius: 8px 0 0 8px; }
+.canvas-tools > .btn:last-child { border-radius: 0 8px 8px 0; }
+.canvas-tools .btn:hover:not(:disabled), .canvas-tools .brush-btn:hover { background: var(--surface-2); }
+.canvas-tools .btn[disabled] { opacity: 0.5; cursor: default; }
+.brush-tool { position: relative; display: flex; align-items: stretch; }
+.brush-btn { font-size: 15px; line-height: 1; }
+.brush-btn.on { background: var(--surface-2); font-weight: 700; }
+.brush-palette { position: absolute; top: 100%; right: 0; margin-top: 5px; display: flex; align-items: center; gap: 6px;
+  padding: 7px 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); z-index: 40; }
+.brush-off { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface);
+  color: var(--faint); cursor: pointer; font-size: var(--fs-label); line-height: 1; padding: 0; }
+.brush-off:hover { color: var(--prism-alert, #cc4b37); border-color: var(--prism-alert, #cc4b37); }
+.brush-active .react-flow__pane { cursor: crosshair; }
+
+/* Group boxes on the canvas ------------------------------------------------------------------
+   Drawn into React Flow's viewport portal, which is the LAST child of the viewport — so the boxes
+   would sit on top of everything. What keeps them behind the node and edge layers is a negative
+   z-index per box, and what lets a rubber band through the fill is `pointer-events: none` — both are
+   inline in components/CanvasGroups.tsx on purpose, because they are the feature and not its looks.
+   Colours are inline for a duller reason: they are the picked colour at the alpha the tint rule in
+   lib/groups.ts chose, which no CSS variable can express. What is left here is the appearance. */
+/* One per box, and the only thing it does is carry the box's z-index: z-index needs a positioned
+   element, and fill and strip have to share one layer so the whole box obeys its depth. Zero-sized —
+   both children are absolutely positioned and place themselves. */
+.pgroup-box { position: absolute; left: 0; top: 0; }
+.pgroup { position: absolute; left: 0; top: 0; border: 1px solid; border-radius: var(--r-md); }
+/* Selected: the app's selection colour, exactly as on a process card. A ring around the box rather
+   than a recoloured border — the border carries the group's own colour, set inline, and an inline
+   value cannot be overridden from here anyway. */
+.pgroup.sel { box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 70%, transparent); }
+.pgroup-grip { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 0 9px; cursor: grab; border-radius: var(--r-md) var(--r-md) 0 0; }
+.pgroup-grip.sel { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--green) 75%, transparent); }
+.pgroup-grip.sel .pgroup-name { color: var(--green-ink); }
+.pgroup-grip:active { cursor: grabbing; }
+/* The name takes the room the dot leaves and nothing more, so a long name ellipsises instead of
+   pushing the dot off the end of the strip. It keeps the strip's grab cursor: a press on it drags the
+   group, and only a double-click renames — a text cursor would promise the click does. */
+.pgroup-name { flex: 1 1 auto; min-width: 0; font-size: var(--fs-label); font-weight: 700;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pgroup-name:hover { text-decoration: underline dotted; text-underline-offset: 2px; }
+/* The rename box: as close to the text it replaces as an input gets, so the strip does not jump when
+   the edit starts. No border of its own — the strip is already a frame. */
+.pgroup-rename { flex: 1 1 auto; min-width: 0; font: inherit; font-size: var(--fs-label);
+  font-weight: 700; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 3px; padding: 0 4px; height: calc(100% - 4px); box-sizing: border-box; }
+/* The same gesture as the colour dot on a process card, in the same size and place: top right. */
+.pgroup-dot { flex: 0 0 auto; width: 13px; height: 13px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--border-strong); cursor: pointer; }
+.pgroup-dot:hover { box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 55%, transparent); }
+
+/* The group colour picker: the canvas palette under the tint rule, so the swatch is the paint. */
+.tint-swatches { display: flex; align-items: center; gap: 6px; padding: 7px 8px; background: var(--surface);
+  border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); }
+.tint-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid; cursor: pointer; padding: 0; }
+.tint-swatch:hover { transform: scale(1.12); }
+.tint-swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink, #303030); }
+.group-tool { position: relative; display: flex; align-items: stretch; }
+.group-tool > .btn + .btn { border-left: 1px solid var(--border); }
+/* `fixed`, and anchored by its RIGHT edge: the picker is opened at the screen position of a dot that
+   lives inside the zoomed canvas (see CanvasGroups' onPickColor), and a box against the right edge of
+   the window must still show all six swatches. */
+.group-palette { position: fixed; z-index: 40; }
+/* The toolbar rounds its own first and last child; the group slot is a wrapper, so it has to pass the
+   left rounding on to the button inside it. */
+.canvas-tools > .group-tool:first-child > .btn:first-child { border-radius: 8px 0 0 8px; }
+
+/* Hand tool: a left-drag pans. React Flow puts `grab` on a draggable pane itself; the process cards keep
+   their own pointer cursor unless told, and in this mode a drag on them pans as well. */
+.hand-btn.on { background: var(--surface-2); }
+.hand-active .react-flow__pane, .hand-active .react-flow__node { cursor: grab; }
+.hand-active .react-flow__pane.dragging, .hand-active.react-flow:active .react-flow__node { cursor: grabbing; }
+
+/* The plain pointer outside the hand tool. React Flow's own sheet gives the selecting pane `pointer` (the
+   finger) and a draggable card `grab` (the open hand) — so the normal mode looked like the hand tool and the
+   switch showed nothing. The arrow now means "select", the hand means "pan" (the hand tool, or Space held:
+   the pane is `.draggable` then, not `.selection`). The brush keeps its crosshair; a card being dragged
+   still shows the closed hand. */
+.react-flow:not(.hand-active):not(.brush-active) .react-flow__pane.selection,
+.react-flow:not(.hand-active) .react-flow__node.draggable { cursor: default; }
+.react-flow:not(.hand-active) .react-flow__node.draggable.dragging { cursor: grabbing; }
+
+/* The label of a `PrismEdge` arrow — the amount and, under it, the product — set small and quiet as one:
+   both lines in the same size and grey, so the chip reads as a caption of the arrow rather than a second
+   box. Two classes deep to win over the plain amount rule above; on a highlighted arrow both lines turn
+   green together and stay at regular weight, since two bold lines crowd the chip. */
+.react-flow__edge-text.prism-edge-label { font-size: 9px; fill: var(--muted); }
+.react-flow__edge.hot .react-flow__edge-text.prism-edge-label { fill: var(--green-ink); font-weight: 400; }
