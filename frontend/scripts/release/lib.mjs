@@ -49,7 +49,18 @@ export const TODO = 'TODO(release):'
  * to keep, move to "Fixes" or delete — What's-new also holds collected fixes, so it is no feature
  * counter. Issue references are added by hand. The TODO lines make the script wait until that is done.
  */
-export function changelogSection({ version, date, previous, entries, repoUrl }) {
+/**
+ * Commit subjects since the previous release, as raw material for the Fixes list — not text for readers:
+ * release commits, merges and documentation-only commits are left out, the rest is for a person (or the
+ * agent preparing the release) to sum up in a few lines users would notice.
+ */
+export function commitSuggestions(subjects) {
+  return (subjects ?? []).filter(
+    (s) => s && !/^release: v\d/.test(s) && !/^Merge /.test(s) && !/^docs(\([^)]*\))?:/i.test(s)
+  )
+}
+
+export function changelogSection({ version, date, previous, entries, repoUrl, commits = [] }) {
   const lines = [`## ${version} — ${date}`, '']
   if (!previous) {
     lines.push('First public beta.', '', `${TODO} write the notes for the first release by hand.`, '')
@@ -59,6 +70,12 @@ export function changelogSection({ version, date, previous, entries, repoUrl }) 
     for (const e of entries) lines.push(`- ${e.title}`)
     if (!entries.length) lines.push('- (nothing in What\'s new since the previous release)')
     lines.push('', '### Fixes', '', `- ${TODO} list the fixes worth naming (with #issue), or delete this section.`, '')
+    // Every raw line carries the TODO mark, so none can slip into the published notes.
+    if (commits.length) {
+      lines.push(`${TODO} the commits since ${previous.tag}, to sum up above and then delete:`)
+      for (const c of commits) lines.push(`${TODO}   ${c}`)
+      lines.push('')
+    }
     lines.push(`${TODO} sort the lines above into New and Fixes, then delete this line.`, '')
   }
   return lines.join('\n')

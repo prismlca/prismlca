@@ -16,7 +16,15 @@ import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
-import { TODO, changelogSection, insertSection, nextVersion, pickPreviousRelease, whatsNewSince } from './lib.mjs'
+import {
+  TODO,
+  changelogSection,
+  commitSuggestions,
+  insertSection,
+  nextVersion,
+  pickPreviousRelease,
+  whatsNewSince
+} from './lib.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const FRONTEND = resolve(here, '..', '..')
@@ -55,6 +63,15 @@ function githubRepo() {
   const repo = /^\s*repo:\s*(\S+)/m.exec(yml)?.[1]
   if (!owner || !repo) fail('electron-builder.yml names no publish owner/repo')
   return { owner, repo, url: `https://github.com/${owner}/${repo}` }
+}
+
+/** Commit subjects since a tag, oldest first; empty when the tag is not in this clone (then nothing to suggest). */
+function commitsSince(tag) {
+  try {
+    return git('log', '--no-merges', '--reverse', '--format=%s', `${tag}..HEAD`).split('\n').filter(Boolean)
+  } catch {
+    return []
+  }
 }
 
 async function previousRelease({ owner, repo }) {
@@ -137,6 +154,7 @@ async function main() {
     date: today,
     previous,
     entries: whatsNewSince(whatsNew, previous?.publishedAt),
+    commits: previous ? commitSuggestions(commitsSince(previous.tag)) : [],
     repoUrl: gh.url
   })
   const before = existsSync(CHANGELOG) ? readFileSync(CHANGELOG, 'utf-8') : '# Changelog\n'

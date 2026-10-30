@@ -63,6 +63,36 @@ describe('the release script', () => {
   })
 })
 
+describe('commits as raw material for the Fixes', () => {
+  it('leaves out release commits, merges and documentation-only commits', () => {
+    expect(
+      lib.commitSuggestions([
+        'release: v0.9.3',
+        'Merge PR #4: something',
+        'docs: record a test',
+        'docs(umzug): runbook',
+        'Update page: a failed download says what failed',
+        'fix(website): privacy page always light'
+      ])
+    ).toEqual(['Update page: a failed download says what failed', 'fix(website): privacy page always light'])
+  })
+
+  it('lists them in the draft, every line marked so none can be published unread', () => {
+    const section = lib.changelogSection({
+      version: '0.9.4',
+      date: '2026-10-31',
+      previous: { tag: 'v0.9.3', publishedAt: '2026-10-30T12:00:00Z' },
+      entries: [],
+      repoUrl: 'https://github.com/prismlca/prismlca',
+      commits: ['Update page: a failed download says what failed']
+    })
+    const raw = section.split('\n').filter((l) => l.includes('Update page'))
+    expect(raw).toHaveLength(1)
+    expect(raw[0].startsWith(lib.TODO)).toBe(true)
+    expect(section).toContain('the commits since v0.9.3')
+  })
+})
+
 describe('the update feed', () => {
   const feed = (url: string): { name: string; text: string }[] => [
     { name: 'latest.yml', text: `version: 0.9.2\nfiles:\n  - url: ${url}\n    sha512: x\npath: ${url}\n` }
