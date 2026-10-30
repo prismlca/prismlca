@@ -49,6 +49,22 @@ linux:
   icon: resources/icon.png # committed; build/ is gitignored
   maintainer: Jonas Harth <harthjonas@gmail.com>
 
+deb:
+  # electron-builder's own list plus ALSA: Electron links libasound.so.2 and does not start without it. Desktops
+  # have it anyway, minimal systems do not. Ubuntu 24.04's libasound2t64 provides libasound2, so one name
+  # covers both generations; the release workflow checks the package says so.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libasound2
+
 nsis:
   oneClick: false
   perMachine: false

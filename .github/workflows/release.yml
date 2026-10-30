@@ -125,6 +125,8 @@ jobs:
         run: |
           (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE"/frontend/release/PrismLCA-*.AppImage --appimage-extract > /dev/null)
           node scripts/release/ci.mjs check-artifacts appimage "$RUNNER_TEMP/squashfs-root"
+          dpkg-deb -f release/prism-lca_*_amd64.deb Depends | grep -qw libasound2 \
+            || { echo "::error::the deb does not depend on libasound2 — Electron cannot start without it"; exit 1; }
           dpkg-deb -x release/prism-lca_*_amd64.deb "$RUNNER_TEMP/deb"
           node scripts/release/ci.mjs check-artifacts deb "$RUNNER_TEMP/deb/opt/PrismLCA"
           rm -rf "$RUNNER_TEMP/deb"

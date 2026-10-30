@@ -38,7 +38,8 @@ every file, and every file carries a build provenance attestation
   the installer with `SHA256SUMS` first (`Get-FileHash .\<installer>.exe` in PowerShell), then choose
   *More info → Run anyway*. By default it installs for your user only, without administrator rights.
 - **Linux:** check with `sha256sum -c SHA256SUMS --ignore-missing`, then make the AppImage executable and start
-  it, or install the deb with `sudo apt install ./<package>.deb`.
+  it, or install the deb with `sudo apt install ./<package>.deb`. AppImages need FUSE 2, which Ubuntu 22.04 and
+  later do not install by default: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04).
 
 PrismLCA looks for a new version only when you click *Check for updates* on its About page. The Windows
 installation and the AppImage update in place; with the deb you install the new package yourself.
