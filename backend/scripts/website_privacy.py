@@ -184,8 +184,6 @@ WEBSITE = """
 """
 
 
-CONSENT_JS = REPO / "Website2" / "assets" / "consent.js"
-
 # The statistics paragraphs in two states. Which one prints follows assets/consent.js: an empty websiteId there
 # means no statistics run (and no consent bar appears), so the notice must not describe any.
 STATS_OFF = {
@@ -220,10 +218,12 @@ STATS_ON = {
 
 
 def stats_live() -> bool:
-    """True when assets/consent.js names a Umami website ID, i.e. the statistics (and the consent bar) are on."""
-    m = re.search(r"websiteId:\s*'([^']*)'", CONSENT_JS.read_text(encoding="utf-8"))
+    """True when the site's assets/consent.js names a Umami website ID, i.e. the statistics (and the consent bar)
+    are on. Read from the site folder in use (``--site``), like every other input of the page."""
+    consent = wl.SITE / "assets" / "consent.js"
+    m = re.search(r"websiteId:\s*'([^']*)'", consent.read_text(encoding="utf-8"))
     if not m:
-        raise SystemExit("website_privacy: could not find websiteId in Website2/assets/consent.js")
+        raise SystemExit(f"website_privacy: could not find websiteId in {consent}")
     return bool(m.group(1).strip())
 
 
