@@ -311,9 +311,28 @@ describe('the manual update check', () => {
     expect(await call('updates:download')).toEqual({
       phase: 'error',
       current: '1.2.0',
-      message: 'The download failed: sha512 checksum mismatch'
+      message: 'The download failed: sha512 checksum mismatch',
+      version: '1.3.0'
     })
     expect(fake.install).not.toHaveBeenCalled()
+  })
+
+  it('does not call a missing installer file "no release published"', async () => {
+    fake.checkForUpdates.mockImplementation(async () => ({
+      isUpdateAvailable: true,
+      updateInfo: { version: '1.3.0' }
+    }))
+    await call('updates:check')
+    fake.downloadUpdate.mockRejectedValueOnce(
+      new Error(
+        'Cannot download "https://github.com/x/y/releases/download/v1.3.0/X-Setup-1.3.0.exe", status 404'
+      )
+    )
+    const s = await call('updates:download')
+    expect(s.message).toBe(
+      'The download failed: the release has no installer file for this installation (HTTP 404).'
+    )
+    expect(s.version).toBe('1.3.0')
   })
 
   it('blocks an installer that fails its signature check without pointing to a manual install', async () => {

@@ -18,8 +18,9 @@ export type UpdateState =
   | { phase: 'installing'; current: string; version: string }
   /** The last start wrote down an update to `version`, but this is still the old version. */
   | { phase: 'incomplete'; current: string; version: string }
-  /** `restart`: the backend is already stopped, so the app has to restart before it works again. */
-  | { phase: 'error'; current: string; message: string; restart?: boolean }
+  /** `restart`: the backend is already stopped, so the app has to restart before it works again.
+   *  `version`: the version a failed download was for, so the page can offer its release page instead. */
+  | { phase: 'error'; current: string; message: string; restart?: boolean; version?: string }
 
 /** The answer main's install step needs before it may replace the program files (index.ts). */
 export type PrepareInstallResult =

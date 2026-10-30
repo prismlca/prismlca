@@ -559,6 +559,50 @@ describe('Settings → About', () => {
     expect(err).toHaveClass('settings-hint', 'bad')
   })
 
+  it('puts Download before long release notes and keeps the next step after a failed download', async () => {
+    renderWithPrism(<Settings onClose={() => {}} initialCategory="about" />, {
+      routes: ROUTES,
+      overrides: {
+        updates: {
+          state: async () => ({
+            phase: 'available',
+            current: '1.2.0',
+            version: '1.3.0',
+            notes: 'A long text.'
+          }),
+          check: vi.fn(),
+          onEvent: () => () => {}
+        }
+      }
+    })
+    const download = await screen.findByRole('button', { name: 'Download' })
+    const notes = screen.getByText('What is new in 1.3.0')
+    expect(download.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(notes.closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('offers the release page after a failed download', async () => {
+    renderWithPrism(<Settings onClose={() => {}} initialCategory="about" />, {
+      routes: ROUTES,
+      overrides: {
+        updates: {
+          state: async () => ({
+            phase: 'error',
+            current: '1.2.0',
+            version: '1.3.0',
+            message: 'The download failed.'
+          }),
+          check: vi.fn(),
+          onEvent: () => () => {}
+        }
+      }
+    })
+    expect(await screen.findByText('The download failed.')).toBeInTheDocument()
+    expect(screen.getByText(/install version 1\.3\.0 from the/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'release page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeEnabled()
+  })
+
   // The states the install path adds (V-2 to V-4).
   const renderAbout = (state: unknown, extra: Record<string, unknown> = {}): void => {
     renderWithPrism(<Settings onClose={() => {}} initialCategory="about" />, {

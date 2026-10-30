@@ -225,8 +225,15 @@ export function describeUpdateError(err: unknown, during: 'check' | 'download' |
     /not signed by the application owner|invalid signature/i.test(raw)
   )
     return 'The downloaded update failed its signature check and was not installed.'
-  if (/\b404\b|Unable to find latest version|No published versions|Cannot find latest/i.test(raw))
+  // A 404 means "no release" only while checking. During a download the release exists and the file it
+  // names is missing — saying "nothing published" there sent a tester looking in the wrong place.
+  if (
+    during === 'check' &&
+    /\b404\b|Unable to find latest version|No published versions|Cannot find latest/i.test(raw)
+  )
     return 'No release of PrismLCA has been published on GitHub yet.'
+  if (during === 'download' && /\b404\b/.test(raw))
+    return 'The download failed: the release has no installer file for this installation (HTTP 404).'
   if (
     /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|net::ERR_|getaddrinfo|socket hang up/i.test(
       raw
@@ -382,11 +389,14 @@ async function loadUpdater(): Promise<AutoUpdater> {
   // Without a listener an EventEmitter 'error' would throw; the rejected promise reports it too.
   autoUpdater.on('error', (err) => {
     const s = getUpdateState()
-    if (s.phase === 'checking' || s.phase === 'downloading')
+    if (s.phase === 'checking')
+      setState({ phase: 'error', current: current(), message: describeUpdateError(err, 'check') })
+    else if (s.phase === 'downloading')
       setState({
         phase: 'error',
         current: current(),
-        message: describeUpdateError(err, s.phase === 'checking' ? 'check' : 'download')
+        message: describeUpdateError(err, 'download'),
+        version: s.version
       })
     else if (s.phase === 'installing') installError = describeUpdateError(err, 'install')
     console.error('[updater]', err)
@@ -448,7 +458,12 @@ export async function downloadUpdate(): Promise<UpdateState> {
     if (after.phase === 'downloading')
       setState({ phase: 'downloaded', current: current(), version: after.version })
   } catch (err) {
-    setState({ phase: 'error', current: current(), message: describeUpdateError(err, 'download') })
+    setState({
+      phase: 'error',
+      current: current(),
+      message: describeUpdateError(err, 'download'),
+      version: s.version
+    })
   }
   return getUpdateState()
 }

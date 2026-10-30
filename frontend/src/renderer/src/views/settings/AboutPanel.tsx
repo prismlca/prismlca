@@ -148,11 +148,8 @@ export function AboutPanel(): JSX.Element {
       {st?.phase === 'available' ? (
         <>
           <p className="settings-hint">Version {st.version} is available.</p>
-          {st.notes ? (
-            <p className="settings-hint" style={{ whiteSpace: 'pre-wrap' }}>
-              {st.notes}
-            </p>
-          ) : null}
+          {/* The action before the notes: release notes can run long, and a Download button below them
+              was not found. The notes stay one click away. */}
           {st.manualOnly ? (
             // A deb installation: updating it needs root, so it is done from the release page.
             <p className="settings-hint">
@@ -173,6 +170,12 @@ export function AboutPanel(): JSX.Element {
               </button>
             </div>
           )}
+          {st.notes ? (
+            <details className="settings-hint update-notes">
+              <summary>What is new in {st.version}</summary>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{st.notes}</p>
+            </details>
+          ) : null}
         </>
       ) : null}
       {st?.phase === 'downloading' ? <p className="settings-hint">Downloading… {st.percent} %</p> : null}
@@ -213,6 +216,16 @@ export function AboutPanel(): JSX.Element {
       {st?.phase === 'error' ? (
         <>
           <p className="settings-hint bad">{st.message}</p>
+          {/* After a failed download the next step stays on the page: try again, or take it by hand. */}
+          {st.version && !st.restart ? (
+            <p className="settings-hint">
+              Check for updates to try again, or install version {st.version} from the{' '}
+              <button className="link-btn" onClick={() => openLink(releasePage(st.version!))}>
+                release page
+              </button>
+              .
+            </p>
+          ) : null}
           {st.restart ? (
             <div className="settings-field">
               <button
