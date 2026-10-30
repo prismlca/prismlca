@@ -66,6 +66,9 @@ deb:
     - libasound2
 
 nsis:
+  # No spaces: GitHub turns them into dots when a file is uploaded, while latest.yml names the installer with
+  # dashes — the update check would then ask for a file that is not there (it happened to 0.9.2).
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

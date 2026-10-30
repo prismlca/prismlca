@@ -191,6 +191,24 @@ export function pipAuditReport(text, pins) {
 export const isSpike = (version) => /-spike\.\d+$/.test(String(version ?? ''))
 
 /** The CHANGELOG section of one version, as release notes (without its own heading). */
+/**
+ * What would break the update feed: every file `latest*.yml` names (`url:` and `path:`) must be among the
+ * release files under exactly that name, and no release file may contain a space — GitHub renames those on
+ * upload, so the feed would point at a file that is not there. Returns the problems; empty means fine.
+ */
+export function feedProblems(feeds, files) {
+  const present = new Set(files)
+  const problems = files.filter((f) => f.includes(' ')).map((f) => `"${f}" has a space; GitHub renames it on upload`)
+  for (const { name, text } of feeds) {
+    const named = new Set(
+      [...String(text).matchAll(/^\s*(?:-\s*url|path):\s*['"]?([^'"\n]+?)['"]?\s*$/gm)].map((m) => m[1])
+    )
+    for (const file of named)
+      if (!present.has(file)) problems.push(`${name} names ${file}, which is not among the release files`)
+  }
+  return problems
+}
+
 export function notesFor(changelog, version) {
   const lines = String(changelog).split('\n')
   const start = lines.findIndex((l) => l.startsWith(`## ${version} `) || l === `## ${version}`)

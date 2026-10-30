@@ -63,6 +63,36 @@ describe('the release script', () => {
   })
 })
 
+describe('the update feed', () => {
+  const feed = (url: string): { name: string; text: string }[] => [
+    { name: 'latest.yml', text: `version: 0.9.2\nfiles:\n  - url: ${url}\n    sha512: x\npath: ${url}\n` }
+  ]
+
+  it('passes when every file the feed names is among the release files', () => {
+    const files = ['PrismLCA-Setup-0.9.3.exe', 'PrismLCA-Setup-0.9.3.exe.blockmap', 'latest.yml']
+    expect(lib.feedProblems(feed('PrismLCA-Setup-0.9.3.exe'), files)).toEqual([])
+  })
+
+  it('catches what broke 0.9.2: a name with spaces that GitHub renames, and a feed naming another file', () => {
+    const problems = lib.feedProblems(feed('PrismLCA-Setup-0.9.2.exe'), ['PrismLCA Setup 0.9.2.exe', 'latest.yml'])
+    expect(problems).toHaveLength(2)
+    expect(problems.join('\n')).toMatch(/has a space/)
+    expect(problems.join('\n')).toMatch(/latest\.yml names PrismLCA-Setup-0\.9\.2\.exe/)
+  })
+
+  it('reads quoted names and the Linux feed with two files', () => {
+    const linux = [
+      {
+        name: 'latest-linux.yml',
+        text: "files:\n  - url: 'PrismLCA-0.9.3.AppImage'\n  - url: prism-lca_0.9.3_amd64.deb\npath: PrismLCA-0.9.3.AppImage\n"
+      }
+    ]
+    expect(lib.feedProblems(linux, ['PrismLCA-0.9.3.AppImage'])).toEqual([
+      'latest-linux.yml names prism-lca_0.9.3_amd64.deb, which is not among the release files'
+    ])
+  })
+})
+
 describe('the release workflow checks', () => {
   it('builds only from a vX.Y.Z tag that every version source agrees with', () => {
     expect(lib.checkReleaseRef('refs/tags/v0.9.0', '0.9.0', '0.9.0')).toBeNull()

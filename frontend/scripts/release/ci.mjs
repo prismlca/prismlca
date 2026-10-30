@@ -24,6 +24,7 @@ import {
   auditVerdict,
   checkReleaseRef,
   electronSupport,
+  feedProblems,
   isSpike,
   notesFor,
   npmAuditReport,
@@ -249,6 +250,16 @@ function buildInfo(paths) {
   process.stdout.write(`${lines.join('\n')}\n`)
 }
 
+// The update feed against the files that will be uploaded: run on dist/ before the release is created.
+function checkFeed(dir) {
+  const files = readdirSync(dir)
+  const feeds = files.filter((f) => /^latest.*\.yml$/.test(f)).map((name) => ({ name, text: readFileSync(join(dir, name), 'utf-8') }))
+  if (feeds.length === 0) die(`no latest*.yml in ${dir}`)
+  const problems = feedProblems(feeds, files)
+  if (problems.length) die(`update feed does not match the release files:\n  ${problems.join('\n  ')}`)
+  console.log(`update feed ok: ${feeds.map((f) => f.name).join(', ')} name only files that are there`)
+}
+
 const [cmd, ...rest] = process.argv.slice(2)
 if (cmd === 'verify-tag') verifyTag()
 else if (cmd === 'electron-support') electronCheck()
@@ -256,4 +267,5 @@ else if (cmd === 'audit') audit()
 else if (cmd === 'check-artifacts') checkArtifacts(rest[0], rest[1])
 else if (cmd === 'notes') notes(rest[0])
 else if (cmd === 'build-info') buildInfo(rest)
-else die('usage: ci.mjs verify-tag | electron-support | audit | check-artifacts <kind> <dir> | notes <version> | build-info <files…>')
+else if (cmd === 'check-feed') checkFeed(rest[0])
+else die('usage: ci.mjs verify-tag | electron-support | audit | check-artifacts <kind> <dir> | notes <version> | build-info <files…> | check-feed <dir>')

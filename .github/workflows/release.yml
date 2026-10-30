@@ -228,6 +228,8 @@ jobs:
           output-file: dist/sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
+      - name: The update feed names the files as they will be uploaded
+        run: node frontend/scripts/release/ci.mjs check-feed dist
       - name: Checksums and build information
         run: |
           node frontend/scripts/release/ci.mjs build-info dist > build-info.txt
