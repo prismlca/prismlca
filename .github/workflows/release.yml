@@ -1,10 +1,11 @@
-# PrismLCA release workflow: tag in, draft release with installers and checks out.
+# PrismLCA release workflow: tag in, release with installers and checks out.
 #
 # Started by pushing a tag vX.Y.Z (`npm run release` in frontend/ does that), or by hand ON a tag:
 #   gh workflow run release.yml --ref v0.9.0
 # A run on anything but refs/tags/vX.Y.Z stops in its first step; a spike tag vX.Y.Z-spike.N rehearses the
-# pipeline and yields a draft pre-release that is deleted afterwards. The result is a DRAFT release; only
-# the maintainer publishes it, after the release checklist. No job here publishes anything.
+# pipeline and yields a draft pre-release that is deleted afterwards. A real tag is published as the latest
+# release by the last job — and that job runs only after the maintainer approves the `release` environment,
+# which is the one human gate. Nothing else here publishes.
 #
 # Unsigned for now. The Windows signing job on the self-hosted release VM (runner label prism-release-win)
 # comes with the code-signing certificate.
@@ -196,12 +197,13 @@ jobs:
             frontend/release/latest.yml
 
   draft:
-    name: Draft release (published by hand)
+    name: Release (published after approval)
     needs: [linux, windows]
     runs-on: ubuntu-22.04
     timeout-minutes: 30
-    # The maintainer approves this job before anything is written to the repo. Environments with required
-    # reviewers exist for public repos on GitHub Free; in the private phase the run waits on nothing.
+    # The maintainer approves this job before anything is written to the repo, and the approval is the
+    # release: the job publishes at its end. Environments with required reviewers exist for public repos on
+    # GitHub Free; in the private phase the run waits on nothing.
     environment: release
     permissions:
       contents: write
@@ -236,21 +238,24 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
-      - name: Create the DRAFT release
+      - name: Create the release, then publish it once every file is on it
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${GITHUB_REF_NAME#v}"
-          # A spike tag rehearses the pipeline: its draft is marked pre-release and deleted afterwards.
+          # A spike tag rehearses the pipeline: its draft is marked pre-release, never published, deleted afterwards.
           PRE=()
           case "$V" in *-spike.*) PRE=(--prerelease) ;; esac
           node frontend/scripts/release/ci.mjs notes "$V" > notes.md
+          # Draft first, every file attached, published last: an immutable release takes no file afterwards.
           URL=$(gh release create "$GITHUB_REF_NAME" dist/* --draft "${PRE[@]}" --verify-tag \
             --title "PrismLCA $V" --notes-file notes.md)
-          # A draft is addressed by its own URL, not by the tag: a link built from the tag opens a NEW, empty
-          # release for it, and with immutable releases a published one burns the tag name for good.
-          {
-            echo "### Draft ready: $URL"
-            echo "Publish it from that page (Edit → Set as the latest release → Publish release),"
-            echo "never through a link made from the tag."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ${#PRE[@]} -gt 0 ]; then
+            echo "### Spike draft (not published): $URL" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          want=$(ls dist | wc -l)
+          have=$(gh release view "$GITHUB_REF_NAME" --json assets -q '.assets | length')
+          [ "$have" = "$want" ] || { echo "::error::draft has $have files, dist has $want — not published: $URL"; exit 1; }
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          echo "### Published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$GITHUB_REF_NAME" >> "$GITHUB_STEP_SUMMARY"

@@ -7,7 +7,8 @@
  *    workflow runs nothing from the pull request: default branch only, no token kept, no shell steps;
  *  - the self-hosted release runner (label prism-release-win) only in the release workflow, and never
  *    in a workflow a pull request can start — labels route jobs, they do not protect the runner;
- *  - no workflow publishes a release: drafts only, the maintainer publishes;
+ *  - only the release workflow publishes, and only in the job behind the `release` environment — the
+ *    maintainer's approval is the gate; electron-builder never publishes on its own;
  *  - the release workflow starts only on tags and by hand, denies all permissions at the top, and every
  *    checkout keeps no credentials.
  */
@@ -58,10 +59,18 @@ describe('GitHub workflows', () => {
     expect(on).not.toHaveProperty('pull_request_target')
   })
 
-  it.each(files)('%s never publishes a release', (f) => {
-    const { text } = load(f)
-    expect(text).not.toMatch(/--draft=false|draft:\s*false|make_latest|gh release edit/)
+  const PUBLISHES = /--draft=false|draft:\s*false|make_latest|gh release edit/
+  it.each(files)('%s publishes only behind the release environment', (f) => {
+    const { text, wf } = load(f)
     expect(text).not.toMatch(/electron-builder[^\n]*--publish (always|onTag)/)
+    for (const [name, job] of Object.entries(wf.jobs ?? {})) {
+      const runs = (job.steps ?? []).map((s) => s.run ?? '').join('\n')
+      if (!PUBLISHES.test(runs)) continue
+      expect(f, `${name} publishes`).toMatch(/^release\.ya?ml/)
+      expect((job as { environment?: unknown }).environment, `${name} publishes without the approval gate`).toBe(
+        'release'
+      )
+    }
   })
 
   it('CLA workflow: runs nothing from the pull request — default branch only, no token kept, no shell', () => {
