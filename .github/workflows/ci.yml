@@ -1,0 +1,59 @@
+# Checks on every push to main and every pull request: the same tests, lint and notices check the release
+# workflow starts with, without building installers — that stays the release's work, on a tag. Pull requests
+# from forks run with a read-only token and, by the organisation's setting, only after the maintainer
+# approves the run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+# A newer push to the same branch or pull request makes the older run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  test:
+    name: Tests, lint, notices
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra build
+      # Before the backend tests: the third-party notices test reads frontend/node_modules.
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Backend lint and tests
+        working-directory: backend
+        run: |
+          uv run ruff check src tests scripts
+          uv run pytest -n auto -q
+      - name: Third-party notices are current
+        working-directory: backend
+        run: uv run python scripts/third_party_notices.py --check
+      - name: Frontend typecheck, lint and tests
+        working-directory: frontend
+        run: |
+          npm run typecheck
+          npm run lint
+          npx vitest run
