@@ -3,7 +3,7 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
-## 0.9.1 — 2026-10-30
+## 0.9.2 — 2026-10-30
 
 First public beta.
 
@@ -33,6 +33,11 @@ privately, as described in [SECURITY.md](https://github.com/prismlca/prismlca/bl
 **Beta.** Expect rough edges, and please report them in the issues. Each release comes with `SHA256SUMS`,
 `build-info.txt`, a CycloneDX SBOM and build provenance attestations.
 
+## 0.9.1 — 2026-10-30
+
+Published by mistake without its files and withdrawn; the tag cannot be used again. 0.9.2 is the first public
+release.
+
 ## 0.9.0 — 2026-10-30
 
-Built and tagged, never published; 0.9.1 is the first public release.
+Built and tagged, never published.
