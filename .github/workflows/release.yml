@@ -245,5 +245,12 @@ jobs:
           PRE=()
           case "$V" in *-spike.*) PRE=(--prerelease) ;; esac
           node frontend/scripts/release/ci.mjs notes "$V" > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* --draft "${PRE[@]}" --verify-tag \
-            --title "PrismLCA $V" --notes-file notes.md
+          URL=$(gh release create "$GITHUB_REF_NAME" dist/* --draft "${PRE[@]}" --verify-tag \
+            --title "PrismLCA $V" --notes-file notes.md)
+          # A draft is addressed by its own URL, not by the tag: a link built from the tag opens a NEW, empty
+          # release for it, and with immutable releases a published one burns the tag name for good.
+          {
+            echo "### Draft ready: $URL"
+            echo "Publish it from that page (Edit → Set as the latest release → Publish release),"
+            echo "never through a link made from the tag."
+          } >> "$GITHUB_STEP_SUMMARY"
