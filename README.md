@@ -34,7 +34,7 @@ Windows 10 and 11 (64-bit), the `.AppImage` or the `.deb` for Linux (x64). `SHA2
 every file, and every file carries a build provenance attestation
 (`gh attestation verify <file> --repo prismlca/prismlca`).
 
-- **Windows:** releases before 0.9.1 are not code-signed, so Windows shows "Windows protected your PC". Compare
+- **Windows:** releases are not code-signed yet, so Windows shows "Windows protected your PC". Compare
   the installer with `SHA256SUMS` first (`Get-FileHash .\<installer>.exe` in PowerShell), then choose
   *More info → Run anyway*. By default it installs for your user only, without administrator rights.
 - **Linux:** check with `sha256sum -c SHA256SUMS --ignore-missing`, then make the AppImage executable and start

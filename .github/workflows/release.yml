@@ -6,8 +6,8 @@
 # pipeline and yields a draft pre-release that is deleted afterwards. The result is a DRAFT release; only
 # the maintainer publishes it, after the release checklist. No job here publishes anything.
 #
-# Unsigned for v0.9.0. The Windows signing job on the self-hosted release VM
-# (runner label prism-release-win) comes with v0.9.1.
+# Unsigned for now. The Windows signing job on the self-hosted release VM (runner label prism-release-win)
+# comes with the code-signing certificate.
 #
 # Every action is pinned to a commit SHA (version in the comment); the workflow tripwire
 # frontend/scripts/release/workflows.test.ts enforces that and the other workflow rules.
@@ -147,7 +147,7 @@ jobs:
             frontend/release/latest-linux.yml
 
   windows:
-    name: Windows installer (unsigned until v0.9.1)
+    name: Windows installer (unsigned)
     needs: verify
     runs-on: windows-2022
     timeout-minutes: 120
