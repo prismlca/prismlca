@@ -84,7 +84,9 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
     New files stay below 800 or 1000 lines; every current large file has a ceiling (line count + 25 for
     wiring) that may only go down. Raising it is allowed when the new lines belong in that file — with a
     comment saying why they cannot live elsewhere. Both run in the normal suites, so run `npx vitest run`
-    and `uv run pytest -n auto` before every commit.
+    and `uv run pytest -n auto` before every commit that touches code. A commit that changes only docs,
+    text, images or CSS may leave them to CI (`.github/workflows/ci.yml`, on every push to `main` and every
+    pull request) — and a red CI run on `main` is the next thing to fix.
 - **The full BAFU test is opt-in**: the normal suite writes one of bw2io's bundled methods per family, not
   all 762 (a minute on its own). Whoever changes the BAFU import (`engine/backgrounds/`) or bumps bw2io or
   bw2data also runs `PRISM_FULL_BAFU=1 uv run pytest tests/test_backgrounds_bafu.py` before committing.
