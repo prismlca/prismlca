@@ -152,10 +152,11 @@ def build() -> dict[Path, str]:
     counts = f'{meta.get("python", "?")} Python packages and {meta.get("npm", "?")} npm packages'
     built = f'PrismLCA {meta.get("version", "?")}, generated from commit {meta.get("commit", "?")}'
     page = f"""<!doctype html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="only light" />
   <title>PrismLCA Licences</title>
   <meta name="description" content="PrismLCA is free software under the {html.escape(c['LICENCE_NAME'])}. The licence, the third-party components it ships with, and how background data is licensed." />
   <link rel="icon" href="assets/img/favicon.png" type="image/png" />

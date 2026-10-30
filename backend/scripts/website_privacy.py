@@ -249,10 +249,11 @@ def build() -> dict[Path, str]:
     foot = foot.replace('<a href="licenses.html" aria-current="page">Licences</a>', '<a href="licenses.html">Licences</a>')
     foot = foot.replace('<a href="privacy.html">Privacy</a>', '<a href="privacy.html" aria-current="page">Privacy</a>')
     page = f"""<!doctype html>
-<html lang="en" class="no-js">
+<html lang="en" class="no-js" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="only light" />
   <title>PrismLCA Privacy</title>
   <meta name="description" content="How the PrismLCA website and the PrismLCA app handle personal data: no own cookies, no third-party tracking, statistics on our own server." />
   <link rel="icon" href="assets/img/favicon.png" type="image/png" />
