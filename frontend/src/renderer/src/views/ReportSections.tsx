@@ -21,6 +21,7 @@ import ReportHeadGroup from './report/ReportHeadGroup'
 import ReportAppearanceGroup from './report/ReportAppearanceGroup'
 import ReportDefaultsGroup from './report/ReportDefaultsGroup'
 import useChapterWriter from './report/useChapterWriter'
+import { useReviewPoints } from './report/useReviewPoints'
 import {
   chapterLabel,
   REPORTABLE_SCOPE,
@@ -32,6 +33,7 @@ import {
 } from '../lib/report/model'
 import { defaultTicks, languagePlan, runSize } from '../lib/report/plan'
 import { chapterState, openQuestions, stateCounts, stateSummary } from '../lib/report/chapterStatus'
+import { plainReason } from '../lib/report/findingText'
 import {
   checkProgressText,
   failureText,
@@ -550,10 +552,10 @@ export default function ReportSections({
     runPlan,
     updateOne,
     answerQuestion,
-    keepPoint,
     cancelRun,
     reset: resetWriter
   } = writer
+  const { keepPoint, replaceNumber } = useReviewPoints({ base, load, loadStaleness, onChanged, setError })
   // A report deleted under a running write leaves the run posting chapters to a 404, so the page's Delete
   // waits for this.
   const busyWriting = writing !== null || writingAll !== null
@@ -708,7 +710,7 @@ export default function ReportSections({
   const written = writableSecs.filter((s) => (s.text ?? '').trim()).length
   /** Why a held draft could not be finished, in one sentence: the first reason the run gave. */
   const draftReasons: Record<string, string> = Object.fromEntries(
-    Object.keys(drafts).map((id) => [id, findings[id]?.[0]?.detail ?? ''])
+    Object.keys(drafts).map((id) => [id, findings[id]?.length ? plainReason(findings[id]) : ''])
   )
   /** The chapters a model is working on right now — the single Write, or the run's open steps. */
   const working: Record<string, 'write' | 'update'> = {}
@@ -1244,11 +1246,13 @@ export default function ReportSections({
                 your name. A chapter that changes afterwards shows "New" until you approve again. */}
             <button
               className="btn sm"
-              disabled={writing !== null || writingAll !== null || !counts.new}
+              disabled={writing !== null || writingAll !== null || !counts.new || !!counts.numbers}
               title={
-                counts.new
-                  ? 'You have read the chapters marked “New” and the report says what you want it to say. A chapter that changes afterwards is marked “New” again.'
-                  : 'Nothing new since your last approval.'
+                counts.numbers
+                  ? 'Numbers are still typed into the text — keep or replace each one in its chapter first.'
+                  : counts.new
+                    ? 'You have read the chapters marked “New” and the report says what you want it to say. A chapter that changes afterwards is marked “New” again.'
+                    : 'Nothing new since your last approval.'
               }
               onClick={() => void release()}
             >
@@ -1363,6 +1367,10 @@ export default function ReportSections({
           askWrite={askWrite}
           loadPrompts={loadPrompts}
           onKeepPoint={keepPoint}
+          onReplaceNumber={replaceNumber}
+          movedNumbers={(stale[open.id]?.findings ?? [])
+            .filter((f) => f.kind === 'kept_numbers')
+            .flatMap((f) => f.points ?? [])}
           onEarlier={(s) => {
             setOpenId(null)
             setReadDiff({ section: s, before: s.previous?.text ?? '', kind: 'previous' })

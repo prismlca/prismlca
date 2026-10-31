@@ -246,6 +246,15 @@ export interface ReviewIssue {
   fix?: string
   status: 'resolved' | 'false_positive' | 'open'
   resolution?: string
+  /** Set on a number the writer left typed out, kept for the author (engine/report_typed_numbers). */
+  origin?: 'typed_number'
+  /** The typed number as written, the stored sentence it stands in, and where in it. */
+  number?: string
+  source?: string
+  offset?: number
+  occurrence?: number
+  /** Placeholders it was matched to — what each prints today, and whether it prints its own “%”. */
+  candidates?: Array<{ path: string; label: string; prints: string; own_percent: boolean }>
 }
 
 /** Something only the author can settle — asked with the reader's own proposal for an answer. */

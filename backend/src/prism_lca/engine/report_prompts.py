@@ -24,12 +24,13 @@ from prism_lca.engine import (
     report_checks,
     report_claims,
     report_kinds,
+    report_numbers,
+    report_printed,
     report_sources,
     report_tokens,
 )
 from prism_lca.engine import report_data as rd
 from prism_lca.engine import report_typst as rt
-from prism_lca.engine import units as units_of
 from prism_lca.engine.report_i18n import LANGUAGES, kind_title, normalise
 from prism_lca.engine.report_model import PROSE_KINDS
 from prism_lca.errors import PrismError
@@ -567,12 +568,17 @@ def cautions(report: dict[str, Any], data: dict[str, Any]) -> list[str]:
     # Through the shared reading, not its own: the brief states this number to the author, the gate
     # judges the sentences by it and the staleness record stores what the chapter was written under.
     # Three normalisations of one option could differ on an unset or a zeroed one (V195).
-    threshold = report_claims.weak_percent(options)
+    #
+    # The threshold has its own placeholder: stated here as a figure, it was typed out and refused as a
+    # literal — three chapters of one run went back for it (V460).
+    threshold = rd.report_settings(report, normalise(report.get("lang")))["significance_text"]
     if len(subjects) > 1:
         out.append(
-            f"Differences below {threshold:.3g} % are not evidence of a difference in this report — no "
+            f"Differences below {threshold} are not evidence of a difference in this report — no "
             "uncertainty analysis was carried out. Where two variants are that close, write that they "
-            "are comparable and name the spread instead of ranking them."
+            "are comparable and name the spread instead of ranking them. Where a sentence names this "
+            "threshold, write {{report.significance_text}}: it prints "
+            f"“{threshold}” and follows the report's setting."
         )
 
     flips = data.get("trade_offs") or []
@@ -1296,7 +1302,9 @@ def build_brief(section: dict[str, Any], report: dict[str, Any], data: dict[str,
         # The values behind those paths, capped for prose. The writer used to select these itself
         # (and selected less than its own prompt referred to); selecting them here, beside the
         # prompts and the gate, is what keeps assignment, evidence and check congruent.
-        "facts": brief_facts(data, kind),
+        # Every decimal figure as the document prints it: a writer copies what it is shown, and a raw
+        # 0.548 came back as a typed "55" (V460). See `report_printed.as_printed`.
+        "facts": report_printed.as_printed(brief_facts(data, kind), lang),
         "derivations": sorted(rd.DERIVATIONS),
         # What the rest of the document already says, for the two chapters that summarise it. Placeholders
         # intact — see written_siblings. Empty for every other kind, and empty until they are written.
@@ -1365,410 +1373,6 @@ _ANTITHESIS_PER_1000 = 6.0
 _EMOJI = re.compile(
     "[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U00002B00-\U00002BFF\U0000FE0F\U0001F1E6-\U0001F1FF]"
 )
-
-#: A bare number typed into the prose. Forbidding every digit produces worse prose than it prevents,
-#: so two kinds are left alone: small numbers and years ("the 3 phases", "in 2021"), and numbers that
-#: are part of a *designation* rather than a result — "ISO 14044", "ecoinvent 3.12", "CML v4.8". Those
-#: cannot go stale when the model is recomputed, which is the only thing this rule protects against.
-_LITERAL_NUMBER = re.compile(r"(?<![\w.])\d[\d.,]*(?:[eE][+-]?\d+)?")
-_ALLOWED_LITERALS = re.compile(r"^(?:1[0-9]{3}|20[0-9]{2}|1[0-9]|[0-9])$")
-_DESIGNATORS = (
-    "iso", "en", "din", "iec", "cen", "ipcc", "cml", "recipe", "traci", "pef", "epd",
-    "ecoinvent", "gabi", "usetox", "gwp", "version", "v", "no",
-)
-_DESIGNATED = re.compile(
-    r"(?:\b(?:" + "|".join(_DESIGNATORS) + r")\b[\s.:v-]*)(\d[\d.,]*)", re.IGNORECASE
-)
-
-
-def _numbers_in(text: str) -> list[tuple[str, int]]:
-    """Numbers that are neither a designation nor obviously harmless, with where each one ends."""
-    designated = {m.start(1) for m in _DESIGNATED.finditer(text)}
-    return [(m.group(0), m.end()) for m in _LITERAL_NUMBER.finditer(text) if m.start() not in designated]
-
-
-#: Unit tokens as they follow a figure in prose. Lower-cased; identifiers stay verbatim in reports, so
-#: the SI/LCA symbols cover the five languages — the words are a small extra net. Matched as a PREFIX of
-#: the token (see `_unit_prefix`), so "kg" also covers "kg CO2-Eq", "kgCO2e", "kg-CO2-eq" and "kg/FU",
-#: and "MJ" covers "MJ-eq"; the LCIA method's own units are added per report (`_method_units`).
-_UNIT_WORDS = frozenset({
-    "kg", "g", "mg", "µg", "ug", "ng", "t", "kt", "mt", "km", "m", "cm", "mm", "l", "ml", "hl", "ha",
-    "mol", "kmol", "kwh", "mwh", "gwh", "twh", "mj", "gj", "kj", "tj", "j", "w", "kw", "mw", "wh",
-    "ppm", "ppb", "pt", "pts", "mpt", "bq", "kbq", "pa", "kpa", "mpa", "kcal", "cal", "m2", "m3",
-    "m²", "m³", "m2a", "m3a", "km2", "km²", "tkm", "pkm", "vkm", "ctuh", "ctue", "daly", "dalys",
-    "points", "punkte", "tonne", "tonnes", "tonnen", "toneladas", "tonnellate", "kilogram",
-    "kilograms", "kilogramm", "kilogramme", "kilogrammes", "kilogramos", "chilogrammi", "gram",
-    "grams", "gramm", "litre", "litres", "liter", "liters", "litros", "megajoule", "megajoules",
-    "kilometre", "kilometres", "kilometer", "kilometers", "percent", "prozent", "pourcent",
-})
-
-#: What may stand between a figure and its unit: nothing ("12kg", "12%"), a space or a no-break space
-#: ("12 kg", "12\u202fkg"), or a hyphen ("a 2-kg bottle").
-_UNIT_TOKEN = re.compile(r"[\s-]{0,2}([^\s.,;:)\]]{1,16})")
-
-
-def _unit_prefix(token: str, extra: frozenset[str] = frozenset()) -> str | None:
-    """The physical unit the token begins with — "kg" for "kg", "kgCO2e", "kg-CO2-eq", "Kg" — or None.
-
-    A prefix counts only where the unit ENDS there: what follows is nothing, a non-letter ("kg-eq",
-    "g/km") or a reference substance with a digit in it ("kgCO2e", "tCO2eq"). A bare letter run does
-    not count, or "m" would start "months", "l" would start "LCA" in "the 2 LCA studies" and "km" would
-    start "KMU". Case is folded for the unit itself ("Kg", "MJ"); the longest unit wins ("mj", not "m").
-    """
-    if token[:1] in ("%", "‰"):
-        return token[0]
-    if token.startswith("°"):
-        return "°"
-    low = token.lower()
-    for unit in sorted(_UNIT_WORDS | extra, key=len, reverse=True):
-        if not low.startswith(unit):
-            continue
-        rest = token[len(unit):]
-        if not rest or not rest[0].isalpha() or any(c.isdigit() for c in rest):
-            return unit
-    return None
-
-
-def _method_units(data: dict[str, Any]) -> frozenset[str]:
-    """The leading symbol of every unit the report's own results carry — "CTUh", "kBq", "disease".
-
-    The static list cannot know every LCIA method's unit; the results handed to the writer can. Only
-    result and contribution units: a parameter's unit may be "piece" or "unit", and "12 pieces" is a
-    count, which is what the small-number allowance exists for.
-    """
-    units = [r.get("unit") for r in data.get("results") or [] if isinstance(r, dict)]
-    units.append((data.get("contribution") or {}).get("unit"))
-    out: set[str] = set()
-    for unit in units:
-        if not isinstance(unit, str) or not unit.strip():
-            continue
-        lead = re.split(r"[\s.,/(]", unit.strip(), maxsplit=1)[0].lower()
-        if len(lead) >= 2 and re.search(r"[a-zµ]", lead) and lead not in _DESIGNATORS:
-            out.add(lead)
-    return frozenset(out)
-
-
-def _physical_unit_after(text: str, end: int, extra: frozenset[str] = frozenset()) -> str | None:
-    """The physical unit written right after a number — "kg" for "12 kg CO2-Eq", "%" for "12 %".
-
-    The strict half of `_unit_follows`, and the only half the small-number allowance asks: "the 3
-    LCIA methods" and "2 EPDs" start with capitals and would read as units to the broader test.
-    """
-    m = _UNIT_TOKEN.match(text[end:])
-    return _unit_prefix(m.group(1).rstrip(".,;:!?"), extra) if m else None
-
-
-def _physical_unit_follows(text: str, end: int, extra: frozenset[str] = frozenset()) -> bool:
-    return _physical_unit_after(text, end, extra) is not None
-
-
-def _written_unit(text: str, end: int) -> str:
-    """The unit token after a number as the writer typed it, for quoting it back ("MJ", "kgCO2e")."""
-    m = _UNIT_TOKEN.match(text[end:])
-    return m.group(1).rstrip(".,;:!?") if m else ""
-
-
-#: What marks a unit as a characterised LCIA unit when it is written INTO the unit token: "kgCO2e",
-#: "kg-CO2-Eq", "kgSO2eq". Read only on the token's own rest — never on the words after it.
-_CHARACTERISED = re.compile(r"(?i)eq\b|eq\.|co2|co₂|\d")
-
-#: …and when it follows as its own token: "kg CO2-Eq", "mol H+-Eq", "kBq U235-Eq", "kg SO2 eq",
-#: "kg P eq", "m3 world eq. deprived". A reference substance with its "eq", or CO2 alone ("kg CO2").
-#: Deliberately narrow: "2 kg and 3 bottles" and "2 kg in 2026" are a mass, and the digit in a later
-#: word is no part of the unit.
-_SUBSTANCE_EQ = re.compile(
-    r"(?i)(?:co2|co₂)(?:[-‑ ]?e(?:q)?\b\.?)?(?![\w])"
-    r"|[\w+,₀-₉-]{1,12}?[-‑]eq\b\.?"
-    r"|[\w+₀-₉]{1,8}\s+eq\b\.?"
-    r"|eq\b\.?"
-)
-
-
-def _unit_signature(text: str, end: int, extra: frozenset[str] = frozenset()) -> tuple[str, bool] | None:
-    """The unit after a number and whether it is characterised — ("kg", True) for "1 kg CO2-Eq",
-    ("kg", False) for "1 kg of juice". What a quotation must match: the scope's "1 kg" functional unit
-    is not the "1 kg CO2-Eq" result.
-
-    Characterised is read inside the unit expression only: the rest of the unit token itself, or the
-    token directly after it when that is a reference substance (`_SUBSTANCE_EQ`). Reading "the next two
-    words" made "2 kg in 2026" a characterised unit and let a parameter's value through unreported."""
-    m = _UNIT_TOKEN.match(text[end:])
-    if not m:
-        return None
-    token = m.group(1).rstrip(".,;:!?")
-    if (unit := _unit_prefix(token, extra)) is None:
-        return None
-    if _CHARACTERISED.search(token[len(unit):]):
-        return unit, True
-    after = text[end + m.end(1) :]
-    # Any whitespace, a line break included ("kg\nCO2-Eq" from a wrapped line, "kg   CO2-Eq"). The
-    # token is normalised before it is judged: sentence punctuation off ("kg CO2."), and a per-unit
-    # suffix after the substance cut ("CO2-Eq/m2", "CO2-Eq/FU"), so the substance itself decides.
-    following = re.match(r"\s+(\S+(?:\s+eq\b\.?)?)", after, re.IGNORECASE)
-    if not following:
-        return unit, False
-    candidate = following.group(1).split("/", 1)[0].rstrip(".,;:!?)")
-    return unit, bool(candidate and _SUBSTANCE_EQ.fullmatch(candidate))
-
-
-def _signature_key(signature: tuple[str, bool]) -> tuple[str, bool]:
-    """A unit signature with its symbol normalised through the alias table — "kilometres" is "km"."""
-    unit, characterised = signature
-    return _UNIT_ALIASES.get(unit, unit), characterised
-
-
-def _unit_follows(text: str, end: int, extra: frozenset[str] = frozenset()) -> bool:
-    """Whether the token right after a number reads as a unit — "1350 MJ" is a figure, not a year.
-
-    The year whitelist below let any 1000–2099 literal through, and four-digit results are routine in
-    LCA (MJ, km, L for larger functional units). A token counts as a unit when it begins with a known
-    unit (`_physical_unit_follows`), or when it is a short token with an uppercase letter or digit
-    *after* its first character ("CO2-Eq") — not on its first, or every German noun and every
-    sentence-initial word after a year would match. Designators are excluded: they come before their
-    number ("ISO 14044"), and "seit 2006 ISO 14044 gilt …" must stay a year.
-    """
-    if _physical_unit_follows(text, end, extra):
-        return True
-    m = re.match(r"\s{1,2}([^\s.,;:)\]]{1,12})", text[end:])
-    if not m:
-        return False
-    token = m.group(1)
-    base = token.rstrip(".,;:!?").lower()
-    return len(base) <= 6 and base not in _DESIGNATORS and bool(re.search(r"[A-Z0-9µ]", token[1:]))
-
-
-def _number_key(number: str) -> str:
-    """A number normalised for whitelist comparison: trailing punctuation off, decimal mark unified.
-
-    Both sides of the quotation check go through this — the chapter's numbers used to be stripped while
-    the whitelist entries were not, so a scope ending in "…of 300." blocked a chapter writing "300",
-    and a German chapter quoting "1,5" never matched the metadata's "1.5"."""
-    return number.rstrip(".,").replace(",", ".")
-
-
-def _repair_for(
-    text: str,
-    number: str,
-    end: int,
-    named: tuple[str, str],
-    data: dict[str, Any],
-) -> dict[str, Any]:
-    """The exact substitution for one literal, or nothing when it is not beyond argument.
-
-    The number AND the unit beside it are replaced together, by the parameter's own two placeholders.
-    That is deliberate, and it is the one place where the repaired sentence does not read exactly as
-    it was written: the study's package volume is stored as ``0.25 l`` and the chapter wrote
-    ``250 ml``, so the repaired sentence prints ``0.25 l``. The quantity is identical, the wording is
-    the parameter's rather than the author's — and the alternative, measured, is losing 853 words that
-    were right about everything else (V267). The advisory finding says what it now prints, so the
-    trade is visible rather than silent.
-
-    Everything else is refused:
-
-    * an **ambiguous** value — `_parameter_number_keys` yields None where two parameters claim the same
-      value and unit family, and a coin toss is not a repair;
-    * a value whose own form is **scientific notation** (``4.2e-05 t``), which no report prints in prose;
-    * a number with **no unit** after it, because then there is nothing to replace the unit with and
-      nothing that made the match specific in the first place;
-    * anything inside a **quotation**, which is verbatim by definition.
-    """
-    if _unit_family_after(text, end) is None:
-        return {}
-    match = re.match(r"\s{1,2}([^\s.,;:)\]]{1,12})", text[end:])
-    if not match:
-        return {}
-    name, path = named
-    try:
-        param = (data.get("parameters") or [])[int(path.rsplit(".", 1)[1])]
-        amount = f"{float(param['amount']):g}"
-        unit = str(param.get("unit") or "")
-    except (IndexError, KeyError, TypeError, ValueError):
-        return {}
-    if "e" in amount.lower() or not unit:
-        return {}
-    start = end - len(number)
-    if _inside_quotes(text, start):
-        return {}
-    return {
-        "repair": {
-            "find": text[start : end + match.end()],
-            "replace": f"{{{{{path}.amount}}}} {{{{{path}.unit}}}}",
-            "parameter": name,
-            "prints": f"{amount} {unit}",
-        }
-    }
-
-
-def apply_repairs(text: str, findings: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
-    """Carry out the substitutions the check itself specified. Returns the new text and what was done.
-
-    The gate used to be a judge and nothing else: it worked out that "250" was the current value of
-    `gebinde_volumen_l`, wrote the placeholder that belongs there into its own message — and then threw
-    the chapter away. Two of nine chapters of one run died that way, one of them the best
-    goal-and-scope text any run had produced, over one number in a product name that the same chapter
-    wrote correctly two sentences later (V267).
-
-    Nothing here interprets. A repair is applied only where `_repair_for` has already established that
-    the substitution prints the same characters it replaces, and only where the exact string still
-    occurs **once** — a second occurrence means the surrounding sentences differ and the check has to
-    look at each of them, which it will, because the caller re-checks the result.
-
-    The caller must re-run `check_proposal` on the returned text. This function does not decide that a
-    chapter is clean; it removes the objections that had a mechanical answer, and the check says
-    whether that was enough.
-    """
-    applied: list[dict[str, Any]] = []
-    out = text
-    for finding in findings:
-        repair = finding.get("repair") if isinstance(finding, dict) else None
-        if not isinstance(repair, dict):
-            continue
-        find, replace = str(repair.get("find") or ""), str(repair.get("replace") or "")
-        if not find or out.count(find) != 1:
-            continue
-        out = out.replace(find, replace, 1)
-        applied.append({**repair, "kind": finding.get("kind")})
-    return out, applied
-
-
-def _literal_number_findings(
-    without_placeholders: str, data: dict[str, Any], kind: str = ""
-) -> list[dict[str, Any]]:
-    """The `literal_number` findings of `check_proposal` — every figure typed out that should be a
-    placeholder. Split out of the gate for size only; the rules are documented where they apply."""
-    out: list[dict[str, Any]] = []
-    # Numbers that appear in the *descriptions* we handed over are quotations, not inventions. A scope
-    # saying "a 20 g bag delivered over 300 km" makes those figures part of the contract; so does an
-    # ecoinvent dataset description saying a plant burns at 700–875 °C, which two different models quoted
-    # and both had refused. Flagging them teaches the writer to hide the very facts that explain a result.
-    #
-    # Result figures are deliberately NOT in here, and neither are lookup results: those have placeholders
-    # (or, for a lookup, no way to stay correct), so they must not be typed out.
-    quotable = _quotable_text(data)
-    # A chapter shown the research findings may quote their figures: a published figure about something
-    # outside this model, sourced, and not one a recalculation moves — the reason a lookup's figure is
-    # refused does not apply to it. The same set of chapters that is shown them (`_SPECIALIST_FACTS`).
-    researched = report_sources.research_text(data) if kind in _SPECIALIST_FACTS["web_research"] else ""
-    method_units = _method_units(data)
-    # The exchange notes likewise, where they are shown ("the supplier ships 1200 km by lorry") — but never a
-    # figure in an indicator's unit: a producer's "0.42 kg CO2-Eq per bottle" would vouch for the same figure
-    # typed as this model's result, and no recalculation would move it.
-    noted = " ".join(n["note"] for n in exchange_notes(data)) if kind in _SPECIALIST_FACTS["exchange_notes"] else ""
-    indicator_units = {_UNIT_ALIASES.get(u, u) for u in method_units}
-    noted_figures = [
-        (n, unit) for n, end in _numbers_in(noted)
-        if not ((unit := _unit_signature(noted, end, method_units))
-                and (unit[1] or _signature_key(unit)[0] in indicator_units))
-    ]
-    quoted_numbers = {_number_key(n) for text in (quotable, researched) for n, _end in _numbers_in(text)}
-    quoted_numbers |= {_number_key(n) for n, _unit in noted_figures}
-    # …with one exception to the exception: a figure that is a **parameter's current value** is not a
-    # quotation, however often a description spells it out. Parameters are by definition the quantities
-    # that move, so a number that says one out loud is precisely the number that will be wrong — and it
-    # arrives through this door, because the process notes name the parameter *and* its value. An
-    # apple-juice report printed "the EUR pallet — 42 g of softwood allocated to each bottle"
-    # in prose; the pallet share is 4 g now, the sentence still says 42, and every check was green
-    # (V164's write-time half). The annex prints the parameter table, so there is always somewhere to
-    # point instead.
-    parameter_numbers = _parameter_number_keys(data)
-    # Figure AND unit, for every quotation that carries one. A quotable "1500 km" used to vouch for
-    # "1500 kg CO2-Eq" as soon as the figure had four digits — the number was matched, the unit never.
-    # Units are compared by symbol through the alias table, so a scope's
-    # "1500 kilometres" still covers a chapter's "1500 km".
-    def with_units(text: str) -> set[tuple[Any, Any]]:
-        return {
-            (_number_key(n), _signature_key(unit))
-            for n, n_end in _numbers_in(text)
-            if (unit := _unit_signature(text, n_end, method_units)) is not None
-        }
-
-    research_units = with_units(researched)
-    quoted_units = with_units(quotable) | research_units
-    quoted_units |= {(_number_key(n), _signature_key(unit)) for n, unit in noted_figures if unit}
-    for number, end in _numbers_in(without_placeholders):
-        bare = number.rstrip(".,")
-        # The year shape only counts when nothing unit-like follows: "amounts to 1350 MJ" used to pass
-        # as "the year 1350" and freeze a result figure in the text. Small numbers (0–19) are counts
-        # ("the 3 phases", "two of the 4 scenarios") — but only while no physical unit follows: "12 kg
-        # CO2-Eq" passed as a count, unbound and never checked for staleness. An input
-        # quantity from the scope ("the 2 kg bottle") is still let through below, as a quotation.
-        small_unit: tuple[str, bool] | None = None
-        if _ALLOWED_LITERALS.match(bare):
-            if len(bare) < 4:
-                small_unit = _unit_signature(without_placeholders, end, method_units)
-                if small_unit is None:
-                    continue
-                # A small figure with a unit is a quotation only with the SAME unit: every scope names
-                # its "1 kg" functional unit or "12 bottles", and matching the number alone would let
-                # "1 kg CO2-Eq" or "12 kg" through on the strength of them. "The 2 kg bottle" from the
-                # goal stays quotable — unless it is a parameter's current value, like any figure.
-            elif not _unit_follows(without_placeholders, end, method_units):
-                continue
-        named = parameter_numbers.get((_number_key(number), _unit_family_after(without_placeholders, end)))
-        if named and not _same_quantity(without_placeholders, end, method_units, named, data):
-            # The leading symbol matched and nothing else did: "2 kg CO2-Eq" is a result, not the 2 kg
-            # fill mass. Bound to the parameter, it would print "3 kg CO2-Eq" after a recompute with no
-            # finding at all. It stays a plain refusal until a result reference is written.
-            named = None
-        written_unit = (
-            small_unit if small_unit is not None else _unit_signature(without_placeholders, end, method_units)
-        )
-        quoted = (
-            (_number_key(number), _signature_key(written_unit)) in quoted_units
-            if written_unit is not None
-            else _number_key(number) in quoted_numbers
-        )
-        if quoted and not named:
-            continue
-        # A researched figure that is ALSO a parameter's current value: the sentence may be about this
-        # model or about a source, and only its words can say which. So no repair — a placeholder put
-        # into a quotation would print the model's next value under the source's name — and a refusal
-        # that names both readings.
-        cited = (
-            named is not None
-            and written_unit is not None
-            and (_number_key(number), _signature_key(written_unit)) in research_units
-        )
-        out.append(
-            {
-                "kind": "literal_number",
-                "names": [bare],
-                # How to repair it, when the repair is beyond argument. Present only where every one
-                # of the conditions in `_repair_for` holds; absent means "a person or a model has to
-                # decide this one". See `apply_repairs` for what is done with it (V267).
-                **(_repair_for(without_placeholders, number, end, named, data) if named and not cited else {}),
-                "detail": (
-                    f"The number {number} is the current value of parameter '{named[0]}' and also a figure "
-                    "in a research finding. If the sentence is about this model, write "
-                    f"{{{{{named[1]}.amount}}}} {{{{{named[1]}.unit}}}}. If it reports what a source found, "
-                    "leave the figure out: while it equals a parameter it cannot be told apart from the "
-                    "model's own quantity, and a placeholder would print the model's value under the "
-                    "source's name."
-                    if named and cited
-                    else f"The number {number} is the current value of parameter '{named[0]}'. Write it as "
-                    f"{{{{{named[1]}.amount}}}} (the unit is {{{{{named[1]}.unit}}}}), or leave it to "
-                    "the parameter table in the annex — spelled out here it stays behind the moment "
-                    "the parameter is changed. The placeholder is pinned to the parameter by name, so "
-                    "it keeps pointing at this one when another parameter is added."
-                    if named
-                    # Tested on a model before shipping (CLAUDE.md), with the counter-case: a fill mass
-                    # read from an exchange, stated nowhere quotable. The plain message sent the model
-                    # to put {{results.0.score}} in its place; a first rewrite made it invent
-                    # {{study.fill_mass}}. Hence the last two clauses.
-                    else f"The figure {bare} {_written_unit(without_placeholders, end)} is written out. "
-                    "If it is a result, write the placeholder from your brief that prints it — typed out, "
-                    "it will be wrong the next time the model is recomputed. If it is an input quantity "
-                    "(a mass, a distance, a pack size), it may stay only as the study metadata, a process "
-                    "note or a parameter states it; where none of them does, leave the figure out of the "
-                    "sentence. Never put a placeholder that means a different quantity in its place, and "
-                    "never invent a placeholder name."
-                    if small_unit
-                    else f"The number {number} is written out. Reference it as a placeholder instead, "
-                    "or it will be wrong the next time the model is recomputed."
-                ),
-            }
-        )
-    return out
 
 
 def check_proposal(
@@ -1942,14 +1546,24 @@ def check_proposal(
                 }
             )
 
-    # Look for literals in the RAW text with the placeholders removed — searching the resolved text
-    # would flag every correctly used placeholder, since resolving one produces exactly a number.
+    # Placeholders removed: the name check below must not read a path as prose.
     without_placeholders = rd.PLACEHOLDER.sub(" ", text or "")
-    findings += _literal_number_findings(without_placeholders, data, str(section.get("kind") or ""))
+    # The research findings and the exchange notes are quotable for the chapters that are shown them —
+    # the same set of chapters (`_SPECIALIST_FACTS`).
+    kind = str(section.get("kind") or "")
+    findings += report_numbers.literal_number_findings(
+        text or "",
+        data,
+        researched=report_sources.research_text(data) if kind in _SPECIALIST_FACTS["web_research"] else "",
+        noted=(
+            " ".join(n["note"] for n in exchange_notes(data)) if kind in _SPECIALIST_FACTS["exchange_notes"] else ""
+        ),
+        lang=lang,
+    )
     # …and the unit written beside a correctly used placeholder: the figure is right, the placeholder
     # is right, and "{{results.0.score}} tonnes CO2-Eq" over a kg value is wrong in every result
     # sentence it could occur in.
-    findings += _unit_mismatch_findings(text or "", data, bindings)
+    findings += report_numbers.unit_mismatch_findings(text or "", data, bindings)
     if len(text or "") > CHAPTER_LONG_CHARS:
         findings.append(
             {
@@ -2098,263 +1712,9 @@ def check_proposal(
     return {"ok": not blocking, "findings": findings, "resolved": resolved}
 
 
-#: Fields whose *text* may legitimately contain a number a chapter quotes: the study's own wording and the
-#: descriptive parts of a dataset. Nothing computed.
-_QUOTABLE_FIELDS = ("description", "classification", "product", "name", "location", "flow", "compartment")
-
 #: Beyond this the gate remarks on the length (advisory). Roughly twice a long chapter of the early
 #: practice reports; the writer used to cut silently at 6 000 and lose the last paragraph.
 CHAPTER_LONG_CHARS = 12_000
-
-#: Spellings of a unit that mean the same symbol, for the unit-beside-placeholder comparison only.
-_UNIT_ALIASES: dict[str, str] = {
-    "percent": "%", "prozent": "%", "pourcent": "%",
-    "tonne": "t", "tonnes": "t", "tonnen": "t", "toneladas": "t", "tonnellate": "t",
-    "kilogram": "kg", "kilograms": "kg", "kilogramm": "kg", "kilogramme": "kg", "kilogrammes": "kg",
-    "kilogramos": "kg", "chilogrammi": "kg",
-    "gram": "g", "grams": "g", "gramm": "g",
-    "litre": "l", "litres": "l", "liter": "l", "liters": "l", "litros": "l",
-    "megajoule": "mj", "megajoules": "mj",
-    "kilometre": "km", "kilometres": "km", "kilometer": "km", "kilometers": "km",
-    "points": "pt", "punkte": "pt", "pts": "pt",
-    "m²": "m2", "m³": "m3", "km²": "km2",
-}
-
-
-def _unit_symbol(unit: str | None, extra: frozenset[str]) -> str | None:
-    """The leading unit symbol of a stored unit string ("kg" for "kg CO2-eq", "%" for "%"), or None
-    when the string carries no unit the gate knows — unknown stays silent, as everywhere here."""
-    if not unit:
-        return None
-    head = unit.split("/")[0].strip()
-    if not head:
-        return None
-    lead = _unit_prefix(head.split(" ", 1)[0], extra)
-    return _UNIT_ALIASES.get(lead, lead) if lead else None
-
-
-def _expected_unit(
-    token: str, data: dict[str, Any], bindings: dict[str, dict[str, Any]] | None, extra: frozenset[str]
-) -> tuple[str, float] | None:
-    """(unit symbol, scale) a numeric placeholder prints in — scale 1 for a plain figure, the factor's
-    constant for a converted one — or None where the gate cannot tell and must stay silent."""
-    from prism_lca.engine import report_bindings as rb
-
-    if token.endswith(")"):
-        name, _, args_text = token[:-1].partition("(")
-        args = [a.strip() for a in args_text.split(",") if a.strip()]
-        paths = [a for a in args if not rb.is_number(a)]
-        constants = [float(a.replace(",", ".")) for a in args if rb.is_number(a)]
-        if not paths:
-            return None
-        symbol = _unit_symbol(rb.bound_unit_of(paths[0], data, bindings), extra)
-        if symbol is None:
-            return None
-        if name.strip() == "factor":
-            # factor(a, b) is a / b: a kg figure through factor(x, 0.001) reads in grams, through
-            # factor(x, 1000) in tonnes. A constant in front (c / x) has no unit a sentence could write.
-            if len(args) == 2 and rb.is_number(args[1]) and constants:
-                return symbol, constants[0]
-            if constants:
-                return None
-        if name.strip() == "diff" and symbol == "%":
-            return None  # percentage points — the prose names them, and no symbol check applies
-        return symbol, 1.0
-    value = rb.bound_lookup(token, data, bindings)
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return None
-    unit = rb.bound_unit_of(token, data, bindings)
-    if unit == "share":
-        return None
-    symbol = _unit_symbol(unit, extra)
-    return (symbol, 1.0) if symbol else None
-
-
-def _units_agree(expected: tuple[str, float], written: str) -> bool:
-    """Whether the unit written after the placeholder is the one its figure prints in."""
-    symbol, scale = expected
-    written = _UNIT_ALIASES.get(written, written)
-    if scale == 1.0 and written == symbol:
-        return True
-    have, want = units_of.base(1.0, written), units_of.base(1.0, symbol)
-    if have is None or want is None:
-        # Neither convertible: only the same symbol agrees, and a scaled figure never does.
-        return scale == 1.0 and written == symbol
-    if have[0] != want[0]:
-        return False
-    # factor(x, c) prints x / c, so the written unit has to be c times the figure's own: a kg figure
-    # over 0.001 is in grams (0.001 kg each).
-    return abs(have[1] - want[1] * scale) <= max(have[1], want[1] * scale) * 1e-6
-
-
-def _unit_mismatch_findings(
-    text: str, data: dict[str, Any], bindings: dict[str, dict[str, Any]] | None
-) -> list[dict[str, Any]]:
-    """`unit_mismatch`: a numeric placeholder followed by a unit that is not the one it prints in.
-
-    The literal-number rule guards figures typed out; this guards the figure the placeholder prints
-    correctly and the unit the sentence puts beside it. Silent wherever the data does not say what
-    unit a value carries, and wherever the placeholder prints its own (`…_text`, shares, percent).
-    """
-    out: list[dict[str, Any]] = []
-    extra = _method_units(data)
-    for m in rd.PLACEHOLDER.finditer(text):
-        token = m.group(1).strip()
-        if token.startswith(("ref:", "rank:", "study.")) or token.endswith("_text") or rd.prints_own_unit(token):
-            continue
-        expected = _expected_unit(token, data, bindings, extra)
-        if expected is None:
-            continue
-        um = _UNIT_TOKEN.match(text[m.end() :])
-        if not um:
-            continue
-        written_token = um.group(1).rstrip(".,;:!?")
-        written = _unit_prefix(written_token, extra)
-        if written is None or _units_agree(expected, written):
-            continue
-        symbol, scale = expected
-        prints_in = symbol if scale == 1.0 else f"{symbol} scaled by 1/{scale:g}"
-        out.append(
-            {
-                "kind": "unit_mismatch",
-                "path": token,
-                "detail": (
-                    f"{{{{{token}}}}} prints a figure in {prints_in}, but the sentence writes "
-                    f"“{written_token}” right after it. Write the unit the figure carries"
-                    + (
-                        "; for another unit convert the figure first — factor(x, 0.001) turns a kg "
-                        "figure into grams, factor(x, 1000) into tonnes."
-                        if scale == 1.0
-                        else " after the conversion — a kg figure through factor(x, 0.001) is in grams."
-                    )
-                ),
-            }
-        )
-    return out
-
-
-def _unit_family_after(text: str, end: int) -> int | None:
-    """Which unit family the token after a number belongs to, or None if it carries no unit we know."""
-    m = re.match(r"\s{0,2}(%|[^\s.,;:)\]]{1,6})", text[end:])
-    if not m:
-        return None
-    placed = units_of.base(1.0, m.group(1).rstrip(".,;:!?"))
-    return placed[0] if placed else None
-
-
-def _same_quantity(
-    text: str, end: int, extra: frozenset[str], named: tuple[str, str], data: dict[str, Any]
-) -> bool:
-    """Whether the unit written after a number is the parameter's own kind of unit, in full.
-
-    `_parameter_number_keys` matches by the leading symbol's family, which is right for "42 g" against
-    a 0.042 kg parameter and wrong for "2 kg CO2-Eq" against a 2 kg one: a characterised unit is an
-    impact, and no mass parameter is ever its value. Characterised on either side — never the same
-    quantity; a parameter repair must be beyond argument (`_repair_for`), and this one is not.
-    """
-    signature = _unit_signature(text, end, extra)
-    if signature is not None and signature[1]:
-        return False
-    try:
-        unit = str((data.get("parameters") or [])[int(named[1].rsplit(".", 1)[1])].get("unit") or "")
-    except (IndexError, ValueError, AttributeError):
-        return False
-    base = unit.split("/")[0].strip()
-    lead = _unit_prefix(base.split(" ", 1)[0], extra) or ""
-    return not _CHARACTERISED.search(base[len(lead):])
-
-
-def _parameter_number_keys(data: dict[str, Any]) -> dict[tuple[str, int | None], tuple[str, str] | None]:
-    """Every way a parameter's current value could be written, keyed by (number, unit family).
-
-    The value is (name, path), because "write it as a placeholder" is only followable if the writer
-    knows *which* placeholder. Counting the parameter list is how it went wrong in the first place
-    (V182): the list is offered with one example index, the writer counts the entries in the brief,
-    and a miscount is a figure printed under another parameter's name.
-
-    A mass of 0.042 kg is "0.042 kg", "42 g" and "4.2e-05 t" — the writer picks whichever reads best,
-    and the figure is the same quantity, and equally stale, either way.
-
-    **The unit is what makes this a rule rather than a coincidence.** Keyed on the number alone, the
-    first real chapter produced "GWP100" against a transport distance of 100 km, which is exactly the
-    kind of finding that gets a checker switched off. A figure only counts as a parameter's value when
-    the unit written beside it is of the parameter's own kind — which is also why small values are no
-    longer left out: "a 2 kg bottle" matching a 2 kg fill-mass parameter is the parameter, not a
-    coincidence, and a small figure with a unit is refused anyway, so naming the
-    parameter only makes the refusal followable (and repairable). 0 and 1 are the exception, below.
-    """
-    out: dict[tuple[str, int | None], tuple[str, str]] = {}
-    for index, param in enumerate(data.get("parameters") or []):
-        if not isinstance(param, dict) or not isinstance(param.get("amount"), (int, float)):
-            continue
-        name = str(param.get("name") or "")
-        symbol = str(param.get("unit") or "").split("/")[0].strip()
-        placed = units_of.base(1.0, symbol) if symbol else (units_of.PERCENT_FAMILY, 1.0)
-        if placed is None:
-            continue  # a unit this cannot place is a comparison it must not make
-        family = placed[0]
-        for value in units_of.written_forms(float(param["amount"]), param.get("unit")):
-            # 0 and 1 stay out: "1 kg" is how every functional unit is written, and binding it to
-            # whichever parameter happens to hold 1 kg would rewrite the functional unit (see `repair`).
-            if value in (0, 1):
-                continue
-            key = (_number_key(f"{value:g}"), family)
-            # A key two parameters both claim is not a finding, it is a coin toss. `setdefault` kept
-            # the first and named it in the message, so the writer was told to bind its sentence to
-            # whichever parameter happened to be earlier in the list. Harmless while this only ever
-            # produced advice; not harmless now that `repair` below rewrites the sentence (V267).
-            if key in out and out[key] != (name, f"parameters.{index}"):
-                out[key] = None
-            else:
-                out.setdefault(key, (name, f"parameters.{index}"))
-    return out
-
-
-#: Quotation marks in all five report languages, as pairs. A number inside a quoted source sentence
-#: is somebody else's wording and is never rewritten — the whole point of quoting is that it is verbatim.
-_QUOTE_PAIRS = (("\u201c", "\u201d"), ("\u201e", "\u201c"), ("\u00ab", "\u00bb"), ('"', '"'))
-
-
-def _inside_quotes(text: str, start: int) -> bool:
-    """Whether the position sits inside a quotation. Cheap and deliberately over-cautious: an odd
-    number of openers before it counts as inside, so an unbalanced quote suppresses the repair rather
-    than risking one inside somebody else's sentence."""
-    before = text[:start]
-    for opener, closer in _QUOTE_PAIRS:
-        if opener == closer:
-            if before.count(opener) % 2 == 1:
-                return True
-        elif before.count(opener) > before.count(closer):
-            return True
-    return False
-
-
-def _quotable_text(data: dict[str, Any]) -> str:
-    """Descriptions we handed over, where a number is a quotation rather than a claim."""
-    parts: list[str] = [str(v) for v in (data.get("study") or {}).values() if isinstance(v, str)]
-    for entry in data.get("hotspots") or []:
-        if isinstance(entry, dict):
-            parts += [str(entry[f]) for f in _QUOTABLE_FIELDS if isinstance(entry.get(f), str)]
-    for flow in ((data.get("inventory") or {}).get("flows")) or []:
-        if isinstance(flow, dict):
-            parts += [str(flow[f]) for f in ("flow", "compartment") if isinstance(flow.get(f), str)]
-    # The inventory prompt directs the writer to "the process notes and the parameter comments" — a
-    # 450 km transport distance recorded in a note is a quotation, and refusing it taught the writer
-    # to hide exactly the provenance the chapter exists to state. Third instance of this class (scope
-    # numbers and hotspot descriptions came first); the key lists lag the data model, so keep them
-    # adjacent to build_data when a field is added there.
-    for process in data.get("foreground") or []:
-        if isinstance(process, dict):
-            parts += [str(process[f]) for f in ("name", "product", "description") if isinstance(process.get(f), str)]
-    for param in data.get("parameters") or []:
-        if isinstance(param, dict):
-            parts += [
-                str(param[f]) for f in ("name", "description", "comment") if isinstance(param.get(f), str)
-            ]
-    activity = data.get("activity") or {}
-    parts += [str(activity.get(k)) for k in ("name", "database") if isinstance(activity.get(k), str)]
-    return " ".join(parts)
-
 
 #: A quoted span, in the marks all five report languages use. No length bound: see the note at the
 #: call site — a bound inside the pattern shifts every pair after a span that misses it.

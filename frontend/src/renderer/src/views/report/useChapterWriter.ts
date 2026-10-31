@@ -202,7 +202,9 @@ export default function useChapterWriter({
           ...draft,
           store: true,
           // A draft a second model read keeps that reading: the gate then decides on the contract.
-          ...(draft.review ? { reviewed_by: draft.review.reviewer } : {})
+          ...(draft.review ? { reviewed_by: draft.review.reviewer } : {}),
+          // Stored on purpose: typed numbers left in it become open points, not a refusal.
+          keep_numbers: true
         })
         setFindings((f) => ({ ...f, [sectionId]: verdict.findings }))
         if (verdict.stored) {
@@ -332,7 +334,9 @@ export default function useChapterWriter({
             snapshot_id: brief.snapshot_id,
             expected_text_version: brief.text_version,
             // Read by a second model: the gate decides on the contract alone and keeps the reading.
-            ...(review ? { reviewed_by: review.reviewer, review } : {})
+            ...(review ? { reviewed_by: review.reviewer, review } : {}),
+            // Typed numbers the writer could not put right are the author's to decide (V461).
+            keep_numbers: true
           }
         )
         if (elsewhere()) return verdict.stored
@@ -845,20 +849,6 @@ export default function useChapterWriter({
     [base, load, setError, reportRef, blocker, updateOne]
   )
 
-  /** Keep a sentence the second reader still doubted, as written. Free; nothing is rewritten. */
-  const keepPoint = useCallback(
-    async (section: ReportSection, quote: string): Promise<void> => {
-      setError(null)
-      try {
-        await api('POST', `${base}/sections/${section.id}/keep-point`, { quote })
-        await load()
-      } catch (e) {
-        setError(errMsg(e))
-      }
-    },
-    [base, load, setError]
-  )
-
   return {
     writing,
     stage,
@@ -888,7 +878,6 @@ export default function useChapterWriter({
     runPlan,
     updateOne,
     answerQuestion,
-    keepPoint,
     /** The Cancel buttons: pulls every report writer in main AND stops the plan here — the next step of
      *  a "Write all" (chapters after the translation, the glossary after the chapters) must not start. */
     cancelRun,

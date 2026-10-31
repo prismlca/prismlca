@@ -8,7 +8,9 @@
  * front of a figure, a quoted dataset) goes to the reader as a suspicion, and the reader decides. The
  * writer may answer a point by fixing the sentence or by saying why it is right; the reader then
  * closes the point, calls it a false alarm, or holds it. What is still open after the last reading is
- * kept with the chapter for the author, not thrown at them as a refusal.
+ * kept with the chapter for the author, not thrown at them as a refusal — and so is a number the writer
+ * typed out and could not put right in its attempts: the reading goes ahead, and the store keeps the
+ * number as an open point for the author (engine/report_typed_numbers).
  *
  * Without a reader (switched off, none configured, or it came back empty) the gate decides alone,
  * exactly as it did before the reader existed: every finding outside the advisory set blocks.
@@ -28,7 +30,7 @@ import type {
 import type { WriteBrief } from '../reportWriter'
 import { applyPatch, MAX_REVISIONS } from './answers'
 import { READER_SYSTEM, read, readerBrief, type RaisedIssue, type ReviewBrief } from './reviewer'
-import { flaggedSentences, sentenceRepairPrompt, withinFlagged } from './sentences'
+import { anchorOf, flaggedSentences, sentenceRepairPrompt, withinFlagged } from './sentences'
 import { clean, parseRevision } from './text'
 
 /**
@@ -216,9 +218,16 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
       attempt: checks,
       snapshot_id: brief.snapshot_id,
       ...(reviewer ? { reviewed_by: reviewer } : {})
-    })) as { ok?: boolean; findings?: Finding[] } | null
+    })) as { ok?: boolean; findings?: Finding[]; text?: string } | null
     const findings = (verdict?.findings ?? []) as Finding[]
     if (figure && findings.some((f) => f.kind === 'figure_refused')) figure = null
+    // The gate binds what it can before it judges — a typed figure that is exactly what one placeholder
+    // prints — and hands that text back, refused or not: the next revision starts from it and only has
+    // the rest to fix (V460).
+    if (typeof verdict?.text === 'string' && verdict.text && candidate === text) {
+      text = verdict.text
+      opts.onDraft(text)
+    }
     return { ok: verdict?.ok !== false, findings }
   }
   const checkFailed = (e: unknown): Finding => ({
@@ -229,6 +238,20 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
    *  outside the advisory set. */
   const blocking = (findings: Finding[]): Finding[] =>
     findings.filter((f) => (reviewer ? CONTRACT_FINDINGS.has(f.kind) : !ADVISORY_FINDINGS.has(f.kind)))
+  /** What still stops the chapter once the writer's own attempts at the typed numbers are spent: a typed
+   *  number is the one finding a chapter may be stored with, as an open point for the author
+   *  (engine/report_typed_numbers). Everything else breaks the document. */
+  const hard = (findings: Finding[]): Finding[] =>
+    blocking(findings).filter((f) => f.kind !== 'literal_number')
+  const typedNumbers = (findings: Finding[]): Set<string> =>
+    new Set(
+      blocking(findings)
+        .filter((f) => f.kind === 'literal_number')
+        .map((f) => {
+          const anchor = anchorOf(f)
+          return anchor && 'number' in anchor ? anchor.number : f.detail
+        })
+    )
 
   /** The writer's answer as a model call. Null when the call failed and the text should stand. */
   const ask = async (): Promise<string | null> => {
@@ -366,7 +389,7 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
     return done({ ok: false, findings: [checkFailed(e)] }, null)
   }
   verdict = await repair(verdict)
-  if (!reviewer || !opts.reviewPath || blocking(verdict.findings).length) {
+  if (!reviewer || !opts.reviewPath || hard(verdict.findings).length) {
     return done(verdict, null)
   }
 
@@ -464,9 +487,14 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
         } catch (e) {
           after = { ok: false, findings: [...verdict.findings, checkFailed(e)] }
         }
-        if (blocking(after.findings).length) {
-          // The answer broke the contract and even the sentence repair could not mend it: keep the text
-          // the reader last read, whose contract held. Its open points stay open.
+        const typedBefore = typedNumbers(verdict.findings)
+        if (
+          hard(after.findings).length ||
+          [...typedNumbers(after.findings)].some((d) => !typedBefore.has(d))
+        ) {
+          // The answer broke the contract and even the sentence repair could not mend it — or typed a
+          // number the text the reader read did not have: keep that text, whose contract held as far
+          // as it did. Its open points stay open.
           text = before
           opts.onDraft(text)
           break

@@ -9,8 +9,10 @@ import type { FigureSpec } from '../../views/Report'
 import type { ChapterReview, ReviewIssue } from '../../../../shared/ipc'
 
 /** The second reading as it is stored with a chapter (engine/report_review.record). `kept` is an open
- *  point the author read and kept as written. */
-export interface StoredReview extends Omit<ChapterReview, 'issues'> {
+ *  point the author read and kept as written. No reviewer: no second model read the chapter, and the
+ *  record holds only the numbers the writer left typed out (engine/report_typed_numbers). */
+export interface StoredReview extends Omit<ChapterReview, 'issues' | 'reviewer'> {
+  reviewer: string | null
   issues: Array<Omit<ReviewIssue, 'status'> & { status: ReviewIssue['status'] | 'kept' }>
   verdict: 'accepted' | 'open_points'
   /** The text version the reading was formed against — it describes the chapter only while they match. */

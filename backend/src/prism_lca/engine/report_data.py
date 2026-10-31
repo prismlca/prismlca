@@ -92,7 +92,7 @@ from prism_lca.engine.report_bindings import (
 from prism_lca.engine.report_bindings import (
     resolve as resolve,
 )
-from prism_lca.engine.report_i18n import dimension_name, t
+from prism_lca.engine.report_i18n import dimension_name, fmt_number, t
 from prism_lca.engine.report_tokens import (
     AGGREGATES as AGGREGATES,
 )
@@ -302,6 +302,23 @@ def _contribution_view(contribution: dict | None, lang: str = "en") -> dict[str,
         "dropped": dropped,
         "top": groups[0] if groups else None,
     }
+
+
+def report_settings(report: dict[str, Any] | None, lang: str) -> dict[str, Any]:
+    """The report's own settings a sentence may cite — the `{{report.…}}` placeholders.
+
+    The significance threshold, so far: the brief tells the writer the number, and typed out it was
+    refused as a literal — three chapters of one run went back for it. A placeholder prints the setting
+    and follows it when the author changes it.
+
+    A setting moves no number, so the snapshot key does not cover it, and a cached snapshot may carry
+    an old value: whoever hands the data out lays this over its copy from the report as it stands
+    (`report_render.render_sources`, `report_pipeline.analysis_snapshot`).
+    """
+    from prism_lca.engine import report_claims
+
+    threshold = report_claims.weak_percent((report or {}).get("options"))
+    return {"significance_percent": threshold, "significance_text": f"{fmt_number(threshold, lang)} %"}
 
 
 def build_data(

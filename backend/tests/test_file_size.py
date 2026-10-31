@@ -30,9 +30,9 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 
 #: Paths relative to backend/src. ``<count + HEADROOM>`` — the comment keeps the count it was set from.
 CEILINGS: dict[str, int] = {
-    # 2436 — prompts AND the proposal gate, so not exempt. The abbreviations moved to report_abbreviations;
-    # the literal-number rule is the next part with a home of its own.
-    "prism_lca/engine/report_prompts.py": 2461,
+    # 1811 — prompts AND the proposal gate, so not exempt. The abbreviations moved to report_abbreviations,
+    # the figure rules to report_numbers and their reading of numbers and units to prose_numbers.
+    "prism_lca/engine/report_prompts.py": 1836,
     "prism_lca/engine/health.py": 1984,  # 1959
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601

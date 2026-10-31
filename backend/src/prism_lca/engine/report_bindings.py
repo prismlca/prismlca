@@ -531,7 +531,7 @@ def _by_identity(items: Any, identity: dict[str, Any]) -> Any:
 #: The constants `factor` may scale a figure by: unit conversions, and nothing else. A `factor` with any
 #: other constant turns a figure from the data into a figure from nowhere — `factor(x, 0.001)` printed a
 #: 5 kg result as 5 000 and the sentence called it a climate impact. The sentence
-#: still has to write the converted unit; the gate checks that (`report_prompts._unit_mismatch_findings`).
+#: still has to write the converted unit; the gate checks that (`report_numbers.unit_mismatch_findings`).
 CONVERSION_FACTORS: tuple[float, ...] = (1000.0, 0.001, 100.0, 0.01, 1_000_000.0, 0.000001)
 
 

@@ -186,6 +186,7 @@ def test_brief_facts_carry_what_the_prompts_promise(project):
     assert facts["review"]["created"] == "2026-08-15"
 
     brief = build_brief({"id": "s1", "kind": "prose"}, {"lang": "en"}, data)
-    assert brief["facts"]["checks"] == data["checks"]
+    # In the brief, as the document prints them (V460): 3.1 is shown as "3.1".
+    assert brief["facts"]["checks"] == {"sensitivity": [{"spread_percent": "3.1"}]}
     # The logs are writer context, never placeholder material — their indices renumber.
     assert not [p for p in placeholder_paths(data) if p.startswith(("web_research", "review"))]

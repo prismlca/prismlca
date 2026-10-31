@@ -932,7 +932,8 @@ def test_the_gate_repairs_a_literal_it_can_name_instead_of_refusing_the_chapter(
     """V267. The gate worked out that 250 was the value of `gebinde_volumen_l`, wrote the placeholder
     that belonged there into its own message — and threw the chapter away. Two of nine chapters of a
     run died that way, one of them 853 words that were right about everything else."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     data = _params(("gebinde_volumen_l", 250, "ml"))
     text = "The study assesses the stain in the 250 ml tinplate can."
@@ -952,7 +953,8 @@ def test_the_gate_repairs_a_literal_it_can_name_instead_of_refusing_the_chapter(
 def test_no_repair_where_two_parameters_claim_the_same_value_and_unit():
     """A coin toss is not a repair. The value used to be resolved by `setdefault`, so whichever
     parameter came first in the list was named — survivable while this only produced advice."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     data = _params(("can_mass_g", 42, "g"), ("label_mass_g", 42, "g"))
     text = "The container weighs 42 g."
@@ -970,7 +972,8 @@ def test_a_repair_may_re_express_the_unit_and_says_what_it_will_print():
     wrote "250 ml". Refusing to touch any form but the stored one would have left exactly the chapter
     that was once lost. The quantity is identical; the wording becomes the parameter's, and
     the advisory finding is where that trade is stated rather than hidden."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     data = _params(("gebinde_volumen_l", 0.25, "l"))
     text = "The study assesses the stain in the 250 ml tinplate can."
@@ -987,7 +990,8 @@ def test_a_repair_may_re_express_the_unit_and_says_what_it_will_print():
 def test_no_repair_into_scientific_notation_or_without_a_unit():
     """A report does not print "4.2e-05 t" in a sentence, and a bare number with no unit beside it is
     not a specific enough match to rewrite on."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     tiny = _params(("mass_t", 4.2e-05, "t"))
     v = check_proposal("The can weighs 42 g.", {"kind": "inventory"}, tiny)
@@ -1002,7 +1006,8 @@ def test_no_repair_into_scientific_notation_or_without_a_unit():
 
 def test_no_repair_inside_a_quotation():
     """A quoted sentence is somebody else's wording; that is what quoting means."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     data = _params(("gebinde_volumen_l", 250, "ml"))
     text = 'The data sheet says \u201cfilled to 250 ml at 20 \u00b0C\u201d.'
@@ -1013,7 +1018,8 @@ def test_no_repair_inside_a_quotation():
 def test_a_literal_with_no_parameter_behind_it_is_still_refused():
     """The repair exists because the gate knew the answer. Where it does not, nothing changes: there
     is no placeholder to write, and a person has to decide."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     verdict = check_proposal("Transport covers 450 km.", {"kind": "inventory"}, _params())
     assert not verdict["ok"]
@@ -1022,7 +1028,8 @@ def test_a_literal_with_no_parameter_behind_it_is_still_refused():
 
 def test_a_repair_is_only_applied_where_the_string_occurs_once():
     """Two occurrences mean two sentences, and the check has to see each of them on its own."""
-    from prism_lca.engine.report_prompts import apply_repairs, check_proposal
+    from prism_lca.engine.report_numbers import apply_repairs
+    from prism_lca.engine.report_prompts import check_proposal
 
     data = _params(("gebinde_volumen_l", 250, "ml"))
     text = "The 250 ml can is filled. A 250 ml can is also the reference flow."

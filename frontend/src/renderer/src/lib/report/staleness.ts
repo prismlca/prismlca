@@ -10,11 +10,19 @@ import { errMsg } from '../errors'
  * What changed under a written chapter (engine/report_staleness). `remedy` is the most expensive
  * thing any finding asks for, and it is what the badge and "Write all" act on.
  */
+/** Where a typed number stands: its sentence as printed, its place in it, and which of several identical
+ *  sentences (engine/report_typed_numbers). */
+export interface TypedPlace {
+  quote: string
+  offset?: number
+  occurrence?: number
+}
+
 export interface StaleChapter {
   section_id: string
   remedy: 'none' | 'review' | 'rewrite'
   /** `path` is present on the findings that name one — a rank, a band, a member that has gone. */
-  findings: { kind: string; severity: string; message: string; path?: string }[]
+  findings: { kind: string; severity: string; message: string; path?: string; points?: TypedPlace[] }[]
   /** Bindings whose member was only renamed — repairable for nothing, without touching a word. */
   rebindable: number
   reviewed_at?: string | null

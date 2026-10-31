@@ -15,6 +15,7 @@ export type ChapterStateKind =
   | 'blocked'
   | 'update'
   | 'input'
+  | 'numbers'
   | 'check'
   | 'new'
   | 'ready'
@@ -55,7 +56,13 @@ export function answeredSince(section: ReportSection, answers: StoredReportFull[
 
 /** The second reader's points still standing — the sentences it could not settle with the writer. */
 export const openPoints = (section: ReportSection): number =>
-  (currentReview(section)?.issues ?? []).filter((i) => i.status === 'open').length
+  (currentReview(section)?.issues ?? []).filter((i) => i.status === 'open' && i.origin !== 'typed_number')
+    .length
+
+/** Numbers the writer left typed out and the author has not decided about yet. */
+export const openNumbers = (section: ReportSection): number =>
+  (currentReview(section)?.issues ?? []).filter((i) => i.status === 'open' && i.origin === 'typed_number')
+    .length
 
 const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many)
 
@@ -105,6 +112,15 @@ export function chapterState(
       label: plural(questions, 'Question', `${questions} questions`),
       title: 'The writer needs your answer — see the questions above the chapters.'
     }
+  const numbers = openNumbers(section)
+  if (numbers)
+    return {
+      kind: 'numbers',
+      label: plural(numbers, '1 number to check', `${numbers} numbers to check`),
+      title:
+        'The writer left numbers typed out here that it could not take from the results. Open the chapter ' +
+        'to keep or replace each one — the report can be approved once all are decided.'
+    }
   const points = openPoints(section)
   if (points)
     return {
@@ -137,6 +153,7 @@ export function stateSummary(counts: Partial<Record<ChapterStateKind, number>>):
     n('unfinished') ? `${n('unfinished')} could not be finished` : '',
     n('update') ? `${n('update')} ${plural(n('update'), 'needs', 'need')} an update` : '',
     n('input') ? `${n('input')} ${plural(n('input'), 'has a question', 'have questions')} for you` : '',
+    n('numbers') ? `${n('numbers')} with typed numbers to check` : '',
     n('check') ? `${n('check')} with a point to check` : '',
     n('new')
       ? `${n('new')} new for you — approve the report once you have read ${plural(n('new'), 'it', 'them')}`

@@ -12,6 +12,8 @@ import {
   type StoredReportFull
 } from '../../lib/report/model'
 import ReviewDetails from './ReviewDetails'
+import type { Place } from './useReviewPoints'
+import type { TypedPlace } from '../../lib/report/staleness'
 import { writeStatus, writeTooltip, type WriteStage } from '../../lib/report/writeStatus'
 import { indicatorLabel } from '../../lib/methods'
 import EscapeCloser from '../../components/EscapeCloser'
@@ -50,6 +52,8 @@ export default function ChapterEditorSheet({
   askWrite,
   loadPrompts,
   onKeepPoint,
+  onReplaceNumber,
+  movedNumbers,
   onFix,
   onEarlier,
   onClose
@@ -80,7 +84,10 @@ export default function ChapterEditorSheet({
   askWrite: (section: ReportSection) => void
   loadPrompts: () => Promise<void>
   /** Keep a sentence the second reader still doubts, as written. */
-  onKeepPoint: (section: ReportSection, quote: string) => Promise<void>
+  onKeepPoint: (section: ReportSection, quote: string, reason?: string, place?: Place) => Promise<void>
+  onReplaceNumber: (section: ReportSection, quote: string, path: string, place?: Place) => Promise<void>
+  /** Kept numbers of the open chapter whose values have moved since (the out-of-date check's `quotes`). */
+  movedNumbers: TypedPlace[]
   /** Have the writer fix what the second reader still doubts — an update of this one chapter. */
   onFix: (section: ReportSection) => void
   /** What this chapter said before its last change, with "Put it back". */
@@ -194,9 +201,11 @@ export default function ChapterEditorSheet({
           {/* What the second reader made of the chapter — or, for a held draft, why it is not finished. */}
           <ReviewDetails
             section={open}
-            draftReason={drafts[open.id] ? (findings[open.id]?.[0]?.detail ?? 'it was not stored.') : null}
+            draft={drafts[open.id] ? (findings[open.id] ?? []) : null}
             busy={writing !== null || runActive}
-            onKeep={(quote) => onKeepPoint(open, quote)}
+            moved={movedNumbers}
+            onKeep={(quote, reason, place) => onKeepPoint(open, quote, reason, place)}
+            onReplace={(quote, path, place) => onReplaceNumber(open, quote, path, place)}
             onFix={() => onFix(open)}
           />
 

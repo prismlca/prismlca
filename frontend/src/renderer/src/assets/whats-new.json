@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-10-31",
+    "title": "Typed numbers no longer cost a chapter",
+    "details": "When a report writer types a figure that exactly matches a result or share, the check now binds it to that value so it updates with the model. A chapter left with only typed numbers is stored anyway: open it to replace each number with the value it matches or keep it with a reason. The report can be approved once all are decided."
+  },
+  {
+    "date": "2026-10-31",
     "title": "Fuller reports from the start",
     "details": "A new full report now covers at least five core EF 3.1 indicators, compares the baseline with every scenario of the model when none is ticked on the Results page, and draws the heatmap and the radar. Indicators picked on the Results page are added when they come from the same method family. Untick what you don't need under Scope & indicators."
   },

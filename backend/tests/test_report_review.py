@@ -100,7 +100,9 @@ def test_a_reviewed_write_is_stored_over_a_reading_the_reviewer_decided(client, 
     "text",
     [
         "Cardboard box production carries {{hotspots.9.share_text}}.",
-        "Cardboard box production carries 40 % of the result.",
+        # Near the box's 40.0 % but not what anything prints: refused, with the candidate named. Typed
+        # exactly as printed it would be bound to its placeholder instead (V460).
+        "Cardboard box production carries 41 % of the result.",
     ],
 )
 def test_the_contract_blocks_a_reviewed_write_too(client, token, project, snapshot, text):

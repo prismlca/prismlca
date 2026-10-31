@@ -25,7 +25,7 @@ import json
 import re
 from typing import Any
 
-from prism_lca.engine import report_claims, report_prompts, report_sentences
+from prism_lca.engine import report_claims, report_prompts, report_sentences, report_typed_numbers
 from prism_lca.engine import report_data as rd
 from prism_lca.engine.report_i18n import chapter_name, normalise
 
@@ -1029,7 +1029,7 @@ def verdicts(
         for f in caption_verdicts(section, report, data)
         if not (f["kind"] == "selection" and (f["kind"], f["raw"]) in said)
     ]
-    return found + captions
+    return found + captions + report_typed_numbers.verdicts(section, data)
 
 
 def _judge(  # noqa: C901 — the verdict per kind of finding is one decision table; splitting it hides the table

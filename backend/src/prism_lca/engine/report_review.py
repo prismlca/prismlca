@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from prism_lca.engine import report_bindings, report_prompts
+from prism_lca.engine import report_bindings, report_prompts, report_typed_numbers
 from prism_lca.engine.report_i18n import chapter_name
 
 #: Findings that block a write even after a second reader has accepted it. Every one is a property of
@@ -243,18 +243,43 @@ def record(review: dict[str, Any] | None, reviewer: str | None, text: str) -> di
 
     review = review or {}
     issues = []
-    for issue in (review.get("issues") or [])[:_MAX_POINTS]:
-        if not isinstance(issue, dict):
-            continue
+    given = [i for i in review.get("issues") or [] if isinstance(i, dict)]
+    # Capped apart: the reader's points are a record of what was settled, the typed numbers decisions the
+    # author still has to make — none of those may fall off the end of a long reading.
+    typed = [i for i in given if i.get("origin") == report_typed_numbers.ORIGIN]
+    for issue in [i for i in given if i not in typed][:_MAX_POINTS] + typed[: report_typed_numbers.MAX_POINTS]:
         status = str(issue.get("status") or "open")
-        issues.append(
-            {
-                "quote": _clip(issue.get("quote")),
-                "problem": _clip(issue.get("problem")),
-                "status": status if status in _ISSUE_STATUS else "open",
-                "resolution": _clip(issue.get("resolution")),
-            }
-        )
+        entry: dict[str, Any] = {
+            "quote": _clip(issue.get("quote")),
+            "problem": _clip(issue.get("problem")),
+            "status": status if status in _ISSUE_STATUS else "open",
+            "resolution": _clip(issue.get("resolution")),
+        }
+        if issue.get("origin") == report_typed_numbers.ORIGIN:
+            # A typed number the store kept for the author (`report_typed_numbers`): what is needed to
+            # find it again, to offer its placeholder, and to remind after a recalculation.
+            entry.update(
+                origin=report_typed_numbers.ORIGIN,
+                number=_clip(issue.get("number"), 40),
+                sign=_clip(issue.get("sign"), 1),
+                # Verbatim, not clipped: it is how the number is found again (`replace_in`).
+                source=str(issue.get("source") or ""),
+                offset=int(issue["offset"]) if isinstance(issue.get("offset"), int) else None,
+                occurrence=int(issue["occurrence"]) if isinstance(issue.get("occurrence"), int) else 0,
+                **({"snapshot": _clip(issue.get("snapshot"), 80)} if issue.get("snapshot") else {}),
+                candidates=[
+                    {
+                        "path": _clip(c.get("path"), 200),
+                        "label": _clip(c.get("label"), 200),
+                        "prints": _clip(c.get("prints"), 60),
+                        "own_percent": bool(c.get("own_percent")),
+                    }
+                    for c in (issue.get("candidates") or [])[:3]
+                    if isinstance(c, dict) and c.get("path")
+                ],
+                **({"kept_results": _clip(issue.get("kept_results"), 40)} if issue.get("kept_results") else {}),
+            )
+        issues.append(entry)
     questions = []
     for q in (review.get("questions") or [])[:_MAX_POINTS]:
         if not isinstance(q, dict) or not str(q.get("question") or "").strip():

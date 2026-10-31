@@ -13,7 +13,13 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import report_audit, report_pipeline, report_review
+from prism_lca.engine import (
+    report_audit,
+    report_gate,
+    report_pipeline,
+    report_review,
+    report_typed_numbers,
+)
 from prism_lca.engine.report_pipeline import RenderRequest
 from prism_lca.engine.report_store import ReportStore, text_version
 from prism_lca.errors import PrismError
@@ -102,6 +108,20 @@ def answer_question(request: Request, database: str, report_id: str, body: Answe
 class PointRequest(BaseModel):
     #: The open point's quote, as the reading stored it.
     quote: str
+    #: Why the author keeps it — recorded as the point's resolution.
+    reason: str = ""
+    #: A typed number's place in its sentence, which tells two numbers in one sentence apart — and which
+    #: of several identical sentences it stands in.
+    offset: int | None = None
+    occurrence: int | None = None
+
+
+def _addressed(point: dict, quote: str, offset: int | None, occurrence: int | None = None) -> bool:
+    return (
+        point.get("quote") == quote
+        and (offset is None or point.get("offset") == offset)
+        and (occurrence is None or int(point.get("occurrence") or 0) == occurrence)
+    )
 
 
 @router.post(
@@ -120,11 +140,29 @@ def keep_point(request: Request, database: str, report_id: str, section_id: str,
             status_code=409,
         )
     issues = [dict(i) for i in review.get("issues") or []]
-    hit = next((i for i in issues if i.get("status") == "open" and i.get("quote") == body.quote), None)
+    _report, data = report_pipeline.analysis_snapshot(database, report_id, RenderRequest())
+    # An open point, or a kept number whose values have moved since: keeping it again confirms it
+    # against today's numbers.
+    moved = report_typed_numbers.moved(review, data)
+    hit = next(
+        (
+            i
+            for i in issues
+            if _addressed(i, body.quote, body.offset, body.occurrence)
+            and (
+                i.get("status") == "open"
+                or any(_addressed(m, body.quote, i.get("offset"), int(i.get("occurrence") or 0)) for m in moved)
+            )
+        ),
+        None,
+    )
     if hit is None:
         raise PrismError("No open point with this quote.", code="report_point_not_found", status_code=404)
     hit["status"] = "kept"
-    hit["resolution"] = "Kept as written by the author."
+    hit["resolution"] = body.reason.strip()[:600] or "Kept as written by the author."
+    if hit.get("origin") == report_typed_numbers.ORIGIN:
+        # The values it was kept against: the out-of-date check names it again once they move.
+        hit["kept_results"] = report_typed_numbers.results_fingerprint(data)
     review = {
         **review,
         "issues": issues,
@@ -139,3 +177,69 @@ def keep_point(request: Request, database: str, report_id: str, section_id: str,
         database=database,
     )
     return {"ai_review": review}
+
+
+class ReplaceNumberRequest(BaseModel):
+    #: The typed-number point's quote, as the reading stored it.
+    quote: str
+    #: The placeholder to put in its place — one of the point's candidates.
+    path: str
+    #: The number's place (`PointRequest.offset`, `PointRequest.occurrence`).
+    offset: int | None = None
+    occurrence: int | None = None
+
+
+@router.post(
+    "/one/{database}/{report_id}/sections/{section_id}/replace-number",
+    summary="Replace a typed number with the placeholder it prints as (no model)",
+)
+def replace_number(
+    request: Request, database: str, report_id: str, section_id: str, body: ReplaceNumberRequest
+) -> dict:
+    """Put a candidate placeholder where a typed number stands, through the gate like any write.
+
+    Only a candidate the point offers, and only inside the sentence it quotes: this is the author
+    carrying out the repair the gate named, not an editor. The write goes through the whole proposal
+    transaction — the result must still hold the contract — and keeps the reading: the sentence prints
+    what it printed, so what the reader settled stays settled.
+    """
+    store = ReportStore()
+    report = store.get(database, report_id)
+    section = _section(report, section_id)
+    review = report_review.current_review(section)
+    point = next(
+        (p for p in report_typed_numbers.typed(review, "open") if _addressed(p, body.quote, body.offset, body.occurrence)), None
+    )
+    if point is None:
+        raise PrismError("No open typed number with this quote.", code="report_point_not_found", status_code=404)
+    candidate = next((c for c in point.get("candidates") or [] if c.get("path") == body.path), None)
+    if candidate is None:
+        raise PrismError(
+            f"'{body.path}' is not offered for this number.", code="report_candidate_unknown", status_code=400
+        )
+    text = str(section.get("text") or "")
+    replaced = report_typed_numbers.replace_in(text, point, candidate)
+    if replaced is None:
+        raise PrismError(
+            "The sentence with this number is no longer in the chapter.", code="report_text_moved", status_code=409
+        )
+    others = [i for i in (review or {}).get("issues") or [] if i.get("origin") != report_typed_numbers.ORIGIN]
+    return report_gate.run_section_proposal(
+        request,
+        database,
+        report_id,
+        section_id,
+        report_gate.ProposalRequest(
+            text=replaced,
+            store=True,
+            keep_numbers=True,
+            # The candidates and the chapter's own placeholders are positions in the snapshot the
+            # chapter was stored against. Once the numbers have moved, a position may name another
+            # member, so the replacement is refused (409) and the chapter wants an update first.
+            snapshot_id=point.get("snapshot"),
+            lookups=section.get("lookups") or [],
+            expected_text_version=text_version(text),
+            reviewed_by=(review or {}).get("reviewer"),
+            review={**(review or {}), "issues": others},
+        ),
+    )

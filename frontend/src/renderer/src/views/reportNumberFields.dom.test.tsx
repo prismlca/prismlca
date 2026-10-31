@@ -135,6 +135,8 @@ describe('ChapterEditorSheet → the inventory rows saved on blur', () => {
           toggleResolved={async () => {}}
           askWrite={() => {}}
           loadPrompts={async () => {}}
+          onReplaceNumber={async () => {}}
+          movedNumbers={[]}
           onKeepPoint={async () => {}}
           onFix={() => {}}
           onEarlier={() => {}}

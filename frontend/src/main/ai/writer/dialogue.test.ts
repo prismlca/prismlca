@@ -30,18 +30,27 @@ const api = async (method: string, path: string, body?: unknown): Promise<unknow
   const text = String(b.text ?? '')
   if (path === REVIEW)
     return { printed: printed(text), facts: { hotspots: [] }, study: {}, assignment: 'Write it.' }
-  const typed = /(?<![\d.{])\b42\b(?![\d}])/.test(text.replace(/\{\{[^}]*\}\}/g, ''))
+  // The gate's own repair (V460): a share typed exactly as it prints is bound, and the text handed back.
+  if (path === CHECK && text.includes('54.8 %')) {
+    const bound = text.replace('54.8 %', '{{groups.0.share_text}}')
+    const verdict = (await api(method, path, { ...b, text: bound })) as { findings: unknown[] }
+    calls.pop()
+    return {
+      ...verdict,
+      text: bound,
+      findings: [...verdict.findings, { kind: 'repaired_literal', detail: 'bound' }]
+    }
+  }
+  const typed = [...text.replace(/\{\{[^}]*\}\}/g, '').matchAll(/(?<![\d.{])\b(42|99)\b(?![\d}])/g)].map(
+    (m) => m[1]
+  )
   const findings = [
     ...(text.includes('{{bad}}') ? [{ kind: 'unresolved_placeholder', detail: 'bad does not resolve' }] : []),
-    ...(typed
-      ? [
-          {
-            kind: 'literal_number',
-            names: ['42'],
-            detail: 'The number 42 is written out. Reference it as a placeholder instead.'
-          }
-        ]
-      : []),
+    ...typed.map((n) => ({
+      kind: 'literal_number',
+      names: [n],
+      detail: `The number ${n} is written out. Reference it as a placeholder instead.`
+    })),
     ...(/largest/.test(text) ? [{ kind: 'contradicted_claim', detail: '“the largest” is not true' }] : [])
   ]
   const contract = findings.filter((f) => f.kind === 'unresolved_placeholder' || f.kind === 'literal_number')
@@ -237,6 +246,43 @@ describe('the second reader', () => {
     chat.rounds = [reply({ error: 'review unavailable' }), reply({ error: 'review unavailable' })]
     const out = await converse(base('Transport carries {{hotspots.1.share_text}}.'))
     expect(out.review).toBeNull()
+  })
+
+  it('starts the next revision from the text the gate bound, refused or not (V460)', async () => {
+    chat.rounds = [reply({ replacements: [{ old: ' and 42 more', new: '' }] })]
+    const out = await converse(base('Packaging carries 54.8 % and 42 more.', { reviewModel: undefined }))
+    expect(out.text).toBe('Packaging carries {{groups.0.share_text}}.')
+    // The writer was shown the bound text, not its own typed share.
+    expect(String(chat.seen[0].messages.at(-2)?.content)).toBe(
+      'Packaging carries {{groups.0.share_text}} and 42 more.'
+    )
+  })
+
+  it('reads a chapter whose only blocker is a number the writer could not put right (V461)', async () => {
+    chat.rounds = [
+      reply({ replacements: [{ old: 'weighs', new: 'has' }] }),
+      reply({ replacements: [{ old: 'has', new: 'weighs' }] }),
+      reply({ verdict: 'accept', issues: [] })
+    ]
+    const out = await converse(base('The bottle weighs 42 g.'))
+    // Read all the same, and handed back with the typed number for the store to keep as an open point.
+    expect(out.review?.reviewer).toBe('reader-m')
+    expect(out.findings.map((f) => f.kind)).toContain('literal_number')
+    expect(calls.some((c) => c.path === REVIEW)).toBe(true)
+  })
+
+  it('does not let an answer to the reader add a typed number of its own', async () => {
+    chat.rounds = [
+      reply({ replacements: [{ old: 'weighs', new: 'has' }] }),
+      reply({ replacements: [{ old: 'has', new: 'weighs' }] }),
+      reply({ verdict: 'revise', issues: [{ quote: 'the largest contributor', problem: 'it is second' }] }),
+      reply({ replacements: [{ old: 'the largest contributor', new: 'a contributor of 99 kg' }] }),
+      { text: 'not json' },
+      { text: 'not json' }
+    ]
+    const out = await converse(base('The bottle weighs 42 g. Transport is the largest contributor.'))
+    expect(out.text).toBe('The bottle weighs 42 g. Transport is the largest contributor.')
+    expect(out.review?.issues[0].status).toBe('open')
   })
 
   it('without a reader, the gate decides alone and a word-list finding is repaired', async () => {

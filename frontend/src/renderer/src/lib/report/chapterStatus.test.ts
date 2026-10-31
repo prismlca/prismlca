@@ -77,3 +77,29 @@ describe('stateSummary', () => {
     expect(stateSummary({ ready: 4 })).toBe('Up to date and approved')
   })
 })
+
+describe('typed numbers left for the author (V461)', () => {
+  const withNumber = {
+    ...written,
+    ai_review: {
+      ...written.ai_review!,
+      questions: [],
+      issues: [
+        {
+          quote: 'It weighs 8.5 kg.',
+          problem: 'typed',
+          status: 'open',
+          origin: 'typed_number',
+          number: '8.5'
+        }
+      ]
+    }
+  } as unknown as ReportSection
+
+  it('names the numbers to check instead of a doubted sentence, and the foot line counts them', () => {
+    const state = chapterState(withNumber, {})
+    expect(state.kind).toBe('numbers')
+    expect(state.label).toBe('1 number to check')
+    expect(stateSummary(stateCounts([state]))).toBe('1 with typed numbers to check')
+  })
+})

@@ -631,6 +631,25 @@ def mark_reviewed(request: Request, database: str, report_id: str, body: Reviewe
     report, data = report_pipeline.analysis_snapshot(database, report_id, RenderRequest())
     # `[]` means "mark none", not "mark all" — only an *omitted* list falls back to every chapter.
     wanted = set(body.section_ids) if body.section_ids is not None else None
+    if body.read:
+        # A typed number still open is a decision the author has not made yet: releasing the chapter
+        # would release a figure nobody checked (`report_typed_numbers`).
+        from prism_lca.engine import report_review, report_typed_numbers
+
+        undecided = [
+            report_audit.chapter_label(section)
+            for section in report.get("sections", [])
+            if (section.get("text") or "").strip()
+            and (wanted is None or section.get("id") in wanted)
+            and report_typed_numbers.typed(report_review.current_review(section), "open")
+        ]
+        if undecided:
+            raise PrismError(
+                "Typed numbers are still to be checked in: " + ", ".join(f"'{c}'" for c in undecided)
+                + ". Keep or replace each one before approving.",
+                code="report_typed_numbers_open",
+                status_code=409,
+            )
     marked = []
     for section in report.get("sections", []):
         text = (section.get("text") or "").strip()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from prism_lca.engine import report_numbers
 from prism_lca.engine import report_prompts as rp
 
 DATA = {
@@ -824,7 +825,7 @@ def test_a_small_parameter_value_with_its_unit_is_named_and_repaired():
         found = [f for f in rp.check_proposal(impact, {"id": "s", "kind": "prose"}, data)["findings"]
                  if f["kind"] == "literal_number"]
         assert found and "repair" not in found[0] and "fill_mass" not in found[0]["detail"], impact
-        assert rp.apply_repairs(impact, found)[1] == []
+        assert report_numbers.apply_repairs(impact, found)[1] == []
     # The characterised unit may carry a per-unit suffix, sentence punctuation, a line break or extra
     # spaces — and is still an impact (a regression found in testing).
     for impact in ("The impact is 2 kg CO2-Eq/m2 here.", "The impact is 2 kg CO2.", "The impact is 2 kg\nCO2-Eq.",

@@ -846,7 +846,9 @@ def _translated_copy(report_def: dict, data: dict) -> dict:
     """
     import copy
 
+    from prism_lca.engine import report_data
     from prism_lca.engine import report_translations as rtr
+    from prism_lca.engine.report_i18n import normalise
 
     stored = report_def.get("translations") or {}
     lang = str(report_def.get("lang") or "en")
@@ -856,6 +858,7 @@ def _translated_copy(report_def: dict, data: dict) -> dict:
     info["applied"] = applied
     info["stored"] = len(stored.get("map") or {}) if isinstance(stored, dict) else 0
     out["translations"] = info
+    out["report"] = report_data.report_settings(report_def, normalise(lang))
     return out
 
 

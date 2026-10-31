@@ -52,6 +52,10 @@ class ProposalRequest(BaseModel):
     #: What the reader and the writer settled between them — kept with the chapter as `ai_review`, so the
     #: editor can show what was checked and how each point ended.
     review: dict | None = None
+    #: Store even though typed numbers are left, when nothing else is: each becomes an open point for the
+    #: author (`report_typed_numbers`). The writer asks for it on its final store, after its own
+    #: attempts are spent; a check (store=false) ignores it.
+    keep_numbers: bool = False
 
 
 def known_method_families() -> list[str]:
@@ -111,6 +115,31 @@ def gate_refusals(section: dict, report: dict, data: dict, weak_percent: float) 
     return [
         f for f in verdict.get("findings", []) if f.get("kind") not in report_prompts.ADVISORY_FINDINGS
     ]
+
+
+def repaired_finding(done: dict) -> dict:
+    """The advisory that reports one substitution the gate carried out — to the reader, who can see
+    what the arithmetic cannot: whether the sentence means the quantity it was bound to."""
+    if done.get("parameter"):
+        detail = (
+            f"“{done['find']}” was bound to the parameter '{done['parameter']}' and now "
+            f"prints “{done.get('prints')}” — the same quantity, written as the parameter "
+            "stores it, and correct from here on whenever it changes. Two things worth a "
+            "glance: the wording is the parameter's rather than yours, and the check "
+            "matched a value and a unit, not a meaning. If this sentence is about some "
+            "other quantity that happens to be the same size, write the figure "
+            "differently or state it in words."
+        )
+    else:
+        named = f" ({done['label']})" if done.get("label") else ""
+        detail = (
+            f"“{done['find']}” was typed out and is exactly what {{{{{done.get('path')}}}}}{named} prints, "
+            f"“{done.get('prints')}”, so it was bound to that placeholder: it prints the same today and "
+            "follows the data from here on. The check matched the printed figure and its unit, not a "
+            "meaning — if this sentence is about another quantity of the same size, the binding is "
+            "wrong: write that figure differently or state it in words."
+        )
+    return {"kind": "repaired_literal", "detail": detail}
 
 
 def blocking(verdict: dict) -> list[dict]:
@@ -313,9 +342,11 @@ def run_section_proposal(
     from prism_lca.engine import (
         gate_journal,
         report_data,
+        report_numbers,
         report_prompts,
         report_review,
         report_staleness,
+        report_typed_numbers,
     )
 
     store = ReportStore()
@@ -432,8 +463,14 @@ def run_section_proposal(
     # an advisory finding naming each binding that was made, and a reader can see it in the writer
     # report rather than discovering it after a recompute.
     repaired: list[dict] = []
+
+    def holding(v: dict) -> list[dict]:
+        """What stops this write: the contract when a second reader has read it, else every
+        finding outside the advisory set."""
+        return report_review.contract(v.get("findings")) if reviewed else blocking(v)
+
     if not verdict["ok"]:
-        candidate_text, applied = report_prompts.apply_repairs(text, verdict.get("findings") or [])
+        candidate_text, applied = report_numbers.apply_repairs(text, verdict.get("findings") or [])
         if applied:
             bindings_after = report_data.bindings_for(candidate_text, data)
             second = report_review.decided(
@@ -448,9 +485,14 @@ def run_section_proposal(
                 ),
                 reviewed,
             )
-            # Only if it actually helped. A repair that leaves the chapter refused anyway buys nothing
-            # and would hide the author's own wording behind an edit nobody asked for.
-            if second["ok"]:
+            # Kept when it helped — and that includes a chapter still refused for something else, as long
+            # as the repair removed objections and raised none: the writer's next revision then starts
+            # from the text with those figures bound and has only the rest to fix. Thrown away, the same
+            # figures came back in the next attempt and used up a revision of their own (V460).
+            before, after = holding(verdict), holding(second)
+            if second["ok"] or (
+                len(after) < len(before) and {f.get("kind") for f in after} <= {f.get("kind") for f in before}
+            ):
                 text, bindings, verdict, repaired = candidate_text, bindings_after, second, applied
     # One line per judgement, refused ones included — see engine/gate_journal. This is the only place
     # that sees a refused attempt at all: the revision loop asks with store=false and nothing else
@@ -480,29 +522,40 @@ def run_section_proposal(
         hint_outcomes=(body.review or {}).get("hints") if reviewed else None,
     )
     for done in repaired:
-        verdict = {
-            **verdict,
-            "findings": [
-                *verdict.get("findings", []),
-                {
-                    "kind": "repaired_literal",
-                    "detail": (
-                        f"“{done['find']}” was bound to the parameter '{done['parameter']}' and now "
-                        f"prints “{done.get('prints')}” — the same quantity, written as the parameter "
-                        "stores it, and correct from here on whenever it changes. Two things worth a "
-                        "glance: the wording is the parameter's rather than yours, and the check "
-                        "matched a value and a unit, not a meaning. If this sentence is about some "
-                        "other quantity that happens to be the same size, write the figure "
-                        "differently or state it in words."
-                    ),
-                },
-            ],
-        }
+        verdict = {**verdict, "findings": [*verdict.get("findings", []), repaired_finding(done)]}
     if figure_refused:
         verdict = {**verdict, "findings": [*verdict.get("findings", []), figure_refused]}
 
+    # Typed numbers and nothing else, after the writer's last attempt: stored for the author to decide,
+    # each number an open point of the chapter's reading (V461). Anything else left keeps the chapter out —
+    # a placeholder that does not resolve or a reference to nothing breaks the document, whoever decides.
+    left = holding(verdict)
+    keep_typed = (
+        body.store and body.keep_numbers and bool(left) and all(f.get("kind") == "literal_number" for f in left)
+    )
+    typed_points: list[dict] = []
+    if keep_typed:
+        lang = report.get("lang", "en")
+        placed = report_typed_numbers.points(
+            left,
+            text,
+            lambda sentence: report_review.printed(sentence, data, lang, bindings),
+            report_typed_numbers.typed(report_review.current_review(section)),
+            report_pipeline.snapshot_id_for(database, report_id, report),
+        )
+        # Every number gets its point, or the chapter is not stored: a number without one would be
+        # approved without anybody having decided about it.
+        keep_typed = placed is not None
+        typed_points = placed or []
+    reading = report_review.record(body.review, body.reviewed_by, text) if reviewed else None
+    if typed_points:
+        review = body.review or {}
+        reading = report_review.record(
+            {**review, "issues": [*(review.get("issues") or []), *typed_points]}, body.reviewed_by, text
+        )
+
     stored = False
-    if body.store and verdict["ok"]:
+    if body.store and (verdict["ok"] or keep_typed):
         store.update_section(
             database,
             report_id,
@@ -540,8 +593,9 @@ def run_section_proposal(
                 "lookups": body.lookups or [],
                 "findings": [f for f in verdict.get("findings", []) if f],
                 # What the second reader checked and how each point ended; none for an unread write, so
-                # an old reading cannot stand beside a text it never saw.
-                "ai_review": report_review.record(body.review, body.reviewed_by, text) if reviewed else None,
+                # an old reading cannot stand beside a text it never saw. Typed numbers kept for the
+                # author are points of it, read or not.
+                "ai_review": reading,
             },
         )
         stored = True
@@ -554,14 +608,15 @@ def run_section_proposal(
         #
         # No text, no prompt, no answer — the chapter's name, its kind, its size, and the model.
         model = body.model
-        if verdict["ok"]:
+        if stored:
             report_audit.note(
                 audit,
                 "write_report_chapter",
                 f"Write chapter '{report_audit.chapter_label(section)}' in "
                 f"report '{report_audit.report_label(report)}' "
                 f"({section.get('kind', 'prose')}, {report_audit.size(text)}"
-                f"{report_audit.with_model(model)})",
+                + (f", {len(typed_points)} typed number(s) left to check" if typed_points else "")
+                + f"{report_audit.with_model(model)})",
                 database=database,
                 source=report_audit.by_model(model),
             )
@@ -585,4 +640,9 @@ def run_section_proposal(
     # The repaired text travels back, so the caller writes what was stored rather than what it sent.
     # Without it the writer keeps its own copy, the renderer paints it, and the chapter on screen
     # disagrees with the chapter in the file until the next reload.
-    return {**verdict, "stored": stored, **({"text": text} if repaired else {})}
+    return {
+        **verdict,
+        "stored": stored,
+        **({"text": text} if repaired else {}),
+        **({"typed_numbers": len(typed_points)} if typed_points else {}),
+    }

@@ -1507,6 +1507,7 @@ def render_sources(
         web_research=web_research,
         review=review,
     )
+    data["report"] = rd.report_settings(report, lang)
     # Study-borne prose into the report language (engine/report_translations). Candidates are
     # recorded BEFORE substituting — afterwards the sources are gone — and ride the snapshot so the
     # collect endpoint reads them from the cache instead of rebuilding, and so an export bundle

@@ -840,7 +840,9 @@ export async function writeAll(opts: {
         snapshot_id: brief.snapshot_id,
         expected_text_version: brief.text_version,
         // Read by a second model: the gate decides on the contract alone and keeps the reading.
-        ...(written.review ? { reviewed_by: written.review.reviewer, review: written.review } : {})
+        ...(written.review ? { reviewed_by: written.review.reviewer, review: written.review } : {}),
+        // Typed numbers the writer could not put right are the author's to decide, not a lost chapter.
+        keep_numbers: true
       })) as { stored?: boolean; findings?: Finding[]; text?: string }
       // The store has the last word on the research too: a refusal here holds it after all.
       settleResearch(chapterOf(checkPath), written.lookups, verdict?.stored === true)
