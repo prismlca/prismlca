@@ -923,6 +923,29 @@ def test_an_empty_formula_makes_the_parameter_a_plain_value_again(client, token)
     assert {p["name"]: p for p in _plist(client, token, db)}["b"]["amount"] == 5
 
 
+def test_an_empty_formula_in_a_batch_makes_the_parameter_a_plain_value_again(client, token):
+    """V456: the assistant's `clear_formula` reaches the batch as "" — which the batch wrote through as an
+    empty formula instead of reading it the way the single write does."""
+    db = _fg(client, token)
+    assert _param(client, token, db, "a", amount=2).status_code == 200
+    assert _param(client, token, db, "b", formula="a * 3").status_code == 200
+    r = client.post(
+        "/api/v1/params/bulk",
+        json={"database": db, "parameters": [{"name": "b", "amount": 0.011, "formula": ""}]},
+        headers=token,
+    )
+    assert r.status_code == 200, r.text
+    b = {p["name"]: p for p in _plist(client, token, db)}["b"]
+    assert not b.get("formula") and b["amount"] == 0.011
+    # A batch item without a formula still keeps one it has.
+    assert _param(client, token, db, "c", formula="a * 4").status_code == 200
+    r = client.post(
+        "/api/v1/params/bulk", json={"database": db, "parameters": [{"name": "c", "unit": "kg"}]}, headers=token
+    )
+    assert r.status_code == 200, r.text
+    assert {p["name"]: p for p in _plist(client, token, db)}["c"]["formula"] == "a * 4"
+
+
 def test_setting_the_same_value_again_writes_no_audit_line_and_no_undo_step(client, token):
     """Enter then blur commit the same number twice (V413): the second one is not a change."""
     db = _fg(client, token)

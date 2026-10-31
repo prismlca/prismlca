@@ -141,7 +141,9 @@ export function useResultsOpening({
   // Scenarios of the active model (parameter-override sets) — selectable as extra subjects in the rail.
   // Subscription: the Scenarios editor invalidates this key on every write, so the picker here
   // follows without its own refetch wiring. The pruning of persisted selections stays.
-  const scenarioRows = useQuery(activeDb ? scenariosRoute(activeDb) : null).data
+  const scenarioQuery = useQuery(activeDb ? scenariosRoute(activeDb) : null)
+  const scenarioRows = scenarioQuery.data
+  const scenariosFresh = scenarioQuery.fresh
   // The overrides themselves, not only which scenarios are ticked: an edited override leaves the
   // subject key unchanged and the old scores standing.
   const scenarioOverridesKey = useMemo(
@@ -157,6 +159,12 @@ export function useResultsOpening({
       return
     }
     setScenarios(scenarioRows)
+    // Pruning and the baseline repair decide only on a list read after the last model edit. The cache
+    // keeps an invalidated list on show until its refetch lands, and a page that mounts meanwhile starts
+    // on it: a list another page read before the assistant created the model's scenarios, ticked them
+    // with `setup_results` and opened this page — every tick was dropped against it, and the run
+    // computed the baseline alone.
+    if (!scenariosFresh) return
     // The stored selection is pruned only once the backend has answered for the view (and not at all
     // when it could not): a write while the GET is out leaves after the 400 ms pause with the cache's
     // section, and the backend replaces the section it is sent — the stored subject and indicators
@@ -179,7 +187,7 @@ export function useResultsOpening({
     return () => {
       alive = false
     }
-  }, [activeDb, scenarioRows, setScenSel, setBaselineOn, setScenarios])
+  }, [activeDb, scenarioRows, scenariosFresh, setScenSel, setBaselineOn, setScenarios])
 
   return { scenarioRows, scenarioOverridesKey }
 }

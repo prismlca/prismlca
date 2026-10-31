@@ -7,6 +7,7 @@ import type { Tool } from '../context'
 import { bool, num, obj, objArr, str, strArr } from '../schema'
 import { AI, S, batchResult, runItem } from '../format'
 import { IMPL, delegate } from '../impl'
+import { formulaKept } from '../formulaKept'
 
 export const paramsTools: Tool[] = [
   {
@@ -91,8 +92,13 @@ export const paramsTools: Tool[] = [
           {
             action: str('set (default) | delete.'),
             name: str('Parameter name (letters, digits, underscores).'),
-            value: num('Fixed numeric value (action=set; omit when passing a formula).'),
+            value: num(
+              'Fixed numeric value (action=set; omit when passing a formula). A parameter that has a formula keeps it, and the formula wins, unless clear_formula is true.'
+            ),
             formula: str('Formula instead of a fixed value, e.g. "mass * (1 - recycled_share)".'),
+            clear_formula: bool(
+              "true = drop the parameter's formula and store the value you pass as a fixed number. Only to replace a formula on purpose; leave it false for any other change (unit, group, comment)."
+            ),
             unit: str('Optional unit label.'),
             group: str('Optional grouping label.'),
             comment: str('Optional note on meaning, source or assumptions.'),
@@ -102,6 +108,7 @@ export const paramsTools: Tool[] = [
                 name: str('Parameter name.'),
                 value: num('Fixed numeric value.'),
                 formula: str('Formula instead of a value.'),
+                clear_formula: bool("true = replace this parameter's formula with the value."),
                 unit: str('Unit label.'),
                 group: str('Grouping label.'),
                 comment: str('Note on meaning, source or assumptions.')
@@ -129,7 +136,7 @@ export const paramsTools: Tool[] = [
             parameters: items.map((it) => ({
               name: it.name,
               amount: it.formula ? undefined : it.value,
-              formula: it.formula || undefined,
+              formula: it.formula || (it.clear_formula === true ? '' : undefined),
               unit: it.unit,
               group: it.group,
               description: it.comment
@@ -149,10 +156,15 @@ export const paramsTools: Tool[] = [
               result: { parameter: mine.find((p: any) => p?.name === it.name) ?? null }
             }))
           )
+          const kept = formulaKept(items, mine)
           // Notes that still quote a changed parameter's previous value ride along (V339) — the batch
           // summary above keeps only the parameters, and this is the one field worth the extra bytes.
-          if (Array.isArray(r?.stale_notes) && r.stale_notes.length)
-            return S({ ...JSON.parse(folded), stale_notes: r.stale_notes, hint: r.hint })
+          if ((Array.isArray(r?.stale_notes) && r.stale_notes.length) || kept)
+            return S({
+              ...JSON.parse(folded),
+              ...(r?.stale_notes?.length ? { stale_notes: r.stale_notes, hint: r.hint } : {}),
+              ...kept
+            })
           return folded
         } catch (e) {
           // One transaction means one outcome: nothing was written. Say that, rather than leaving

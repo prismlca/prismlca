@@ -2,6 +2,7 @@
  "goal_scope.title": "Goal and scope definition",
  "lcia.title": "Life cycle impact assessment",
  "contribution.title": "Contribution analysis",
+ "dimension.life_cycle_phase": "Life-cycle phase",
  "interpretation.title": "Interpretation",
  "introduction.title": "Introduction",
  "appendix.title": "Annex",

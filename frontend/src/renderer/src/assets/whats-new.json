@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-10-31",
+    "title": "Fuller reports from the start",
+    "details": "A new full report now covers at least five core EF 3.1 indicators, compares the baseline with every scenario of the model when none is ticked on the Results page, and draws the heatmap and the radar. Indicators picked on the Results page are added when they come from the same method family. Untick what you don't need under Scope & indicators."
+  },
+  {
     "date": "2026-10-28",
     "title": "Your own answer to the assistant's questions",
     "details": "Question cards from the assistant, and from external agents in the External agents drawer, now have a Something else… row under each question's options. Click it to open a text field and answer in your own words when none of the options fits. Enter sends, Escape closes the field."

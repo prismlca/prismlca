@@ -4,7 +4,7 @@
  * file only because nobody had moved them — eleven test files already covered them from outside.
  * ReportSections re-exports every name, so those tests keep their import path.
  */
-import { langLabel, SUMMARISING, type ReportSection } from './model'
+import { chapterLabel, langLabel, SUMMARISING, type ReportSection } from './model'
 import type { StaleChapter } from './staleness'
 
 /** The study-translation step of a run. Not a section id — no chapter can collide with it. */
@@ -147,6 +147,28 @@ export const PLAN_LABEL: Record<PlanAction, { label: string; tone: string }> = {
 
 /** What a ticked item does: a ticked `keep` writes the chapter anew. */
 export const runMode = (item: PlanItem): 'write' | 'update' => (item.action === 'update' ? 'update' : 'write')
+
+/**
+ * Why the chapters of a run were not stored, in words for the person who pressed the button. A refused
+ * draft used to be explained by the gate's first finding, which is written for the model ("Derivation
+ * calls cannot nest; every derivation takes placeholder paths …") and gave the user nothing to act on.
+ * The finding stays on the chapter, whose tooltip shows it to whoever wants the detail. An `error` —
+ * cancelled, stream lost, backend away — is already about the run, so it is passed on as it is.
+ */
+export function runErrors(
+  outcomes: Array<{ id: string; stored: boolean; error?: string }>,
+  sections: Array<{ id: string; kind: string; title?: string }>
+): string[] {
+  return outcomes.flatMap((o) => {
+    if (o.error) return [o.error]
+    if (o.stored) return []
+    const s = sections.find((x) => x.id === o.id)
+    return [
+      `${s ? chapterLabel(s) : 'A chapter'} kept failing the report's checks (the reason is on the chapter) — ` +
+        'write it again, or choose another Report writing model'
+    ]
+  })
+}
 
 /**
  * What a finished run did, in one line — counted from what came back, not from what was asked.

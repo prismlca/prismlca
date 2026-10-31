@@ -262,7 +262,7 @@ export const calcTools: Tool[] = [
               'mode=matrix only: the share (0.01 = 1 %) a process must reach in at least ONE indicator to get a row. Default 0.01.'
             ),
             direct_split: bool(
-              'mode=flows only: true = each flow also carries "direct", the part the activity emits itself, and the answer the direct/upstream split of the total.'
+              'mode=flows only: true = each flow also carries "direct", the part the activity emits itself, and the answer the direct/upstream split of the total. Not together with "phase": a phase\'s flows have no such split.'
             ),
             phase: {
               ...obj(
@@ -273,7 +273,7 @@ export const calcTools: Tool[] = [
                 ['dimension', 'value']
               ),
               description:
-                'mode=flows only: the flows of ONE tag value (a life-cycle phase), wherever its processes and inputs sit in the model.'
+                'mode=flows only: the flows of ONE tag value (a life-cycle phase), wherever its processes and inputs sit in the model. Leave direct_split off with it.'
             }
           },
           ['mode', 'code']

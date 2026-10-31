@@ -4,6 +4,7 @@
 import type { Tool, ToolCtx } from './context'
 import { geoName, isAggregate } from '../../../shared/geographyNames'
 import { AI, S, cap, oneScenario } from './format'
+import { formulaKept } from './formulaKept'
 import {
   NEEDS_A_LOOK,
   NEEDS_A_LOOK_FLOOR,
@@ -361,7 +362,7 @@ export const IMPL: Record<string, Tool['run']> = {
       database: ctx.activeDb,
       name: a.name,
       amount: a.formula ? undefined : a.value,
-      formula: a.formula || undefined,
+      formula: a.formula || (a.clear_formula === true ? '' : undefined),
       unit: a.unit,
       group: a.group,
       description: a.comment,
@@ -373,7 +374,7 @@ export const IMPL: Record<string, Tool['run']> = {
     // tool result, then paid for all of it again on every later round. Keep the one that was written.
     const all = Array.isArray(r?.parameters) ? r.parameters : null
     const mine = all?.find((p: any) => p?.name === a.name)
-    return S(mine ? { parameter: mine } : r)
+    return S(mine ? { parameter: mine, ...formulaKept([a], [mine]) } : r)
   },
   delete_parameter: async (a, ctx) => {
     if (!ctx.activeDb)

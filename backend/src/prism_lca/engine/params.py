@@ -685,18 +685,20 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
             param_rules.check_value(effective_rule, existing.amount, name=name)
 
         entry: dict = {"name": name}
-        if formula is not None:
+        # "" drops the formula, as in set_param — written through, it reached bw2data as an empty one.
+        clear_formula = formula == ""
+        if formula:
             entry["formula"] = formula
         if amount is not None:
             entry["amount"] = amount
-        if not existing and amount is None and formula is None:
+        if not existing and amount is None and not formula:
             entry["amount"] = 0.0
         # Same guard as set_param: a metadata-only update must not let bw2data reset the amount to
         # 0 and drop the formula, because recalc_all() would then push the wiped value everywhere.
         if existing:
             if "amount" not in entry and existing.amount is not None:
                 entry["amount"] = existing.amount
-            if "formula" not in entry and existing.formula:
+            if "formula" not in entry and existing.formula and not clear_formula:
                 entry["formula"] = existing.formula
 
         data = dict(prior)

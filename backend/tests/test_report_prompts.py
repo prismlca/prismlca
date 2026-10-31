@@ -66,7 +66,21 @@ def test_a_nested_derivation_is_refused_instead_of_printing_raw():
     kinds = [f["kind"] for f in verdict["findings"]]
     assert "malformed_placeholder" in kinds
     detail = next(f["detail"] for f in verdict["findings"] if f["kind"] == "malformed_placeholder")
-    assert "sum(a, b, c" in detail and "nest" in detail
+    assert "sum(a, b, c" in detail and "never another derivation" in detail
+
+
+def test_a_derivation_of_a_sum_is_told_what_to_do_instead():
+    """V451: GLM wrote {{factor(sum(a, b, c), d)}} three times in a row — the finding only knew nested
+    sums and told it to flatten them, which a factor of a sum cannot be. The detail names the case and
+    the way out (the sum on its own, the comparison in words, or single members)."""
+    verdict = rp.check_proposal(
+        "Together they come to {{factor(sum(results.0.score, results.1.score), results.2.score)}} times it.",
+        {"kind": "prose"},
+        DATA,
+    )
+    detail = next(f["detail"] for f in verdict["findings"] if f["kind"] == "malformed_placeholder")
+    assert "{{factor(sum(a, b), c)}}" in detail
+    assert "in words" in detail and "single members" in detail
 
     # The flat, legal form stays untouched.
     flat = rp.check_proposal(
@@ -661,6 +675,22 @@ def test_a_reference_to_a_table_the_report_does_not_have_is_refused():
     assert not verdict["ok"]
     assert [f["kind"] for f in verdict["findings"]] == ["unknown_reference"]
     assert "f-section-sec-deadbeef" in verdict["findings"][0]["detail"]
+
+
+def test_pointing_at_the_own_chart_without_asking_for_it_says_so():
+    """V452: the brief names the label the chapter's own chart WOULD carry. GLM pointed at it without
+    asking for the chart and was told to "point at one of the references listed in the brief" — the
+    very reference it had used. The finding now says which of the two ways out applies."""
+    report = _report_with("prose")
+    section = report["sections"][0]
+    own = rp.figure_slot(section)[1]
+    verdict = rp.check_proposal(f"As {{{{ref:{own}}}}} shows, use dominates.", section, DATA, report=report)
+    finding = next(f for f in verdict["findings"] if f["kind"] == "unknown_reference")
+    assert "your own chart" in finding["detail"] and "FIGURE:" in finding["detail"]
+    # Any other unknown label keeps the general advice.
+    other = rp.check_proposal("See {{ref:f-section-sec-deadbeef}}.", section, DATA, report=report)
+    detail = next(f for f in other["findings"] if f["kind"] == "unknown_reference")["detail"]
+    assert "listed in the brief" in detail and "your own chart" not in detail
 
 
 def test_a_label_from_another_chapter_is_allowed():

@@ -92,7 +92,7 @@ from prism_lca.engine.report_bindings import (
 from prism_lca.engine.report_bindings import (
     resolve as resolve,
 )
-from prism_lca.engine.report_i18n import t
+from prism_lca.engine.report_i18n import dimension_name, t
 from prism_lca.engine.report_tokens import (
     AGGREGATES as AGGREGATES,
 )
@@ -295,7 +295,7 @@ def _contribution_view(contribution: dict | None, lang: str = "en") -> dict[str,
         # business in a heading, and the name behind it is the modeller's — translated like the values
         # under it (V240). `dimension` keeps the raw marker, because that is what the aggregation was
         # asked for and what an author's placeholder may already quote.
-        "dimension_label": dimension.removeprefix("tag:"),
+        "dimension_label": dimension_name(dimension.removeprefix("tag:"), lang),
         "unit": (contribution or {}).get("meta", {}).get("unit", ""),
         "groups": groups,
         #: How many groups were below 0.05 % and left out — stated in the document, never silently.

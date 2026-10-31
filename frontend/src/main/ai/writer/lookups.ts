@@ -1,4 +1,7 @@
-/** The lookup allowance per chapter: what a chapter has to explain decides how often its writer may look. */
+/**
+ * A chapter writer's lookups: which tools it carries, how often it may look — what a chapter has to
+ * explain decides that — and how an answer reads before the writer sees it.
+ */
 import type { WriteBrief } from '../reportWriter'
 
 /**
@@ -92,4 +95,28 @@ export function lookupBudget(brief: WriteBrief): number {
   }
   const per = 'per' in plan && plan.per ? counts[plan.per] : 0
   return Math.min(plan.base + per, plan.max)
+}
+
+/**
+ * A lookup answer in the language the document prints.
+ *
+ * The snapshot a writer is given is translated; the MODEL is not, and `get_process_details` answers
+ * out of the model. Measured in the first run that took the lookups seriously: eleven of
+ * them in the inventory chapter, and four German process names walked out of their answers into its
+ * prose — two chapters after the same table printed them in English (V260). More lookups is the fix
+ * working; this is its bill.
+ *
+ * A rewrite rather than an instruction, because the name in front of a model is the name it writes.
+ * Longest source first, so a name that contains another is replaced whole; nothing else in the answer
+ * is touched, and a report with no translation (the study is already in the report's language) does
+ * no work at all.
+ */
+export function asPrinted(result: string, brief: WriteBrief): string {
+  const pairs = Object.entries((brief.printed_names ?? {}) as Record<string, string>)
+  if (!pairs.length) return result
+  let out = result
+  for (const [stored, printed] of pairs.sort((a, b) => b[0].length - a[0].length)) {
+    if (out.includes(stored)) out = out.split(stored).join(printed)
+  }
+  return out
 }

@@ -29,7 +29,15 @@ import type { ChapterReview } from '../../shared/ipc'
 import { capToolResult } from './resultBudget'
 import { costOf } from './stream'
 import { makeRepeatGuard } from './toolGuards'
-import { lookupBudget, RESEARCH_CALLS, writerTools } from './writer/lookups'
+import { asPrinted, lookupBudget, RESEARCH_CALLS, writerTools } from './writer/lookups'
+import {
+  answered,
+  chapterOf,
+  earlierResearch,
+  holdResearch,
+  madeWith,
+  settleResearch
+} from './writer/heldResearch'
 import { stopNote } from './writer/costGuard'
 import { incompleteReason, joinContinuation, MAX_CONTINUATIONS, MAX_SECTION_ANSWERS } from './writer/answers'
 import { converse } from './writer/dialogue'
@@ -180,30 +188,6 @@ export interface WriteBrief {
   update?: UpdateBrief
 }
 
-/**
- * A lookup answer in the language the document prints.
- *
- * The snapshot a writer is given is translated; the MODEL is not, and `get_process_details` answers
- * out of the model. Measured in the first run that took the lookups seriously: eleven of
- * them in the inventory chapter, and four German process names walked out of their answers into its
- * prose — two chapters after the same table printed them in English (V260). More lookups is the fix
- * working; this is its bill.
- *
- * A rewrite rather than an instruction, because the name in front of a model is the name it writes.
- * Longest source first, so a name that contains another is replaced whole; nothing else in the answer
- * is touched, and a report with no translation (the study is already in the report's language) does
- * no work at all.
- */
-function asPrinted(result: string, brief: WriteBrief): string {
-  const pairs = Object.entries((brief.printed_names ?? {}) as Record<string, string>)
-  if (!pairs.length) return result
-  let out = result
-  for (const [stored, printed] of pairs.sort((a, b) => b[0].length - a[0].length)) {
-    if (out.includes(stored)) out = out.split(stored).join(printed)
-  }
-  return out
-}
-
 export interface WriteSectionOpts {
   brief: WriteBrief
   model?: string
@@ -267,10 +251,16 @@ export interface WriteSectionResult {
  * What has arrived comes back as an unchecked draft instead.
  */
 export async function writeSection(opts: WriteSectionOpts): Promise<WriteSectionResult> {
-  const draft: { text: string; lookups: Lookup[] } = { text: '', lookups: [] }
+  const draft: Draft = { text: '', lookups: [] }
+  // The research of a write is held until a store of the chapter is seen: the caller stores after this
+  // returns (writeAll settles on its verdict), so a passed check is no proof yet (writer/heldResearch.ts).
+  const chapter = chapterOf(opts.checkPath)
   try {
-    return await writeSectionInner(opts, draft)
+    const out = await writeSectionInner(opts, draft)
+    holdResearch(chapter, out.lookups)
+    return out
   } catch (e) {
+    holdResearch(chapter, draft.lookups)
     if (opts.signal?.aborted && draft.text.trim()) {
       return {
         text: draft.text,
@@ -293,10 +283,10 @@ export async function writeSection(opts: WriteSectionOpts): Promise<WriteSection
   }
 }
 
-async function writeSectionInner(
-  opts: WriteSectionOpts,
-  draft: { text: string; lookups: Lookup[] }
-): Promise<WriteSectionResult> {
+/** What has arrived so far, for the guard. */
+type Draft = { text: string; lookups: Lookup[] }
+
+async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<WriteSectionResult> {
   const { brief } = opts
   const model = opts.model || providerDefaults(getActiveProvider()).writerFallback
 
@@ -304,7 +294,9 @@ async function writeSectionInner(
   const literature = Boolean(brief.literature && opts.researchWeb)
   const system = writerSystem(brief, Boolean(opts.api) && lookupBudget(brief) > 0, literature)
 
-  const user = writerUser(brief)
+  // What an earlier write of this chapter researched and could not keep (writer/heldResearch.ts).
+  const earlier = literature ? earlierResearch(chapterOf(opts.checkPath), brief.update?.lookups) : []
+  const user = writerUser(brief, earlier)
 
   // The system prompt is the one block every chapter, lookup round and revision shares byte for byte.
   // Anthropic caches a prefix only where a breakpoint marks it (the chat places the same marker, see
@@ -354,11 +346,9 @@ async function writeSectionInner(
 
   // An update starts from the evidence the chapter was accepted with: the sentences it leaves standing
   // still rest on it, and the store keeps what it is sent. A lookup made again replaces its old answer.
-  const lookups: Lookup[] = [...(brief.update?.lookups ?? [])]
+  // Research held from a write that was not stored is evidence the same way: the writer is shown it.
+  const lookups: Lookup[] = [...(brief.update?.lookups ?? []), ...earlier]
   draft.lookups = lookups
-  /** The arguments a lookup was made with, whole — `args` is cut for storage, and two calls that differ
-   *  only past the cut are two lookups. */
-  const madeWith = new WeakMap<Lookup, string>()
   let text = ''
   /** The provider's finish reason for the round that produced `text` — null until one is stated. */
   let finishReason: string | null = null
@@ -464,12 +454,20 @@ async function writeSectionInner(
       const tool = allowed ? TOOL_BY_NAME[call.name] : undefined
       let result: string
       const blocked = tool ? repeats.block(call.name, call.arguments) : null
+      const inHand = tool && !blocked ? answered(lookups, call.name, call.arguments) : null
       if (!tool) {
         // A name outside the list costs no budget: refusing it is not a lookup, and charging for it
         // would let one wrong guess eat the allowance for the processes that matter.
         result = `${call.name} is not available while writing a chapter. Available: ${allowedTools.join(', ')}.`
       } else if (blocked) {
         result = blocked
+      } else if (inHand) {
+        // Asked before — in this write, in one that was not stored, or by the chapter an update starts
+        // from: the same answer, and nothing spent.
+        console.log(
+          `[writer] ${brief.title}: ${call.name} answered from research in hand, not searched again`
+        )
+        result = inHand.result
       } else if (call.name === 'research_web' && researched >= RESEARCH_CALLS) {
         // Like the allowlist refusal, free: the research already in hand is what the chapter is written from.
         result = `No more web research for this chapter (${RESEARCH_CALLS} calls). Write from the findings you have.`
@@ -776,6 +774,7 @@ export async function writeAll(opts: {
     // Kept outside the try: if the storing call throws, the generated — and paid-for — text is
     // returned as a draft instead of vanishing into the catch. Same rescue the renderer used to do.
     let written: Awaited<ReturnType<typeof writeSection>> | null = null
+    const checkPath = `${opts.base}/sections/${id}/proposal`
     // Stamped, not guessed at: whether the lanes actually overlap and where a chapter's minutes go
     // (brief vs model vs store) is only answerable from these lines — a 48-minute live run
     // could not say whether it had been parallel at all.
@@ -802,7 +801,7 @@ export async function writeAll(opts: {
         activeDb: opts.activeDb ?? null,
         onCost: opts.onCost,
         maxTokens: opts.maxTokens,
-        checkPath: `${opts.base}/sections/${id}/proposal`,
+        checkPath,
         reviewModel: opts.reviewModel,
         reviewPath: `${opts.base}/sections/${id}/review-brief`,
         researchWeb: opts.researchWeb,
@@ -828,7 +827,7 @@ export async function writeAll(opts: {
           incomplete: true
         }
       }
-      const verdict = (await opts.api('POST', `${opts.base}/sections/${id}/proposal`, {
+      const verdict = (await opts.api('POST', checkPath, {
         text: written.text,
         store: true,
         model: written.model,
@@ -843,6 +842,8 @@ export async function writeAll(opts: {
         // Read by a second model: the gate decides on the contract alone and keeps the reading.
         ...(written.review ? { reviewed_by: written.review.reviewer, review: written.review } : {})
       })) as { stored?: boolean; findings?: Finding[]; text?: string }
+      // The store has the last word on the research too: a refusal here holds it after all.
+      settleResearch(chapterOf(checkPath), written.lookups, verdict?.stored === true)
       // The gate repairs what it can before it judges (a literal that is one parameter's current
       // value becomes that parameter's placeholder), so the stored text is not always the text sent.
       // Take its word for what was written, or the panel paints a chapter the file does not hold.
@@ -868,6 +869,7 @@ export async function writeAll(opts: {
         `[write-all] failed ${id} total=${Date.now() - t0}ms brief=${briefMs}ms write=${writeMs}ms: ` +
           (e instanceof Error ? e.message : String(e))
       )
+      holdResearch(chapterOf(checkPath), written?.lookups)
       return {
         id,
         stored: false,

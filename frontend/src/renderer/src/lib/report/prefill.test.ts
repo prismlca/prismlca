@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { defaultReportName, initialReportLang, reportPrefill, type PrefillInput } from './prefill'
 
 const EF = (cat: string): string[] => ['EF v3.1', cat, 'global warming potential']
-const FALLBACK = [EF('climate change')]
+const CORE = [EF('climate change')]
 
 const input = (patch: Partial<PrefillInput> = {}): PrefillInput => ({
   database: 'hose-cart',
@@ -15,7 +15,7 @@ const input = (patch: Partial<PrefillInput> = {}): PrefillInput => ({
     { id: 's2', name: 'Aluminium frame' }
   ],
   known: [],
-  fallbackMethods: FALLBACK,
+  coreMethods: CORE,
   lang: 'en',
   ...patch
 })
@@ -47,12 +47,29 @@ describe('initialReportLang', () => {
 })
 
 describe('reportPrefill (V407)', () => {
-  it("keeps today's defaults when the Results page has nothing", () => {
+  it('starts from the core indicators and every scenario when the Results page has nothing (V457)', () => {
     const r = reportPrefill(input())
-    expect(r.methods).toEqual(FALLBACK)
-    expect(r.subjects).toEqual([{ database: 'hose-cart', code: 'ref' }])
+    expect(r.methods).toEqual(CORE)
+    expect(r.subjects.map((s) => s.scenario ?? null)).toEqual([null, 's1', 's2'])
     expect(r.aggregate_by).toBeUndefined()
     expect(r.name).toBe('Hose cart report')
+    expect(r.note).toBe('Compares the baseline with all 2 scenarios of the model.')
+  })
+
+  it('adds the core set only within its own method family', () => {
+    const CML = (cat: string): string[] => ['CML v4.8 2016', cat, 'x']
+    const other = reportPrefill(input({ results: { picked: [{ method: CML('a') }, { method: CML('b') }] } }))
+    expect(other.methods).toEqual([CML('a'), CML('b')])
+    expect(other.note).not.toMatch(/core/)
+    const mixed = reportPrefill(
+      input({ results: { picked: [{ method: CML('a') }, { method: EF('water use') }] } })
+    )
+    expect(mixed.methods).toEqual([CML('a'), EF('water use')])
+  })
+
+  it('stays a report of one subject for a model without scenarios', () => {
+    const r = reportPrefill(input({ scenarios: [] }))
+    expect(r.subjects).toEqual([{ database: 'hose-cart', code: 'ref' }])
     expect(r.note).toBeNull()
   })
 
@@ -66,7 +83,9 @@ describe('reportPrefill (V407)', () => {
         lang: 'de'
       })
     )
-    expect(r.methods).toHaveLength(16)
+    // The core set leads, the Results page's picks follow.
+    expect(r.methods).toHaveLength(17)
+    expect(r.methods[0]).toEqual(EF('climate change'))
     expect(r.subjects).toEqual([
       { database: 'hose-cart', code: 'ref', label: 'Baseline' },
       {
@@ -89,7 +108,7 @@ describe('reportPrefill (V407)', () => {
     expect(r.name).toBe('Hose cart Bericht')
     expect(r.note).toBe(
       'Taken from the Results page: 16 indicators, 3 variants, breakdown by Life-cycle phase. ' +
-        'Written in Deutsch, the study’s language.'
+        'Plus 1 core indicator. Written in Deutsch, the study’s language.'
     )
   })
 

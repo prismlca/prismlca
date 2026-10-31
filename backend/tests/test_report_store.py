@@ -44,7 +44,7 @@ def test_create_uses_the_iso_default_structure(client, token, project):
     # Exact equality on purpose: a silently added option would otherwise never be noticed.
     assert rep["options"] == {
         "intended_public": False,
-        "figures": {"heatmap": False, "radar": False, "stacked": False},
+        "figures": {"heatmap": True, "radar": True, "stacked": False},
         "outlines": {"contents": True, "figures": True, "tables": True},
         # The threshold below which the check advises against calling one variant better (C2).
         "significance_percent": 5.0,
@@ -231,8 +231,8 @@ def test_setting_one_option_keeps_the_others(client, token, project):
     rep = client.post("/api/v1/report/create", json={"database": "op", "name": "Options"}, headers=token).json()
     url = f"/api/v1/report/one/op/{rep['id']}"
 
-    after = client.post(url, json={"options": {"figures": {"heatmap": True}}}, headers=token).json()
-    assert after["options"]["figures"] == {"heatmap": True, "radar": False, "stacked": False}  # nested merge
+    after = client.post(url, json={"options": {"figures": {"heatmap": False}}}, headers=token).json()
+    assert after["options"]["figures"] == {"heatmap": False, "radar": True, "stacked": False}  # nested merge
     assert after["options"]["outlines"] == {"contents": True, "figures": True, "tables": True}
     assert after["options"]["significance_percent"] == 5.0
 

@@ -3,7 +3,9 @@
  * chapter's own assignment with the facts it may write from. Built here and nowhere else, so the role,
  * the lookup guidance and the assignment read the same for a fresh chapter and for an update.
  */
+import type { Lookup } from '../../../shared/ipc'
 import type { WriteBrief } from '../reportWriter'
+import { madeWith } from './heldResearch'
 import { lookupBudget, writerTools } from './lookups'
 import { updateAssignment } from './update'
 
@@ -149,8 +151,25 @@ function factsFor(brief: WriteBrief): string {
   return JSON.stringify(facts, null, 1)
 }
 
-/** The chapter's own assignment: plan, prompt, answers, paths, figures, siblings, facts. */
-export function writerUser(brief: WriteBrief): string {
+/**
+ * Research an earlier write of this chapter paid for and could not keep (writer/heldResearch.ts). Said
+ * to be research, not a draft: the writer starts the chapter from the assignment either way, and only
+ * stops paying for questions that are already answered.
+ */
+function earlierResearch(earlier: Lookup[]): string[] {
+  if (!earlier.length) return []
+  return [
+    'Research already done for this chapter. An earlier attempt at it ran these web searches; the ' +
+      "attempt's text was not kept, its findings are. Use them as research, not as a draft — write the " +
+      'chapter from the assignment, take from the findings what it needs, and search only for what they ' +
+      'do not cover. The same question asked again returns the same answer.',
+    ...earlier.map((l) => `--- ${l.name} ${madeWith.get(l) ?? l.args} ---\n${l.result}`),
+    ''
+  ]
+}
+
+/** The chapter's own assignment: plan, prompt, answers, paths, figures, siblings, facts, research. */
+export function writerUser(brief: WriteBrief, earlier: Lookup[] = []): string {
   return [
     `Chapter: ${brief.title || brief.kind || 'chapter'}`,
     // The table of contents, and where this chapter sits in it. Built server-side and for a while
@@ -228,6 +247,7 @@ export function writerUser(brief: WriteBrief): string {
     'Facts and numbers (JSON):',
     factsFor(brief),
     '',
+    ...earlierResearch(earlier),
     // Last, because they were not followed where they stood: inside the assignment, ahead of the
     // placeholders, the other chapters and the facts, "three short paragraphs for a product manager"
     // came back as four long ones and a numbered list.

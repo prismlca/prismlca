@@ -112,6 +112,10 @@ export function fetchQuery<P extends RouteKey>(path: P): Promise<GetRoutes[P]> {
 /** What a component sees: the (possibly stale-while-refetching) data, the last error, a reload. */
 export interface QueryState<T> {
   data: T | undefined
+  /** `data` is the answer to a request made after the last `invalidate` — not a list kept on show
+   *  while the refetch is out. Showing stale data is the point of the cache; deciding on it is not:
+   *  whatever drops stored state because it is missing from `data` waits for this. */
+  fresh: boolean
   error: unknown
   reload: () => void
 }
@@ -148,6 +152,8 @@ export function useQuery<P extends RouteKey>(path: P | null): QueryState<GetRout
   return {
     // Stale-while-refetch: the last data stays visible until the refetch lands.
     data: e?.data as GetRoutes[P] | undefined,
+    // Changes only together with a version bump (fetch landed, invalidate), so the render is current.
+    fresh: !!e?.clean,
     error: e?.error,
     reload: () => {
       if (path !== null) {

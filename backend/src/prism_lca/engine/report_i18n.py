@@ -64,6 +64,18 @@ def t(key: str, lang: str = "en", **kwargs: object) -> str:
     return text.format(**kwargs) if kwargs else text
 
 
+def dimension_name(name: str, lang: str = "en") -> str:
+    """How a breakdown dimension is printed in a heading or caption.
+
+    The built-in life-cycle phase is one name across the workspace, so it is an identifier and stays
+    English in the data; printed, it is a word of the report's language like any other heading word.
+    Every other dimension is the modeller's own name and prints as they wrote it.
+    """
+    from prism_lca.engine.tag_groups import same_dimension
+
+    return t("dimension.life_cycle_phase", lang) if same_dimension(name, "Life-cycle phase") else name
+
+
 def kind_title(kind: str, lang: str = "en") -> str:
     """The standard heading for a chapter kind — the raw kind for one nobody has named yet.
 

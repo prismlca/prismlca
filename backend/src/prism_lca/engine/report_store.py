@@ -537,9 +537,11 @@ class ReportStore(JsonFileStore):
                 # anything and are gone: `comparative` is derivable from the subject count, and stating
                 # absent things turned out to be the presence of the Limitations chapter.
                 "intended_public": False,
-                # Comparison figures across subjects. Off by default: they only say something when there is
-                # more than one subject, and a report of one should not carry an empty chart.
-                "figures": {"heatmap": False, "radar": False, "stacked": False},
+                # Comparison figures across subjects, heatmap and radar on by default: a new report starts
+                # with every scenario and the core indicators (frontend `prefill.ts`), which is what they
+                # compare. A report of one subject, or a radar with three axes or fewer, draws neither —
+                # the figure builder skips them — so the default costs such a report nothing.
+                "figures": {"heatmap": True, "radar": True, "stacked": False},
                 # Contents, figure and table lists — Typst generates and localises all three, and the
                 # page numbers come from the same outline machinery as the contents, so they cannot
                 # drift. Figures/tables are on by default: the template suppresses

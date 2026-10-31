@@ -43,11 +43,18 @@ interface MethodInfo {
  * chapters written against a different method family, with no warning anywhere.
  *
  * So: prefer the newest EF family (the European reference method, and the one a footprint study is
- * normally asked for), and within it climate change first, then water and land use — a small, coherent
- * set rather than four indicators that happen to sort first. Falls back to the old behaviour when no EF
- * family is installed.
+ * normally asked for), and within it a core set of five, climate change first — enough categories for a
+ * report to compare variants across (its radar needs more than three axes), small enough to stay
+ * readable. Every new report covers at least these; the Results page's picks come on top (`prefill.ts`).
+ * Falls back to the old behaviour when no EF family is installed.
  */
-const PREFERRED_INDICATORS = ['climate change', 'water use', 'land use']
+const PREFERRED_INDICATORS = [
+  'climate change',
+  'acidification',
+  'eutrophication: freshwater',
+  'energy resources: non-renewable',
+  'water use'
+]
 
 export function defaultReportMethods(methods: MethodInfo[]): string[][] {
   const families = [...new Set(methods.map((m) => m.method[0]))].filter(
@@ -573,7 +580,7 @@ export default function Report({
         stackBy: resolveSplit(results?.stackBy, tagGroups, activeDb),
         scenarios: scenarioList,
         known: methods.map((m) => m.method),
-        fallbackMethods: defaultReportMethods(methods),
+        coreMethods: defaultReportMethods(methods),
         lang: initialReportLang(study)
       })
       const rep = await api<StoredReport>('POST', '/api/v1/report/create', {

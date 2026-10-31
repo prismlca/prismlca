@@ -26,6 +26,7 @@ import {
   mergeTicks,
   planForChapter,
   runDone,
+  runErrors,
   runMode,
   runSize,
   runSummary,
@@ -756,9 +757,7 @@ export default function useChapterWriter({
         // Counted from what came back, not from what was asked: a provider refusing every call still read
         // "9 written" over chapters that had no text. The first error is named.
         const stored = outcomes.filter((o) => o.stored)
-        const errors = outcomes
-          .map((o) => o.error ?? (o.stored ? '' : (o.findings?.[0]?.detail ?? '')))
-          .filter(Boolean)
+        const errors = runErrors(outcomes, reportRef.current?.sections ?? [])
         setNote(
           cancelled.current
             ? 'Canceled.'

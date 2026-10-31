@@ -30,3 +30,23 @@ describe('useQuery on a failing route', () => {
     expect(fx.calls.filter((c) => c.path.startsWith('/api/v1/calc/methods'))).toHaveLength(2)
   })
 })
+
+describe('useQuery after an invalidate', () => {
+  it('keeps the old data on show but not fresh until the refetch lands', async () => {
+    let answer: (v: unknown) => void = () => {}
+    const fx = makePrism({ 'GET /api/v1/calc/methods': [{ id: 'old' }] })
+    ;(window as unknown as { prism: unknown }).prism = fx.prism
+    const { result } = renderHook(() => useQuery('/api/v1/calc/methods'))
+    await waitFor(() => expect(result.current.fresh).toBe(true))
+    expect(result.current.data).toEqual([{ id: 'old' }])
+
+    fx.setRoute('GET /api/v1/calc/methods', () => new Promise((r) => (answer = r)))
+    invalidate('/api/v1/calc/methods')
+    await waitFor(() => expect(result.current.fresh).toBe(false))
+    expect(result.current.data).toEqual([{ id: 'old' }])
+
+    answer([{ id: 'new' }])
+    await waitFor(() => expect(result.current.fresh).toBe(true))
+    expect(result.current.data).toEqual([{ id: 'new' }])
+  })
+})

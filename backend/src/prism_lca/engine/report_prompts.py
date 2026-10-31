@@ -1854,6 +1854,11 @@ def check_proposal(
     # impossible. Which labels exist is arithmetic, so this is a check and not a request to a model.
     if report is not None:
         available = document_labels(report, data)
+        # The brief names the label the chapter's OWN chart would carry. A writer that points at it without
+        # asking for the chart was told "point at one of the references listed in the brief" — and the
+        # brief had listed exactly this one, so the advice read as a contradiction and the next attempt
+        # repeated the reference.
+        own = figure_slot(section)[1]
         for token in sorted({t for t in rd.placeholders_in(text) if t.startswith("ref:")}):
             label = token[4:].strip()
             if label and label not in available:
@@ -1861,9 +1866,15 @@ def check_proposal(
                     {
                         "kind": "unknown_reference",
                         "path": token,
-                        "detail": f"“{label}” is not a table or figure this report contains, so the "
-                                  "reference would print as a gap. Point at one of the references "
-                                  "listed in the brief, or drop the reference.",
+                        "detail": (
+                            f"“{label}” is the reference your own chart would carry, but this text asks "
+                            "for no chart, so the reference would print as a gap. Append the FIGURE: line "
+                            "that asks for the chart, or drop the reference."
+                            if label == own
+                            else f"“{label}” is not a table or figure this report contains, so the "
+                            "reference would print as a gap. Point at one of the references listed in "
+                            "the brief, or drop the reference."
+                        ),
                     }
                 )
 
@@ -1888,10 +1899,13 @@ def check_proposal(
                 "kind": "malformed_placeholder",
                 "detail": (
                     f"“{snippet[:80]}” is not a resolvable placeholder — it would print exactly like "
-                    "this in the finished PDF. Derivation calls cannot nest; every derivation takes "
-                    "placeholder paths or plain numbers as arguments, and `sum` takes any number of "
-                    "them: write {{sum(a, b, c, d)}} instead of nesting sums. For a list's total, "
-                    "prefer the figure that already exists (e.g. results.<i>.score)."
+                    "this in the finished PDF. A derivation takes placeholder paths or plain numbers, "
+                    "never another derivation: {{factor(sum(a, b), c)}} is refused just like "
+                    "{{sum(a, sum(b, c))}}. Nested sums flatten, because `sum` takes any number of "
+                    "arguments: {{sum(a, b, c, d)}}. A percent, factor, change or diff OF a sum has no "
+                    "placeholder: print the sum as {{sum(…)}} and make the comparison in words without a "
+                    "number, or compare single members. For a list's total, prefer the figure that "
+                    "already exists (e.g. results.<i>.score)."
                 ),
             }
         )

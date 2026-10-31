@@ -362,7 +362,7 @@ def _comparison(lang: str = "fr") -> dict:
     def tree() -> dict:
         return {
             "aggregation": {
-                "dimension": "tag:Phase",
+                "dimension": "tag:Bauteil",
                 "groups": [{"key": "Produktion", "impact": 1.0, "share": 1.0}],
             },
             "meta": {"unit": "kg"},
@@ -439,14 +439,14 @@ def test_the_breakdown_dimension_and_its_values_reach_the_report_language():
     stored = {
         "lang": "en",
         "map": {
-            rtr.source_key("Phase"): "Life cycle stage",
+            rtr.source_key("Bauteil"): "Component",
             rtr.source_key("Produktion"): "Manufacturing",
         },
     }
     rtr.apply(data, stored, "en")
-    assert data["contribution"]["dimension_label"] == "Life cycle stage"
+    assert data["contribution"]["dimension_label"] == "Component"
     # The raw marker is untouched: it says how the breakdown was aggregated, not what to print.
-    assert data["contribution"]["dimension"] == "tag:Phase"
+    assert data["contribution"]["dimension"] == "tag:Bauteil"
 
     blocks = rt.indicator_contribution_blocks(data["contributions"][0], "en")
     table = next(b for b in blocks if b["type"] == "table")
@@ -734,3 +734,25 @@ def test_a_review_changed_after_the_snapshot_was_built_reaches_both_endpoints(cl
 
     review["open"] = []  # and resolved again
     assert full() == [] == light()
+
+
+def test_the_built_in_life_cycle_phase_prints_in_the_report_language_without_a_translation():
+    """V454: a German report printed "Beitragsanalyse: Life-cycle phase". The built-in dimension is one
+    English identifier across the workspace, so no study translation ever saw it in a German study;
+    printed, it is a heading word like "Beitragsanalyse" and comes from the language files. A
+    modeller's own dimension still goes through the study translation (test above)."""
+    from prism_lca.engine import report_data as rd
+
+    contribution = {
+        "aggregation": {"dimension": "tag:Life-cycle phase", "groups": [{"key": "Use", "impact": 1.0, "share": 1.0}]},
+        "meta": {"unit": "kg"},
+    }
+    assert rd._contribution_view(contribution, "de")["dimension_label"] == "Lebenswegphase"
+    assert rd._contribution_view(contribution, "fr")["dimension_label"] == "Phase du cycle de vie"
+    assert rd._contribution_view(contribution, "en")["dimension_label"] == "Life-cycle phase"
+    # Its aliases are the same dimension (tag_groups._SAME_AS) and print the same word.
+    alias = {**contribution, "aggregation": {**contribution["aggregation"], "dimension": "tag:Lebenszyklusphase"}}
+    assert rd._contribution_view(alias, "en")["dimension_label"] == "Life-cycle phase"
+    # Already in the report's language, so it is not handed to the translator.
+    view = rd._contribution_view(contribution, "de")
+    assert not any(site is view and key == "dimension_label" for site, key in rtr._breakdown_sites({"contribution": view}))

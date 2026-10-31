@@ -34,6 +34,8 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
+from prism_lca.engine.tag_groups import same_dimension
+
 #: The study's prose fields. Dates, people and identifiers stay untouched.
 _STUDY_PROSE = (
     "goal", "scope", "functional_unit", "geography", "reference_year", "system_boundaries",
@@ -146,7 +148,9 @@ def _breakdown_sites(data: dict[str, Any]) -> Iterator[tuple[dict, str]]:
     # — its groups and heading stayed in the model's language.
     by_dimension = [v for views in (data.get("contributions_by_dimension") or {}).values() for v in views]
     for view in [data.get("contribution") or {}, *(data.get("contributions") or []), *by_dimension]:
-        yield view, "dimension_label"
+        # The built-in life-cycle phase already arrives in the report's language (`dimension_name`).
+        if not same_dimension(str(view.get("dimension") or "").removeprefix("tag:"), "Life-cycle phase"):
+            yield view, "dimension_label"
         for group in view.get("groups") or []:
             yield group, "label"
         for entry in view.get("subjects") or []:

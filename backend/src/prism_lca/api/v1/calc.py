@@ -256,7 +256,8 @@ def elementary_flows(request: Request, body: ElementaryFlowsRequest) -> dict:
         if body.phase is not None:
             if body.raw_demand or body.direct_split:
                 raise PrismError(
-                    "The flows of one phase come without raw_demand and direct_split.",
+                    "The flows of one phase have no direct/upstream split — send the call again "
+                    "without direct_split (and raw_demand).",
                     code="phase_flows_options",
                 )
             from prism_lca.engine.phase_attribution import phase_flows
