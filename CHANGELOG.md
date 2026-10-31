@@ -3,7 +3,7 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
-## 0.9.4 — 2026-10-31
+## 0.9.5 — 2026-10-31
 
 This release is mostly about the AI report writer: fewer chapters end up unfinished, fewer correct sentences
 are flagged, and numbers written into the text stay tied to the model.
@@ -34,13 +34,14 @@ are flagged, and numbers written into the text stay tied to the model.
 - A parameter's formula can be dropped when its value is set, one at a time or in a batch.
 - Update page: a failed download says what went wrong and offers the release page; the Download button comes
   before the release notes.
+- Electron 44.10.1, the newest patch of its line.
 
 **Installing.** Windows will warn about the installer because PrismLCA is not code-signed yet: compare it with
 `SHA256SUMS` below, then choose *More info → Run anyway*. On Linux the AppImage needs FUSE 2
 (`sudo apt install libfuse2t64` on Ubuntu 24.04); the deb needs nothing extra. PrismLCA 0.9.3 finds this release
 under *Check for updates*.
 
-Changes since v0.9.3: https://github.com/prismlca/prismlca/compare/v0.9.3...v0.9.4
+Changes since v0.9.3: https://github.com/prismlca/prismlca/compare/v0.9.3...v0.9.5
 
 ## 0.9.3 — 2026-10-30
 
