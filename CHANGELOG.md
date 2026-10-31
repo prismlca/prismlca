@@ -3,6 +3,45 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.4 — 2026-10-31
+
+This release is mostly about the AI report writer: fewer chapters end up unfinished, fewer correct sentences
+are flagged, and numbers written into the text stay tied to the model.
+
+### New
+
+- **Typed numbers no longer cost a chapter.** A figure the writer types out that is exactly a result or a share
+  is now tied to that value, so it changes with the model. A figure that is only close is answered with the
+  value it most likely means. A chapter left with nothing but typed numbers is saved anyway: open it to
+  replace each number with the value it matches, or keep it with a reason. The report can be approved once
+  every number is decided, and a kept number is raised again after the results change.
+- **The significance threshold** has a placeholder of its own, so sentences about it follow the report setting.
+- **Fuller reports from the start.** A new full report covers at least five core EF 3.1 indicators, compares the
+  baseline with every scenario when none is ticked on the Results page, and draws the heatmap and the radar.
+- **Fewer lost revisions.** When the writer answers the second reader and one sentence then fails a check, only
+  that sentence is repaired; the rest of the answer is kept.
+- **Fewer false alarms.** The second reader now sees every finding of a literature search, not just the first.
+- **Research is reused.** The literature search of a chapter that could not be saved is used again on the next
+  attempt instead of being paid for twice.
+- **Plain reasons.** A chapter that could not be finished says why in plain words; the check's own text is under
+  *Details*.
+
+### Fixes
+
+- Results page: scenarios ticked right after they were created stay ticked, and the baseline no longer switches
+  itself back on.
+- The life-cycle phase breakdown is named in the report language.
+- A parameter's formula can be dropped when its value is set, one at a time or in a batch.
+- Update page: a failed download says what went wrong and offers the release page; the Download button comes
+  before the release notes.
+
+**Installing.** Windows will warn about the installer because PrismLCA is not code-signed yet: compare it with
+`SHA256SUMS` below, then choose *More info → Run anyway*. On Linux the AppImage needs FUSE 2
+(`sudo apt install libfuse2t64` on Ubuntu 24.04); the deb needs nothing extra. PrismLCA 0.9.3 finds this release
+under *Check for updates*.
+
+Changes since v0.9.3: https://github.com/prismlca/prismlca/compare/v0.9.3...v0.9.4
+
 ## 0.9.3 — 2026-10-30
 
 First public beta.
