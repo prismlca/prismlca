@@ -30,11 +30,21 @@ const api = async (method: string, path: string, body?: unknown): Promise<unknow
   const text = String(b.text ?? '')
   if (path === REVIEW)
     return { printed: printed(text), facts: { hotspots: [] }, study: {}, assignment: 'Write it.' }
+  const typed = /(?<![\d.{])\b42\b(?![\d}])/.test(text.replace(/\{\{[^}]*\}\}/g, ''))
   const findings = [
     ...(text.includes('{{bad}}') ? [{ kind: 'unresolved_placeholder', detail: 'bad does not resolve' }] : []),
+    ...(typed
+      ? [
+          {
+            kind: 'literal_number',
+            names: ['42'],
+            detail: 'The number 42 is written out. Reference it as a placeholder instead.'
+          }
+        ]
+      : []),
     ...(/largest/.test(text) ? [{ kind: 'contradicted_claim', detail: '“the largest” is not true' }] : [])
   ]
-  const contract = findings.filter((f) => f.kind === 'unresolved_placeholder')
+  const contract = findings.filter((f) => f.kind === 'unresolved_placeholder' || f.kind === 'literal_number')
   const ok = b.reviewed_by ? !contract.length : !findings.length
   return { ok, findings }
 }
@@ -163,6 +173,47 @@ describe('the second reader', () => {
     const out = await converse(base(text))
     expect(out.text).toBe(text)
     expect(out.review?.issues[0].status).toBe('open')
+  })
+
+  it('repairs only the sentences an answer broke, and keeps the rest of the answer (V458)', async () => {
+    chat.rounds = [
+      reply({ verdict: 'revise', issues: [{ quote: 'Use matters more', problem: 'more than what?' }] }),
+      reply({
+        replacements: [
+          { old: 'Use matters more.', new: 'Use matters more than packaging, about 42 times.' },
+          { old: 'Transport carries', new: 'Transport alone carries' }
+        ]
+      }),
+      reply({
+        replacements: [
+          { old: 'Use matters more than packaging, about 42 times.', new: 'Use matters more than packaging.' }
+        ]
+      }),
+      reply({ points: [{ n: 1, status: 'resolved' }], issues: [] })
+    ]
+    const out = await converse(base('Transport carries {{hotspots.1.share_text}}. Use matters more.'))
+    // The answer's other change survives; only the sentence with the typed figure was rewritten.
+    expect(out.text).toBe(
+      'Transport alone carries {{hotspots.1.share_text}}. Use matters more than packaging.'
+    )
+    expect(out.review?.issues[0].status).toBe('resolved')
+    const ask = String(chat.seen[2].messages.at(-1)?.content)
+    expect(ask).toContain('«Use matters more than packaging, about 42 times.»')
+    expect(ask).toContain('The number 42 is written out')
+    expect(ask).not.toContain('Transport alone carries')
+  })
+
+  it('refuses a sentence repair that reaches outside the sentences it was given', async () => {
+    chat.rounds = [
+      reply({ verdict: 'revise', issues: [{ quote: 'Use matters more', problem: 'more than what?' }] }),
+      reply({ replacements: [{ old: 'Use matters more.', new: 'Use matters 42 times more.' }] }),
+      reply({ replacements: [{ old: 'Transport carries', new: 'Transport only carries' }] }),
+      reply({ replacements: [{ old: 'Use matters 42 times more.', new: 'Use matters far more.' }] }),
+      reply({ points: [{ n: 1, status: 'resolved' }], issues: [] })
+    ]
+    const out = await converse(base('Transport carries {{hotspots.1.share_text}}. Use matters more.'))
+    expect(out.text).toBe('Transport carries {{hotspots.1.share_text}}. Use matters far more.')
+    expect(String(chat.seen[3].messages.at(-1)?.content)).toContain('outside the sentences listed')
   })
 
   it('falls back to the gate alone when the reader returns nothing usable', async () => {

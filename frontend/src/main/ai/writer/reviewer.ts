@@ -11,6 +11,7 @@ import type { ChatMessage } from '../providers/types'
 import { collectText } from '../stream'
 import type { CostSink } from '../subagent'
 import type { Finding, Lookup, ReviewQuestion } from '../../../shared/ipc'
+import { forReader } from './readerEvidence'
 import { clean } from './text'
 
 /** What the backend's review brief carries (engine/report_review.review_brief). */
@@ -58,9 +59,6 @@ export interface Reading {
   /** The reader produced nothing usable, twice. Not a pass — the caller decides what that means. */
   empty: boolean
 }
-
-/** How much of a lookup the reader sees. It judges whether a cause was read, not the dataset. */
-const LOOKUP_CHARS = 4_000
 
 export const READER_SYSTEM = [
   'You are the second reader of one chapter of an ISO 14040/14044 life cycle assessment report, ' +
@@ -123,10 +121,6 @@ export const READER_SYSTEM = [
     '"verdict" is "accept" exactly when "issues" is empty.'
 ].join('\n\n')
 
-function truncate(text: string, limit: number): string {
-  return text.length <= limit ? text : `${text.slice(0, limit)}… [cut]`
-}
-
 /** The first reading's user turn: everything the reader judges against, the chapter last. */
 export function readerBrief(brief: ReviewBrief, lookups: Lookup[], hints: Finding[]): string {
   const parts = [
@@ -157,7 +151,7 @@ export function readerBrief(brief: ReviewBrief, lookups: Lookup[], hints: Findin
       ? [
           '',
           'What the writer looked up while writing:',
-          ...lookups.map((l) => `- ${l.name}(${l.args})\n${truncate(l.result, LOOKUP_CHARS)}`)
+          ...lookups.map((l) => `- ${l.name}(${l.args})\n${forReader(l)}`)
         ]
       : ['', 'The writer looked nothing up.']),
     ...(brief.renders?.length

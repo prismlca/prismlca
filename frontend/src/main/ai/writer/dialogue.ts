@@ -28,6 +28,7 @@ import type {
 import type { WriteBrief } from '../reportWriter'
 import { applyPatch, MAX_REVISIONS } from './answers'
 import { READER_SYSTEM, read, readerBrief, type RaisedIssue, type ReviewBrief } from './reviewer'
+import { flaggedSentences, sentenceRepairPrompt, withinFlagged } from './sentences'
 import { clean, parseRevision } from './text'
 
 /**
@@ -304,6 +305,52 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
     return verdict
   }
 
+  /**
+   * The repair for a revision that answered the reader: the sentences that carry the findings, quoted,
+   * and replacements accepted only inside them — the rest of the answer stays as it was written
+   * (writer/sentences.ts). Findings no sentence can be found for go the general way (`repair`).
+   */
+  const repairSentences = async (verdict: Verdict): Promise<Verdict> => {
+    let pushPrompt = true
+    for (let round = 0; round < MAX_REVISIONS && blocking(verdict.findings).length; round++) {
+      const { sentences, unplaced } = flaggedSentences(text, blocking(verdict.findings))
+      if (!sentences.length || unplaced.length) return repair(verdict)
+      opts.tick({ phase: 'revising', attempt: attempts + 1 }, true)
+      if (pushPrompt) {
+        console.log(`[writer] ${brief.title}: repairing ${sentences.length} sentence(s) of the answer`)
+        opts.messages.push({ role: 'assistant', content: text })
+        opts.messages.push({ role: 'user', content: sentenceRepairPrompt(sentences) })
+      }
+      pushPrompt = true
+      const raw = await ask()
+      if (raw === null) break
+      const parsed = parseRevision(raw)
+      const refusal = !parsed
+        ? 'That reply was not the JSON asked for.'
+        : 'chapter' in parsed || !withinFlagged(parsed.replacements, sentences)
+          ? 'That patch changes text outside the sentences listed. Replace only those sentences, each quoted exactly as "old".'
+          : null
+      const patched = refusal || !parsed || 'chapter' in parsed ? null : applyPatch(text, parsed.replacements)
+      if (refusal || !patched?.ok) {
+        opts.messages.push({ role: 'assistant', content: raw })
+        opts.messages.push({
+          role: 'user',
+          content: `${refusal ?? `That patch was refused: ${patched && !patched.ok ? patched.error : ''}`}`
+        })
+        pushPrompt = false
+        continue
+      }
+      text = patched.text
+      opts.onDraft(text)
+      try {
+        verdict = await check(text)
+      } catch (e) {
+        return { ok: false, findings: [...verdict.findings, checkFailed(e)] }
+      }
+    }
+    return verdict
+  }
+
   const done = (verdict: Verdict, review: ChapterReview | null): DialogueResult => ({
     text,
     figure,
@@ -413,13 +460,13 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
         opts.onDraft(text)
         let after: Verdict
         try {
-          after = await repair(await check(text))
+          after = await repairSentences(await check(text))
         } catch (e) {
           after = { ok: false, findings: [...verdict.findings, checkFailed(e)] }
         }
         if (blocking(after.findings).length) {
-          // The answer broke the contract and the repair could not mend it: keep the text the reader
-          // last read, whose contract held. Its open points stay open.
+          // The answer broke the contract and even the sentence repair could not mend it: keep the text
+          // the reader last read, whose contract held. Its open points stay open.
           text = before
           opts.onDraft(text)
           break
