@@ -185,6 +185,8 @@ export function renderContribTree(opts: {
 
   const layout = d3.tree().nodeSize([NODE_H + 16, COL_GAP])
   const clampShr = (shr: number): number => Math.min(1, Math.max(0, Math.abs(shr)))
+  // Connector thickness grows with the child's share: 1 px for a trace, 22 px for the whole result.
+  const linkWidth = (shr: number): number => 1 + clampShr(shr) * 21
   const trunc = (s: string, n: number): string => (s.length > n ? s.slice(0, n - 1) + '…' : s)
   const cardW = (_d?: TreeH): number => NODE_W
   // Curved connector from a parent card's right edge to a child card's left edge.
@@ -266,7 +268,7 @@ export function renderContribTree(opts: {
       .enter()
       .append('path')
       .attr('class', 'link')
-      .attr('stroke-width', (d) => 1 + clampShr(d.target.data.shr) * 6)
+      .attr('stroke-width', (d) => linkWidth(d.target.data.shr))
       .attr('d', () => {
         const o = { x: source.x0, y: source.y0 }
         return linkPath(o, o)
@@ -274,7 +276,7 @@ export function renderContribTree(opts: {
       .merge(link)
       .transition()
       .duration(280)
-      .attr('stroke-width', (d) => 1 + clampShr(d.target.data.shr) * 6)
+      .attr('stroke-width', (d) => linkWidth(d.target.data.shr))
       .attr('d', (d) => linkPath(d.source, d.target))
     link
       .exit()
