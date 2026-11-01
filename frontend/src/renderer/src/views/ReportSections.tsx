@@ -35,6 +35,7 @@ import { defaultTicks, languagePlan, runSize } from '../lib/report/plan'
 import { chapterState, openQuestions, stateCounts, stateSummary } from '../lib/report/chapterStatus'
 import { plainReason } from '../lib/report/findingText'
 import {
+  CHECK_LABEL,
   checkProgressText,
   failureText,
   reviewPendingCount,
@@ -1169,7 +1170,7 @@ export default function ReportSections({
             <div
               className="rsec-progress working"
               role="progressbar"
-              aria-label="Checking what changed"
+              aria-label={CHECK_LABEL}
               aria-valuemin={0}
               aria-valuemax={checkProgress.total}
               aria-valuenow={checkProgress.done}
@@ -1221,22 +1222,23 @@ export default function ReportSections({
                     // The animated dots were the first answer and too quiet in a line of foot text, then
                     // a spinner and a seconds counter — which still could not say whether it was moving or
                     // how long was left. The count from the backend says both; the clock stands in until the
-                    // build has reported.
+                    // build has reported. The check leads the line: it is what the bar right above it
+                    // measures, and behind the summary it read as one more item of it.
                     return (
                       <>
-                        {parts}
                         {checking ? (
                           <>
-                            {parts ? ' · ' : ''}
                             {checkProgress && checkProgress.total > 0 ? (
                               <span role="status" aria-live="polite">
                                 {checkProgressText(checkProgress)}
                               </span>
                             ) : (
-                              <BusyClock label="checking what changed" />
+                              <BusyClock label={CHECK_LABEL} />
                             )}
+                            {parts ? ' · ' : ''}
                           </>
                         ) : null}
+                        {parts}
                       </>
                     )
                   })()}

@@ -104,8 +104,12 @@ export interface CheckProgress {
   elapsed: number
 }
 
+/** What the freshness check is for — it leads the foot line while it runs, so the bar above it has a name. */
+export const CHECK_LABEL = 'Checking whether the chapters are still up to date'
+
 /**
- * The foot's line while the check waits for its study: how far, and roughly how long is left.
+ * The foot's line while the check waits for its study: what it is checking, how far, and roughly how
+ * long is left. The count is of calculations, so it says so — a bare "34 of 86" named nothing.
  *
  * The rest is a straight extrapolation, and only once a few solves and some seconds are in: the
  * first solve of a build also pays the factorisation, so an estimate made on it alone would promise
@@ -114,7 +118,7 @@ export interface CheckProgress {
  * rounded, and "under a minute" below that — a countdown in seconds would only jump about.
  */
 export function checkProgressText(p: CheckProgress): string {
-  const head = `checking what changed · ${p.done} of ${p.total}`
+  const head = `${CHECK_LABEL} · ${p.done} of ${p.total} calculations`
   if (p.done >= p.total) return `${head} · finishing up`
   if (p.done < 3 || p.elapsed < 10) return head
   const left = (p.elapsed / p.done) * (p.total - p.done)

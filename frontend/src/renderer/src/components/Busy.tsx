@@ -17,7 +17,7 @@ export default function Busy({ label }: { label: string }): JSX.Element {
 }
 
 /**
- * A busy label with a spinner and a running clock — "checking what changed · 42 s".
+ * A busy label with a spinner and a running clock — "Checking whether the chapters are still up to date · 42 s".
  *
  * For a wait that is long and has no progress to report yet: the freshness check on a report shows it
  * until the study behind it has counted its solves, and the bar takes over from there. The

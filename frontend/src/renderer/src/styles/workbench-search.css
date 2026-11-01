@@ -223,7 +223,7 @@
 @media (prefers-reduced-motion: reduce) {
   .dots::after { animation: none; content: '…'; }
 }
-/* Spinner plus a running clock, inline in a line of text (the report foot's "checking what changed · 42 s"). */
+/* Spinner plus a running clock, inline in a line of text (the report foot's "Checking whether the chapters are still up to date · 42 s"). */
 .busy-clock { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
 .busy-clock .spinner { width: 12px; height: 12px; margin-top: 0; }
 @media (prefers-reduced-motion: reduce) { .busy-clock .spinner { animation: none; } }

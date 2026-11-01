@@ -957,7 +957,7 @@ export default function Report({
           disabled={busy || checkingChapters || !storedId}
           title={
             checkingChapters
-              ? 'Checking what changed under the written chapters — the bar at the foot of the chapter list shows how far it is.'
+              ? 'Checking whether the chapters are still up to date — the bar at the foot of the chapter list shows how far it is.'
               : 'Typeset the report and show it page by page — the same renderer the PDF uses'
           }
           onClick={() => void previewStored(1)}
@@ -969,7 +969,7 @@ export default function Report({
           disabled={busy || checkingChapters || !storedId}
           title={
             checkingChapters
-              ? 'Checking what changed under the written chapters — the bar at the foot of the chapter list shows how far it is.'
+              ? 'Checking whether the chapters are still up to date — the bar at the foot of the chapter list shows how far it is.'
               : undefined
           }
           onClick={() => void renderStored()}
