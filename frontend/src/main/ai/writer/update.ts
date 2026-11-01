@@ -13,7 +13,7 @@
  * is checked and stored like a fresh write.
  */
 import type { ChatMessage } from '../providers/types'
-import { collectText } from '../stream'
+import { askInShape, type CallShape } from './promptCache'
 import type { CostSink } from '../subagent'
 import type { Lookup } from '../../../shared/ipc'
 import { applyPatch } from './answers'
@@ -121,6 +121,8 @@ export async function settleUpdate(opts: {
   original: string
   model: string
   messages: ChatMessage[]
+  /** The writer's conversation shape, so the second try reads the first from the cache. */
+  shape: CallShape
   signal?: AbortSignal
   onCost?: CostSink
   maxTokens?: number
@@ -129,9 +131,11 @@ export async function settleUpdate(opts: {
   if (answer.kind !== 'refused') return answer
   opts.messages.push({ role: 'assistant', content: opts.raw })
   opts.messages.push({ role: 'user', content: `That answer was refused: ${answer.error}` })
-  const again = await collectText({
+  const again = await askInShape({
     model: opts.model,
     messages: opts.messages,
+    shape: opts.shape,
+    label: 'writer',
     signal: opts.signal,
     onCost: opts.onCost,
     maxTokens: opts.maxTokens

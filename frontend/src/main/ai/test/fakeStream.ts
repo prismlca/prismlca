@@ -48,6 +48,7 @@ export interface RecordedCall {
   model?: string
   messages: ChatMessage[]
   tools?: unknown[]
+  cacheTail?: boolean
   reasoningEffort?: string
   maxTokens?: number
   /** Kept by reference, not copied: a test asks whether the caller's own signal arrived. */
@@ -110,6 +111,7 @@ class ScriptedChat {
       model: opts.model,
       messages: JSON.parse(JSON.stringify(opts.messages)),
       tools: opts.tools,
+      cacheTail: opts.cacheTail,
       reasoningEffort: opts.reasoningEffort,
       maxTokens: opts.maxTokens,
       signal: opts.signal

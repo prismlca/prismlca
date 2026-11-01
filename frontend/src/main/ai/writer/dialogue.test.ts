@@ -68,6 +68,7 @@ const base = (text: string, extra: Record<string, unknown> = {}): Parameters<typ
     { role: 'system', content: 'You write chapters.' },
     { role: 'user', content: 'Write the chapter.' }
   ],
+  shape: {},
   reviewModel: 'reader-m',
   api,
   checkPath: CHECK,
@@ -99,6 +100,29 @@ describe('the second reader', () => {
     const readerTurn = String(chat.seen[0].messages.at(-1)?.content)
     expect(readerTurn).toContain('Transport carries 20.0 %.')
     expect(chat.seen[0].model).toBe('reader-m')
+  })
+
+  it('marks the reader’s system prompt and brief where the reader needs breakpoints, and moves the tail', async () => {
+    // Readings two and three resend the brief; on Anthropic nothing of it is cached without a marker.
+    chat.rounds = [
+      reply({ verdict: 'revise', issues: [{ quote: 'the largest contributor', problem: 'it is second' }] }),
+      reply({ replacements: [{ old: 'the largest contributor', new: 'the second contributor' }] }),
+      reply({ points: [{ n: 1, status: 'resolved' }], issues: [] })
+    ]
+    await converse(
+      base('Transport is the largest contributor at {{hotspots.1.share_text}}.', {
+        reviewModel: 'anthropic/claude-sonnet-5.5'
+      })
+    )
+    const [first, answer, second] = chat.seen
+    const marked = { type: 'text', text: expect.any(String), cache_control: { type: 'ephemeral' } }
+    expect(first.messages[0].content).toEqual([marked])
+    expect(first.messages[1].content).toEqual([marked])
+    expect(first.cacheTail).toBe(true)
+    expect(typeof second.messages.at(-1)?.content).toBe('string') // the follow-up rides on the tail
+    expect(second.messages[1].content).toEqual(first.messages[1].content) // the brief, byte for byte
+    expect(answer.model).toBe('writer-m')
+    expect(answer.cacheTail).toBeUndefined() // the writer keeps its own shape
   })
 
   it('settles a point: the reader raises it, the writer fixes it, the reader closes it', async () => {

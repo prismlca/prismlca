@@ -209,6 +209,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
       stream: true,
       ...(tools.length ? { tools } : {}),
       ...(opts.reasoningEffort ? { reasoning: { effort: opts.reasoningEffort } } : {}),
+      ...(opts.cacheTail ? { cache_control: { type: 'ephemeral' } } : {}),
       // Routing preferences, in one object because OpenRouter takes them that way.
       //  - data_collection: only providers that do not collect data, i.e. cannot train on the
       //    prompt. OpenRouter's wording for the opposite value: "providers which store user data

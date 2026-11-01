@@ -38,15 +38,24 @@ export function costOf(usage: StreamUsage): CostSample {
 }
 
 /**
- * Send one tool-less request and return the assembled text, billing on the way.
+ * Send one request that wants text back and return the assembled text, billing on the way.
  *
- * Deliberately minimal: no tools, no phase ticks, no finish-reason bookkeeping — the call sites that
- * need those (the agent loop, the chapter writer's lookup rounds, the reviewer) keep their own loop
- * and share only `costOf`. `temperature: null` is what every one of these callers sent.
+ * Deliberately minimal: no tool execution, no phase ticks — the call sites that run tools (the agent
+ * loop, the chapter writer's lookup rounds) keep their own loop and share only `costOf`. `tools` may
+ * ride along all the same: a conversation that offered them before has to offer the same list again,
+ * or the provider's prefix cache is lost (writer/promptCache.ts). Calls the model makes anyway come
+ * back through `onToolCalls` and are never run here. `temperature: null` is what every caller sent.
  */
 export async function collectText(opts: {
   model: string
   messages: ChatMessage[]
+  /** The tool list the conversation was offered before; see above. */
+  tools?: StreamChatOpts['tools']
+  cacheTail?: StreamChatOpts['cacheTail']
+  /** Each piece of text as it arrives, for a caller that shows progress. */
+  onDelta?: (text: string) => void
+  /** Tool calls the model asked for instead of (or beside) text. Reported, never executed. */
+  onToolCalls?: (calls: Array<{ id: string; name: string; arguments: string }>) => void
   signal?: AbortSignal
   onCost?: (model: string, sample: CostSample) => void
   webSearch?: boolean
@@ -68,6 +77,8 @@ export async function collectText(opts: {
     model: opts.model,
     provider: opts.provider,
     messages: opts.messages,
+    tools: opts.tools,
+    cacheTail: opts.cacheTail,
     temperature: null,
     signal: opts.signal,
     webSearch: opts.webSearch,
@@ -75,10 +86,13 @@ export async function collectText(opts: {
     reasoningEffort: opts.reasoningEffort,
     maxTokens: opts.maxTokens
   })) {
-    if (ev.type === 'delta') text += ev.text
-    else if (ev.type === 'citations') opts.onCitations?.(ev.citations)
+    if (ev.type === 'delta') {
+      text += ev.text
+      opts.onDelta?.(ev.text)
+    } else if (ev.type === 'citations') opts.onCitations?.(ev.citations)
     else if (ev.type === 'usage') opts.onCost?.(opts.model, costOf(ev.usage))
     else if (ev.type === 'finish') opts.onFinish?.(ev.reason)
+    else if (ev.type === 'tool_calls') opts.onToolCalls?.(ev.calls)
   }
   return text
 }

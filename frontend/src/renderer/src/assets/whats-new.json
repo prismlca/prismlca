@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-01",
+    "title": "Cheaper report writing",
+    "details": "A report chapter now keeps the provider's prompt cache through every step: its lookups, the corrections after the check and the answers to the second reader. With Claude models the newest part of each exchange is cached as well, and the second reader reuses its brief from the second reading on. The same text costs less, most of all on chapters that need corrections."
+  },
+  {
+    "date": "2026-11-01",
     "title": "The assistant can localize datasets",
     "details": "The assistant and external agents can now make a background or library dataset an editable process of your model, just like Localize (edit) on the canvas. Ask for it with its suppliers and the dataset's direct suppliers are copied too, connected to the copy. The result stays the same until a copy is changed, and one Undo takes it all back."
   },

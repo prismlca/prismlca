@@ -140,6 +140,11 @@ export interface StreamChatOpts {
    *  spent a full 5-minute leg budget reasoning without writing one visible line. The chat passes the
    *  per-model setting (Settings → AI → Models). Omit to leave the model on its own default. */
   reasoningEffort?: ReasoningEffort
+  /** Anthropic's automatic caching: one breakpoint that moves to the last block of every request, so
+   *  what a conversation added in one round (tool results, a draft) is read from the cache in the next.
+   *  Only for models that need breakpoints (`AiModel.explicitCache`); it takes one of their four slots.
+   *  OpenRouter only; the OpenAI transport carries no such model and ignores it. */
+  cacheTail?: boolean
   signal?: AbortSignal
 }
 

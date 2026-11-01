@@ -18,7 +18,7 @@
  * here, so importers keep one address.
  */
 import { streamChat } from './client'
-import { findModel, providerDefaults } from './models'
+import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
 import type { ChatMessage } from './providers/types'
 import type { CostSink } from './subagent'
@@ -27,7 +27,7 @@ import type { ToolCtx } from './tools'
 import type { Finding, Lookup, WriteAllOutcome, WritePhase } from '../../shared/ipc'
 import type { ChapterReview } from '../../shared/ipc'
 import { capToolResult } from './resultBudget'
-import { costOf } from './stream'
+import { costOf, type CostSample } from './stream'
 import { makeRepeatGuard } from './toolGuards'
 import { asPrinted, lookupBudget, RESEARCH_CALLS, writerTools } from './writer/lookups'
 import {
@@ -39,11 +39,12 @@ import {
   settleResearch
 } from './writer/heldResearch'
 import { stopNote } from './writer/costGuard'
-import { incompleteReason, joinContinuation, MAX_CONTINUATIONS, MAX_SECTION_ANSWERS } from './writer/answers'
+import { continueAnswer, incompleteReason, MAX_SECTION_ANSWERS } from './writer/answers'
 import { converse } from './writer/dialogue'
 import { clean } from './writer/text'
 import { writerSystem, writerUser } from './writer/messages'
 import { settleUpdate, type UpdateBrief } from './writer/update'
+import { cacheable, explicitCache, logCache, type CallShape } from './writer/promptCache'
 
 export { lookupBudget } from './writer/lookups'
 export {
@@ -97,9 +98,10 @@ export type { WritePhase } from '../../shared/ipc'
  */
 const PHASE_TICK_MS = 400
 
-const CONTINUE_PROMPT =
-  'Your answer was cut off at the output limit. Continue exactly where you stopped — do not repeat ' +
-  'anything already written, do not restart the chapter, and output only the remaining text.'
+/** Beside the answer that spends a chapter's last lookup. The tools stay offered (writer/promptCache.ts),
+ *  so this is how the writer hears the allowance is gone before it asks again. */
+const LAST_LOOKUP =
+  '\n\nThat was the last lookup this chapter allows. Write the chapter now from what you have.'
 
 /**
  * How much of a lookup the model sees AND how much travels back for the gate to check the text
@@ -298,29 +300,12 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   const earlier = literature ? earlierResearch(chapterOf(opts.checkPath), brief.update?.lookups) : []
   const user = writerUser(brief, earlier)
 
-  // The system prompt is the one block every chapter, lookup round and revision shares byte for byte.
-  // Anthropic caches a prefix only where a breakpoint marks it (the chat places the same marker, see
-  // agent.ts markCacheBreakpoints); without one the writer paid the whole prompt every round — measured
-  // on Sonnet 5.5: 1 021 072 prompt tokens for nine chapters, 0 from the cache, while the chat
-  // on the same model read 94 % of its 4.7 M tokens from it (V399). The user turn carries the chapter's
-  // own brief and is not marked: it differs per chapter, and a marker there would only cost the write.
-  const explicit = findModel(model, getActiveProvider()).explicitCache === true
-  // The user turn carries the chapter's brief — the bulk of the prompt — and it is marked as well
-  // (V421): measured on a nine-chapter silicone report, the system-prompt marker alone left the writer
-  // at 4–5 % cache over 1.73 M prompt tokens, because five of nine chapters needed two or three
-  // attempts and every revision round resent the same brief uncached. With the marker here, the
-  // revision rounds (and a second Write of the same chapter) read it from the cache; a chapter
-  // written once pays the cache write (1.25×) for nothing, which the revision rate more than repays.
-  const messages: ChatMessage[] = [
-    {
-      role: 'system',
-      content: explicit ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system
-    },
-    {
-      role: 'user',
-      content: explicit ? [{ type: 'text', text: user, cache_control: { type: 'ephemeral' } }] : user
-    }
-  ]
+  // Every call of this chapter goes out in one shape (writer/promptCache.ts): the same tools, and on
+  // Anthropic a breakpoint on the system prompt, one on the brief and a moving one at the end. With no
+  // marker the writer read 0 of 1.02 M prompt tokens from the cache on Sonnet 5.5 (V399), and with the
+  // system prompt's alone 4–5 %, because every revision resent the brief uncached (V421).
+  const explicit = explicitCache(model)
+  const messages: ChatMessage[] = [cacheable('system', system, explicit), cacheable('user', user, explicit)]
 
   // No budget, no tools: a schema the chapter may not use costs prompt, and an unused capability in
   // front of a model is a temptation, not a safeguard.
@@ -328,6 +313,12 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   const allowedTools = writerTools(brief.kind, literature)
   const tools =
     opts.api && lookupBudget(brief) > 0 ? allowedTools.map((n) => TOOL_BY_NAME[n]).filter(Boolean) : []
+  const shape: CallShape = { tools: tools.length ? tools.map((t) => t.spec) : undefined, cacheTail: explicit }
+  /** One booking per call, and one log line with what the cache served. */
+  const bill = (sample: CostSample): void => {
+    opts.onCost?.(model, sample)
+    logCache('writer', model, sample)
+  }
   const ctx: ToolCtx | null = opts.api
     ? {
         api: opts.api,
@@ -383,9 +374,10 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   for (let round = 0; round < allowance + 1; round++) {
     let roundText = ''
     let calls: Array<{ id: string; name: string; arguments: string }> | null = null
-    // Once the budget is gone the tools are withdrawn, so the next round has to be prose. Leaving them
-    // on and merely refusing each call let a persistent model burn every round and return nothing.
-    const offer = tools.length && budget > 0 ? tools.map((t) => t.spec) : undefined
+    // The tools stay on once the budget is gone, because withdrawing them re-bills the whole conversation.
+    // The lookup that spends the last call says so; a model that asks again all the same loses them
+    // after this round. Merely refusing each call let a persistent model burn every round.
+    const spentBefore = budget <= 0
     // Nothing has arrived yet, and on a reasoning model nothing will for minutes.
     let thought = 0
     let finish: string | null = null
@@ -393,7 +385,8 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
     for await (const ev of streamChat({
       model,
       messages,
-      tools: offer,
+      tools: shape.tools,
+      cacheTail: shape.cacheTail,
       temperature: null,
       signal: opts.signal,
       maxTokens: opts.maxTokens
@@ -413,17 +406,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
         // could not be told apart from a slow provider after the fact (V354).
         console.log(`[prism-ai] writer served by ${ev.name} — ${model}`)
       } else if (ev.type === 'usage') {
-        opts.onCost?.(model, costOf(ev.usage))
-        // The chat logs its cache share per round; the writer did not, so V399/V421 could only be
-        // judged from the monthly usage file after the fact. One line per writer call, same shape.
-        const cached = ev.usage?.prompt_tokens_details?.cached_tokens
-        const prompt = ev.usage?.prompt_tokens ?? 0
-        if (typeof cached === 'number' && prompt) {
-          const cost = typeof ev.usage?.cost === 'number' ? `, $${ev.usage.cost.toFixed(4)}` : ''
-          console.log(
-            `[prism-ai] writer cache: ${cached}/${prompt} prompt tokens (${Math.round((cached / prompt) * 100)}%)${cost} — ${model}`
-          )
-        }
+        bill(costOf(ev.usage))
       } else if (ev.type === 'finish') {
         finish = ev.reason
       } else if (ev.type === 'tool_calls') {
@@ -453,6 +436,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
       const allowed = allowedTools.includes(call.name)
       const tool = allowed ? TOOL_BY_NAME[call.name] : undefined
       let result: string
+      let note = ''
       const blocked = tool ? repeats.block(call.name, call.arguments) : null
       const inHand = tool && !blocked ? answered(lookups, call.name, call.arguments) : null
       if (!tool) {
@@ -497,25 +481,32 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
         const made = { name: call.name, args: whole.slice(0, 500), result }
         madeWith.set(made, whole)
         lookups.push(made)
+        // Beside the answer, not in it: the evidence the gate reads stays the lookup alone.
+        if (budget === 0) note = LAST_LOOKUP
       }
-      messages.push({ role: 'tool', tool_call_id: call.id, content: result })
+      messages.push({ role: 'tool', tool_call_id: call.id, content: result + note })
     }
+    if (spentBefore) shape.tools = undefined
   }
 
   // A model that only ever answers with tool calls would otherwise leave the author with an empty
   // chapter. One final round with no tools offered and the instruction to write: whatever it produces is
   // still checked by the gate, so a forced answer is not a lowered bar.
+  // The one place the tools are still withdrawn: this model ignored every refusal, and the cache miss
+  // is the price of a guaranteed answer. What follows (revisions) is sent without them as well.
   if (!text.trim() && ctx) {
     messages.push({
       role: 'user',
       content: 'Write the chapter now from what you have. No further lookups are available.'
     })
+    shape.tools = undefined
     let thought = 0
     finishReason = null
     tick({ phase: 'sent' }, true)
     for await (const ev of streamChat({
       model,
       messages,
+      cacheTail: shape.cacheTail,
       temperature: null,
       signal: opts.signal,
       maxTokens: opts.maxTokens
@@ -528,7 +519,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
         const first = thought === 0
         thought += ev.chars
         tick({ phase: 'thinking', chars: thought }, first)
-      } else if (ev.type === 'usage') opts.onCost?.(model, costOf(ev.usage))
+      } else if (ev.type === 'usage') bill(costOf(ev.usage))
       else if (ev.type === 'finish') finishReason = ev.reason
     }
     assertLive()
@@ -542,31 +533,24 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   // gate and was stored over the chapter it replaced. Three cases, kept apart
   // because they need different answers: the output limit gets a continuation, a missing or foreign
   // finish keeps the text as an unchecked draft, and nothing at all is an error rather than a chapter.
-  for (let more = 0; finishReason === 'length' && more < MAX_CONTINUATIONS; more++) {
-    console.log(`[writer] ${brief.title}: output limit hit, continuation ${more + 1} of ${MAX_CONTINUATIONS}`)
-    messages.push({ role: 'assistant', content: text })
-    messages.push({ role: 'user', content: CONTINUE_PROMPT })
-    let tail = ''
-    let finish: string | null = null
-    tick({ phase: 'sent' }, true)
-    for await (const ev of streamChat({
-      model,
-      messages,
-      temperature: null,
-      signal: opts.signal,
-      maxTokens: opts.maxTokens
-    })) {
-      if (ev.type === 'delta') {
-        tail += ev.text
-        tick({ phase: 'writing', chars: text.length + tail.length })
-      } else if (ev.type === 'usage') opts.onCost?.(model, costOf(ev.usage))
-      else if (ev.type === 'finish') finish = ev.reason
+  const continued = await continueAnswer({
+    title: brief.title,
+    text,
+    finish: finishReason,
+    model,
+    messages,
+    shape,
+    signal: opts.signal,
+    onCost: opts.onCost,
+    maxTokens: opts.maxTokens,
+    tick,
+    assertLive,
+    onDraft: (t) => {
+      draft.text = t
     }
-    assertLive()
-    text = joinContinuation(text, tail)
-    finishReason = finish
-    draft.text = text
-  }
+  })
+  text = continued.text
+  finishReason = continued.finish
   console.log(`[writer] ${brief.title}: finish=${finishReason ?? 'none'} chars=${text.length}`)
   const unfinished = incompleteReason(finishReason, clean(text))
   if (unfinished) {
@@ -591,6 +575,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
       original: brief.update.text,
       model,
       messages,
+      shape,
       signal: opts.signal,
       onCost: opts.onCost,
       maxTokens: opts.maxTokens
@@ -676,6 +661,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
     brief,
     model,
     messages,
+    shape,
     reviewModel: opts.reviewModel,
     reviewPath: opts.reviewPath,
     api: opts.api,

@@ -16,7 +16,6 @@
  * exactly as it did before the reader existed: every finding outside the advisory set blocks.
  */
 import type { ChatMessage } from '../providers/types'
-import { collectText } from '../stream'
 import type { CostSink } from '../subagent'
 import type { ToolCtx } from '../tools'
 import type {
@@ -30,6 +29,7 @@ import type {
 import type { WriteBrief } from '../reportWriter'
 import { applyPatch, MAX_REVISIONS } from './answers'
 import { READER_SYSTEM, read, readerBrief, type RaisedIssue, type ReviewBrief } from './reviewer'
+import { askInShape, cacheable, explicitCache, type CallShape } from './promptCache'
 import { anchorOf, flaggedSentences, sentenceRepairPrompt, withinFlagged } from './sentences'
 import { clean, parseRevision } from './text'
 
@@ -74,9 +74,10 @@ export interface DialogueOpts {
   figure: Record<string, unknown> | null
   lookups: Lookup[]
   brief: WriteBrief
-  /** The writer's model and its conversation so far — revisions continue it. */
+  /** The writer's model and its conversation so far — revisions continue it, in the same shape. */
   model: string
   messages: ChatMessage[]
+  shape: CallShape
   /** The second reader. Absent = the gate decides alone. */
   reviewModel?: string
   api: NonNullable<ToolCtx['api']>
@@ -256,9 +257,11 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
   /** The writer's answer as a model call. Null when the call failed and the text should stand. */
   const ask = async (): Promise<string | null> => {
     try {
-      const raw = await collectText({
+      const raw = await askInShape({
         model: opts.model,
         messages: opts.messages,
+        shape: opts.shape,
+        label: 'writer',
         signal: opts.signal,
         onCost: opts.onCost,
         maxTokens: opts.maxTokens
@@ -395,7 +398,10 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
 
   // ---- the reading ---------------------------------------------------------------------------
   const firstHints = kindsOf(verdict.findings.filter((f) => !CONTRACT_FINDINGS.has(f.kind)))
-  const readerMessages: ChatMessage[] = [{ role: 'system', content: READER_SYSTEM }]
+  // The reader's brief is resent with every further reading. Where breakpoints are needed, the system
+  // prompt (the same for every chapter) and the brief carry one each, and the end of the reading moves.
+  const readerCache = explicitCache(reviewer)
+  const readerMessages: ChatMessage[] = [cacheable('system', READER_SYSTEM, readerCache)]
   const points: Point[] = []
   const questions: ReviewQuestion[] = []
   const addQuestions = (qs: ReviewQuestion[]): void => {
@@ -417,22 +423,25 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
       break
     }
     const open = points.filter((p) => p.status === 'open')
-    readerMessages.push({
-      role: 'user',
-      content:
-        readings === 0
-          ? readerBrief(
+    readerMessages.push(
+      readings === 0
+        ? cacheable(
+            'user',
+            readerBrief(
               reviewBrief,
               opts.lookups,
               verdict.findings.filter((f) => !CONTRACT_FINDINGS.has(f.kind))
-            )
-          : followUp(open, disputes, reviewBrief.printed)
-    })
+            ),
+            readerCache
+          )
+        : { role: 'user', content: followUp(open, disputes, reviewBrief.printed) }
+    )
     readings++
     opts.tick({ phase: 'reviewing', round: readings }, true)
     const reading = await read({
       model: reviewer,
       messages: readerMessages,
+      cacheTail: readerCache,
       printed: reviewBrief.printed,
       signal: opts.signal,
       onCost: opts.onCost,

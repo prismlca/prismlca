@@ -140,3 +140,13 @@ describe('openrouter interpret — citations', () => {
     ).toBe(false)
   })
 })
+
+describe('openrouter buildRequest — automatic caching', () => {
+  const bodyOf = (opts: StreamChatOpts): Record<string, unknown> =>
+    JSON.parse(openrouterTransport.buildRequest(opts, 'k').body) as Record<string, unknown>
+
+  it('asks for the moving breakpoint at the top level when told to, and not otherwise', () => {
+    expect(bodyOf({ ...base, cacheTail: true }).cache_control).toEqual({ type: 'ephemeral' })
+    expect(bodyOf(base)).not.toHaveProperty('cache_control')
+  })
+})

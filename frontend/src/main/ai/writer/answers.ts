@@ -1,7 +1,10 @@
 /** What a chapter costs in model answers, and what makes an answer a chapter: patch, continuation, finish. */
-import type { Finding } from '../../../shared/ipc'
+import type { Finding, WritePhase } from '../../../shared/ipc'
+import type { ChatMessage } from '../providers/types'
 import type { WriteBrief } from '../reportWriter'
+import type { CostSink } from '../subagent'
 import { lookupBudget, MAX_LOOKUPS } from './lookups'
+import { askInShape, type CallShape } from './promptCache'
 
 /**
  * Apply `replace(old, new)` operations to a chapter, on the `str_replace` contract.
@@ -147,4 +150,60 @@ export function joinContinuation(head: string, tail: string): string {
   }
   const glue = /\s$/.test(head) || /^[.,;:!?)]/.test(trimmedTail) ? '' : ' '
   return head + glue + trimmedTail
+}
+
+const CONTINUE_PROMPT =
+  'Your answer was cut off at the output limit. Continue exactly where you stopped — do not repeat ' +
+  'anything already written, do not restart the chapter, and output only the remaining text.'
+
+/**
+ * Ask an answer cut off at the output limit to go on, up to `MAX_CONTINUATIONS` times, in the chapter's
+ * shape (promptCache.ts): a lookup asked for here is refused and the continuation asked for again, and
+ * one that still ends in a lookup leaves a draft. Returns the joined text and the last finish.
+ */
+export async function continueAnswer(opts: {
+  title?: string
+  text: string
+  finish: string | null
+  model: string
+  messages: ChatMessage[]
+  shape: CallShape
+  signal?: AbortSignal
+  onCost?: CostSink
+  maxTokens?: number
+  tick: (p: WritePhase, changed?: boolean) => void
+  assertLive: () => void
+  onDraft: (text: string) => void
+}): Promise<{ text: string; finish: string | null }> {
+  let { text, finish } = opts
+  for (let more = 0; finish === 'length' && more < MAX_CONTINUATIONS; more++) {
+    console.log(`[writer] ${opts.title}: output limit hit, continuation ${more + 1} of ${MAX_CONTINUATIONS}`)
+    opts.messages.push({ role: 'assistant', content: text })
+    opts.messages.push({ role: 'user', content: CONTINUE_PROMPT })
+    const head = text.length
+    let shown = 0
+    let ended: string | null = null
+    opts.tick({ phase: 'sent' }, true)
+    const tail = await askInShape({
+      model: opts.model,
+      messages: opts.messages,
+      shape: opts.shape,
+      label: 'writer',
+      signal: opts.signal,
+      onCost: opts.onCost,
+      maxTokens: opts.maxTokens,
+      onDelta: (piece) => {
+        shown += piece.length
+        opts.tick({ phase: 'writing', chars: head + shown })
+      },
+      onFinish: (reason) => {
+        ended = reason
+      }
+    })
+    opts.assertLive()
+    text = joinContinuation(text, tail)
+    finish = ended
+    opts.onDraft(text)
+  }
+  return { text, finish }
 }
