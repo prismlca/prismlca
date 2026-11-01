@@ -3,6 +3,31 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.6 — 2026-11-01
+
+### New
+
+- **Cheaper report writing and chats.** A report chapter now reuses the provider's prompt cache through every step,
+  from its lookups to the corrections and the answers to the second reader; with Claude models the newest part of
+  each exchange is cached too. On OpenRouter, a chat or a chapter stays with one provider while it runs, so its
+  cache is found again. For that, its requests carry a random routing key that lives only in memory and says
+  nothing about you or your computer — see the privacy notice of 1 November.
+- **The assistant can localize datasets.** The assistant and external agents can make a background or library
+  dataset an editable process of your model, like *Localize (edit)* on the canvas — on request with its direct
+  suppliers, which are copied and connected too. Results stay the same until a copy is changed, and one Undo
+  takes it all back.
+
+### Fixes
+
+- The splash screen shows the full version.
+
+**Installing.** Windows will warn about the installer because PrismLCA is not code-signed yet: compare it with
+`SHA256SUMS` below, then choose *More info → Run anyway*. On Linux the AppImage needs FUSE 2
+(`sudo apt install libfuse2t64` on Ubuntu 24.04); the deb needs nothing extra. PrismLCA 0.9.3 and later find
+this release under *Check for updates*.
+
+Changes since v0.9.5: https://github.com/prismlca/prismlca/compare/v0.9.5...v0.9.6
+
 ## 0.9.5 — 2026-10-31
 
 This release is mostly about the AI report writer: fewer chapters end up unfinished, fewer correct sentences
