@@ -544,7 +544,7 @@ def test_shipped_fallback_file_is_names_only() -> None:
     for fb in fallbacks:
         assert fb.reason, fb.name
         assert not uuid.search(fb.name) and not uuid.search(fb.target or "")
-    assert len(fallbacks) <= 400  # the agreed ceiling for shipped hand decisions
+    assert len(fallbacks) <= 40  # the agreed ceiling for shipped hand decisions
 
 
 def test_a_fuzzy_hit_whose_cas_contradicts_the_source_is_another_substance() -> None:
