@@ -307,6 +307,11 @@ export const TOOL_META: Record<string, { label: string; hint: string; group: str
     hint: 'Adds an input, changes its amount, drives it by a formula, or removes it.',
     group: 'Edit model'
   },
+  localize_dataset: {
+    label: 'Localize a dataset',
+    hint: 'Copies a background or library dataset into the model as an editable process, optionally with its direct suppliers.',
+    group: 'Edit model'
+  },
   lookup: {
     label: 'Look up vocabularies',
     hint: 'Valid geographies, ISIC sections and CPC classes for arguments.',

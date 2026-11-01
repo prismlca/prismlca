@@ -78,7 +78,7 @@ const CORE_GROUPS = ['Read & search', 'Calculate', 'History', 'Canvas & UI', 'Pl
 const GROUP_HINTS: Array<[string, RegExp]> = [
   [
     'Edit model',
-    /\b(model|process|activity|exchange|input|flow|amount|build|create|add|delete|remove|classif|proxy|dataset|bom|material|bill of materials|stückliste)/i
+    /\b(model|process|activity|exchange|input|flow|amount|build|create|add|delete|remove|classif|proxy|dataset|datensatz|locali[sz]|lokalisier|bom|material|bill of materials|stückliste)/i
   ],
   ['Parameters', /\b(parameter|formula|variable|fx|assumption|annahme|driver|rate|share|anteil)/i],
   [

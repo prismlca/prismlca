@@ -28,6 +28,9 @@ ALLOWED: dict[tuple[str, str, str], str] = {
     ("engine/commands.py", "CopyToForegroundCommand.__init__", "new_uid"): "activity code",
     ("engine/commands.py", "CopyToForegroundCommand.execute", "_copy_exchanges"):
         "from a model: tags copied; relinked inputs fold their common tags into the copy",
+    ("engine/commands.py", "CopyToForegroundCommand._copy_suppliers", "new_uid"): "activity codes",
+    ("engine/commands.py", "CopyToForegroundCommand._copy_suppliers", "_copy_exchanges"):
+        "depth 2: a supplier from a model keeps its tags (copy_process_tags); background ones carry none",
     ("engine/commands.py", "LocalizePathCommand.__init__", "new_uid"): "activity codes",
     ("engine/commands.py", "LocalizePathCommand._copy", "_copy_exchanges"): "background datasets carry no tags",
     ("engine/commands.py", "MoveToLibraryCommand.__init__", "new_uid"): "activity code",

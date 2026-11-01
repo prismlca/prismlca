@@ -55,6 +55,8 @@ class CopyRequest(BaseModel):
     relink_consumers: bool = False
     #: With relink: only these inputs (one canvas box) move to the copy; omitted = every consumer.
     uids: list[str] | None = None
+    #: 2 = the dataset's direct suppliers are copied too, and the copy draws on those copies.
+    depth: int = 1
     source: str = "user"
 
 
@@ -74,6 +76,7 @@ async def copy_activity(request: Request, body: CopyRequest) -> dict:
         body.target_database,
         relink_consumers=body.relink_consumers,
         uids=body.uids,
+        depth=body.depth,
     )
     return _bus(request).execute(cmd, source=body.source)
 

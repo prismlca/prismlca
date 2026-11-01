@@ -163,6 +163,9 @@ export const TOOL_EFFECTS: Record<string, Record<string, ToolEffect>> = {
     remove: 'write',
     replace_input: 'write'
   },
+  // CopyToForegroundCommand is undoable: one undo removes the copy (and its supplier copies at depth 2)
+  // and points the inputs back at the original.
+  localize_dataset: { '*': 'write' },
   lookup: { geographies: 'read', classification: 'read', source: 'read' }
 }
 
@@ -211,6 +214,7 @@ const STRUCTURE_ACTIONS: Record<string, readonly string[] | '*'> = {
   create_process: '*',
   delete_process: '*',
   edit_exchange: ['add', 'remove', 'replace_input'],
+  localize_dataset: '*',
   history: '*'
 }
 

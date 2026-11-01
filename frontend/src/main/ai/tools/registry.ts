@@ -9,6 +9,7 @@ import { IMPL } from './impl'
 import { readTools } from './groups/read'
 import { calcTools } from './groups/calc'
 import { modelTools } from './groups/model'
+import { localizeTools } from './groups/localize'
 import { paramsTools } from './groups/params'
 import { lciaTools } from './groups/lcia'
 import { tagsTools } from './groups/tags'
@@ -24,6 +25,7 @@ const ALL: Tool[] = [
   ...readTools,
   ...calcTools,
   ...modelTools,
+  ...localizeTools,
   ...paramsTools,
   ...lciaTools,
   ...tagsTools,
@@ -89,6 +91,7 @@ const TOOL_ORDER: string[] = [
   'explain_result',
   'model_info',
   'edit_exchange',
+  'localize_dataset',
   'lookup',
   'plan'
 ]
@@ -127,6 +130,8 @@ export const MUTATING_TOOLS = new Set<string>([
   'edit_process',
   'delete_process',
   'edit_exchange',
+  // Copies arrive as processes of the model and the inputs that drew on the dataset point at them.
+  'localize_dataset',
   'set_classification',
   'set_flow_properties',
   'edit_tags',

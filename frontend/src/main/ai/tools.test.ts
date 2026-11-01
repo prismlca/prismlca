@@ -38,8 +38,11 @@ describe('tool specs', () => {
     // 53 for `plan`: a tool without a backend that the chat loop itself needs —
     // not foldable into an existing one, because no other tool carries run state — hidden (spec and
     // prompt) for every model whose catalogue row says `planTool: false`, and never offered over MCP.
+    // 54 for `localize_dataset`: it turns a dataset into a process of the model, which is neither an
+    // exchange edit nor a process edit — as an action of edit_exchange it would have hidden in the
+    // longest description we have, and a model that does not find it rebuilds the dataset by hand.
     expect(TOOLS.length).toBeGreaterThan(25)
-    expect(TOOLS.length).toBeLessThanOrEqual(53)
+    expect(TOOLS.length).toBeLessThanOrEqual(54)
     const names = TOOLS.map((t) => t.spec.function.name)
     expect(new Set(names).size).toBe(names.length)
     expect(Object.keys(TOOL_BY_NAME).length).toBe(TOOLS.length)

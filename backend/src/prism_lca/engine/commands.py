@@ -312,6 +312,31 @@ def _relink(consumers: list[dict], from_key: tuple, to_activity) -> None:
         edge.save()
 
 
+@contextmanager
+def _one_transaction() -> Iterator[None]:
+    """Many rows, one commit — in the inventory database and in the parameter database alike.
+
+    Saved on its own, each exchange is its own SQLite commit (several milliseconds on a journaled disk),
+    and a copied formula adds its parameter row: an ecoinvent power plant has some 90 exchanges, 85 of
+    them formulas, and a copy with its suppliers writes thirty of those. Nested, it becomes a savepoint.
+    """
+    from bw2data.backends import sqlite3_lci_db
+    from bw2data.parameters import parameters
+
+    with sqlite3_lci_db.atomic(), parameters.db.atomic():
+        yield
+
+
+def _revision_log_kept() -> bool:
+    """Whether bw2data keeps a revision log for this project (``is_sourced``) — ours never do.
+
+    Every row saved with its signal on is diffed against its old state for that log (DeepDiff), and
+    bw2data asks whether there is a log only afterwards. On an ecoinvent exchange the diff costs about
+    20 ms, most of the time a copy takes; a copy therefore saves its rows with the signal off unless the
+    log exists."""
+    return bool(get_bd().projects.dataset.is_sourced)
+
+
 def _copy_exchanges(src, new, uids: dict[str, str] | None = None) -> list[tuple[str | None, str]]:
     """Copy every exchange of ``src`` onto ``new`` COMPLETELY — amount/type plus formula,
     uncertainty, pedigree, comment, properties (via exchange_extra_fields). Production edges
@@ -321,28 +346,47 @@ def _copy_exchanges(src, new, uids: dict[str, str] | None = None) -> list[tuple[
     copy got the first time: a command passes back on redo what it got, so a later step that addresses
     a copied exchange by uid (an amount, a tag) still finds it — by identity, not by position, because
     an undone delete brings an exchange back in another place. Returns ``(source uid, copy uid)`` per
-    exchange and fills ``uids`` when given."""
-    has_formula = False
-    pairs: list[tuple[str | None, str]] = []
-    seen: dict[str, int] = {}
-    for ex in src.exchanges():
-        target_input = new if ex.get("type") == "production" else ex.input
-        ne = new.new_edge(input=target_input, amount=ex.get("amount"), type=ex.get("type"))
-        for k, v in model.exchange_extra_fields(ex).items():
-            ne[k] = v
-        ident = ex.get("prism_uid") or f"{ex.input.key[0]}/{ex.input.key[1]}|{ex.get('type')}"
-        if not ex.get("prism_uid"):
-            seen[ident] = seen.get(ident, 0) + 1
-            ident = f"{ident}|{seen[ident]}"
-        ne["prism_uid"] = (uids or {}).get(ident) or model.new_uid()
-        if uids is not None:
-            uids[ident] = ne["prism_uid"]
-        ne.save()
-        pairs.append((ex.get("prism_uid"), ne["prism_uid"]))
-        has_formula = has_formula or bool(ne.get("formula"))
-    if has_formula:
-        # Copied formulas need their own parameter group, else they'd never recalculate.
-        params.register_activity_group(new)
+    exchange and fills ``uids`` when given.
+
+    The rows go in through bw2data's dataset model, which gives them their ids, not through
+    ``Exchange.save``: that one rewrites the metadata of every database in the workspace on each row
+    (``databases.set_dirty``), about 25 ms with eighty models — most of the time a copy took. The
+    database is marked dirty once, at the end."""
+    from bw2data.backends import ExchangeDataset
+    from bw2data.backends.utils import dict_as_exchangedataset
+
+    signal = _revision_log_kept()
+    with _one_transaction():
+        has_formula = False
+        pairs: list[tuple[str | None, str]] = []
+        seen: dict[str, int] = {}
+        for ex in src.exchanges():
+            target_input = new if ex.get("type") == "production" else ex.input
+            data = {
+                "input": tuple(target_input.key),
+                "output": tuple(new.key),
+                "amount": ex.get("amount"),
+                "type": ex.get("type"),
+                **model.exchange_extra_fields(ex),
+            }
+            ident = ex.get("prism_uid") or f"{ex.input.key[0]}/{ex.input.key[1]}|{ex.get('type')}"
+            if not ex.get("prism_uid"):
+                seen[ident] = seen.get(ident, 0) + 1
+                ident = f"{ident}|{seen[ident]}"
+            data["prism_uid"] = (uids or {}).get(ident) or model.new_uid()
+            if uids is not None:
+                uids[ident] = data["prism_uid"]
+            if data.get("formula") and "original_amount" not in data:
+                # What registering the formula below keeps of the amount it replaces — bw2data's
+                # add_exchanges_to_group writes it in a second save of this row unless it is there already.
+                data["original_amount"] = data["amount"]
+            ExchangeDataset(**dict_as_exchangedataset(data)).save(signal=signal)
+            pairs.append((ex.get("prism_uid"), data["prism_uid"]))
+            has_formula = has_formula or bool(data.get("formula"))
+        get_bd().databases.set_dirty(new.key[0])
+        if has_formula:
+            # Copied formulas need their own parameter group, else they'd never recalculate.
+            params.register_activity_group(new)
     return pairs
 
 
@@ -623,6 +667,28 @@ class MoveToLibraryCommand(Command):
         return [self.database, LIBRARY_DB]
 
 
+#: Localize at depth 2 copies the dataset's direct suppliers too, and at most this many. A dataset of
+#: ecoinvent 3.12 draws on five others directly in the median and on up to 30 in nine cases of ten; the
+#: long tail reaches several hundred. Copies of all of those would bury the model and its canvas under
+#: processes nobody changes — there, localizing the one supplier that matters is the better move.
+LOCALIZE_SUPPLIER_LIMIT = 30
+
+
+def _blank_copy(bd, target_database: str, src, code: str):
+    """A new process in ``target_database`` that names itself like ``src`` — no exchanges yet."""
+    new = bd.Database(target_database).new_activity(
+        code=code,
+        name=src.get("name"),
+        unit=src.get("unit") or "unit",
+        location=src.get("location") or "GLO",
+    )
+    if src.get("reference product"):
+        new["reference product"] = src.get("reference product")
+    new["type"] = "process"
+    new.save()
+    return new
+
+
 class CopyToForegroundCommand(Command):
     """Copy a (background) dataset into a foreground model as an editable process.
 
@@ -630,13 +696,20 @@ class CopyToForegroundCommand(Command):
     consumed the original consumes the copy afterwards. The canvas re-points its arrows at the copy
     either way; without the relink the picture and the calculation disagreed.
     Only the target model's consumers move: the source's own consumers (a whole ecoinvent) stay.
+
+    With ``depth=2`` the dataset's direct suppliers come along: each dataset it draws on from outside
+    the model is copied as well, and the copy draws on those copies instead of the originals. The
+    suppliers' own inputs stay where they were, so the result is unchanged until a copy is edited. A
+    dataset that draws on itself (an electricity market's losses) keeps that loop on the copy.
     """
 
     action = "copy_to_foreground"
     audit_attr = "target_database"
 
     def __init__(self, source_database, source_code, target_database, relink_consumers: bool = False,
-                 uids: list[str] | None = None):
+                 uids: list[str] | None = None, depth: int = 1):
+        if depth not in (1, 2):
+            raise PrismError("Localize goes one or two levels deep.", code="invalid_value", status_code=400)
         self.source_database = source_database
         self.source_code = source_code
         self.target_database = target_database
@@ -644,29 +717,35 @@ class CopyToForegroundCommand(Command):
         #: With relink: only these consumer inputs move to the copy (one canvas box), not every consumer.
         #: An empty list moves none (a copy on the canvas that was never connected).
         self.only_uids = set(uids) if uids is not None else None
+        self.depth = depth
         self._code = model.new_uid()
         self._name: str | None = None
         self._consumers: list[dict] = []
         self._uids: dict[str, str] = {}  # the copies' uids, kept for redo (see _copy_exchanges)
         self._written_tags: list[str] = []
         self._input_tags: dict[str, list[dict]] = {}  # input tags folded into the copy, for undo
+        #: Depth 2: each supplier's copy code and its exchanges' uids, fixed on first run so a redo
+        #: rebuilds the same processes (a later step may address them by code or uid).
+        self._supplier_codes: dict[tuple[str, str], str] = {}
+        self._supplier_uids: dict[str, dict[str, str]] = {}
+        #: Depth 2: the supplier copies this run made, for the answer, the summary and undo.
+        self._suppliers: list[dict] = []
 
     def execute(self) -> dict:
         bd = get_bd()
         assert_writable(self.target_database)
         src = model.get_activity(self.source_database, self.source_code)
         self._name = src.get("name")
-        tgt = bd.Database(self.target_database)
-        new = tgt.new_activity(
-            code=self._code,
-            name=src.get("name"),
-            unit=src.get("unit") or "unit",
-            location=src.get("location") or "GLO",
-        )
-        if src.get("reference product"):
-            new["reference product"] = src.get("reference product")
-        new["type"] = "process"
-        new.save()
+        suppliers = self._direct_suppliers(src) if self.depth == 2 else []
+        if len(suppliers) > LOCALIZE_SUPPLIER_LIMIT:
+            raise PrismError(
+                f"'{self._name or self.source_code}' draws on {len(suppliers)} datasets directly; localizing "
+                f"with its suppliers copies at most {LOCALIZE_SUPPLIER_LIMIT} of them.",
+                code="too_many_suppliers",
+                status_code=409,
+                hint="Localize it one level deep, then localize only the inputs of the copy you mean to change.",
+            )
+        new = _blank_copy(bd, self.target_database, src, self._code)
         try:
             pairs = _copy_exchanges(src, new, self._uids)
         except Exception:
@@ -680,7 +759,17 @@ class CopyToForegroundCommand(Command):
             self._written_tags = copy_process_tags(
                 store, (self.source_database, self.source_code), (self.target_database, self._code), pairs
             )
+        self._suppliers = []
+        if suppliers:
+            try:
+                self._copy_suppliers(bd, store, src, new, suppliers)
+            except Exception:
+                self._drop_copies(store)  # all of it or nothing: no half-built chain stays behind
+                raise
         if self.relink_consumers:
+            # The supplier copies made just now keep drawing on what their originals drew on, the
+            # dataset included: they stand for the background's supply, not for this model's.
+            made = {(self.target_database, s["code"]) for s in self._suppliers}
             # Recorded first, so undo puts every edge back exactly as it was (amount, uid, fields).
             self._consumers = [
                 {
@@ -692,13 +781,83 @@ class CopyToForegroundCommand(Command):
                 }
                 for up in src.upstream()
                 if up.output.key[0] == self.target_database and up.get("type") != "production"
+                and tuple(up.output.key) not in made
                 and (self.only_uids is None or up.get("prism_uid") in self.only_uids)
             ]
             _relink(self._consumers, (self.source_database, self.source_code), new)
             self._fold_input_tags(store)
         detail = model.activity_detail(new)
         detail["relinked"] = len(self._consumers)
+        if self.depth == 2:
+            detail["suppliers"] = [dict(s) for s in self._suppliers]
         return detail
+
+    def _direct_suppliers(self, src) -> list[tuple[str, str]]:
+        """The datasets ``src`` draws on from outside the target model, once each and in exchange order.
+        Itself excluded: its input on itself becomes the copy's input on itself, not another copy."""
+        own = tuple(src.key)
+        found: dict[tuple[str, str], None] = {}
+        for ex in src.technosphere():
+            key = tuple(ex.input.key)
+            if key != own and key[0] != self.target_database:
+                found.setdefault(key, None)
+        return list(found)
+
+    def _copy_suppliers(self, bd, store, src, new, suppliers: list[tuple[str, str]]) -> None:
+        """Depth 2: copy each direct supplier into the model and point the copy's inputs at those copies.
+
+        Each supplier's exchanges are one transaction of their own (``_copy_exchanges``), not all of them
+        one: a failure halfway then leaves saved processes that ``_drop_copies`` removes — search index
+        included — rather than rows a rollback takes back behind the index's back."""
+        from prism_lca.engine.tag_scope import MODEL, copy_process_tags, tag_kind
+
+        twins = {tuple(src.key): new}
+        for key in suppliers:
+            supplier = model.get_activity(key[0], key[1])
+            code = self._supplier_codes.setdefault(key, model.new_uid())
+            twin = _blank_copy(bd, self.target_database, supplier, code)
+            # Recorded before its exchanges are copied, so a failure there still finds it to remove.
+            self._suppliers.append(
+                {"from": list(key), "code": code, "name": supplier.get("name"), "location": supplier.get("location")}
+            )
+            pairs = _copy_exchanges(supplier, twin, self._supplier_uids.setdefault(code, {}))
+            if tag_kind(key[0]) == MODEL:
+                self._written_tags += copy_process_tags(store, key, (self.target_database, code), pairs)
+            twins[key] = twin
+        from bw2data.backends import ExchangeDataset
+
+        # Re-pointed in place rather than swapped as `_relink` does: the exchange row stays, and with it a
+        # copied formula's entry in the copy's parameter group, which a new row would not have. Through the
+        # rows, for the reason `_copy_exchanges` gives.
+        signal = _revision_log_kept()
+        with _one_transaction():
+            rows = ExchangeDataset.select().where(
+                (ExchangeDataset.output_database == new.key[0])
+                & (ExchangeDataset.output_code == new.key[1])
+                & (ExchangeDataset.type == "technosphere")
+            )
+            for row in list(rows):
+                twin = twins.get((row.input_database, row.input_code))
+                if twin is None:
+                    continue
+                data = row.data
+                data["input"] = tuple(twin.key)
+                row.data, row.input_database, row.input_code = data, twin.key[0], twin.key[1]
+                row.save(signal=signal)
+            get_bd().databases.set_dirty(new.key[0])
+
+    def _drop_copies(self, store) -> None:
+        """Remove every process this command made — the supplier copies, then the copy — and their tags."""
+        with _one_transaction():
+            from prism_lca.engine.tag_scope import drop_keys
+
+            drop_keys(store, self._written_tags)
+            for s in self._suppliers:
+                try:
+                    model.get_activity(self.target_database, s["code"]).delete()
+                except Exception as exc:  # noqa: BLE001 - best-effort cleanup, the copy may never have been saved
+                    _log.swallowed(exc, "_drop_copies")
+            model.get_activity(self.target_database, self._code).delete()
 
     def _fold_input_tags(self, store) -> None:
         """The relinked inputs now draw on a process of their own model, where a tag belongs on the
@@ -720,22 +879,20 @@ class CopyToForegroundCommand(Command):
         store.rewrite_lists({k: [] for k in keys})
 
     def undo(self) -> None:
-        from prism_lca.engine.tag_scope import drop_keys
-
         store = TagStore()
         if self._input_tags:
             store.rewrite_lists(self._input_tags)
-        drop_keys(store, self._written_tags)
         if self._consumers:
             src = model.get_activity(self.source_database, self.source_code)
             _relink(self._consumers, (self.target_database, self._code), src)
-        model.get_activity(self.target_database, self._code).delete()
+        self._drop_copies(store)
 
     def summary(self) -> str:
+        suppliers = f" with {len(self._suppliers)} direct supplier(s)" if self._suppliers else ""
         extra = f", {len(self._consumers)} link(s) re-pointed" if self._consumers else ""
         return (
             f"Copy '{self._name or self.source_code}' from {self.source_database} "
-            f"into {self.target_database} (editable){extra}"
+            f"into {self.target_database} (editable){suppliers}{extra}"
         )
 
     def audit_related(self) -> str | None:

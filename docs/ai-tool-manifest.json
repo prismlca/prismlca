@@ -1,7 +1,7 @@
 {
   "generated_by": "frontend/scripts/dump-tool-manifest.ts (npm run tools:manifest)",
   "note": "Canonical capability surface of the PrismLCA assistant. surface=\"api\" tools are thin wrappers around the local FastAPI and are portable to an external MCP server; surface=\"ui\" tools drive the Electron renderer and only work inside the app; surface=\"subagent\" tools are backed by a nested LLM research loop (web search only) and would have to be reimplemented, not wrapped.",
-  "tool_count": 53,
+  "tool_count": 54,
   "tools": [
     {
       "name": "list_models",
@@ -1790,11 +1790,15 @@
           },
           "value": {
             "type": "number",
-            "description": "Fixed numeric value (action=set; omit when passing a formula)."
+            "description": "Fixed numeric value (action=set; omit when passing a formula). A parameter that has a formula keeps it, and the formula wins, unless clear_formula is true."
           },
           "formula": {
             "type": "string",
             "description": "Formula instead of a fixed value, e.g. \"mass * (1 - recycled_share)\"."
+          },
+          "clear_formula": {
+            "type": "boolean",
+            "description": "true = drop the parameter's formula and store the value you pass as a fixed number. Only to replace a formula on purpose; leave it false for any other change (unit, group, comment)."
           },
           "unit": {
             "type": "string",
@@ -1824,6 +1828,10 @@
                 "formula": {
                   "type": "string",
                   "description": "Formula instead of a value."
+                },
+                "clear_formula": {
+                  "type": "boolean",
+                  "description": "true = replace this parameter's formula with the value."
                 },
                 "unit": {
                   "type": "string",
@@ -2065,7 +2073,7 @@
           },
           "direct_split": {
             "type": "boolean",
-            "description": "mode=flows only: true = each flow also carries \"direct\", the part the activity emits itself, and the answer the direct/upstream split of the total."
+            "description": "mode=flows only: true = each flow also carries \"direct\", the part the activity emits itself, and the answer the direct/upstream split of the total. Not together with \"phase\": a phase's flows have no such split."
           },
           "phase": {
             "type": "object",
@@ -2083,7 +2091,7 @@
               "dimension",
               "value"
             ],
-            "description": "mode=flows only: the flows of ONE tag value (a life-cycle phase), wherever its processes and inputs sit in the model."
+            "description": "mode=flows only: the flows of ONE tag value (a life-cycle phase), wherever its processes and inputs sit in the model. Leave direct_split off with it."
           }
         },
         "required": [
@@ -2360,6 +2368,44 @@
               }
             },
             "description": "Several exchange edits in one call; each item takes the same fields."
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "localize_dataset",
+      "label": "Localize a dataset",
+      "group": "Edit model",
+      "description": "Make a dataset from outside the model — a background dataset or one from the library — an EDITABLE process of the model. It is copied into the model, and the inputs that drew on it draw on the copy instead, in the calculation and on the canvas; the result stays the same until you change the copy. Use it when a dataset fits except for something you must adapt (another electricity mix, a different energy demand, a missing input) — never rebuild one by hand. A dataset that fits as it is stays a plain input. Name it by input_database + input_code (every input of the model that uses it moves to the copy) or by the uid of one exchange (only that input moves). depth=2 also copies its direct suppliers and points the copy at those copies; take it only when you will change several of them — for one supplier, localize the copy's input to it by uid. Undoable.",
+      "surface": "api",
+      "mutating": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "Model to copy into; omit for the model open on the canvas."
+          },
+          "input_database": {
+            "type": "string",
+            "description": "Database of the dataset (from search_background, or an exchange's input)."
+          },
+          "input_code": {
+            "type": "string",
+            "description": "Code of the dataset."
+          },
+          "uid": {
+            "type": "string",
+            "description": "The uid of ONE input of the model (get_process_details): only that input moves to the copy, and the dataset is the one it draws on. Also how you localize an input of an earlier copy."
+          },
+          "depth": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "description": "1 (default): the dataset alone. 2: its direct suppliers are copied as well and the copy draws on them — at most 30."
           }
         },
         "required": []

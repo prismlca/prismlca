@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-01",
+    "title": "The assistant can localize datasets",
+    "details": "The assistant and external agents can now make a background or library dataset an editable process of your model, just like Localize (edit) on the canvas. Ask for it with its suppliers and the dataset's direct suppliers are copied too, connected to the copy. The result stays the same until a copy is changed, and one Undo takes it all back."
+  },
+  {
     "date": "2026-10-31",
     "title": "Typed numbers no longer cost a chapter",
     "details": "When a report writer types a figure that exactly matches a result or share, the check now binds it to that value so it updates with the model. A chapter left with only typed numbers is stored anyway: open it to replace each number with the value it matches or keep it with a reason. The report can be approved once all are decided."
