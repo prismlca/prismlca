@@ -441,7 +441,7 @@ export async function converse(opts: DialogueOpts): Promise<DialogueResult> {
     const reading = await read({
       model: reviewer,
       messages: readerMessages,
-      cacheTail: readerCache,
+      shape: { cacheTail: readerCache, conversation: `reader:${opts.checkPath}` },
       printed: reviewBrief.printed,
       signal: opts.signal,
       onCost: opts.onCost,

@@ -149,4 +149,9 @@ describe('openrouter buildRequest — automatic caching', () => {
     expect(bodyOf({ ...base, cacheTail: true }).cache_control).toEqual({ type: 'ephemeral' })
     expect(bodyOf(base)).not.toHaveProperty('cache_control')
   })
+
+  it('carries the conversation’s routing key as session_id, and nothing when there is none', () => {
+    expect(bodyOf({ ...base, sessionId: 'k-1' }).session_id).toBe('k-1')
+    expect(bodyOf(base)).not.toHaveProperty('session_id')
+  })
 })

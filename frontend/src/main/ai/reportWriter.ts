@@ -44,7 +44,7 @@ import { converse } from './writer/dialogue'
 import { clean } from './writer/text'
 import { writerSystem, writerUser } from './writer/messages'
 import { settleUpdate, type UpdateBrief } from './writer/update'
-import { cacheable, explicitCache, logCache, type CallShape } from './writer/promptCache'
+import { cacheable, explicitCache, inShape, logCache, type CallShape } from './writer/promptCache'
 
 export { lookupBudget } from './writer/lookups'
 export {
@@ -313,7 +313,11 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   const allowedTools = writerTools(brief.kind, literature)
   const tools =
     opts.api && lookupBudget(brief) > 0 ? allowedTools.map((n) => TOOL_BY_NAME[n]).filter(Boolean) : []
-  const shape: CallShape = { tools: tools.length ? tools.map((t) => t.spec) : undefined, cacheTail: explicit }
+  const shape: CallShape = {
+    tools: tools.length ? tools.map((t) => t.spec) : undefined,
+    cacheTail: explicit,
+    conversation: `writer:${chapterOf(opts.checkPath) ?? brief.title}`
+  }
   /** One booking per call, and one log line with what the cache served. */
   const bill = (sample: CostSample): void => {
     opts.onCost?.(model, sample)
@@ -385,8 +389,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
     for await (const ev of streamChat({
       model,
       messages,
-      tools: shape.tools,
-      cacheTail: shape.cacheTail,
+      ...inShape(shape),
       temperature: null,
       signal: opts.signal,
       maxTokens: opts.maxTokens
@@ -506,7 +509,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
     for await (const ev of streamChat({
       model,
       messages,
-      cacheTail: shape.cacheTail,
+      ...inShape(shape),
       temperature: null,
       signal: opts.signal,
       maxTokens: opts.maxTokens

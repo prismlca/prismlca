@@ -25,6 +25,7 @@ import {
   needsChatApproval,
   type ChatApprovalMode
 } from './approval'
+import { routingSession } from './routingSession'
 import { collectText, costOf } from './stream'
 
 import { DEFAULT_MAX_ROUNDS, clampResearchQuestions, type ReasoningEffort } from '../../shared/aiDefaults'
@@ -1546,6 +1547,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             webSearch: req.webSearch,
             webLookupsCap: req.webLookupsCap,
             reasoningEffort,
+            // One routing key per chat, so its rounds stay with one provider's cache (routingSession.ts).
+            sessionId: routingSession(`chat:${req.chatId}`),
             signal: req.signal,
             provider
           })) {

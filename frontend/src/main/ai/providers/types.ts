@@ -145,6 +145,10 @@ export interface StreamChatOpts {
    *  Only for models that need breakpoints (`AiModel.explicitCache`); it takes one of their four slots.
    *  OpenRouter only; the OpenAI transport carries no such model and ignores it. */
   cacheTail?: boolean
+  /** The conversation's routing key (routingSession.ts): OpenRouter's `session_id`, which keeps its
+   *  requests with one provider and so with that provider's prompt cache. The OpenAI transport has
+   *  only one provider and ignores it. */
+  sessionId?: string
   signal?: AbortSignal
 }
 

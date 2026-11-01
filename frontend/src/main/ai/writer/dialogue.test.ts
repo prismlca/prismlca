@@ -123,6 +123,10 @@ describe('the second reader', () => {
     expect(second.messages[1].content).toEqual(first.messages[1].content) // the brief, byte for byte
     expect(answer.model).toBe('writer-m')
     expect(answer.cacheTail).toBeUndefined() // the writer keeps its own shape
+    // One routing key for the reader's conversation, not the writer's.
+    expect(first.sessionId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(second.sessionId).toBe(first.sessionId)
+    expect(answer.sessionId).not.toBe(first.sessionId)
   })
 
   it('settles a point: the reader raises it, the writer fixes it, the reader closes it', async () => {

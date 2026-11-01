@@ -16,7 +16,8 @@
  */
 import { findModel } from '../models'
 import { getActiveProvider } from '../providers/state'
-import type { ChatMessage, ToolSpec } from '../providers/types'
+import type { ChatMessage, StreamChatOpts, ToolSpec } from '../providers/types'
+import { routingSession } from '../routingSession'
 import { collectText, type CostSample } from '../stream'
 import type { CostSink } from '../subagent'
 
@@ -26,6 +27,19 @@ export interface CallShape {
   tools?: ToolSpec[]
   /** Ask for the moving breakpoint at the end of the conversation (Anthropic). */
   cacheTail?: boolean
+  /** The conversation's name for its routing key ('writer:<chapter>', 'reader:<chapter>'), so its requests
+   *  stay with one provider and that provider's cache. Never sent; the key is (routingSession.ts). */
+  conversation?: string
+}
+
+/** What each request of a conversation carries for the cache: its tools, the moving breakpoint and the
+ *  routing key. */
+export function inShape(shape: CallShape): Pick<StreamChatOpts, 'tools' | 'cacheTail' | 'sessionId'> {
+  return {
+    tools: shape.tools,
+    cacheTail: shape.cacheTail,
+    sessionId: shape.conversation ? routingSession(shape.conversation) : undefined
+  }
 }
 
 /** Whether this model caches only where a breakpoint is placed. */
@@ -89,8 +103,7 @@ export async function askInShape(opts: {
     const text = await collectText({
       model: opts.model,
       messages: opts.messages,
-      tools: opts.shape.tools,
-      cacheTail: opts.shape.cacheTail,
+      ...inShape(opts.shape),
       signal: opts.signal,
       maxTokens: opts.maxTokens,
       onDelta: opts.onDelta,

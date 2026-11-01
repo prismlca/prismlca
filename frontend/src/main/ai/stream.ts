@@ -52,6 +52,7 @@ export async function collectText(opts: {
   /** The tool list the conversation was offered before; see above. */
   tools?: StreamChatOpts['tools']
   cacheTail?: StreamChatOpts['cacheTail']
+  sessionId?: StreamChatOpts['sessionId']
   /** Each piece of text as it arrives, for a caller that shows progress. */
   onDelta?: (text: string) => void
   /** Tool calls the model asked for instead of (or beside) text. Reported, never executed. */
@@ -79,6 +80,7 @@ export async function collectText(opts: {
     messages: opts.messages,
     tools: opts.tools,
     cacheTail: opts.cacheTail,
+    sessionId: opts.sessionId,
     temperature: null,
     signal: opts.signal,
     webSearch: opts.webSearch,

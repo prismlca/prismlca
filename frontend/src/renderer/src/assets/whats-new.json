@@ -1,8 +1,8 @@
 [
   {
     "date": "2026-11-01",
-    "title": "Cheaper report writing",
-    "details": "A report chapter now keeps the provider's prompt cache through every step: its lookups, the corrections after the check and the answers to the second reader. With Claude models the newest part of each exchange is cached as well, and the second reader reuses its brief from the second reading on. The same text costs less, most of all on chapters that need corrections."
+    "title": "Cheaper report writing and chats",
+    "details": "A report chapter now keeps the provider's prompt cache through every step, from its lookups to the corrections and the answers to the second reader; with Claude models the newest part of each exchange is cached too. On OpenRouter, a chat or a chapter stays with one provider while it runs, so its cache is found again. The privacy notice of 1 November says how."
   },
   {
     "date": "2026-11-01",

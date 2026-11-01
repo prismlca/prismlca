@@ -172,4 +172,22 @@ describe('one shape for every call of a chapter', () => {
     expect(out.findings[0].kind).toBe('incomplete_answer')
     expect(out.text).toBe('The first half')
   })
+
+  it('keeps every call of a chapter on one routing key, and gives another chapter its own', async () => {
+    const { api } = backend()
+    chat.rounds = [
+      { calls: [lookup('t1')] },
+      { text: 'The share is 90 %.' },
+      { text: '{"replacements": [{"old": "90 %", "new": "{{results.0.score}}"}]}' }
+    ]
+    await writeSection({ brief, api, checkPath: CHECK })
+    const keys = sent.map((c) => c.sessionId)
+    expect(keys).toHaveLength(3)
+    expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/)
+    expect(new Set(keys).size).toBe(1)
+    sent.length = 0
+    chat.rounds = [{ text: 'Done.' }]
+    await writeSection({ brief, api: backend().api, checkPath: CHECK.replace('s1', 's2') })
+    expect(sent[0].sessionId).not.toBe(keys[0])
+  })
 })

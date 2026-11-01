@@ -8,7 +8,7 @@
  * revision of a chapter that was right.
  */
 import type { ChatMessage } from '../providers/types'
-import { askInShape } from './promptCache'
+import { askInShape, type CallShape } from './promptCache'
 import type { CostSink } from '../subagent'
 import type { Finding, Lookup, ReviewQuestion } from '../../../shared/ipc'
 import { forReader } from './readerEvidence'
@@ -275,8 +275,8 @@ export function parseReading(raw: string, printed: string): Omit<Reading, 'empty
 export async function read(opts: {
   model: string
   messages: ChatMessage[]
-  /** The moving breakpoint, for a reader that needs breakpoints (writer/promptCache.ts). */
-  cacheTail?: boolean
+  /** The reader conversation's shape: its breakpoint and routing key (writer/promptCache.ts). */
+  shape: CallShape
   printed: string
   signal?: AbortSignal
   onCost?: CostSink
@@ -288,7 +288,7 @@ export async function read(opts: {
       raw = await askInShape({
         model: opts.model,
         messages: opts.messages,
-        shape: { cacheTail: opts.cacheTail },
+        shape: opts.shape,
         label: 'reader',
         signal: opts.signal,
         onCost: opts.onCost,

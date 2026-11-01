@@ -115,6 +115,18 @@ describe('runAgent — basics', () => {
     expect(d.events.at(-1)).toMatchObject({ type: 'done', text: 'All done.' })
   })
 
+  it('sends one routing key for every round of a chat, and another for another chat', async () => {
+    // Keeps a chat's rounds with one provider, and so with its prompt cache (routingSession.ts).
+    chat.rounds = [{ calls: [{ id: 't1', name: 'list_models', arguments: '{}' }] }, { text: 'One.' }]
+    await runAgent(request(), deps().deps)
+    chat.rounds = [{ text: 'Other.' }]
+    await runAgent(request({ chatId: 'c2' }), deps().deps)
+    const [first, second, other] = chat.seen.map((c) => c.sessionId)
+    expect(first).toMatch(/^[0-9a-f-]{36}$/)
+    expect(second).toBe(first)
+    expect(other).not.toBe(first)
+  })
+
   it('runs a tool, feeds the result back and finishes on the next round', async () => {
     chat.rounds = [
       { calls: [{ id: 't1', name: 'list_models', arguments: '{}' }] },

@@ -99,7 +99,9 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
   copy `frontend/src/renderer/src/assets/privacy-notice.md`; a test keeps both identical).
 - **No PrismLCA key, no proxy, no relay.** Users remain the contracting party of their provider; we are a
   tool, not a controller.
-- **No device, installation or user ID in any request.** The program version yes, nothing else.
+- **No device, installation or user ID in any request.** The program version yes, nothing else. A random
+  per-conversation routing key is not such an ID: OpenRouter's `session_id` (`ai/routingSession.ts`), kept in memory
+  only and replaced after an hour without a request and on every restart.
 - **No telemetry, no crash reporting.** If ever wanted: opt-in, viewable locally before sending, and the
   paragraph in `PRIVACY.md` is rewritten.
 - **Own servers in the EU**, hosts with a data-processing agreement, server logs kept at most seven days.
