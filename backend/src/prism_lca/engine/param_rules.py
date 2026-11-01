@@ -182,3 +182,54 @@ def check_value(rule: dict | None, value: float | None, *, name: str, where: str
         code="param_value_refused",
         hint=f"The rule on this parameter says the value must be {describe(rule)}.",
     )
+
+
+def bounded_steps(rule: dict | None, value: float, delta: float) -> tuple[tuple[float, str | None], tuple[float, str | None]] | None:
+    """The two values a one-at-a-time sensitivity step uses around `value` (−`delta` and +`delta`, relative),
+    held to `rule`.
+
+    Returns ``((low, why), (high, why))``. ``why`` is None for a side that moved the full delta, and otherwise
+    the phrase saying what held it back — the rule as :func:`describe` words it — so a bar that moved less
+    than the others can say so instead of passing for a parameter the result does not care about.
+
+    * no rule, ``positive``, ``negative``: the full step; a delta below 1 keeps the sign, so these never bind.
+    * ``range``: each side is cut at its end. A value sitting on an end moves only the other way.
+    * ``list``: the neighbouring allowed values, whatever their distance — a discrete choice has no ±10 %.
+      Both sides then carry the rule, because neither is the delta.
+
+    None when the rule leaves no room on either side: a list of one value, or a range whose ends meet.
+    """
+    v = float(value)
+    kind = (rule or {}).get("kind")
+    if kind == "list":
+        allowed = sorted(float(x) for x in rule.get("values") or [])
+        # Same value or not, judged pair by pair and relative to the pair: a list of 1e-9 and 2e-9 has two
+        # choices in it, also when 1e9 is a third — a tolerance scaled to the whole list skipped the neighbour.
+        def same(a: float) -> bool:
+            return abs(a - v) <= _EPS * max(abs(a), abs(v), 1e-300)
+
+        below = [a for a in allowed if a < v and not same(a)]
+        above = [a for a in allowed if a > v and not same(a)]
+        if not below and not above:
+            return None
+        why = describe(rule)
+        return ((below[-1] if below else v, why), (above[0] if above else v, why))
+    low, high = v * (1 - delta), v * (1 + delta)
+    if kind != "range":
+        return ((low, None), (high, None))
+    lo, hi = rule.get("min"), rule.get("max")
+
+    def cut(x: float) -> tuple[float, str | None]:
+        if lo is not None and x < float(lo):
+            return float(lo), describe(rule)
+        if hi is not None and x > float(hi):
+            return float(hi), describe(rule)
+        return x, None
+
+    (lv, lw), (hv, hw) = cut(min(low, high)), cut(max(low, high))
+    # Immovable only when both sides land on the same number — the ends of a range that meet. A tolerance
+    # here took a parameter of 1e-9, whose ±10 % are perfectly allowed, for a constant.
+    if hv == lv:
+        return None
+    # A negative value turns −delta into the larger number; the sides stay "−delta" and "+delta".
+    return ((lv, lw), (hv, hw)) if low <= high else ((hv, hw), (lv, lw))

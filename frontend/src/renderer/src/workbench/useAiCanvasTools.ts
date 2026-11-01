@@ -14,6 +14,7 @@ import { fetchQuery } from '../lib/server/useQuery'
 import { resolveSplit } from '../views/results/splitBy'
 import type { MethodEntry } from '../lib/methods'
 import type { ViewKey } from './AppSidebar'
+import type { ResultsTab } from '../views/results/ResultsTabs'
 import type { useCanvasModel } from './useCanvasModel'
 
 type Canvas = ReturnType<typeof useCanvasModel>
@@ -28,7 +29,7 @@ export interface AiCanvasToolsDeps {
   calculate: (methodOverride?: string[], codeOverride?: string) => void
   view: ViewKey
   setView: (v: ViewKey) => void
-  setResultsTab: (tab: 'overview' | 'detail') => void
+  setResultsTab: (tab: ResultsTab) => void
   reloadAudit: () => Promise<void>
   refreshDatabases: () => Promise<unknown>
   reloadTagGroups: () => Promise<void>

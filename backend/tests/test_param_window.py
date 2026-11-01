@@ -387,8 +387,8 @@ def test_sensitivity_windows_are_marked_and_leave_nothing(client, token, project
     cases = [
         ("tornado", {"database": DB, "code": "bottle", "method": METHOD, "delta": 0.5},
          "one-at-a-time sensitivity analysis"),
-        ("sweep", {"database": DB, "code": "bottle", "method": METHOD, "param": "kwh",
-                   "values": [1, 3, 4]}, "sensitivity sweep of 'kwh'"),
+        ("curve", {"database": DB, "code": "bottle", "method": METHOD, "param": "kwh",
+                   "values": [1, 3, 4]}, "parameter curve of 'kwh'"),
     ]
     for endpoint, body, label in cases:
         writes.clear()
@@ -471,7 +471,7 @@ def test_a_sensitivity_marker_that_cannot_be_proved_is_reported(client, token, p
     assert "kwh" in finding["message"]
 
 
-def test_a_marker_write_failure_refuses_a_sweep_too(client, token, project, monkeypatch):
+def test_a_marker_write_failure_refuses_a_curve_too(client, token, project, monkeypatch):
     _model(client, token)
 
     def refuse(_frames):
@@ -479,7 +479,7 @@ def test_a_marker_write_failure_refuses_a_sweep_too(client, token, project, monk
 
     monkeypatch.setattr(param_window, "_write_frames", refuse)
     r = client.post(
-        "/api/v1/calc/sensitivity/sweep",
+        "/api/v1/calc/sensitivity/curve",
         json={"database": DB, "code": "bottle", "method": METHOD, "param": "kwh", "values": [1, 3]},
         headers=token,
     )

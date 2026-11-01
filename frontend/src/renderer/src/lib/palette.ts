@@ -62,3 +62,8 @@ export const AGG_PALETTE = [
 
 /** Grey for placeholder groups like '(untagged)' / '(no ISIC)'. */
 export const NEUTRAL_GREY = '#9aa2a8'
+
+/** Curves of the Sensitivity analysis tab, one per variant. The brand colours WITHOUT the blue and the purple:
+ *  those two mean "input −x %" and "input +x %" in the tornado beside it, and the same colour must not say
+ *  two things on one page. Teal, amber and olive first — the three that stay apart for colour-blind readers. */
+export const CURVE_PALETTE = ['#3a9d7e', '#e08e0b', '#5b7a2b', '#2f4e66', '#93c120', '#cc4b37']

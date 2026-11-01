@@ -251,13 +251,18 @@ def _long_work(request: Request) -> list[str]:
 
 def _jobs(request: Request) -> list[str]:
     """The work that runs on its own threads once started."""
-    from prism_lca.engine import calc_jobs, ecoinvent
+    from prism_lca.engine import calc_jobs, ecoinvent, sensitivity_jobs
     from prism_lca.engine.dataimport import session as import_session
 
     work: list[str] = []
     running = calc_jobs.running_count()
     if running:
         work.append(f"{running} calculation{'s' if running != 1 else ''} running")
+    # A sensitivity run holds the model in a perturbed state between its steps; a shutdown inside it leaves the
+    # restore to the next start (engine/param_window.py) and throws the run away.
+    sensing = sensitivity_jobs.running_count()
+    if sensing:
+        work.append(f"{sensing} sensitivity analys{'e' if sensing != 1 else 'i'}s running")
     if ecoinvent.status().state == ecoinvent.JobState.running:
         work.append("a background import running")
     if import_session.reading_progress() is not None:

@@ -14,6 +14,7 @@ import type { ChatUiHandlers } from '../CanvasChat'
 import { onUiTool, uiResult, type UiToolRequest } from '../lib/ai'
 import { splitId } from '../lib/canvas'
 import type { ViewKey } from './AppSidebar'
+import type { ResultsTab } from '../views/results/ResultsTabs'
 
 /** Requests the Workbench answers for ANY origin (the chat panel never sees them). */
 export const WORKBENCH_UI_TOOLS: ReadonlySet<string> = new Set(['open_model', 'open_page', 'get_state'])
@@ -54,7 +55,7 @@ export interface McpUiToolsDeps {
   refreshDatabases: () => Promise<Array<{ name: string; kind: string }>>
   /** The canvas selection as node ids (`db/code`). */
   selected: string[]
-  resultsTab: 'overview' | 'detail'
+  resultsTab: ResultsTab
   chatUi: ChatUiHandlers
 }
 
@@ -81,7 +82,7 @@ export function useMcpUiTools(deps: McpUiToolsDeps): void {
                 // A box id carries its occurrence after '#': the same dataset can be selected twice.
                 return id === `${database}/${code}` ? { database, code } : { database, code, id }
               }),
-              results_tab: d.resultsTab === 'detail' ? 'detailed' : 'overview'
+              results_tab: d.resultsTab === 'detail' ? 'detailed' : d.resultsTab
             }
             break
           }

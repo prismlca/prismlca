@@ -1,14 +1,17 @@
-"""Sensitivity analysis: one-at-a-time tornado, parameter sweep, break-even.
+"""Sensitivity analysis: one-at-a-time tornado, parameter curve, break-even.
 
 All reuse the parameter apply/restore machinery (M6) + LCIA (M5): set parameter value(s),
-recompute the score, restore the baseline.
+recompute the score, restore the baseline. A run may start from a scenario instead of the baseline: its
+overrides go in first and stay in for every step, so the bars and curves describe that variant.
 
 Each analysis holds ``lca._LCA_LOCK`` across its whole apply→compute→restore span: the apply
 mutates GLOBAL bw2data parameter state, and calc endpoints run concurrently in the threadpool —
 without the lock a baseline calculation could land between two perturbed applies and silently
 return a perturbed score (the RLock is re-entrant, so the nested compute_lcia is fine). Nothing here
 takes the command bus or a store: the lock order the rest of the app keeps is LCA → bus → store
-(1816eb17), and a sensitivity run holds only the first.
+(1816eb17), and a sensitivity run holds only the first. The price is that other calculations and
+parameter edits wait for a running analysis; the job behind the UI (engine/sensitivity_jobs.py) can be
+cancelled between two steps, and every step scores all requested indicators on one factorisation.
 
 Every analysis here is also a **crash-marked window** (engine/param_window.py). These are the
 longest windows in the app — a tornado over twenty parameters is forty solves, a break-even search
@@ -16,26 +19,38 @@ fifty — and a process killed inside one leaves the model holding a perturbed v
 say so. One frame per analysis, re-stamped before each step rather than one frame per step: at any
 instant exactly one perturbed set is in the model, and that is the set the marker has to name.
 
+**A step is held to the parameter's rule** (engine/param_rules.py): a recycling rate of 0.97 moved by
++10 % would be 1.067, more bottles back than were sold, and the bar for it was the largest in the chart
+and physically meaningless. The step is cut at the rule instead and says so (``limited``).
+
 **A formula-driven parameter** (``b = 2*a``) is varied the way a scenario overrides it: each step goes
 through ``scenarios.Plan``, which takes the formula out for the step, the marker names it, and the
 restore puts it back. Writing only the number left the formula standing, the recalculation put
 ``2*a`` straight back, and the sensitivity of ``b`` was silently zero — the defect that survived in
 the one path that had not been moved onto the plan. Varying ``b`` on its own is a variation *against*
 its formula (``a`` stays where it is), so the answer says so: ``replaces_formula`` names the formula
-that was set aside. That is also why the tornado varies only the inputs — the parameters without a
-formula — unless it is asked for others by name: ``a`` already moves ``b``, and a bar for ``b`` beside
-it would count the same lever twice.
+that was set aside. That is also why the tornado varies only the inputs unless it is asked for others by
+name: ``a`` already moves ``b``, and a bar for ``b`` beside it would count the same lever twice. A formula
+of numbers alone (``2.5 / 1000``) refers to no other parameter and counts as an input.
 """
 from __future__ import annotations
 
 import math
+import re
+from collections.abc import Callable
 
-from prism_lca.engine import lca, param_window, params, scenarios
+from prism_lca.engine import lca, param_rules, param_window, params, scenarios
 from prism_lca.errors import PrismError
 
 
 def _score(database: str, code: str, method, amount: float) -> float:
     return lca.compute_lcia(database, code, method, amount)["score"]
+
+
+def _unit(method: tuple) -> str:
+    from prism_lca.engine.bootstrap import get_bd
+
+    return get_bd().methods[tuple(method)].get("unit", "")
 
 
 def _apply(database: str, frame: dict, base_vals: dict, overrides: dict,
@@ -79,76 +94,272 @@ def _require(names: list[str], base_vals: dict) -> None:
         )
 
 
-def tornado(database: str, code: str, method, delta: float = 0.1, amount: float = 1.0,
-            names: list[str] | None = None) -> dict:
-    """Vary each parameter by ±``delta`` on its own and rank them by swing.
+#: Called after every solve of a run: ``(done, total, label)``. The job behind the UI's progress bar.
+Progress = Callable[[int, int, str], None]
+#: Called before every solve: raises :class:`lca.CalcCancelled` to stop, or anything else the caller wants
+#: to stop on (the job raises when the model or the workspace changed under it). The window's ``finally``
+#: puts the baseline back either way.
+Checkpoint = Callable[[], None]
 
-    ``names`` None: every parameter *without* a formula — the model's inputs. A parameter with a
-    formula is varied only when named; its entry then carries ``replaces_formula``. What was left out
-    is listed under ``skipped`` with the reason, so an absent bar is never mistaken for a zero one.
+_NAME = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
+
+
+def _visible_names(database: str) -> set[str]:
+    """Every parameter name a formula of this model can refer to: its own and the workspace's."""
+    from bw2data.parameters import ProjectParameter
+
+    return set(params.snapshot_all(database)) | {p.name for p in ProjectParameter.select()}
+
+
+def _derived(formula: str | None, visible: set[str]) -> bool:
+    """A formula over another parameter is *derived*: its drivers already move it, and a bar of its own
+    would count the same lever twice. A formula of numbers alone (``2.5 / 1000``) is an input written as
+    its arithmetic, and is varied like one."""
+    return bool(formula) and bool(set(_NAME.findall(str(formula))) & visible)
+
+
+def _rules(database: str) -> dict[str, dict]:
+    return {p["name"]: (p.get("rule") or {}) for p in params.list_params(database)}
+
+
+def _broken(database: str, rules: dict[str, dict], varied: str) -> list[dict]:
+    """The OTHER parameters a step pushed outside their rule, as the model stands after it.
+
+    A step is held to the varied parameter's own rule, but it also moves what is calculated from it: a
+    landfill share of 0.95 moved +10 % takes a recycling share ``1 - incineration - landfill`` below 0. The
+    score of that step describes a model that cannot exist, and the bar has to say so rather than pass for an
+    answer."""
+    ruled = {n: r for n, r in rules.items() if r and n != varied}
+    if not ruled:
+        return []
+    now = params.snapshot_all(database)
+    return [
+        {"param": n, "value": now[n], "allowed": param_rules.describe(r)}
+        for n, r in sorted(ruled.items())
+        if n in now and param_rules.violates(r, now[n])
+    ]
+
+
+def _variant(database: str, scenario_id: str | None, base_formulas: dict[str, str | None]):
+    """``(overrides, name, formulas)`` of the variant a run starts from: the scenario's overrides in stored
+    form (numbers and formulas), its display name, and the formula each parameter carries under it."""
+    if not scenario_id:
+        return {}, "Baseline", dict(base_formulas)
+    scenario = scenarios.ScenarioStore().get(scenario_id, database)
+    applied = scenarios.plan(scenario, base_formulas)
+    return {**applied.numbers, **applied.formula_overrides}, scenario["name"], dict(applied.formulas)
+
+
+def inputs(database: str, scenario_id: str | None = None) -> dict:
+    """What a sensitivity run on this model may vary, with the value each has in the chosen variant.
+
+    ``inputs``: the parameters without a formula, and those whose formula is numbers alone — each with its
+    value, unit and rule (``allowed`` is the rule in words). ``derived``: the parameters calculated from
+    others, which a run does not vary. A scenario's values are evaluated, not applied
+    (:func:`params.evaluate_overrides`): the page asks for this on every model edit, and writing the scenario
+    into the model and back each time held the LCA lock for two recalculations."""
+    with lca._LCA_LOCK:  # read the model as it stands, never in the middle of another run's window
+        base_vals = params.snapshot_all(database)
+        base_formulas = params.snapshot_formulas(database)
+        overrides, _name, formulas = _variant(database, scenario_id, base_formulas)
+        # Only overrides of parameters the model still has: applying a scenario skips the others, and
+        # evaluating them would list a deleted parameter as one the run could vary.
+        live = {k: v for k, v in overrides.items() if k in base_vals}
+        values = params.evaluate_overrides(database, live) if live else dict(base_vals)
+        visible = _visible_names(database)
+        listed = {p["name"]: p for p in params.list_params(database)}
+    out_inputs, out_derived = [], []
+    for name in sorted(values):
+        meta = listed.get(name, {})
+        if _derived(formulas.get(name), visible):
+            out_derived.append({"name": name, "formula": formulas.get(name), "value": values[name]})
+            continue
+        row = {"name": name, "value": values[name], "unit": meta.get("unit") or "", "rule": meta.get("rule") or {}}
+        if meta.get("allowed"):
+            row["allowed"] = meta["allowed"]
+        if formulas.get(name):
+            row["formula"] = formulas[name]
+        out_inputs.append(row)
+    return {"inputs": out_inputs, "derived": out_derived}
+
+
+def _scores(database: str, code: str, methods: list, amount: float) -> list[float]:
+    """Every indicator on the state the model is in now: the first solve factorises, the rest only swap the
+    characterisation (``lca.get_lca``), so three indicators cost about one."""
+    return [_score(database, code, m, amount) for m in methods]
+
+
+def tornado(database: str, code: str, methods: list, delta: float = 0.1, amount: float = 1.0,
+            names: list[str] | None = None, scenario_id: str | None = None,
+            progress: Progress | None = None, checkpoint: Checkpoint | None = None) -> dict:
+    """Vary each parameter by ±``delta`` on its own, from the chosen variant, and score every indicator.
+
+    ``names`` None: every input (see :func:`inputs`) — a parameter derived from others is varied only when
+    named, against its formula (``replaces_formula``). ``scenario_id``: the scenario whose values are the
+    starting point; its overrides stay in for every step. Each step is held to the parameter's rule
+    (:func:`param_rules.bounded_steps`): a side the rule cut short carries ``limited`` with the rule in
+    words, and a parameter the rule leaves no room at all is skipped as ``fixed``. A side that pushes ANOTHER
+    parameter outside its rule (a share calculated from this one) carries ``breaks`` (see :func:`_broken`).
+    What was left out is listed under ``skipped`` with the reason, so an absent bar is never mistaken for a
+    zero one.
+
+    Entries carry one score per indicator, in the order of ``methods``, and come sorted by the swing of the
+    first; a reader showing another indicator sorts again.
     """
+    if not 0 < delta < 1:
+        raise PrismError(
+            f"A sensitivity range of ±{delta * 100:g} % is not possible.",
+            code="sensitivity_delta",
+            hint="Use a range above 0 and below 100 %; at 100 % a value would reach zero.",
+        )
+    methods = [lca.resolve_method(m) for m in (methods or [None])]
+    note = progress or (lambda *_: None)
+    check = checkpoint or (lambda: None)
     with lca._LCA_LOCK:
         base_vals = params.snapshot_all(database)  # only this model's parameters
         base_formulas = params.snapshot_formulas(database)
         if names is not None:
             _require(list(names), base_vals)
-        selected = list(dict.fromkeys(names)) if names is not None else list(base_vals)
+        overrides, variant_name, formulas = _variant(database, scenario_id, base_formulas)
+        visible = _visible_names(database)
+        rules = _rules(database)
+        selected = list(dict.fromkeys(names)) if names is not None else sorted(base_vals)
         entries: list[dict] = []
         skipped: list[dict] = []
-        baseline = 0.0
-        unit = ""
         frame = param_window.open_window(
             database, "sensitivity", "one-at-a-time sensitivity analysis", base_vals, {}
         )
         try:
-            res = lca.compute_lcia(database, code, method, amount)
-            baseline, unit = res["score"], res["unit"]
+            if overrides:  # the baseline is already in the model; writing it again costs a recalculation
+                _apply(database, frame, base_vals, overrides, base_formulas)
+                scenarios.check_applied(database, scenarios.Plan(overrides, base_formulas), variant_name)
+            start_vals = params.snapshot_all(database)
+            plan: list[tuple[str, tuple]] = []
             for name in selected:
-                val = base_vals[name]
-                formula = base_formulas.get(name)
-                if formula and names is None:
+                formula = formulas.get(name)
+                if _derived(formula, visible) and names is None:
                     skipped.append({"param": name, "reason": "has_formula", "formula": formula})
                     continue
-                if not val:
+                val = start_vals[name]
+                rule = rules.get(name) or {}
+                if not val and rule.get("kind") != "list":
                     skipped.append({"param": name, "reason": "zero_value"})
                     continue
-                low = _perturbed(database, code, method, amount, frame, base_vals,
-                                 {name: val * (1 - delta)}, base_formulas)
-                high = _perturbed(database, code, method, amount, frame, base_vals,
-                                  {name: val * (1 + delta)}, base_formulas)
-                entry = {"param": name, "base": val, "low": low, "high": high, "swing": abs(high - low)}
-                if formula:
-                    entry["replaces_formula"] = formula
+                steps = param_rules.bounded_steps(rule, val, delta)
+                if steps is None:
+                    skipped.append({"param": name, "reason": "fixed", "allowed": param_rules.describe(rule)})
+                    continue
+                plan.append((name, steps))
+            total = 1 + sum(sum(1 for v, _w in steps if v != start_vals[name]) for name, steps in plan)
+            check()
+            baseline = _scores(database, code, methods, amount)
+            units = [_unit(m) for m in methods]
+            done = 1
+            note(done, total, "Starting point")
+            for name, ((low_v, low_why), (high_v, high_why)) in plan:
+                val = start_vals[name]
+                sides = []
+                breaks: dict[str, list[dict]] = {}
+                for v, sign, side in ((low_v, "−", "low"), (high_v, "+", "high")):
+                    if v == val:  # the rule left this side no room: the starting point is its score
+                        sides.append(list(baseline))
+                        continue
+                    check()
+                    _apply(database, frame, base_vals, {**overrides, name: v}, base_formulas)
+                    sides.append(_scores(database, code, methods, amount))
+                    if broken := _broken(database, rules, name):
+                        breaks[side] = broken
+                    done += 1
+                    note(done, total, f"{name} {sign}")
+                entry = {"param": name, "base": val, "low_value": low_v, "high_value": high_v,
+                         "low": sides[0], "high": sides[1]}
+                limited = {k: w for k, w in (("low", low_why), ("high", high_why)) if w}
+                if limited:
+                    entry["limited"] = limited
+                if breaks:
+                    entry["breaks"] = breaks
+                if _derived(formulas.get(name), visible):
+                    entry["replaces_formula"] = formulas[name]
                 entries.append(entry)
-            entries.sort(key=lambda e: e["swing"], reverse=True)
         finally:
             param_window.restore_and_close(database, base_vals, frame)
-        out = {"baseline": baseline, "unit": unit, "delta": delta, "entries": entries}
-        if skipped:
-            out["skipped"] = skipped
-        return out
+    entries.sort(key=lambda e: abs(e["high"][0] - e["low"][0]), reverse=True)
+    out = {"methods": [list(m) for m in methods], "units": units, "baseline": baseline, "delta": delta,
+           "scenario": {"id": scenario_id, "name": variant_name} if scenario_id else None,
+           "entries": entries}
+    if skipped:
+        out["skipped"] = skipped
+    return out
 
 
-def sweep(database: str, code: str, method, param: str, values: list[float], amount: float = 1.0) -> dict:
+def curve(database: str, code: str, method, param: str, values: list[float], scenario_ids: list[str | None] | None = None,
+          amount: float = 1.0, progress: Progress | None = None, checkpoint: Checkpoint | None = None) -> dict:
+    """One indicator against one parameter across ``values``, once per variant (None = the baseline).
+
+    Each curve also carries its ``origin``: the parameter's own value in that variant and the score there,
+    which is the point a reader looks for first. A value the parameter's rule does not allow is refused
+    before anything is computed — a curve through impossible values is the picture of a model that does not
+    exist.
+    """
+    if not values:
+        raise PrismError("A curve needs at least one value.", code="sensitivity_no_values",
+                         hint="Give the values to compute, for example from 10 to 30 in 11 points.")
+    m = lca.resolve_method(method)
+    variants = list(dict.fromkeys(scenario_ids or [None]))
+    note = progress or (lambda *_: None)
+    check = checkpoint or (lambda: None)
     with lca._LCA_LOCK:
         base_vals = params.snapshot_all(database)
         base_formulas = params.snapshot_formulas(database)
         _require([param], base_vals)
-        points: list[dict] = []
+        rule = _rules(database).get(param) or {}  # the curve's own parameter; the others below
+        bad = [v for v in values if param_rules.violates(rule, float(v))]
+        if bad:
+            raise PrismError(
+                f"{', '.join(param_rules._num(v) for v in bad)} not allowed for '{param}': "
+                f"it must be {param_rules.describe(rule)}.",
+                code="param_value_refused",
+                hint="Keep the curve inside the values the parameter's rule allows.",
+            )
+        rules = _rules(database)
+        resolved = [_variant(database, sid, base_formulas) for sid in variants]
+        total, done = len(variants) * (len(values) + 1), 0
+        curves: list[dict] = []
+        replaced: str | None = None
         frame = param_window.open_window(
-            database, "sensitivity", f"sensitivity sweep of '{param}'", base_vals, {}
+            database, "sensitivity", f"parameter curve of '{param}'", base_vals, {}
         )
         try:
-            for v in values:
-                score = _perturbed(database, code, method, amount, frame, base_vals,
-                                   {param: float(v)}, base_formulas)
-                points.append({"value": float(v), "score": score})
+            for sid, (overrides, name, formulas) in zip(variants, resolved, strict=True):
+                check()
+                if overrides or done:  # the first baseline curve starts from the model as it stands
+                    _apply(database, frame, base_vals, overrides, base_formulas)
+                if sid:
+                    scenarios.check_applied(database, scenarios.Plan(overrides, base_formulas), name)
+                origin = {"value": params.snapshot_all(database)[param], "score": _score(database, code, m, amount)}
+                done += 1
+                note(done, total, f"{name} · starting point")
+                scores = []
+                breaks: list[dict] = []
+                for i, v in enumerate(values, start=1):
+                    check()
+                    _apply(database, frame, base_vals, {**overrides, param: float(v)}, base_formulas)
+                    scores.append(_score(database, code, m, amount))
+                    breaks += [{"at": float(v), **b} for b in _broken(database, rules, param)]
+                    done += 1
+                    note(done, total, f"{name} · point {i} of {len(values)}")
+                curve_out = {"scenario": sid, "name": name, "origin": origin, "scores": scores}
+                if breaks:
+                    curve_out["breaks"] = breaks
+                curves.append(curve_out)
+                replaced = replaced or formulas.get(param)
         finally:
             param_window.restore_and_close(database, base_vals, frame)
-        out = {"param": param, "points": points}
-        if base_formulas.get(param):
-            out["replaces_formula"] = base_formulas[param]
-        return out
+    out = {"param": param, "method": list(m), "unit": _unit(m), "values": [float(v) for v in values],
+           "curves": curves}
+    if replaced:
+        out["replaces_formula"] = replaced
+    return out
 
 
 #: How close the two scores must be at a reported break-even, relative to the largest score of A or B

@@ -350,3 +350,55 @@
   color: var(--faint); }
 .modelpick-ref-name { font-size: var(--fs-body); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .modelpick-ref-meta { font-size: var(--fs-sec); color: var(--muted); }
+
+/* Sensitivity analysis tab (views/sensitivity/). Two cards in the results column — the tornado and the
+   parameter curve — side by side once the column has room for both (1000px: below that the tornado's labels
+   and bars squeeze each other), stacked under it. Each card carries its own Calculate row: the two runs are
+   independent and take minutes, so the button sits beside the chart it fills rather than in the rail's foot. */
+.sens-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; padding-top: 12px; }
+/* A column, so the run row can sit at the foot: side by side the two cards are one height, and both
+   Calculate buttons stand on one line under their charts. */
+.sens-card { grid-column: span 12; min-width: 0; position: relative; display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 12px 14px; }
+.sens-foot-row { margin-top: auto; padding-top: 10px; }
+@container rmain (min-width: 1000px) { .sens-card { grid-column: span 6; } }
+.sens-h { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: flex-start; justify-content: space-between; }
+.sens-h-text { min-width: 0; }
+.sens-title { margin: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+/* Parameter names in the app's text face, as on the Parameters page; only a formula is set in mono. */
+.sens-foot b { font-weight: 600; color: var(--text); }
+.sens-foot code { font-family: var(--mono); }
+.sens-sub { margin: 2px 0 0; font-size: var(--fs-sec); color: var(--muted); }
+/* The card's own run row: the results calcbar without its frame. */
+.calcbar.sens-run { margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  background: none; flex-wrap: wrap; min-width: 0; }
+.calcbar.sens-run > .btn { margin-left: auto; }
+.sens-stale { color: var(--wait); }
+.sens-error { margin: 4px 0; font-size: var(--fs-sec); color: var(--bad); overflow-wrap: anywhere; }
+.sens-state { margin: 6px 0 2px; font-size: var(--fs-sec); color: var(--muted); }
+.sens-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 2px; font-size: var(--fs-sec); color: var(--muted); }
+.sens-legend-note { color: var(--faint); }
+.sens-sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.sens-sw.lo { background: var(--info); }
+.sens-sw.hi { background: var(--purple); }
+.sens-chart-host { position: relative; }
+.sens-chart-host:hover .chart-save { opacity: 1; }
+/* The curve takes the height its card has beside a long tornado; 340px when it stands alone. */
+.sens-chart-host.grow { flex: 1; display: flex; flex-direction: column; }
+.sens-curve-canvas { flex: 1; min-height: 340px; }
+.sens-more { align-self: flex-start; font: inherit; font-size: var(--fs-sec); color: var(--green-ink); background: none; border: 0; padding: 4px 0; cursor: pointer; }
+.sens-more:hover { text-decoration: underline; }
+.sens-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--fs-sec); color: var(--muted); }
+.sens-foot p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.sens-ast { margin-right: 4px; font-weight: 700; color: var(--wait); }
+.sens-empty { margin: 18px 4px; font-size: var(--fs-sec); color: var(--faint); }
+/* Rail: hints under a field, the parameter checklist, and the curve's From / To / Points row. */
+.results-rail .rail-hint { margin: 2px 0 6px; font-size: var(--fs-label); line-height: 1.4; color: var(--faint); }
+.results-rail .rail-hint.sens-warn { color: var(--wait); }
+.sens-pchk { max-height: 200px; overflow: auto; margin: 4px 0; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.sens-pchk label { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; font-size: var(--fs-sec); }
+.sens-pchk small { margin-left: auto; color: var(--faint); white-space: nowrap; }
+.sens-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0; }
+.sens-trio label { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-sec); color: var(--muted); }
+.sens-trio input { width: 100%; min-width: 0; }
+.sens-subjects { max-height: 260px; overflow: auto; }

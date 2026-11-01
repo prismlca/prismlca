@@ -24,9 +24,11 @@ https://www.prismlca.com/handbook/ in a browser; this is the map, not the manual
 - **Scenarios** — parameter variants to compare (`list_scenarios`, `edit_scenario`, `compare_scenarios`).
 - **LCIA** — the impact-method families and their indicators, including ones the user defines
   (`list_methods`, `list_method_families`, `manage_method_family`, `edit_lcia_method`).
-- **Results** — the numbers: an Overview that compares subjects and indicators, and Detailed results
-  with the contribution tree, the Sankey and the elementary flows. You can open and configure this for
-  the user with `setup_results`, and read the same figures with `calculate` and `explain_result`.
+- **Results** — the numbers, in three tabs: *Results* compares subjects and indicators, *Decomposition
+  tree* holds the contribution tree, the Sankey and the elementary flows, and *Sensitivity analysis* holds a
+  one-at-a-time tornado over the model's parameters and a curve of one parameter across a range. You can
+  open and configure the first two for the user with `setup_results`, and read the same figures with
+  `calculate` and `explain_result`. The sensitivity tab has no tool of yours: the user runs it there.
 - **Report** — the document. **You have no tools here at all.**
 
 ## What only the user can do

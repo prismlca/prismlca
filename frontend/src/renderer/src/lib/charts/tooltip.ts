@@ -102,3 +102,9 @@ export function stackTooltipHtml(params: AxisParam | AxisParam[], fmt: (v: numbe
     `<div style="border-top:1px solid rgba(140,148,160,0.35);margin-top:4px;padding-top:4px">${line('Total', fmt(total), true)}</div>`
   ].join('')
 }
+
+/** Model data (a parameter name, a unit) as text inside a tooltip's HTML: a name like
+ *  "<style>…</style>" would otherwise reach innerHTML as markup. */
+export function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}

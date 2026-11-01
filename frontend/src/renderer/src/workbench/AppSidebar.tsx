@@ -39,7 +39,7 @@ export const STUDY_NAV: { label: string; view?: ViewKey; icon: () => JSX.Element
 
 export interface AppSidebarProps {
   view: ViewKey
-  /** Navigate — the caller owns any side effects (e.g. Results always lands on Overview results). */
+  /** Navigate — the caller owns any side effects (e.g. Results always lands on its first tab). */
   onNavigate: (view: ViewKey) => void
   /** null while the workspace has no model yet: only Overview and LCIA can be opened. */
   activeDb: string | null

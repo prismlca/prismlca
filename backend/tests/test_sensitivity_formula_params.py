@@ -39,8 +39,8 @@ def _post(client, token, endpoint: str, body: dict):
 # --------------------------------------------------------------------------- #
 def test_a_sweep_of_a_formula_parameter_moves_the_result(client, token, project):
     _model(client, token)
-    out = _post(client, token, "sweep", {"code": "bottle", "param": "b", "values": [2, 6, 10]})
-    scores = {p["value"]: p["score"] for p in out["points"]}
+    out = _post(client, token, "curve", {"code": "bottle", "param": "b", "values": [2, 6, 10]})
+    scores = dict(zip(out["values"], out["curves"][0]["scores"], strict=True))
     assert scores[6.0] == pytest.approx(_score(6))
     assert scores[10.0] == pytest.approx(_score(10))
     assert out["replaces_formula"] == "2*a"
@@ -50,8 +50,8 @@ def test_a_sweep_of_a_formula_parameter_moves_the_result(client, token, project)
 
 def test_a_sweep_of_an_input_says_nothing_about_formulas(client, token, project):
     _model(client, token)
-    out = _post(client, token, "sweep", {"code": "bottle", "param": "a", "values": [3]})
-    assert out["points"][0]["score"] == pytest.approx(_score(6))  # b follows a
+    out = _post(client, token, "curve", {"code": "bottle", "param": "a", "values": [3]})
+    assert out["curves"][0]["scores"][0] == pytest.approx(_score(6))  # b follows a
     assert "replaces_formula" not in out
     _assert_baseline_back()
 
@@ -61,7 +61,7 @@ def test_a_tornado_varies_only_the_inputs_unless_asked(client, token, project):
     out = _post(client, token, "tornado", {"code": "bottle", "delta": 0.5})
     assert [e["param"] for e in out["entries"]] == ["a"]
     a = out["entries"][0]
-    assert a["low"] == pytest.approx(_score(1)) and a["high"] == pytest.approx(_score(3))
+    assert a["low"] == [pytest.approx(_score(1))] and a["high"] == [pytest.approx(_score(3))]
     assert "replaces_formula" not in a
     assert out["skipped"] == [{"param": "b", "reason": "has_formula", "formula": "2*a"}]
     _assert_baseline_back()
@@ -71,11 +71,10 @@ def test_a_tornado_on_a_named_formula_parameter_says_what_it_broke(client, token
     _model(client, token)
     out = _post(client, token, "tornado", {"code": "bottle", "delta": 0.5, "params": ["b", "a"]})
     by = {e["param"]: e for e in out["entries"]}
-    assert by["b"]["low"] == pytest.approx(_score(1)) and by["b"]["high"] == pytest.approx(_score(3))
-    assert by["b"]["swing"] == pytest.approx(1.0)
+    assert by["b"]["low"] == [pytest.approx(_score(1))] and by["b"]["high"] == [pytest.approx(_score(3))]
     assert by["b"]["replaces_formula"] == "2*a"
     # The step on `a` after the one on `b` sees `b = 2*a` again — its formula was put back between.
-    assert by["a"]["low"] == pytest.approx(_score(1)) and by["a"]["high"] == pytest.approx(_score(3))
+    assert by["a"]["low"] == [pytest.approx(_score(1))] and by["a"]["high"] == [pytest.approx(_score(3))]
     assert "replaces_formula" not in by["a"]
     assert "skipped" not in out
     _assert_baseline_back()
@@ -100,7 +99,7 @@ def test_a_break_even_on_a_formula_parameter_is_found(client, token, project):
 
 
 @pytest.mark.parametrize("endpoint,body", [
-    ("sweep", {"code": "bottle", "param": "nope", "values": [1]}),
+    ("curve", {"code": "bottle", "param": "nope", "values": [1]}),
     ("breakeven", {"code_a": "bottle", "code_b": "bottle", "param": "nope", "lo": 0, "hi": 1}),
     ("tornado", {"code": "bottle", "params": ["nope"]}),
 ])
@@ -126,7 +125,7 @@ def test_the_marker_names_the_formula_while_the_step_is_in(client, token, projec
         return real(database, values, formulas)
 
     monkeypatch.setattr(params, "apply_values", watched)
-    sensitivity.sweep(DB, "bottle", METHOD, "b", [5.0])
+    sensitivity.curve(DB, "bottle", METHOD, "b", [5.0])
     step = next(s for s in seen if s["formulas"].get("b", "2*a") is None)
     frame = step["marker"]["frames"][0]
     assert step["marker"]["version"] == 2
@@ -178,7 +177,7 @@ def test_a_failing_step_still_restores_the_formula(client, token, project, monke
 
     monkeypatch.setattr(sensitivity, "_score", boom)
     with pytest.raises(RuntimeError):
-        sensitivity.sweep(DB, "bottle", METHOD, "b", [5.0, 6.0, 7.0])
+        sensitivity.curve(DB, "bottle", METHOD, "b", [5.0, 6.0, 7.0])
     _assert_baseline_back()
     assert not param_window.path().exists()
 
@@ -199,8 +198,8 @@ def test_a_sensitivity_run_never_waits_for_the_bus_or_a_store(client, token, pro
     result: list[dict] = []
 
     def work() -> None:
-        result.append(sensitivity.tornado(DB, "bottle", METHOD, 0.5, names=["a", "b"]))
-        result.append(sensitivity.sweep(DB, "bottle", METHOD, "b", [4.0]))
+        result.append(sensitivity.tornado(DB, "bottle", [METHOD], 0.5, names=["a", "b"]))
+        result.append(sensitivity.curve(DB, "bottle", METHOD, "b", [4.0]))
         result.append(sensitivity.breakeven(DB, "bottle", "bottle", METHOD, "b", 1.0, 2.0, iterations=2))
 
     holder = threading.Thread(target=hold)
@@ -417,7 +416,7 @@ def test_a_step_whose_settle_cannot_be_recorded_stops_the_window(client, token, 
     _model(client, token)
     _fail_settle_writes(monkeypatch)
     with pytest.raises(PrismError) as info:
-        sensitivity.sweep(DB, "bottle", METHOD, "b", [6.0, 7.0])
+        sensitivity.curve(DB, "bottle", METHOD, "b", [6.0, 7.0])
     assert info.value.code == "param_window_marker_failed"
     _assert_baseline_back()
     assert not param_window.path().exists()

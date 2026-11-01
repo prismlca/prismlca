@@ -33,7 +33,7 @@ const SHRINK = 50
 /** Paths relative to frontend/src. `<count + HEADROOM>` — the comment keeps the count. */
 const CEILINGS: Record<string, number> = {
   'main/ai/agent.ts': 2028, // 2003
-  'renderer/src/Workbench.tsx': 1862, // 1837
+  'renderer/src/Workbench.tsx': 1828, // 1803
   'renderer/src/views/ReportSections.tsx': 1403, // 1378, after the correction path and the remark lists went (one state per chapter)
   'renderer/src/CanvasChat.tsx': 1277, // 1252
   'renderer/src/views/report/useChapterWriter.ts': 900, // 875, after the correction path went (Update report replaces it)
@@ -41,12 +41,12 @@ const CEILINGS: Record<string, number> = {
   // 1199: the canvas selection lives here, so `selectOnly` does too, and its setter (now from
   // lib/useIdListState) is listed in the dependencies of every callback that clears the selection.
   'renderer/src/workbench/useCanvasModel.ts': 1216,
-  'renderer/src/views/DetailedResults.tsx': 1250, // 1225
+  'renderer/src/views/DetailedResults.tsx': 1237, // 1212
   'renderer/src/views/Report.tsx': 1202, // 1177
   'renderer/src/views/ImportWizard.tsx': 1208, // 1183
   'renderer/src/views/Parameters.tsx': 1198, // 1173
   'main/ai/reportWriter.ts': 891, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts) and the continuation (writer/answers.ts) moved out
-  'renderer/src/views/Results.tsx': 1099, // 1074
+  'renderer/src/views/Results.tsx': 1086, // 1061
   'renderer/src/views/Overview.tsx': 889, // 864
   'main/ai/tools/groups/model.ts': 862 // 837
 }

@@ -58,7 +58,9 @@ export function useEChart(
   /** Builds the full option; called with the host element so label sizing can read its width. */
   build: (el: HTMLDivElement) => SetOptionArg,
   /** Everything `build` closes over — the effect re-runs exactly when a copy's dependency list did. */
-  deps: unknown[]
+  deps: unknown[],
+  /** Wires the chart's own events (a click on a bar) to the fresh instance; it is disposed with it. */
+  bind?: (chart: echarts.ECharts) => void
 ): MutableRefObject<HTMLDivElement | null> {
   const ref = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -69,6 +71,7 @@ export function useEChart(
       chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: cssVar('--surface', '#ffffff') })
     )
     chart.setOption(build(ref.current))
+    bind?.(chart)
     const unfollow = followBox(ref.current, chart)
     return () => {
       unfollow()

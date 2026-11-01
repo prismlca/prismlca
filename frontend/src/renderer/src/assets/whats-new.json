@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-01",
+    "title": "Sensitivity analysis",
+    "details": "Results has a third tab, Sensitivity analysis: a tornado ranks the model's parameters by how far a step of ±10 % (or your own range) moves the result, and a curve follows one parameter across a range for the baseline and its scenarios. Every step stays within the parameter's allowed values; a bar that could not move the full range is marked with *. The first two tabs are now called Results and Decomposition tree."
+  },
+  {
+    "date": "2026-11-01",
     "title": "An rpm package for Fedora",
     "details": "Besides the AppImage and the .deb, every release now has an .rpm package for Fedora: install it with sudo dnf install and PrismLCA appears in the application menu. Like the .deb, it is updated from the release page, which Check for updates links to."
   },

@@ -64,19 +64,22 @@ def test_tornado(client, token, project):
     )
     assert r.status_code == 200, r.text
     e = next(x for x in r.json()["entries"] if x["param"] == "kwh")
-    assert abs(e["low"] - 0.6) < 1e-6  # kwh=1 -> 0.1 + 0.5
-    assert abs(e["high"] - 1.6) < 1e-6  # kwh=3 -> 0.1 + 1.5
+    assert abs(e["low"][0] - 0.6) < 1e-6  # kwh=1 -> 0.1 + 0.5
+    assert abs(e["high"][0] - 1.6) < 1e-6  # kwh=3 -> 0.1 + 1.5
 
 
-def test_sweep(client, token, project):
+def test_curve(client, token, project):
     _seed(get_bd())
     _setup_param(client, token)
     r = client.post(
-        "/api/v1/calc/sensitivity/sweep",
+        "/api/v1/calc/sensitivity/curve",
         json={"database": "fg", "code": "bottle", "method": METHOD, "param": "kwh", "values": [1, 2, 3]},
         headers=token,
     )
-    scores = {p["value"]: p["score"] for p in r.json()["points"]}
+    assert r.status_code == 200, r.text
+    out = r.json()
+    scores = dict(zip(out["values"], out["curves"][0]["scores"], strict=True))
+    assert out["curves"][0]["origin"]["value"] == 2.0
     assert abs(scores[1.0] - 0.6) < 1e-6
     assert abs(scores[2.0] - 1.1) < 1e-6
     assert abs(scores[3.0] - 1.6) < 1e-6

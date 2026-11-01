@@ -24,6 +24,7 @@ from prism_lca.api.v1 import (
     report_review,
     scenarios,
     search,
+    sensitivity,
     setup,
     study,
     system,
@@ -40,6 +41,7 @@ api_router.include_router(scenarios.router)
 api_router.include_router(study.router)
 api_router.include_router(provenance.router)
 api_router.include_router(calc.router)
+api_router.include_router(sensitivity.router)
 api_router.include_router(lcia.router)
 api_router.include_router(report.router)
 # Same prefix, second half of the same surface: the chapters a model writes and the checks around

@@ -43,8 +43,8 @@ import NodeContextMenu, { type CtxMenuState } from './components/NodeContextMenu
 import { usePersisted } from './lib/persist'
 import { useSettings } from './lib/settings'
 import Parameters from './views/Parameters'
-import Results from './views/Results'
-import DetailedResults from './views/DetailedResults'
+import { ResultsPages } from './workbench/ResultsPages'
+import type { ResultsTab } from './views/results/ResultsTabs'
 import Lcia from './views/Lcia'
 import Scenarios from './views/Scenarios'
 import ActivityEditor from './views/ActivityEditor'
@@ -454,15 +454,8 @@ export default function Workbench(): JSX.Element {
   // The highlight menu offers what this canvas carries, not every group of the workspace.
   const hlGroups = useMemo(() => groupsOnCanvas(tagGroups, nodes), [tagGroups, nodes])
 
-  const [resultsTab, setResultsTab] = usePersisted<'overview' | 'detail'>('prism.resultsTab', 'overview')
-  // Results views stay mounted (hidden) once visited, so a hop to the model page and back does not
-  // throw computed results away. Reset per model — that is the cleanup: nothing outlives its model,
-  // and at most one result set per tab is ever held.
-  const [seenResults, setSeenResults] = useState<Set<'overview' | 'detail'>>(new Set())
-  useEffect(() => {
-    setSeenResults(new Set())
-  }, [activeDb])
-  // The report page keeps itself for the same reason and one that costs money: a chapter is written
+  const [resultsTab, setResultsTab] = usePersisted<ResultsTab>('prism.resultsTab', 'overview')
+  // The report page stays mounted like the Results tabs (see ResultsPages), for a reason that costs money: a chapter is written
   // by a call in the main process while "a run is in progress" lives in this view's own state. Unmount
   // it mid-run — one hop to Parameters and back — and the Write button came back enabled with the run
   // still going, so a second *paid* call was one click away and its answer overwrote the first (V150;
@@ -481,15 +474,6 @@ export default function Workbench(): JSX.Element {
     // `activeDb` for the same reason as the results tabs: the reset above runs first, and without
     // re-arming the page you are looking at, switching models on the Report page blanks it.
   }, [view, activeDb])
-  useEffect(() => {
-    if (view === 'results') {
-      setSeenResults((s) => (s.has(resultsTab) ? s : new Set(s).add(resultsTab)))
-    }
-    // `activeDb` is a dependency ON PURPOSE: the reset above empties the set on a model switch, and
-    // without re-adding the tab you are LOOKING AT, switching models while on the Results page
-    // unmounted the view and never brought it back — a blank main area until some navigation
-    // changed `view`. Declared after the reset, so its update lands second.
-  }, [view, resultsTab, activeDb])
   const [lciaTab, setLciaTab] = usePersisted<'compare' | 'methods'>('prism.lcia.tab', 'compare')
   const [mc, setMc] = useState<{
     mean: number
@@ -1013,7 +997,7 @@ export default function Workbench(): JSX.Element {
       <AppSidebar
         view={view}
         onNavigate={(v) => {
-          // Clicking "Results" in the nav always lands on Overview results, not whatever
+          // Clicking "Results" in the nav always lands on its first tab, not whatever
           // sub-tab was last open (the tab itself is still remembered while inside Results).
           if (v === 'results') setResultsTab('overview')
           setView(v)
@@ -1740,44 +1724,18 @@ export default function Workbench(): JSX.Element {
             <Report activeDb={activeDb} methods={methods} active={view === 'report'} />
           </div>
         ) : null}
-        {/* The results views live OUTSIDE the view chain: once visited they stay mounted and merely
-            hide, so computed results survive a hop to the model page and back. `display: contents`
-            keeps the wrapper out of the layout when visible. Reset per model (see seenResults). */}
-        {seenResults.has('overview') ? (
-          <div
-            style={
-              view === 'results' && resultsTab === 'overview' ? { display: 'contents' } : { display: 'none' }
-            }
-          >
-            <Results
-              activeDb={activeDb}
-              methods={methods}
-              databases={databases}
-              rev={modelRev}
-              onTab={setResultsTab}
-              searchDbs={searchDbs}
-              onSearchDbs={setSearchDbs}
-            />
-          </div>
-        ) : null}
-        {seenResults.has('detail') ? (
-          <div
-            style={
-              view === 'results' && resultsTab === 'detail' ? { display: 'contents' } : { display: 'none' }
-            }
-          >
-            <DetailedResults
-              activeDb={activeDb}
-              methods={methods}
-              databases={databases}
-              rev={modelRev}
-              onShowDetails={setDetailsFor}
-              onTab={setResultsTab}
-              searchDbs={searchDbs}
-              onSearchDbs={setSearchDbs}
-            />
-          </div>
-        ) : null}
+        <ResultsPages
+          visible={view === 'results'}
+          tab={resultsTab}
+          onTab={setResultsTab}
+          activeDb={activeDb}
+          methods={methods}
+          databases={databases}
+          rev={modelRev}
+          searchDbs={searchDbs}
+          onSearchDbs={setSearchDbs}
+          onShowDetails={setDetailsFor}
+        />
       </div>
 
       {modalNode}

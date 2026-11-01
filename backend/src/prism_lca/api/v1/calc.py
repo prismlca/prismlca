@@ -4,10 +4,10 @@ from __future__ import annotations
 import threading
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import MethodRef, require_token
-from prism_lca.engine import calc_jobs, lca, montecarlo, scenarios, sensitivity
+from prism_lca.engine import calc_jobs, lca, montecarlo, scenarios
 from prism_lca.engine import compare as compare_engine
 from prism_lca.engine.scenarios import ScenarioStore
 from prism_lca.errors import PrismError
@@ -190,8 +190,11 @@ def start_job(body: LciaRequest) -> dict:
 def jobs_running() -> dict:
     """For the app's own housekeeping: an instance the MCP bridge started asks this before it quits
     for want of use — a running job is work someone will come back for.
-    Declared before ``/jobs/{job_id}`` so the literal path wins."""
-    return {"running": calc_jobs.running_count()}
+    Declared before ``/jobs/{job_id}`` so the literal path wins. Sensitivity runs count too: they are
+    background jobs of the same kind (engine/sensitivity_jobs.py)."""
+    from prism_lca.engine import sensitivity_jobs
+
+    return {"running": calc_jobs.running_count() + sensitivity_jobs.running_count()}
 
 
 @router.get("/jobs/{job_id}", summary="Status (and, with ?result=true, the scores) of a calculation job")
@@ -378,60 +381,6 @@ def cancel(body: CancelRequest) -> dict:
     if body.channel in _CHANNELS:
         _cancel_channel(body.channel)
     return {"cancelled": body.channel}
-
-
-class TornadoRequest(BaseModel):
-    database: str
-    code: str
-    method: MethodRef | None = None
-    delta: float = 0.1
-    amount: float = 1.0
-    #: Which parameters to vary. Omitted: every parameter without a formula (the model's inputs). A
-    #: parameter with a formula is varied only when named here, against its formula — its entry then
-    #: carries ``replaces_formula``.
-    params: list[str] | None = None
-
-
-class SweepRequest(BaseModel):
-    database: str
-    code: str
-    method: MethodRef | None = None
-    param: str
-    values: list[float]
-    amount: float = 1.0
-
-
-class BreakevenRequest(BaseModel):
-    database: str
-    code_a: str
-    code_b: str
-    method: MethodRef | None = None
-    param: str
-    lo: float
-    hi: float
-    amount: float = 1.0
-    #: Sub-intervals of [lo, hi] scanned for sign changes before bisecting; each one costs one solve.
-    samples: int = Field(8, ge=1, le=64)
-
-
-@router.post("/sensitivity/tornado", summary="One-at-a-time tornado over parameters")
-def tornado(body: TornadoRequest) -> dict:
-    return sensitivity.tornado(
-        body.database, body.code, body.method, body.delta, body.amount, names=body.params
-    )
-
-
-@router.post("/sensitivity/sweep", summary="Sweep one parameter across values")
-def sweep(body: SweepRequest) -> dict:
-    return sensitivity.sweep(body.database, body.code, body.method, body.param, body.values, body.amount)
-
-
-@router.post("/sensitivity/breakeven", summary="Find the parameter value where A == B")
-def breakeven(body: BreakevenRequest) -> dict:
-    return sensitivity.breakeven(
-        body.database, body.code_a, body.code_b, body.method, body.param, body.lo, body.hi, body.amount,
-        samples=body.samples,
-    )
 
 
 class AbMonteCarloRequest(BaseModel):

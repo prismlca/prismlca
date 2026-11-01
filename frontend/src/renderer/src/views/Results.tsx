@@ -12,7 +12,6 @@ const NO_COLORS: Record<string, string> = {}
 import { usePersisted } from '../lib/persist'
 import { useViewField } from '../lib/modelView'
 import { subjectKey } from '../lib/subjectKey'
-import { groupMethodsByFamily, indicatorLabel, indicatorLabels } from '../lib/methods'
 import { AUTO_DECIMALS, autoDecimals, labelNum } from '../lib/numberFormat'
 import { CalculatorIcon, ChartIcon, ExcelIcon, MaximizeIcon, SaveIcon } from '../components/icons'
 import SearchDialog from './SearchDialog'
@@ -33,6 +32,9 @@ import { useResultsOpening } from './results/useResultsOpening'
 import { buildColorMap } from './results/subjectColors'
 import { familiesInUse, resolveSplit } from './results/splitBy'
 import { fmtPct, pngName, ZOOM_SCALE } from './results/chartUtils'
+import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
+import { useIndicatorPicking } from './results/useIndicatorPicking'
+import { useThemeKey } from '../lib/charts/useThemeKey'
 import { copyNumber } from '../lib/copyNumber'
 import {
   IndicatorChart,
@@ -67,9 +69,8 @@ export default function Results({
    *  checkboxes for the whole app — a box ticked here is ticked there. */
   searchDbs?: string[]
   onSearchDbs?: (dbs: string[]) => void
-  /** Switch to the other kind of result. The tabs live in this page's rail; the state stays with the
-   *  Workbench, because it also decides which of the two views is mounted. */
-  onTab?: (tab: 'overview' | 'detail') => void
+  /** Switch to another kind of result (see `ResultsRailHead`). */
+  onTab?: (tab: ResultsTab) => void
 }): JSX.Element {
   const [err, setErr] = useState<string | null>(null)
   const {
@@ -100,9 +101,6 @@ export default function Results({
   // Indicators are per model too, but seeded from the set last used anywhere: picking them again for
   // every new model would be pointless friction, while inheriting another study's set is a defect.
   const [picked, setPicked] = useViewField<Picked[]>(activeDb, 'results', 'picked', [])
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [family, setFamily] = usePersisted('prism.ov.family', '')
-  const [indQuery, setIndQuery] = useState('')
   const [view, setView] = usePersisted<'charts' | 'normalized'>('prism.ov.view', 'charts')
   // Chart display settings (persisted).
   const [subjectColors, setSubjectColors] = useViewField<Record<string, string>>(
@@ -130,7 +128,7 @@ export default function Results({
   // knows what it is comparing.
   const [grp] = useSingleOpen('prism.res.grp', 'subjects')
   // themeKey re-inits charts when light/dark flips (so axis colours follow the theme)
-  const themeKey = document.documentElement.getAttribute('data-theme') ?? 'light'
+  const themeKey = useThemeKey()
   // Each chart registers a getDataURL() here so we can save one or all of them as PNGs.
   const charts = useRef<Map<string, () => string>>(new Map())
   const saveChart = (id: string, name: string): void => {
@@ -157,33 +155,20 @@ export default function Results({
     setBaselineOn
   })
 
-  // Group methods into families for the family → detail picker.
-  const families = useMemo(() => groupMethodsByFamily(methods), [methods])
-  const familyNames = useMemo(() => [...families.keys()].sort((a, b) => a.localeCompare(b)), [families])
-  // What an indicator is called everywhere on this page — rows, chips, headers, chart titles.
-  // `method[1]` where that names one indicator, the path below the family where it does not
-  // (ReCiPe endpoint names its damage category second — V203).
-  const labels = useMemo(() => indicatorLabels(methods), [methods])
-  useEffect(() => {
-    if (!family && familyNames.length) setFamily(familyNames[0])
-  }, [familyNames, family, setFamily])
-
-  const pickedKeys = useMemo(() => new Set(picked.map((p) => p.key)), [picked])
-  // Group the picked indicators by method family (contiguous), for grouped headers + charts.
-  const groups = useMemo(() => {
-    const order: string[] = []
-    const map = new Map<string, Picked[]>()
-    for (const p of picked) {
-      if (!map.has(p.family)) {
-        map.set(p.family, [])
-        order.push(p.family)
-      }
-      // The stored label is whatever was written when the indicator was picked; the name is decided
-      // here, against the current catalogue, so an old selection heals with the rule.
-      map.get(p.family)!.push({ ...p, label: indicatorLabel(p.method, labels) || p.label })
-    }
-    return order.map((f) => ({ family: f, items: map.get(f)! }))
-  }, [picked, labels])
+  // Families, labels, the picker's own state and the picked indicators grouped by family.
+  const {
+    families,
+    familyNames,
+    labels,
+    family,
+    setFamily,
+    indQuery,
+    setIndQuery,
+    pickerOpen,
+    setPickerOpen,
+    pickedKeys,
+    groups
+  } = useIndicatorPicking(methods, picked, 'prism.ov.family')
   const orderedPicked = useMemo(() => groups.flatMap((g) => g.items), [groups])
   const methKey = picked.map((p) => p.key).join('|')
   /**
@@ -585,26 +570,11 @@ export default function Results({
     )
   }
 
-  /** The rail's head: the page and its two kinds of result, the way the Report rail carries its own. */
-  const railHead = (
-    <>
-      <div className="panel-h eyebrow">Results</div>
-      <div className="rtabs rail-tabs" role="tablist">
-        <button role="tab" aria-selected={true} className="rtab on" onClick={() => onTab?.('overview')}>
-          Overview results
-        </button>
-        <button role="tab" aria-selected={false} className="rtab" onClick={() => onTab?.('detail')}>
-          Detailed results
-        </button>
-      </div>
-    </>
-  )
-
   return (
     <div className="view results-view">
       <div className="results-grid">
         <aside className="results-rail">
-          {railHead}
+          <ResultsRailHead tab="overview" onTab={onTab} />
 
           <AccordionGroup title="Subjects" summary={`${subjects.length} selected`} {...grp('subjects')}>
             <SubjectsPanel

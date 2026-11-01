@@ -21,6 +21,8 @@ import { useEChart, type ChartRegistry } from '../lib/charts/useEChart'
 import { barOption, groupedContributionOption } from '../lib/charts/reportFigures'
 import { figureInk, PRISM_PALETTE } from '../lib/reportColors'
 import { NumberInput } from '../components/NumberInput'
+import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
+import { useThemeKey } from '../lib/charts/useThemeKey'
 import {
   isicColor,
   renderContribTree,
@@ -31,7 +33,7 @@ import {
 } from '../lib/contribTree'
 
 /**
- * Detailed results: a single-subject, single-indicator contribution tree rendered as an
+ * Decomposition tree: a single-subject, single-indicator contribution tree rendered as an
  * interactive D3 collapsible tree — the same visualisation the ecoinvent-bw MCP
  * contribution-tree skill produces (ISIC-coloured nodes, size ∝ √share, pan/zoom, hover
  * tooltip), consuming the meta+lookups+tree JSON from POST /calc/contribution.
@@ -120,7 +122,7 @@ function VariantsChart({
   registry: ChartRegistry
   digits: number
 }): JSX.Element {
-  const themeKey = document.documentElement.getAttribute('data-theme') ?? 'light'
+  const themeKey = useThemeKey()
   const grouped = Boolean(groupBy) && variants.some((v) => v.res.aggregation?.groups.length)
   const ref = useEChart(
     'dr-variants',
@@ -421,9 +423,8 @@ export default function DetailedResults({
   onSearchDbs?: (dbs: string[]) => void
   /** Opens the process-details window (owned by the Workbench, shared with the model search). */
   onShowDetails?: (target: { database: string; code: string }) => void
-  /** Switch to the other kind of result. The tabs live in this page's rail; the state stays with the
-   *  Workbench, because it also decides which of the two views is mounted. */
-  onTab?: (tab: 'overview' | 'detail') => void
+  /** Switch to another kind of result (see `ResultsRailHead`). */
+  onTab?: (tab: ResultsTab) => void
 }): JSX.Element {
   const { round } = useSettings()
   // One group of the rail open at a time. Subject first: nothing on this page means anything until it
@@ -744,26 +745,11 @@ export default function DetailedResults({
 
   const bgOnly = databases.filter((d) => d.kind !== 'biosphere' && d.read_only)
 
-  /** The rail's head: the page and its two kinds of result, as on the Report rail. */
-  const railHead = (
-    <>
-      <div className="panel-h eyebrow">Results</div>
-      <div className="rtabs rail-tabs" role="tablist">
-        <button role="tab" aria-selected={false} className="rtab" onClick={() => onTab?.('overview')}>
-          Overview results
-        </button>
-        <button role="tab" aria-selected={true} className="rtab on">
-          Detailed results
-        </button>
-      </div>
-    </>
-  )
-
   return (
     <div className="view dr results-view">
       <div className="results-grid">
         <aside className="results-rail">
-          {railHead}
+          <ResultsRailHead tab="detail" onTab={onTab} />
 
           <AccordionGroup
             title="Subject"
