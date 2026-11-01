@@ -9,6 +9,8 @@ PrismLCA aims to be as approachable as a modern desktop app and as capable as th
 >
 > **Licence:** [AGPL-3.0-only](LICENSE) — see [Licence](#licence).
 
+![PrismLCA with a cradle-to-grave model of a garden hose reel set: processes on the canvas, grouped by life-cycle phase in coloured boxes, with the assistant chat open beside them](docs/images/prismlca-model-canvas.png)
+
 ## What it does
 
 - **Work with an AI assistant.** A chat assistant that models, calculates and explains through the same audited,
