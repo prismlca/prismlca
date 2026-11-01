@@ -151,7 +151,7 @@ export function AboutPanel(): JSX.Element {
           {/* The action before the notes: release notes can run long, and a Download button below them
               was not found. The notes stay one click away. */}
           {st.manualOnly ? (
-            // A deb installation: updating it needs root, so it is done from the release page.
+            // A deb or rpm installation: updating it needs root, so it is done from the release page.
             <p className="settings-hint">
               This installation is updated from the{' '}
               <button className="link-btn" onClick={() => openLink(releasePage(st.version))}>

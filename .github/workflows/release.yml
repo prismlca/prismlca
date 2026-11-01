@@ -81,15 +81,15 @@ jobs:
         run: node frontend/scripts/release/ci.mjs audit
 
   linux:
-    name: Linux AppImage and deb
+    name: Linux AppImage, deb and rpm
     needs: verify
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     permissions:
       contents: read
     steps:
-      # The backend bundle, the unpacked app, AppImage, deb and the two unpacked copies the checks read
-      # need more than a hosted runner has free; a first run died with "No space left on device".
+      # The backend bundle, the unpacked app, the three packages, the unpacked copies the checks read and the
+      # Fedora container need more than a hosted runner has free; a first run died with "No space left on device".
       - name: Room on the runner
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -112,12 +112,14 @@ jobs:
           grep -q "Intel oneMKL" solver.txt
           # Every library the backend loads on demand must import in the bundle, not only at start-up.
           dist/prism-lca-backend/prism-lca-backend --bundle-check
-      - name: AppImage and deb
+      - name: AppImage, deb and rpm
         working-directory: frontend
         run: |
+          # rpmbuild packs the rpm; cpio unpacks it again for the check below.
+          sudo apt-get install -y --no-install-recommends rpm cpio > /dev/null
           npm ci
           npx electron-vite build
-          npx electron-builder --linux AppImage deb --publish never
+          npx electron-builder --linux AppImage deb rpm --publish never
           # Only the packages travel on; the PyInstaller work dir and the unpacked app are spent.
           rm -rf release/linux-unpacked ../backend/build
           df -h /
@@ -131,12 +133,28 @@ jobs:
           dpkg-deb -x release/prism-lca_*_amd64.deb "$RUNNER_TEMP/deb"
           node scripts/release/ci.mjs check-artifacts deb "$RUNNER_TEMP/deb/opt/PrismLCA"
           rm -rf "$RUNNER_TEMP/deb"
+          rpm -qp --requires release/prism-lca-*.x86_64.rpm | grep -q alsa-lib \
+            || { echo "::error::the rpm does not require alsa-lib — Electron cannot start without it"; exit 1; }
+          mkdir "$RUNNER_TEMP/rpm"
+          rpm2cpio release/prism-lca-*.x86_64.rpm | (cd "$RUNNER_TEMP/rpm" && cpio -idm --quiet)
+          node scripts/release/ci.mjs check-artifacts rpm "$RUNNER_TEMP/rpm/opt/PrismLCA"
+          rm -rf "$RUNNER_TEMP/rpm"
       - name: The packaged app starts on an empty machine
         run: |
           sudo apt-get install -y --no-install-recommends xvfb > /dev/null
           PRISM_SMOKE=1 XDG_CONFIG_HOME="$RUNNER_TEMP/cfg" PRISM_DATA_DIR="$RUNNER_TEMP/data" \
             BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
             xvfb-run -a "$RUNNER_TEMP/squashfs-root/prism-lca" --no-sandbox
+      # The runner is Ubuntu, so the rpm is tried where it belongs: dnf must resolve every dependency it names,
+      # and the installed app must start. The image is pinned like the actions.
+      - name: The rpm installs and starts on Fedora
+        run: |
+          docker run --rm --shm-size=1g -v "$GITHUB_WORKSPACE/frontend/release:/r:ro" \
+            fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80 bash -euc '
+              dnf install -y -q --setopt=install_weak_deps=False /r/prism-lca-*.x86_64.rpm \
+                xorg-x11-server-Xvfb xorg-x11-xauth > /dev/null
+              PRISM_SMOKE=1 XDG_CONFIG_HOME=/tmp/cfg PRISM_DATA_DIR=/tmp/data BRIGHTWAY2_DIR=/tmp/data/brightway \
+                xvfb-run -a /opt/PrismLCA/prism-lca --no-sandbox'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux
@@ -145,6 +163,7 @@ jobs:
           path: |
             frontend/release/*.AppImage
             frontend/release/*.deb
+            frontend/release/*.rpm
             frontend/release/latest-linux.yml
 
   windows:

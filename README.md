@@ -4,7 +4,7 @@ Desktop software for life cycle assessment (LCA), built on **Brightway 2.5**: an
 Python/FastAPI backend, with an internal **AI assistant** and an **MCP server** built in from the start.
 PrismLCA aims to be as approachable as a modern desktop app and as capable as the Brightway engine underneath.
 
-> **Status: beta.** Windows and Linux (AppImage, deb); macOS is planned. Website and user handbook:
+> **Status: beta.** Windows and Linux (AppImage, deb, rpm); macOS is planned. Website and user handbook:
 > [prismlca.com](https://www.prismlca.com).
 >
 > **Licence:** [AGPL-3.0-only](LICENSE) — see [Licence](#licence).
@@ -32,19 +32,20 @@ PrismLCA aims to be as approachable as a modern desktop app and as capable as th
 ## Install
 
 Installers are on the [releases page](https://github.com/prismlca/prismlca/releases/latest): the `.exe` for
-Windows 10 and 11 (64-bit), the `.AppImage` or the `.deb` for Linux (x64). `SHA256SUMS` lists the checksum of
-every file, and every file carries a build provenance attestation
+Windows 10 and 11 (64-bit), the `.AppImage`, the `.deb` or the `.rpm` for Linux (x64). `SHA256SUMS` lists the
+checksum of every file, and every file carries a build provenance attestation
 (`gh attestation verify <file> --repo prismlca/prismlca`).
 
 - **Windows:** releases are not code-signed yet, so Windows shows "Windows protected your PC". Compare
   the installer with `SHA256SUMS` first (`Get-FileHash .\<installer>.exe` in PowerShell), then choose
   *More info → Run anyway*. By default it installs for your user only, without administrator rights.
 - **Linux:** check with `sha256sum -c SHA256SUMS --ignore-missing`, then make the AppImage executable and start
-  it, or install the deb with `sudo apt install ./<package>.deb`. AppImages need FUSE 2, which Ubuntu 22.04 and
-  later do not install by default: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04).
+  it, install the deb with `sudo apt install ./<package>.deb` (Debian, Ubuntu) or the rpm with
+  `sudo dnf install ./<package>.rpm` (Fedora). AppImages need FUSE 2, which Ubuntu 22.04 and later do not install
+  by default: `sudo apt install libfuse2t64` (24.04) or `libfuse2` (22.04).
 
 PrismLCA looks for a new version only when you click *Check for updates* on its About page. The Windows
-installation and the AppImage update in place; with the deb you install the new package yourself.
+installation and the AppImage update in place; with the deb or the rpm you install the new package yourself.
 
 ## Privacy
 
@@ -144,8 +145,8 @@ dist/prism-lca-backend/prism-lca-backend --bundle-check   # every on-demand libr
 cd ../frontend && npm run dist:linux     # or dist:win
 ```
 
-Targets: **NSIS** (Windows), **AppImage + deb** (Linux). Local builds are unsigned and have the update check
-switched off. Releases are built by the release workflow from a version tag and published on GitHub Releases;
+Targets: **NSIS** (Windows), **AppImage, deb and rpm** (Linux; the rpm needs `rpmbuild`, packaged as `rpm-build`
+on Fedora and `rpm` on Debian and Ubuntu). Local builds are unsigned and have the update check switched off. Releases are built by the release workflow from a version tag and published on GitHub Releases;
 PrismLCA looks for updates only when you click *Check for updates* (Settings → About).
 
 The backend bundles **CPU-only PyTorch** (no CUDA) for the local search model and Intel oneMKL as the sparse

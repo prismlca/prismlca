@@ -8,7 +8,7 @@ export type UpdateState =
   | { phase: 'unavailable'; current: string; reason: string }
   | { phase: 'checking'; current: string }
   | { phase: 'up-to-date'; current: string; checkedAt: number }
-  /** `manualOnly`: this kind of installation (a deb package) is updated from the release page, not
+  /** `manualOnly`: this kind of installation (a deb or rpm package) is updated from the release page, not
    *  from inside the app — installing it would need root. */
   | { phase: 'available'; current: string; version: string; notes?: string; manualOnly?: boolean }
   | { phase: 'downloading'; current: string; version: string; percent: number }

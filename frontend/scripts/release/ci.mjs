@@ -5,7 +5,7 @@
  *   node scripts/release/ci.mjs verify-tag                 tag vX.Y.Z[-spike.N] == every version source
  *   node scripts/release/ci.mjs electron-support           supported line, newest patch
  *   node scripts/release/ci.mjs audit                      shipped advisories fixed or assessed
- *   node scripts/release/ci.mjs check-artifacts <kind> <dir>   one package, unpacked (kind: appimage|deb|win)
+ *   node scripts/release/ci.mjs check-artifacts <kind> <dir>   one package, unpacked (kind: appimage|deb|rpm|win)
  *   node scripts/release/ci.mjs notes <version>            release notes from CHANGELOG.md
  *   node scripts/release/ci.mjs build-info <dir>...        build-info.txt for the files given
  *
@@ -138,15 +138,17 @@ function walk(dir, prefix = '') {
 }
 
 function checkArtifacts(kind, dir) {
-  if (!['appimage', 'deb', 'win'].includes(kind) || !dir || !existsSync(dir)) die('usage: check-artifacts appimage|deb|win <unpacked dir>')
+  if (!['appimage', 'deb', 'rpm', 'win'].includes(kind) || !dir || !existsSync(dir))
+    die('usage: check-artifacts appimage|deb|rpm|win <unpacked dir>')
   const files = walk(dir)
   const has = (re) => files.some((f) => re.test(f))
   const problems = []
-  // package-type decides electron-updater's Linux updater — deb only.
+  // package-type decides electron-updater's Linux updater: the deb and the rpm carry their own name, nothing else.
   const pt = files.find((f) => /(^|\/)resources\/package-type$/.test(f))
   const ptValue = pt ? readFileSync(join(dir, pt), 'utf-8').trim() : null
-  if (kind === 'deb' && ptValue !== 'deb') problems.push(`deb must carry resources/package-type = deb, has ${ptValue ?? 'none'}`)
-  if (kind !== 'deb' && ptValue !== null) problems.push(`${kind} must not carry resources/package-type (has "${ptValue}")`)
+  const isPackage = kind === 'deb' || kind === 'rpm'
+  if (isPackage && ptValue !== kind) problems.push(`${kind} must carry resources/package-type = ${kind}, has ${ptValue ?? 'none'}`)
+  if (!isPackage && ptValue !== null) problems.push(`${kind} must not carry resources/package-type (has "${ptValue}")`)
   const upd = files.find((f) => /(^|\/)resources\/app-update\.yml$/.test(f))
   if (!upd) problems.push('resources/app-update.yml is missing — the update check would have no feed')
   else if (!/owner:\s*prismlca/.test(readFileSync(join(dir, upd), 'utf-8')) || !/repo:\s*prismlca/.test(readFileSync(join(dir, upd), 'utf-8')))

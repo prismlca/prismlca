@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-01",
+    "title": "An rpm package for Fedora",
+    "details": "Besides the AppImage and the .deb, every release now has an .rpm package for Fedora: install it with sudo dnf install and PrismLCA appears in the application menu. Like the .deb, it is updated from the release page, which Check for updates links to."
+  },
+  {
+    "date": "2026-11-01",
     "title": "Cheaper report writing and chats",
     "details": "A report chapter now keeps the provider's prompt cache through every step, from its lookups to the corrections and the answers to the second reader; with Claude models the newest part of each exchange is cached too. On OpenRouter, a chat or a chapter stays with one provider while it runs, so its cache is found again. The privacy notice of 1 November says how."
   },

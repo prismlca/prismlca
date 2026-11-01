@@ -42,9 +42,12 @@ win:
   # runner; the sign hook is added with release.yml.
 
 linux:
+  # Order matters: deb and rpm each write resources/package-type into the shared unpacked folder before they
+  # pack it, so each carries its own name; the AppImage is built before both and carries none.
   target:
     - AppImage
     - deb
+    - rpm
   category: Science
   icon: resources/icon.png # committed; build/ is gitignored
   maintainer: Jonas Harth <harthjonas@gmail.com>
@@ -64,6 +67,26 @@ deb:
     - libuuid1
     - libsecret-1-0
     - libasound2
+
+rpm:
+  # electron-builder's own list plus libsecret (as in the deb) and ALSA, for the same reason as there. The
+  # "(a or b)" entries take the Fedora name or the openSUSE one.
+  depends:
+    - gtk3
+    - libnotify
+    - nss
+    - libXScrnSaver
+    - (libXtst or libXtst6)
+    - xdg-utils
+    - at-spi2-core
+    - (libuuid or libuuid1)
+    - (libsecret or libsecret-1-0)
+    - (alsa-lib or libasound2)
+  # No /usr/lib/.build-id links: Electron apps ship identical binaries (chrome-sandbox, libffmpeg.so), and the
+  # links of two such packages collide when both are installed.
+  fpm:
+    - --rpm-rpmbuild-define
+    - _build_id_links none
 
 nsis:
   # No spaces: GitHub turns them into dots when a file is uploaded, while latest.yml names the installer with

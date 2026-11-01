@@ -14,8 +14,8 @@
  *  - V-2: the backend is stopped in order BEFORE anything replaces the program files
  *    (`deps.prepareInstall`, implemented in index.ts).
  *  - V-3: an install that fails is reported — at once if the app is still running, on the next start
- *    (via `pending-update.json`) if the installer failed after the app had quit; and a deb package is
- *    refused here, not only hidden in the UI.
+ *    (via `pending-update.json`) if the installer failed after the app had quit; and a deb or rpm package
+ *    is refused here, not only hidden in the UI.
  *  - V-4: the AppImage is swapped atomically by this file (`swapAppImage`), because electron-updater
  *    deletes the old file before it moves the new one into place.
  * electron-updater's own install-on-quit is therefore off; `before-quit` below does it instead.
@@ -70,7 +70,7 @@ const STAGING_ID_FILE = '.updaterId'
 /** A constant in place of the per-installation UUID. Staged rollouts (which would read it) are not used. */
 export const NIL_STAGING_ID = '00000000-0000-0000-0000-000000000000'
 
-/** How this installation gets updated: NSIS on Windows, the AppImage swap, or by hand (deb, other). */
+/** How this installation gets updated: NSIS on Windows, the AppImage swap, or by hand (deb, rpm, other). */
 export type InstallKind = 'nsis' | 'appimage' | 'manual'
 
 export function installKind(
@@ -346,9 +346,9 @@ async function loadUpdater(): Promise<AutoUpdater> {
   if (updater) return updater
   const mod = await import('electron-updater')
   // electron-updater's own singleton picks its Linux updater from `resources/package-type` alone. The
-  // deb target writes that file into the shared unpacked folder, so an AppImage built after the deb
-  // would carry "deb" and download the .deb — which the swap below would then put in place of the
-  // program (seen with electron-builder 26; only the target order prevented it).
+  // deb and rpm targets write that file into the shared unpacked folder, so an AppImage built after them
+  // would carry "deb" or "rpm" and download that package — which the swap below would then put in place
+  // of the program (seen with electron-builder 26; only the target order prevented it).
   // An AppImage run therefore gets its updater by name, whatever the file says.
   const autoUpdater = installKind() === 'appimage' ? new mod.AppImageUpdater() : mod.autoUpdater
   neutraliseInstallationId(autoUpdater)
@@ -445,7 +445,7 @@ export async function checkForUpdates(): Promise<UpdateState> {
   return getUpdateState()
 }
 
-/** Download the version the last check found — only on the user's confirmation, never for a deb. */
+/** Download the version the last check found — only on the user's confirmation, never for a deb or rpm. */
 export async function downloadUpdate(): Promise<UpdateState> {
   const s = getUpdateState()
   if (restartRequired) return s
