@@ -4,7 +4,9 @@ The design in short:
 
 * Brightway reads EcoSpold 1/2, SimaPro CSV and openLCA JSON-LD already; **ILCD is the one big
   format it has no importer for**, and the one EU EPD work runs on. That reader is ours.
-* Every source becomes its **own read-only database** beside ecoinvent, never a write into it.
+* Every source lands in the workspace's **library "My processes"** (`engine/library.py`), one
+  writable database the models link to live — never a write into ecoinvent. Provenance (source,
+  format, batch, date) sits on each dataset, so removing an import is deleting its batch.
   LCIA keeps working because methods characterise biosphere flows, not databases — which is
   exactly why the flows have to be matched onto *our* biosphere.
 * A flow that cannot be matched is **parked and counted**, never silently dropped: a dropped
