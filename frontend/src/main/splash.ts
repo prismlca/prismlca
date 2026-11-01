@@ -105,8 +105,8 @@ function splashHtml(versionLabel: string): string {
 }
 
 export async function createSplash(appVersion: string): Promise<Splash> {
-  const [major, minor] = appVersion.split('.')
-  const versionLabel = `beta ${major}.${minor}` // 0.9.0 → "beta 0.9" (public beta)
+  // The full version, patch included: the splash is where a user reads which build they run.
+  const versionLabel = `beta ${appVersion}`
 
   const win = new BrowserWindow({
     width: 520,
