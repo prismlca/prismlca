@@ -203,3 +203,28 @@ def test_a_failure_halfway_leaves_no_copy_behind(client, token, project, monkeyp
         _localize(client, token, bg, fg, "steel", 2)
     assert [a["code"] for a in client.get(f"/api/v1/model/activities/{fg}", headers=token).json()] == [frame]
     assert _inputs(client, token, fg, frame) == [(bg, "steel", 3.0)]
+
+
+@pytest.mark.parametrize("depth", [1, 2])
+def test_the_loop_moves_to_the_copy_when_only_one_input_is_localized(client, token, project, depth):
+    """With a uid only that input follows the copy — the copy's own input on its original must follow too,
+    or the losses of a changed electricity mix would still be the original mix."""
+    bg = _seed(get_bd())
+    fg = "fg-" + uuid.uuid4().hex[:6]
+    assert client.post("/api/v1/databases/foreground", json={"name": fg}, headers=token).status_code == 200
+    r = client.post("/api/v1/model/activities", json={"database": fg, "name": "Weld", "unit": "unit"}, headers=token)
+    weld = r.json()["activity"]["code"]
+    r = client.post(
+        "/api/v1/model/exchanges",
+        json={"activity_database": fg, "activity_code": weld, "input_database": bg, "input_code": "elec",
+              "amount": 4.0},
+        headers=token,
+    )
+    uid = r.json()["exchange"]["uid"]
+
+    r = _localize(client, token, bg, fg, "elec", depth, uids=[uid])
+    assert r.status_code == 200, r.text
+    elec = r.json()["activity"]["code"]
+    assert _inputs(client, token, fg, elec) == [(fg, elec, 0.1)]
+    assert _inputs(client, token, fg, weld) == [(fg, elec, 4.0)]
+    assert _score(client, token, fg, weld) == pytest.approx(4 * _score(client, token, bg, "elec"))

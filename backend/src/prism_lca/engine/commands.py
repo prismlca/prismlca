@@ -699,8 +699,10 @@ class CopyToForegroundCommand(Command):
 
     With ``depth=2`` the dataset's direct suppliers come along: each dataset it draws on from outside
     the model is copied as well, and the copy draws on those copies instead of the originals. The
-    suppliers' own inputs stay where they were, so the result is unchanged until a copy is edited. A
-    dataset that draws on itself (an electricity market's losses) keeps that loop on the copy.
+    suppliers' own inputs stay where they were, so the result is unchanged until a copy is edited.
+
+    At any depth, a dataset that draws on itself (an electricity market's losses) keeps that loop on the
+    copy: the copy's losses are of its own product, or a changed mix would still lose the original one.
     """
 
     action = "copy_to_foreground"
@@ -760,12 +762,11 @@ class CopyToForegroundCommand(Command):
                 store, (self.source_database, self.source_code), (self.target_database, self._code), pairs
             )
         self._suppliers = []
-        if suppliers:
-            try:
-                self._copy_suppliers(bd, store, src, new, suppliers)
-            except Exception:
-                self._drop_copies(store)  # all of it or nothing: no half-built chain stays behind
-                raise
+        try:
+            self._copy_suppliers(bd, store, src, new, suppliers)
+        except Exception:
+            self._drop_copies(store)  # all of it or nothing: no half-built chain stays behind
+            raise
         if self.relink_consumers:
             # The supplier copies made just now keep drawing on what their originals drew on, the
             # dataset included: they stand for the background's supply, not for this model's.
@@ -804,7 +805,8 @@ class CopyToForegroundCommand(Command):
         return list(found)
 
     def _copy_suppliers(self, bd, store, src, new, suppliers: list[tuple[str, str]]) -> None:
-        """Depth 2: copy each direct supplier into the model and point the copy's inputs at those copies.
+        """Copy each direct supplier into the model (depth 2) and point the copy's inputs at those copies —
+        and, at any depth, its input on its own original at itself.
 
         Each supplier's exchanges are one transaction of their own (``_copy_exchanges``), not all of them
         one: a failure halfway then leaves saved processes that ``_drop_copies`` removes — search index
@@ -836,6 +838,7 @@ class CopyToForegroundCommand(Command):
                 & (ExchangeDataset.output_code == new.key[1])
                 & (ExchangeDataset.type == "technosphere")
             )
+            moved = 0
             for row in list(rows):
                 twin = twins.get((row.input_database, row.input_code))
                 if twin is None:
@@ -844,7 +847,9 @@ class CopyToForegroundCommand(Command):
                 data["input"] = tuple(twin.key)
                 row.data, row.input_database, row.input_code = data, twin.key[0], twin.key[1]
                 row.save(signal=signal)
-            get_bd().databases.set_dirty(new.key[0])
+                moved += 1
+            if moved:
+                get_bd().databases.set_dirty(new.key[0])
 
     def _drop_copies(self, store) -> None:
         """Remove every process this command made — the supplier copies, then the copy — and their tags."""
