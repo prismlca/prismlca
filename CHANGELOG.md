@@ -3,6 +3,39 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.7 — 2026-11-02
+
+### New
+
+- **Sensitivity analysis.** Results has a third tab: a tornado ranks the model's parameters by how far a step of
+  ±10 % (or your own range) moves the result, and a curve follows one parameter across a range for the baseline and
+  its scenarios. Every step stays within the parameter's allowed values. The first two tabs are now called
+  *Results* and *Decomposition tree*.
+- **Parameter tornado in reports.** Short and full reports can print a parameter tornado under the sensitivity check
+  in *Interpretation checks*, and the AI writer can quote its numbers. Sensitivity runs take seconds and no longer
+  hold up other calculations.
+- **Allowed values for new parameters.** When the assistant creates a parameter, it gives it the rule its meaning
+  fixes — a share between 0 and 1, a distance or mass above 0, a switch of 0 or 1. The rules of existing parameters
+  stay yours; the health check asks about unitless values between 0 and 1 that still have no rule.
+- **An rpm package for Fedora.** Besides the AppImage and the .deb, every release now has an .rpm: install it with
+  `sudo dnf install` and PrismLCA appears in the application menu.
+
+### Fixes
+
+- Undo after deleting or localizing a process, or after removing a supplier, puts it back where it stood, in its
+  colour and its group — it used to reappear elsewhere, without its colour.
+- With several boxes selected, the right-click menu's *Localize*, *Expand upstream*, *Collapse upstream*, *Remove
+  from canvas* and *Delete* act on all of them. Deleting several processes that others still use now asks about
+  each one in turn, naming who uses it, instead of keeping them with a note.
+- The contribution tree in *Decomposition tree* draws thicker connectors.
+
+**Installing.** Windows will warn about the installer because PrismLCA is not code-signed yet: compare it with
+`SHA256SUMS` below, then choose *More info → Run anyway*. On Linux the AppImage needs FUSE 2
+(`sudo apt install libfuse2t64` on Ubuntu 24.04); the deb and the rpm need nothing extra. PrismLCA 0.9.3 and later
+find this release under *Check for updates*.
+
+Changes since v0.9.6: https://github.com/prismlca/prismlca/compare/v0.9.6...v0.9.7
+
 ## 0.9.6 — 2026-11-01
 
 ### New
