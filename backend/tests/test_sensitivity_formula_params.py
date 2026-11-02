@@ -20,6 +20,8 @@ from prism_lca.engine import param_window, params, sensitivity
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.scenarios import ScenarioStore
 
+pytestmark = pytest.mark.usefixtures("sensitivity_path")
+
 
 @pytest.fixture(autouse=True)
 def _no_leftover_marker():
@@ -115,7 +117,7 @@ def test_an_unknown_parameter_is_refused_not_swept_flat(client, token, project, 
 # --------------------------------------------------------------------------- #
 # (b) the formula is back afterwards — also after a crash in the middle of a sweep
 # --------------------------------------------------------------------------- #
-def test_the_marker_names_the_formula_while_the_step_is_in(client, token, project, monkeypatch):
+def test_the_marker_names_the_formula_while_the_step_is_in(client, token, project, monkeypatch, written_steps):
     _model(client, token)
     seen: list[dict] = []
     real = params.apply_values
@@ -164,7 +166,7 @@ def test_a_crash_in_a_tornado_after_the_formula_step_is_restored_too(client, tok
     assert param_window.unresolved(DB) is None
 
 
-def test_a_failing_step_still_restores_the_formula(client, token, project, monkeypatch):
+def test_a_failing_step_still_restores_the_formula(client, token, project, monkeypatch, written_steps):
     _model(client, token)
     real = sensitivity._score
     calls = {"n": 0}
@@ -408,7 +410,8 @@ def _fail_settle_writes(monkeypatch) -> None:
     monkeypatch.setattr(param_window, "_write_frames", write)
 
 
-def test_a_step_whose_settle_cannot_be_recorded_stops_the_window(client, token, project, monkeypatch):
+def test_a_step_whose_settle_cannot_be_recorded_stops_the_window(client, token, project, monkeypatch,
+                                                                  written_steps):
     """Left silent, the marker on disk kept owning the previous step (b = 6) — a crash later and a hand
     edit b = 6, and the recovery put `2*a` back over it."""
     from prism_lca.errors import PrismError

@@ -166,3 +166,38 @@ describe('report chart keys', () => {
     expect(keyPart('50%|a/b', true)).toBe('50%25%7Ca%2Fb')
   })
 })
+
+describe('the parameter tornado', () => {
+  const block = (label: string, names: string[]) => ({
+    method_label: label,
+    relative: true,
+    parameters: names.map((name, i) => ({
+      name,
+      low_change: -10 * (i + 1),
+      high_change: 5 * (i + 1),
+      low_text: `-${10 * (i + 1)} %`,
+      high_text: `+${5 * (i + 1)} %`,
+      limited: false,
+      breaks: false
+    })),
+    labels: { low: 'Parameter −10 %', high: 'Parameter +10 %', axis: 'Change of the result' }
+  })
+
+  it('draws one figure per indicator under its key, and none for an indicator nothing moves', async () => {
+    const snap = {
+      data: {
+        results: [],
+        subjects: [],
+        checks: { tornado: [block(GWP, ['kwh', 'share']), block(ACID, [])] }
+      }
+    } as unknown as SourcesSnapshot
+    const { figures } = await figuresFromSnapshot(snap, undefined)
+    expect(Object.keys(figures).filter((k) => k.startsWith('tornado:'))).toEqual([chartKey('tornado', GWP)])
+  })
+
+  it('draws nothing while the snapshot carries no tornado', async () => {
+    const snap = { data: { results: [], subjects: [], checks: {} } } as unknown as SourcesSnapshot
+    const { figures } = await figuresFromSnapshot(snap, undefined)
+    expect(Object.keys(figures).some((k) => k.startsWith('tornado:'))).toBe(false)
+  })
+})

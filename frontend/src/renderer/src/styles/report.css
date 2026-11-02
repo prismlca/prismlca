@@ -881,3 +881,13 @@
 /* Title & language opens straight onto its text fields, and at the body's 2px their borders nearly touched
    the head's hover box; a few pixels more let the head read as a heading over them. */
 .acc-gbody > .rsec-head:first-child { margin-top: 4px; }
+
+/* The parameter tornado's setting (views/report/TornadoOption.tsx), in the full report's scope card and the
+   short report's rail: the checkbox, then the indicators one per line and the range presets. */
+.rtor { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; font-size: var(--fs-sec); color: var(--muted); }
+.rtor label { display: inline-flex; align-items: center; gap: 6px; }
+.rtor input[type='checkbox'] { width: auto; }
+.rtor .settings-hint { margin: 0; }
+.rtor-ind { display: flex; flex-direction: column; gap: 4px; padding-left: 20px; }
+.rtor-range { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rtor-range input[type='number'] { width: 4.5em; }

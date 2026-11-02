@@ -17,6 +17,7 @@ import ChapterEditorSheet from './report/ChapterEditorSheet'
 import ChapterList from './report/ChapterList'
 import AddChapterControl from './report/AddChapterControl'
 import { HeatmapPreview, RadarPreview } from './report/FigurePreview'
+import { StoredTornadoOption } from './report/TornadoOption'
 import ReportHeadGroup from './report/ReportHeadGroup'
 import ReportAppearanceGroup from './report/ReportAppearanceGroup'
 import ReportDefaultsGroup from './report/ReportDefaultsGroup'
@@ -1049,6 +1050,9 @@ export default function ReportSections({
               <span>%</span>
             </label>
           </div>
+        ) : null}
+        {(report.methods?.length ?? 0) ? (
+          <StoredTornadoOption report={report} indicatorNames={indicatorNames} mutate={mutate} base={base} />
         ) : null}
       </AccordionGroup>
 

@@ -32,13 +32,16 @@ export function fmtValue(v: number): string {
 }
 
 /** How far the result moves between the two sides of one bar, for indicator `mi`. */
-export function swing(e: TornadoEntry, mi: number): number {
-  return Math.abs((e.high[mi] ?? 0) - (e.low[mi] ?? 0))
+export function swing(e: TornadoEntry, mi: number, baseline: number): number {
+  // The stretch the two bars cover from the result, not the distance between their ends: both steps raising
+  // the result by 10 % is a parameter that moves it, though its ends are the same (engine/sensitivity.span).
+  const points = [e.low[mi] ?? baseline, e.high[mi] ?? baseline, baseline]
+  return Math.max(...points) - Math.min(...points)
 }
 
 /** The entries in the order the chart shows them for indicator `mi`: largest swing first. */
 export function sortedEntries(r: TornadoResult, mi: number): TornadoEntry[] {
-  return [...r.entries].sort((a, b) => swing(b, mi) - swing(a, mi))
+  return [...r.entries].sort((a, b) => swing(b, mi, r.baseline[mi]) - swing(a, mi, r.baseline[mi]))
 }
 
 /** A range as the page writes it: "10", "2.5" — never rounded to a whole percent, which turned a 0.4 % step

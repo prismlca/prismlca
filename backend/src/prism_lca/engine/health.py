@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from prism_lca import _log
 from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.health_params import unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_structure import two_ways_in, unreached
 from prism_lca.engine.model import _db_or_404
@@ -1658,6 +1659,13 @@ def _rule_unused_parameters(ctx: LintContext) -> list[dict]:
     ]
 
 
+def _rule_unruled_shares(ctx: LintContext) -> list[dict]:
+    # Shares and rates without a rule: one finding for all of them (engine/health_params.py).
+    found = unruled_shares(ctx.database)
+    return [_finding("info", "share_without_rule", unruled_message(found), parameters=[n for n, _v in found])] \
+        if found else []
+
+
 def _rule_mass_shortfall(ctx: LintContext) -> list[dict]:
     # The mass shortfall, judged now that every demand is known (V290). The info stays an info
     # until the model also CONSUMES the under-filled process by exactly its inputs' mass — the
@@ -1905,6 +1913,7 @@ MODEL_RULES = [
     _rule_declared_not_booked,
     _rule_bom_unbooked,
     _rule_unused_parameters,
+    _rule_unruled_shares,
     _rule_eol_shares,
     _rule_mass_shortfall,
     _rule_eol_recyclate,

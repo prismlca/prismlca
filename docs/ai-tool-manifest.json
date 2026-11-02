@@ -1774,7 +1774,7 @@
       "name": "edit_parameter",
       "label": "Create / change parameter",
       "group": "Parameters",
-      "description": "Create, update or delete parameters of the active model. action=\"set\" (the default — omit it and you get \"set\") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and \"A if cond else B\"), plus optional unit, group and comment. action=\"delete\" removes it (fails if a formula still references it). Pass \"parameters\" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule the modeller set — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read \"allowed\" rather than discovering the rule from a refusal. You cannot set or change a rule: it is the modeller's decision about their own study, so if a number you were given breaks one, say which parameter and what it allows, and ask.",
+      "description": "Create, update or delete parameters of the active model. action=\"set\" (the default — omit it and you get \"set\") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and \"A if cond else B\"), plus optional unit, group and comment. action=\"delete\" removes it (fails if a formula still references it). Pass \"parameters\" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read \"allowed\" rather than discovering the rule from a refusal. When you CREATE a parameter whose meaning fixes what it may be, give it a rule in the same call: a share, rate, efficiency or loss → range 0 to 1; a mass, distance, count or duration → positive; an on/off switch → switch. Leave it out when the meaning does not fix one (a factor that can exceed 1, a value that can be negative) and on every parameter that already exists: its rule is the modeller's decision, so if a number you were given breaks one, say which parameter and what it allows, and ask.",
       "surface": "api",
       "mutating": true,
       "parameters": {
@@ -1812,6 +1812,32 @@
             "type": "string",
             "description": "Optional note on meaning, source or assumptions."
           },
+          "rule": {
+            "type": "object",
+            "description": "Only when you CREATE this parameter, and only when its meaning fixes what it may be: kind=\"range\" with min 0 and max 1 for a share, rate, efficiency or loss; kind=\"positive\" for a mass, distance, count or duration; kind=\"switch\" for an on/off choice (0 or 1); kind=\"negative\" for a credit kept as a negative number. Omit it for a parameter that already exists, and when you are unsure.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "positive",
+                  "negative",
+                  "range",
+                  "switch"
+                ]
+              },
+              "min": {
+                "type": "number",
+                "description": "kind=\"range\": the lowest allowed value; omit for no lower bound."
+              },
+              "max": {
+                "type": "number",
+                "description": "kind=\"range\": the highest allowed value; omit for no upper bound."
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
           "parameters": {
             "type": "array",
             "items": {
@@ -1844,6 +1870,32 @@
                 "comment": {
                   "type": "string",
                   "description": "Note on meaning, source or assumptions."
+                },
+                "rule": {
+                  "type": "object",
+                  "description": "Only when you CREATE this parameter, and only when its meaning fixes what it may be: kind=\"range\" with min 0 and max 1 for a share, rate, efficiency or loss; kind=\"positive\" for a mass, distance, count or duration; kind=\"switch\" for an on/off choice (0 or 1); kind=\"negative\" for a credit kept as a negative number. Omit it for a parameter that already exists, and when you are unsure.",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "positive",
+                        "negative",
+                        "range",
+                        "switch"
+                      ]
+                    },
+                    "min": {
+                      "type": "number",
+                      "description": "kind=\"range\": the lowest allowed value; omit for no lower bound."
+                    },
+                    "max": {
+                      "type": "number",
+                      "description": "kind=\"range\": the highest allowed value; omit for no upper bound."
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ]
                 }
               }
             },

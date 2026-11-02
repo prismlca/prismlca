@@ -1,18 +1,21 @@
 """Sensitivity runs as background jobs: start, poll progress, read, cancel.
 
-A tornado over thirty parameters is sixty-odd solves, minutes of work; a parameter curve over three
-variants three dozen. The UI shows a progress bar and a Cancel button for that, and neither works over one
-blocking request. So a run becomes a job: started at once with an id, computed in a worker thread, polled
-for ``done``/``total`` and the step it is on, cancelled between two steps (one solve is not interruptible).
+A tornado over thirty parameters is sixty-odd steps; a parameter curve over three variants three dozen.
+Scored from the system the model already has (engine/sensitivity_fast.py) that is seconds, but a model the
+fast path does not take writes every step, and that is minutes. The UI shows a progress bar and a Cancel
+button for that, and neither works over one blocking request. So a run becomes a job: started at once with
+an id, computed in a worker thread, polled for ``done``/``total`` and the step it is on, cancelled between
+two steps (one solve is not interruptible).
 
 Same shape as the LCIA jobs (engine/calc_jobs.py) and kept beside them rather than inside: those step
-through methods, these through parameter values inside one crash-marked window, and a job that stops
-early has to leave through that window's ``finally`` — which is why stopping is an exception raised at a
-checkpoint, not a loop that breaks.
+through methods, these through parameter values — inside one crash-marked window when the steps are
+written — and a job that stops early has to leave through that window's ``finally``, which is why stopping
+is an exception raised at a checkpoint, not a loop that breaks.
 
-A job remembers the model generation and the workspace it started in. The analysis holds the LCA lock
-for its whole span, so a model edit cannot land mid-run through the parameter routes; the checkpoint
-still refuses to go on if either moved, the same guard the LCIA jobs keep.
+A job remembers the model generation and the workspace it started in, and the checkpoint refuses to go on
+once either moved, the same guard the LCIA jobs keep. A run that writes its steps holds the LCA lock for its
+whole span, so an edit through the parameter routes waits for it; a fast run lets go of the lock after
+reading the model, and an edit during its steps stops it at the next checkpoint instead.
 """
 from __future__ import annotations
 

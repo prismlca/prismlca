@@ -818,6 +818,13 @@ def _offer_interpretation_checks(add: Callable[[str, str, str], None], section: 
         add("t-consistency", "table", "what is held constant across the variants")
     if checks.get("sensitivity"):
         add("t-sensitivity", "table", "the spread per indicator across the scenarios")
+    # One tornado per indicator the author picked — the figures `report_tornado.blocks` places under the
+    # same condition: the option is on and the indicator has a parameter that moves it.
+    for i, row in enumerate(checks.get("tornado") or []):
+        if row.get("parameters"):
+            add(f"f-tornado-{i}", "figure",
+                f"the parameters that move {row.get('method_label')} most, each varied by {row.get('delta_text')} "
+                "on its own (parameter tornado)")
     # The per-variant change table prints under the same condition the sensitivity section uses to
     # print anything at all (`report_checks._sensitivity`): two variants, at least one under a scenario.
     subjects = [s for s in data.get("subjects") or [] if s.get("results")]
@@ -1046,6 +1053,11 @@ def switched_off_figure(label: str, report: dict[str, Any]) -> str | None:
     deleted the checkbox is not the remedy, and sending the author to a switch that changes nothing is
     the same mistake as blaming the wrong thing in the first place.
     """
+    if label.startswith("f-tornado-"):
+        # The parameter tornado has its own box under Interpretation checks, not under the figure toggles.
+        on = ((report.get("options") or {}).get("tornado") or {}).get("enabled")
+        there = any(s.get("kind") == "interpretation_checks" for s in report.get("sections") or [])
+        return "Parameter sensitivity (tornado)" if there and not on else None
     entry = SWITCHABLE_FIGURES.get(label)
     if entry is None:
         return None

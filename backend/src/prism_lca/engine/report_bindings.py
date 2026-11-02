@@ -153,6 +153,10 @@ RANKED_LISTS: dict[str, tuple[str, ...]] = {
     # One row per indicator, method order, same identity as `results` and for the same reason: the
     # same reordering moved "the spread for acidification" from 16.5 to particulate matter's 35.6.
     "checks.sensitivity": ("method_label",),
+    # The parameter tornado: one block per indicator, in the order the author picked them, and inside it
+    # the parameters ranked by how far they move that indicator — so the parameter is its name.
+    "checks.tornado": ("method_label",),
+    "checks.tornado.*.parameters": ("name",),
     # Only the indicators whose leading variant differs from the first one's — a *filtered* list, so an
     # index moves as soon as any other indicator starts or stops flipping, with nothing recomputed.
     "trade_offs": ("method_label",),
@@ -237,6 +241,9 @@ MAGNITUDE_RANKED: frozenset[str] = frozenset(
         # them by, and this is the list of one indicator's ranking: the path names the indicator, so
         # nothing here has to *decide* which score counts.
         "results.*.subjects_by_score",
+        # A tornado's parameters, ranked by how far each moves its indicator: "the largest lever" is a
+        # claim about index 0, and a recompute that turns the order over has to be able to say so.
+        "checks.tornado.*.parameters",
     }
 )
 
@@ -1048,3 +1055,19 @@ def numeric(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+#: Ready-to-print fields → the number each one prints (a tornado's sides, its stretch and range included).
+TEXT_TWINS = {"share_text": "share_percent", "spread_text": "spread_percent", "low_text": "low_change",
+              "high_text": "high_change", "swing_text": "swing", "delta_text": "delta_percent"}
+
+
+def printed_number(path: str, data: dict[str, Any], bindings: dict[str, dict[str, Any]] | None) -> float | None:
+    """The number a placeholder prints: its value, or for a ready-to-print `…_text` field the number beside it —
+    the form the prose is told to use, which as a string has neither band nor sign, so a tornado's `low_text`
+    turning from "+3.1 %" to "-0.4 %" left "lowering it raises the result" current."""
+    number = numeric(bound_lookup(path, data, bindings))
+    twin = next((t for t in TEXT_TWINS if path.endswith("." + t)), None)
+    if number is None and twin:
+        number = numeric(bound_lookup(path[: -len(twin)] + TEXT_TWINS[twin], data, bindings))
+    return number

@@ -127,6 +127,8 @@ _REF_NAMES: dict[str, str] = {
     "f-lcia": "lcia.title",
     "f-contribution": "contribution.title",
     "f-heatmap": "caption.figure_heatmap",
+    "f-tornado": "checks.tornado",
+    "t-tornado": "checks.tornado",
     "f-radar": "caption.figure_radar",
     "f-system-model": "system_model.title",
     "t-contribution-hotspots": "caption.hotspots",

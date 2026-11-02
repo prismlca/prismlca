@@ -5,6 +5,7 @@ import type { Tool, ToolCtx } from './context'
 import { geoName, isAggregate } from '../../../shared/geographyNames'
 import { AI, S, cap, oneScenario } from './format'
 import { formulaKept } from './formulaKept'
+import { ruleFor } from './paramRule'
 import {
   NEEDS_A_LOOK,
   NEEDS_A_LOOK_FLOOR,
@@ -366,6 +367,7 @@ export const IMPL: Record<string, Tool['run']> = {
       unit: a.unit,
       group: a.group,
       description: a.comment,
+      rule: ruleFor(a.rule),
       ...AI
     })
     // The endpoint answers with the model's WHOLE parameter list, which the Parameters page throws

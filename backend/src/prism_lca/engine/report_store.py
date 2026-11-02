@@ -193,6 +193,16 @@ _OPTION_CHECKS: dict[str, Any] = {
     "figures": lambda v: isinstance(v, dict)
     and set(v) <= {"heatmap", "radar", "stacked"}
     and all(isinstance(x, bool) for x in v.values()),
+    # The parameter tornado in the checks chapter (report_tornado): on or off, which of the report's
+    # indicators, and the range as a fraction (0.1 = ±10 %).
+    "tornado": lambda v: isinstance(v, dict)
+    and set(v) <= {"enabled", "methods", "delta"}
+    and isinstance(v.get("enabled", False), bool)
+    and isinstance(v.get("methods", []), list)
+    and all(isinstance(m, list) and all(isinstance(x, str) for x in m) for m in v.get("methods", []))
+    and isinstance(v.get("delta", 0.1), (int, float))
+    and not isinstance(v.get("delta", 0.1), bool)
+    and 0 < v.get("delta", 0.1) < 1,
 }
 
 

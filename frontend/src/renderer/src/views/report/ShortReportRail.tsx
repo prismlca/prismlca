@@ -1,4 +1,7 @@
-import IndicatorPicker, { type PickerMethod } from '../../components/IndicatorPicker'
+import { useMemo } from 'react'
+import IndicatorPicker, { methodKey, type PickerMethod } from '../../components/IndicatorPicker'
+import { indicatorLabel, indicatorLabels } from '../../lib/methods'
+import TornadoOption from './TornadoOption'
 import { AccordionGroup, useSingleOpen } from '../../components/Accordion'
 import PalettePicker, { resolvePalette, usePalettes } from '../PalettePicker'
 import ThemeGallery, { type Theme } from '../ThemeGallery'
@@ -32,6 +35,10 @@ export interface ShortSettings {
   per_process: number
   colour_by: string
   edge_amounts: boolean
+  /** The parameter tornado in Interpretation checks: on, which of the picked indicators (method keys), range. */
+  tornado: boolean
+  tornado_methods: string[]
+  tornado_delta: number
 }
 
 export const DEFAULT_SHORT_SETTINGS: ShortSettings = {
@@ -51,7 +58,10 @@ export const DEFAULT_SHORT_SETTINGS: ShortSettings = {
   background_tier: true,
   per_process: 4,
   colour_by: '',
-  edge_amounts: false
+  edge_amounts: false,
+  tornado: false,
+  tornado_methods: [],
+  tornado_delta: 0.1
 }
 
 /** The chapters a short report can carry, in reading order, with the backend's default for each. Mirrors
@@ -164,6 +174,7 @@ export default function ShortReportRail({
   const [grp] = useSingleOpen('prism.report.short.grp', 'subject')
   const { list: paletteList } = usePalettes()
   const variants = 1 + settings.compare.length
+  const labelsOf = useMemo(() => indicatorLabels(methods), [methods])
   const canRun = !busy && Boolean(code) && picked.length > 0
   const toggleCompare = (scenario: string, on: boolean): void => {
     const rest = settings.compare.filter((x) => x.scenario !== scenario)
@@ -451,6 +462,25 @@ export default function ShortReportRail({
                   ))}
                 </select>
               </label>
+            </>
+          ) : null}
+          {chapterOn(settings, 'interpretation_checks') && picked.length ? (
+            <>
+              <div className="sub-label">Interpretation checks</div>
+              <TornadoOption
+                value={{
+                  enabled: settings.tornado,
+                  methods: settings.tornado_methods,
+                  delta: settings.tornado_delta
+                }}
+                indicators={picked.map((key) => {
+                  const m = methods.find((x) => methodKey(x.method) === key)
+                  return { key, label: m ? indicatorLabel(m.method, labelsOf) : key }
+                })}
+                onChange={(next) =>
+                  update({ tornado: next.enabled, tornado_methods: next.methods, tornado_delta: next.delta })
+                }
+              />
             </>
           ) : null}
         </AccordionGroup>

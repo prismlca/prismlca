@@ -25,6 +25,8 @@ from prism_lca.engine.bootstrap import get_bd
 
 DOUBLE = ["t", "double"]
 
+pytestmark = pytest.mark.usefixtures("sensitivity_path")
+
 
 @pytest.fixture(autouse=True)
 def _clean():

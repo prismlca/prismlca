@@ -77,6 +77,8 @@ def test_every_tool_a_builtin_skill_names_actually_exists():
         "not_yet_inspected", "service_note", "outside_geography_filter", "mass_range_kg",
         # Eurostat table ids — arguments of eurostat_eol — and the remainder parameter the EoL skill names.
         "env_wasoper", "env_wastrt", "env_waspac", "env_wasmun", "eol_other",
+        # Parameter names the rule examples of the parameters skill use.
+        "recycled_share", "return_rate", "bottle_mass_kg", "transport_km", "use_heat_pump", "tilt_factor",
     }
     for skill in BUILTIN_SKILLS:
         for name in set(re.findall(r"`([a-z]+_[a-z_]{2,28})`", skill["content"])):

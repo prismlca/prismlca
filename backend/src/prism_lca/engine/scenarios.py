@@ -418,18 +418,20 @@ def plan(scenario: dict, base_formulas: dict[str, str | None]) -> Plan:
     return Plan(overrides, base_formulas)
 
 
-def check_applied(database: str, applied: Plan, scenario_name: str) -> None:
+def check_applied(database: str, applied: Plan, scenario_name: str, values: dict[str, float] | None = None) -> None:
     """Hold what a formula override computed, now that it is in the model, to its parameter's rule.
 
     Checked when the scenario was stored too — against the model as it stood then. A baseline edited
     since can move a formula override's result across the rule, and a number the parameter could never
-    be given must not flow into a result either. Raises; the window's restore runs in its ``finally``."""
+    be given must not flow into a result either. Raises; the window's restore runs in its ``finally``.
+    ``values``: the parameters under the scenario when they were computed rather than written (a
+    sensitivity run's fast path); omitted, the model is read as it stands."""
     if not applied.formula_overrides:
         return
     from prism_lca.engine import param_rules
 
     rules = {p["name"]: (p.get("rule") or {}) for p in params.list_params(database)}
-    live = params.snapshot_all(database)
+    live = values if values is not None else params.snapshot_all(database)
     for name in sorted(applied.formula_overrides):
         if rules.get(name) and name in live:
             param_rules.check_value(rules[name], live[name], name=name, where=f"in scenario '{scenario_name}'")

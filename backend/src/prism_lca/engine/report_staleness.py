@@ -27,6 +27,8 @@ from typing import Any
 
 from prism_lca.engine import report_claims, report_prompts, report_sentences, report_typed_numbers
 from prism_lca.engine import report_data as rd
+from prism_lca.engine import report_tornado as rtor
+from prism_lca.engine.report_bindings import printed_number
 from prism_lca.engine.report_i18n import chapter_name, normalise
 
 #: Edges of the size classes for a share, by absolute value, in percent.
@@ -39,6 +41,7 @@ BAND_EDGES: tuple[float, ...] = (5.0, 20.0, 50.0)
 #: Paths whose value is a share and therefore has a size class. Everything else numeric is watched
 #: for its sign only — a direction word ("higher", "reduces") flips with the sign, not with the size.
 _SHARE_HINTS = ("share_percent", "share_text", "percent")
+
 
 #: Derivations that return a percentage (mirrors report_data.DERIVATIONS' third field).
 _PERCENT_DERIVATIONS = ("percent", "change")
@@ -496,13 +499,7 @@ def components(
     values: dict[str, float] = {}
     bands: dict[str, dict[str, Any]] = {}
     for path in cited_paths(text):
-        number = rd.numeric(rd.bound_lookup(path, data, bindings))
-        if number is None and path.endswith(".share_text"):
-            # `share_text` is the formatted twin of `share_percent` — the form the prose is told to
-            # use — and a string has no band. Read the number off its sibling, or the one placeholder
-            # the writer is steered to was the one nothing watched.
-            sibling = path[: -len("share_text")] + "share_percent"
-            number = rd.numeric(rd.bound_lookup(sibling, data, bindings))
+        number = printed_number(path, data, bindings)
         if number is None:
             continue
         values[path] = round(number, 10)
@@ -549,6 +546,8 @@ def components(
         # a goal-and-scope chapter is not condemned for an order it never relied on.
         methods = report.get("methods") or []
         selection["lead_method"] = _method_label(methods[0]) if methods else ""
+    if (tornado := rtor.chapter_selection(text, cited_paths(text), report, _method_label)) is not None:
+        selection["tornado"] = tornado  # only where the chapter cites the tornado, like the lead method
     return {
         "values": _sha(sorted(values.items())),
         "bands": bands,
@@ -741,6 +740,7 @@ def _selection_message(old: dict[str, Any], new: dict[str, Any]) -> str | None:
         "amount": "amount",
         "aggregate_by": "contribution breakdown",
         "significance_percent": "significance threshold",
+        "tornado": "parameter tornado",
         "lang": "language",
     }
 

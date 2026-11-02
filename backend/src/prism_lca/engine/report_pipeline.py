@@ -35,6 +35,7 @@ from prism_lca.engine import (
     report_graph,
     report_render,
     report_snapshot,
+    report_tornado,
     report_variants,
     scenarios,
 )
@@ -670,6 +671,15 @@ def _build_render_inputs(
         # provenance that used to live only in a chat. Cheap file reads, so gathered unconditionally.
         "web_research": ResearchLogStore().list(database),
         "review": ReviewLogStore().for_report(database, lca.model_generation()),
+        # The parameter tornado of the reference process at its baseline, for the checks chapter — only
+        # when that chapter is there to print it, and the report asks for one (report_tornado).
+        "tornado": (
+            # The process `data.activity` names — the surviving reference when the planned one dropped out —
+            # so the figure's numbers and the name printed beside them are about one process.
+            report_tornado.compute(database, (primary.get("activity") or {}).get("code") or ref_code, report, amount)
+            if "interpretation_checks" in kinds
+            else None
+        ),
     }
     # Stored with a copy of the mutable pieces: the render about to happen substitutes
     # translations into study/model_context, and the memo must keep the untouched record.
@@ -707,6 +717,7 @@ def as_kwargs(inputs: dict) -> dict:
         "provenance": inputs["provenance"],
         "web_research": inputs.get("web_research") or [],
         "review": inputs.get("review"),
+        "tornado": inputs.get("tornado"),
     }
 
 

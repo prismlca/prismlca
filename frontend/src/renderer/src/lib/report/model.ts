@@ -79,6 +79,8 @@ export interface StoredReportFull {
     figures?: { heatmap?: boolean; radar?: boolean; stacked?: boolean }
     /** Below this relative difference the check advises against calling one variant better. */
     significance_percent?: number
+    /** The parameter tornado in the checks chapter: which indicators (method paths), the range as a fraction. */
+    tornado?: { enabled?: boolean; methods?: string[][]; delta?: number }
   }
   amount?: number
   aggregate_by?: string

@@ -22,7 +22,7 @@ from datetime import UTC, datetime, tzinfo
 from typing import Any
 
 from prism_lca import _log
-from prism_lca.engine import report_checks, report_prompts, report_sources
+from prism_lca.engine import report_checks, report_prompts, report_sources, report_tornado
 from prism_lca.engine import report_data as rd
 from prism_lca.engine import report_model as rm
 from prism_lca.engine import report_translations as rtr
@@ -946,7 +946,8 @@ def _build_abbreviations(ctx: _BuildCtx, section: dict, title: str) -> bool:
 def _build_interpretation_checks(ctx: _BuildCtx, section: dict, title: str) -> bool:
     lang, blocks, data = ctx.lang, ctx.blocks, ctx.data
     blocks += report_checks.interpretation_blocks(
-        data, data.get("health"), lang, title or kind_title("interpretation_checks", lang)
+        data, data.get("health"), lang, title or kind_title("interpretation_checks", lang),
+        tornado=report_tornado.blocks(data, ctx.figures, lang, ctx.labels),
     )
     return False
 
@@ -1464,6 +1465,8 @@ def render_sources(
     #: Research provenance and the latest internal review's outcome — see `report_data.build_data`.
     web_research: list[dict] | None = None,
     review: dict | None = None,
+    #: The parameter tornado of the reference process (`report_tornado.compute`); None while it is off.
+    tornado: dict | None = None,
     #: Every installed method of the families this report uses — `lca.methods_in_families`. What an
     #: indicator's printed name has to be unique against, so the name does not depend on which of the
     #: family's indicators the report happens to have selected (V203). Absent for a caller with no
@@ -1506,6 +1509,7 @@ def render_sources(
         dropped_subjects=dropped_subjects,
         web_research=web_research,
         review=review,
+        tornado=tornado,
     )
     data["report"] = rd.report_settings(report, lang)
     # Study-borne prose into the report language (engine/report_translations). Candidates are

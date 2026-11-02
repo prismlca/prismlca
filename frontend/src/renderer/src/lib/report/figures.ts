@@ -32,6 +32,7 @@ import {
   type FigureFonts
 } from '../charts/reportFigures'
 import { systemModelSvg, type SystemModelData } from '../charts/systemModel'
+import { tornadoHeight, tornadoOption, type TornadoBlock } from '../charts/reportTornado'
 
 /** The slice of the render data snapshot the charts need. */
 export interface ReportData {
@@ -283,6 +284,16 @@ export async function figuresFromSnapshot(
       )
       if (svg) figures.radar = svg
     }
+  }
+  // The parameter tornado, one per indicator the author picked — present in the snapshot only while the option
+  // is on and the checks chapter is there (engine/report_tornado.py), so its presence is the whole condition.
+  // Its words (legend, axis) come with it in the report's language.
+  const tornado =
+    (snapshot.data as { checks?: { tornado?: TornadoBlock[] } } | undefined)?.checks?.tornado ?? []
+  for (const block of tornado) {
+    if (!block.parameters?.length) continue
+    const svg = chartSvg(tornadoOption(block, pal, ink, fonts, lang), BAR_WIDTH, tornadoHeight(block))
+    if (svg) figures[chartKey('tornado', block.method_label)] = svg
   }
   // One contribution chart per indicator: baseline and every scenario together where the report
   // compares variants, plain bars where it does not. Per indicator rather than one chart for the

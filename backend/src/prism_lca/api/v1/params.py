@@ -6,7 +6,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import commands, lca, params
+from prism_lca.engine import commands, lca, param_rules, params
 from prism_lca.engine.model import resolve_db_name
 
 router = APIRouter(prefix="/params", tags=["parameters"], dependencies=[Depends(require_token)])
@@ -152,7 +152,28 @@ async def set_params_bulk(request: Request, body: BulkParamRequest) -> dict:
     they serialise behind `_write`. See `params.set_params_bulk` for the measurement (V228/V232).
     """
     cmd = commands.SetParametersCommand(body.database, [p.model_dump() for p in body.parameters])
-    return await _write(_bus(request).execute, cmd, source=body.source)
+    rules = [(p.name, p.rule) for p in body.parameters] if body.source == "ai" else []
+    return await _write(_checked(request, body.database, rules), cmd, source=body.source)
+
+
+def _checked(request: Request, database: str, rules: list[tuple[str, dict | None]]):
+    """The bus's ``execute``, with the assistant's rules checked first (:func:`param_rules.check_assistant_rule`).
+
+    Checked here rather than in the command, because the command does not know who sent it (the chat and the MCP
+    server both arrive as ``source="ai"``); and inside the write's own lock (`_write` calls this under it), so a
+    rule the modeller changes while the assistant's request waits is the rule it is checked against. The name is
+    read as the writers read it — stripped — or `" rate "` passed as a parameter that does not exist yet."""
+    execute = _bus(request).execute
+
+    def run(cmd, **kwargs):
+        db = resolve_db_name(database)
+        for name, rule in rules:
+            if rule is not None:
+                name = (name or "").strip()
+                param_rules.check_assistant_rule(name, rule, params.snapshot(db, name))
+        return execute(cmd, **kwargs)
+
+    return run
 
 
 @router.post("", summary="Create or update a model parameter")
@@ -161,7 +182,8 @@ async def set_param(request: Request, body: ParamRequest) -> dict:
         body.database, body.name, body.amount, body.formula, body.group_id,
         body.description, body.unit, group=body.group, rule=body.rule,
     )
-    return await _write(_bus(request).execute, cmd, source=body.source)
+    rules = [(body.name, body.rule)] if body.source == "ai" else []
+    return await _write(_checked(request, body.database, rules), cmd, source=body.source)
 
 
 @router.get("/groups", summary="List a model's parameter groups")

@@ -382,7 +382,7 @@ def _assert_marked(seen: list[dict], *, kind: str, label: str, name: str = "kwh"
         assert frames[0]["overrides"][name] == pytest.approx(float(step["values"][name]))
 
 
-def test_sensitivity_windows_are_marked_and_leave_nothing(client, token, project, writes):
+def test_sensitivity_windows_are_marked_and_leave_nothing(client, token, project, writes, written_steps):
     _model(client, token)
     cases = [
         ("tornado", {"database": DB, "code": "bottle", "method": METHOD, "delta": 0.5},
@@ -471,7 +471,7 @@ def test_a_sensitivity_marker_that_cannot_be_proved_is_reported(client, token, p
     assert "kwh" in finding["message"]
 
 
-def test_a_marker_write_failure_refuses_a_curve_too(client, token, project, monkeypatch):
+def test_a_marker_write_failure_refuses_a_curve_too(client, token, project, monkeypatch, written_steps):
     _model(client, token)
 
     def refuse(_frames):

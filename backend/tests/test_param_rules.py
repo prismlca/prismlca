@@ -166,3 +166,83 @@ def test_a_parameter_written_before_rules_existed_has_none(client, token, projec
     row = next(p for p in client.get(f"/api/v1/params?database={db}", headers=token).json() if p["name"] == "free")
     assert row["rule"] == {}
     assert _set(client, token, db, name="free", amount=-999).status_code == 200
+
+
+# --------------------------------------------------------------------------- rules from the assistant
+def _ai(client, token, db, **kw):
+    return client.post("/api/v1/params", json={"database": db, "source": "ai", **kw}, headers=token)
+
+
+def _rule_of(client, token, db, name):
+    return next(p for p in client.get(f"/api/v1/params?database={db}", headers=token).json()
+                if p["name"] == name)["rule"]
+
+
+def test_the_assistant_gives_a_new_parameter_the_rule_its_meaning_fixes(client, token, project):
+    db = _model(client, token, "pr-ai")
+    assert _ai(client, token, db, name="share", amount=0.85, rule={"kind": "range", "min": 0, "max": 1}).status_code == 200
+    assert _ai(client, token, db, name="km", amount=120, rule={"kind": "positive"}).status_code == 200
+    assert _ai(client, token, db, name="heat_pump", amount=1, rule={"kind": "list", "values": [1, 0]}).status_code == 200
+    assert _rule_of(client, token, db, "share") == {"kind": "range", "min": 0.0, "max": 1.0}
+    assert _rule_of(client, token, db, "heat_pump") == {"kind": "list", "values": [1.0, 0.0]}
+
+
+def test_the_assistant_sets_no_list_but_the_switch(client, token, project):
+    db = _model(client, token, "pr-ai-list")
+    r = _ai(client, token, db, name="fill", amount=0.5, rule={"kind": "list", "values": [0.25, 0.5, 0.75]})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "param_rule_list_not_yours"
+    assert all(p["name"] != "fill" for p in client.get(f"/api/v1/params?database={db}", headers=token).json())
+
+
+def test_the_assistant_leaves_an_existing_rule_alone(client, token, project):
+    db = _model(client, token, "pr-ai-old")
+    _set(client, token, db, name="rate", amount=0.5, rule={"kind": "range", "min": 0, "max": 1})
+    _set(client, token, db, name="free", amount=0.05)
+    for name, rule in (("rate", {"kind": "positive"}), ("rate", {}), ("free", {"kind": "range", "min": 0, "max": 1})):
+        r = _ai(client, token, db, name=name, amount=0.4, rule=rule)
+        assert r.status_code == 400 and r.json()["error"]["code"] == "param_rule_not_yours", (name, rule)
+    assert _rule_of(client, token, db, "free") == {}
+    # Spelled with spaces the writers strip, it is still the existing parameter.
+    for name in (" rate ", "rate "):
+        r = _ai(client, token, db, name=name, amount=0.4, rule={})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "param_rule_not_yours", name
+    bulk = client.post("/api/v1/params/bulk", json={"database": db, "source": "ai", "parameters": [
+        {"name": " rate", "amount": 0.4, "rule": {"kind": "positive"}}]}, headers=token)
+    assert bulk.status_code == 400 and bulk.json()["error"]["code"] == "param_rule_not_yours"
+    assert _rule_of(client, token, db, "rate") == {"kind": "range", "min": 0.0, "max": 1.0}
+    # The same rule sent again with an update (a batch repeated after a refusal) is no change, and passes.
+    assert _ai(client, token, db, name="rate", amount=0.4, rule={"kind": "range", "min": 0, "max": 1}).status_code == 200
+    # And without a rule the assistant updates values as before.
+    assert _ai(client, token, db, name="free", amount=0.07).status_code == 200
+
+
+def test_a_batch_with_one_rule_the_assistant_may_not_set_writes_nothing(client, token, project):
+    db = _model(client, token, "pr-ai-bulk")
+    r = client.post("/api/v1/params/bulk", json={"database": db, "source": "ai", "parameters": [
+        {"name": "share", "amount": 0.85, "rule": {"kind": "range", "min": 0, "max": 1}},
+        {"name": "fill", "amount": 0.5, "rule": {"kind": "list", "values": [0.25, 0.5]}},
+    ]}, headers=token)
+    assert r.status_code == 400 and r.json()["error"]["code"] == "param_rule_list_not_yours"
+    assert client.get(f"/api/v1/params?database={db}", headers=token).json() == []
+
+
+def test_the_modeller_still_sets_any_rule(client, token, project):
+    db = _model(client, token, "pr-user")
+    assert _set(client, token, db, name="fill", amount=0.5,
+                rule={"kind": "list", "values": [0.25, 0.5, 0.75]}).status_code == 200
+    assert _set(client, token, db, name="fill", rule={"kind": "range", "min": 0, "max": 1}).status_code == 200
+
+
+def test_the_health_check_asks_about_a_share_without_a_rule(client, token, project):
+    db = _model(client, token, "pr-health")
+    _set(client, token, db, name="return_rate", amount=0.97)
+    _set(client, token, db, name="loss", amount=0.05, unit="-")
+    _set(client, token, db, name="ruled", amount=0.5, rule={"kind": "range", "min": 0, "max": 1})
+    _set(client, token, db, name="mass_kg", amount=0.35, unit="kg")
+    _set(client, token, db, name="switch", amount=1)
+    _set(client, token, db, name="half", formula="return_rate / 2")
+    findings = client.get(f"/api/v1/model/health/{db}", headers=token).json()["findings"]
+    hits = [f for f in findings if f["code"] == "share_without_rule"]
+    assert len(hits) == 1 and hits[0]["severity"] == "info"
+    assert hits[0]["parameters"] == ["loss", "return_rate"] or hits[0]["parameters"] == ["return_rate", "loss"]
+    assert "return_rate (0.97)" in hits[0]["message"] and "Parameters page" in hits[0]["message"]

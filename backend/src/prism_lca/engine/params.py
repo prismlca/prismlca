@@ -111,17 +111,7 @@ def recalc_database(database: str, model_change: bool = True, strict: bool = Fal
     if DatabaseParameter.select().where(DatabaseParameter.database == database).exists():
         Group.get_or_create(name=database)[0].expire()
         DatabaseParameter.recalculate(database)
-    # The activity groups of this model: named `prism__<db>__<code>` by us, and backed by a row that
-    # carries the database — both are used, so a group registered either way is found.
-    prefix = _group_name(database, "")
-    names = {g.name for g in Group.select().where(Group.name.startswith(prefix))}
-    names |= {
-        row.group
-        for row in ActivityParameter.select(ActivityParameter.group)
-        .where(ActivityParameter.database == database)
-        .distinct()
-    }
-    for g in sorted(names):
+    for g in model_groups(database):
         # A stale group is evaluated first and OUTSIDE the guard: a formula that names something the
         # model does not have raises here, and the callers turn that into their answer — the sheet
         # import lists it under `formulas_unresolved`, `set_param` refuses the edit. Swallowing it
@@ -138,6 +128,21 @@ def recalc_database(database: str, model_change: bool = True, strict: bool = Fal
     from prism_lca.engine import lca
 
     lca.invalidate_lca_cache(model_change=model_change)
+
+
+def model_groups(database: str) -> list[str]:
+    """The activity parameter groups of one model, in the order the recalculation walks them: named
+    ``prism__<db>__<code>`` by us, and backed by a row that carries the database — both are used, so a
+    group registered either way is found."""
+    _PP, ActivityParameter, Group, _parameters = _P()
+    names = {g.name for g in Group.select().where(Group.name.startswith(_group_name(database, "")))}
+    names |= {
+        row.group
+        for row in ActivityParameter.select(ActivityParameter.group)
+        .where(ActivityParameter.database == database)
+        .distinct()
+    }
+    return sorted(names)
 
 
 def _get_row(database: str, name: str):

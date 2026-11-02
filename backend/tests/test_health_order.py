@@ -83,5 +83,6 @@ PINNED = [
     ("warning", "circular_reference"),
     ("info", "unrecorded_scope"),
     ("info", "unused_parameter"),
+    ("info", "share_without_rule"),  # dead_share = 0.3, no unit, no rule
     ("info", "duplicate_identity"),
 ]

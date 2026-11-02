@@ -191,7 +191,9 @@ def _sensitivity(data: dict[str, Any], lang: str) -> list[dict]:
     subjects = [s for s in data.get("subjects") or [] if s.get("results")]
     varied = [s for s in subjects if s.get("scenario")]
     if len(subjects) < 2 or not varied:
-        blocks.append(rm.note(t("checks.no_scenarios", lang)))
+        # With the parameter tornado below, the sensitivity check is not missing — it is that figure.
+        tornado = (data.get("checks") or {}).get("tornado") is not None
+        blocks.append(rm.note(t("checks.no_scenarios_tornado" if tornado else "checks.no_scenarios", lang)))
         return blocks
 
     rows: list[list[str]] = []
@@ -767,11 +769,14 @@ def critical_review_note(data: dict[str, Any], report: dict[str, Any], lang: str
     return [rm.note(t("limits.iso_review_required", lang))]
 
 
-def interpretation_blocks(data: dict[str, Any], health: dict | None, lang: str, title: str) -> list[dict]:
-    """The whole chapter: heading, then the three checks in the order the standard names them."""
+def interpretation_blocks(data: dict[str, Any], health: dict | None, lang: str, title: str,
+                          tornado: list[dict] | None = None) -> list[dict]:
+    """The whole chapter: heading, then the three checks in the order the standard names them — with the
+    parameter tornado, when the report asks for one, as part of the sensitivity check (report_tornado)."""
     return [
         rm.heading(title, 1),
         *_completeness(data, health, lang),
         *_sensitivity(data, lang),
+        *(tornado or []),
         *_consistency(data, lang),
     ]

@@ -334,13 +334,15 @@ def update_report(request: Request, database: str, report_id: str, body: UpdateR
     # chapter's record is compared against (`report_staleness.selection_of`), `lang` included: a
     # report switched to another language has chapters written in the old one.
     moves = {"subjects", "methods", "amount", "aggregate_by", "lang"}
-    moved = bool(moves & set(patch))
     # `options` is a mixed bag — outlines and figures are how the document is dressed — but the
-    # significance threshold is a number the prose quotes, so it belongs to the same comparison. Sent
-    # whole by the panel, so this fires for a neighbouring toggle too; a re-check answers from the
-    # cached snapshot and is arithmetic on records already stored.
-    if isinstance(patch.get("options"), dict) and "significance_percent" in patch["options"]:
-        moved = True
+    # significance threshold is a number the prose quotes, and the parameter tornado's numbers are in the
+    # snapshot a written comment quotes, so both belong to the same comparison. Sent whole by the panel,
+    # so this fires for a neighbouring toggle too; a re-check answers from the cached snapshot and is
+    # arithmetic on records already stored.
+    options = patch.get("options") if isinstance(patch.get("options"), dict) else {}
+    moved_options = [name for key, name in (("significance_percent", "significance_percent"),
+                                            ("tornado", "parameter tornado")) if key in options]
+    moved = bool(moves & set(patch)) or bool(moved_options)
     # Logged for exactly the fields that move a verdict, and for no others. A palette, a cover picture
     # or a subtitle is how the document is dressed; these five (plus the threshold the prose quotes)
     # decide what it is *about*, so they are the reason a chapter somebody paid for stops being
@@ -348,9 +350,7 @@ def update_report(request: Request, database: str, report_id: str, body: UpdateR
     # would instead put one entry in the log per toggle click, since options are written through
     # without a Save button.
     if moved:
-        changed = sorted(moves & set(patch))
-        if isinstance(patch.get("options"), dict) and "significance_percent" in patch["options"]:
-            changed.append("significance_percent")
+        changed = sorted(moves & set(patch)) + moved_options
         report_audit.note(
             request,
             "set_report_basis",

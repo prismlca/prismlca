@@ -8,6 +8,7 @@ import {
   runState,
   signedPct,
   sortedEntries,
+  swing,
   violates
 } from './sensitivity'
 import type { SensInput, TornadoEntry, TornadoResult } from './types'
@@ -30,10 +31,20 @@ const entry = (
 describe('what a tornado bar says', () => {
   it('sorts by the swing of the indicator on screen, not of the first one', () => {
     const r = {
+      baseline: [1.5, 10],
       entries: [entry('a', [1, 10], [2, 10.1]), entry('b', [1, 10], [1.5, 15])]
     } as TornadoResult
     expect(sortedEntries(r, 0).map((e) => e.param)).toEqual(['a', 'b'])
     expect(sortedEntries(r, 1).map((e) => e.param)).toEqual(['b', 'a'])
+  })
+
+  it('ranks a parameter that moves the result the same way on both sides by how far it moves it', () => {
+    const r = {
+      baseline: [10],
+      entries: [entry('small', [9.8], [10.2]), entry('even', [11], [11])]
+    } as TornadoResult
+    expect(sortedEntries(r, 0).map((e) => e.param)).toEqual(['even', 'small'])
+    expect(swing(r.entries[1], 0, 10)).toBe(1)
   })
 
   it('prints a percentage with a real minus and fewer decimals from 1 % up', () => {

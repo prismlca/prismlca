@@ -125,6 +125,41 @@ def check_rule(rule: dict | None) -> dict:
     return {"kind": "list", "values": values}
 
 
+#: The one list rule the assistant may give a parameter: a switch. Which other discrete values a study admits
+#: (0.25, 0.5, 0.75) is the modeller's decision about the study, not a guard against a typo.
+ASSISTANT_LIST = [0.0, 1.0]
+
+
+def check_assistant_rule(name: str, rule: dict | None, prior: dict | None) -> None:
+    """Refuse a rule the assistant may not write. ``prior``: the parameter as it stands (``params.snapshot``),
+    None when the call creates it.
+
+    The assistant gives a parameter it CREATES the rule its meaning fixes — a share between 0 and 1, a mass
+    above 0, a switch of 0 or 1 — because it is the one writing the parameter, and an unruled share is what let
+    a sensitivity step move a return rate of 0.97 to 1.067. An existing parameter's rule is the modeller's: it
+    may be sent again unchanged (a batch repeated after a refusal), never changed or removed."""
+    if rule is None:
+        return
+    wanted = check_rule(rule)
+    if prior is not None:
+        if wanted == check_rule((prior.get("data") or {}).get("rule")):
+            return
+        raise PrismError(
+            f"'{name}' already exists, and its rule is the modeller's: you cannot set, change or remove it.",
+            code="param_rule_not_yours",
+            hint="Leave 'rule' out when you update an existing parameter. If it needs a rule, tell the user "
+            "which parameter and which rule, and they set it on the Parameters page.",
+        )
+    if wanted.get("kind") == "list" and sorted(wanted["values"]) != ASSISTANT_LIST:
+        raise PrismError(
+            f"The rule for '{name}' would be {describe(wanted)}; the only list rule you can set is 0 and 1, "
+            "for an on/off switch.",
+            code="param_rule_list_not_yours",
+            hint="Give a share or rate range 0 to 1 and a mass, distance or count positive. Which discrete "
+            "values a study allows is the user's choice: leave 'rule' out and name the values to them.",
+        )
+
+
 def _as_number(value: object, what: str) -> float | None:
     """A number, or None for "not given". A comma decimal is accepted — the field is typed by hand."""
     if value is None:

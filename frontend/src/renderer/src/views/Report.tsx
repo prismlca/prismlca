@@ -22,6 +22,7 @@ import { bytesFromBase64, deliverBase64, deliverBytes } from '../lib/download'
 import { errMsg } from '../lib/errors'
 
 import { figuresFromSnapshot, type MethodReference, type SourcesSnapshot } from '../lib/report/figures'
+import { shortTornadoBody } from './report/TornadoOption'
 import { reviewRefusal } from '../lib/report/staleness'
 
 /** Re-exported for the figure editor and the report model, which imported them from here. */
@@ -433,7 +434,8 @@ export default function Report({
       background_tier: shortSettings.background_tier,
       per_process: shortSettings.per_process,
       colour_by: shortSettings.colour_by || null,
-      edge_amounts: shortSettings.edge_amounts
+      edge_amounts: shortSettings.edge_amounts,
+      ...shortTornadoBody(shortSettings, chosen)
     }),
     [activeDb, code, chosen, shortSettings, shortHead]
   )

@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-11-02",
+    "title": "Parameter tornado in reports",
+    "details": "Short and full reports can print a parameter tornado under the sensitivity check in Interpretation checks: tick Parameter sensitivity (tornado), pick indicators from the report's own and a range. It always runs on the baseline of the reference process, and the AI writer can quote its numbers. Sensitivity runs now take seconds and no longer hold up other calculations."
+  },
+  {
+    "date": "2026-11-02",
+    "title": "Allowed values for new parameters",
+    "details": "When the assistant creates a parameter, it now gives it the rule its meaning fixes: a share between 0 and 1, a distance or mass above 0, a switch of 0 or 1. The rules of existing parameters stay yours. The health check asks about unitless values between 0 and 1 that still have no rule."
+  },
+  {
     "date": "2026-11-01",
     "title": "Sensitivity analysis",
     "details": "Results has a third tab, Sensitivity analysis: a tornado ranks the model's parameters by how far a step of ±10 % (or your own range) moves the result, and a curve follows one parameter across a range for the baseline and its scenarios. Every step stays within the parameter's allowed values; a bar that could not move the full range is marked with *. The first two tabs are now called Results and Decomposition tree."

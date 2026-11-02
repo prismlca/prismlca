@@ -28,7 +28,7 @@ const NO_SCENARIOS: { id: string; name: string }[] = []
  * of one parameter across a range, side by side, for one subject of the open model.
  *
  * The rail holds the subject and each chart's settings; each card holds its own Calculate, progress and
- * Cancel, because the two runs are independent and take minutes. Both runs are backend jobs
+ * Cancel, because the two runs are independent and either can take a while. Both runs are backend jobs
  * (engine/sensitivity_jobs.py), and both results are kept with the model's view.
  */
 export default function Sensitivity({

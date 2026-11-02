@@ -100,3 +100,37 @@ def project(client: TestClient, token: dict[str, str]) -> str:
     r = client.post("/api/v1/projects", json={"name": name}, headers=token)
     assert r.status_code == 200, r.text
     return name
+
+
+@pytest.fixture
+def written_steps(monkeypatch) -> None:
+    """Sensitivity runs write every step into the model — the path a run takes when the fast one
+    (engine/sensitivity_fast.py) does not take the model. For the tests of that path's window."""
+    from prism_lca.engine import sensitivity_fast
+
+    monkeypatch.setattr(sensitivity_fast, "ENABLED", False)
+
+
+@pytest.fixture(params=["fast", "written"])
+def sensitivity_path(request, monkeypatch):
+    """Runs a sensitivity test once on each path; both have to give the same answer. On the fast one, a
+    run that quietly fell back to writing its steps fails the test: it would have tested the other path
+    twice."""
+    from prism_lca.engine import sensitivity_fast
+
+    if request.param == "written":
+        monkeypatch.setattr(sensitivity_fast, "ENABLED", False)
+        yield request.param
+        return
+    taken: list[bool] = []
+    real = sensitivity_fast.build
+
+    def watched(*args, **kwargs):
+        out = real(*args, **kwargs)
+        taken.append(out is not None)
+        return out
+
+    monkeypatch.setattr(sensitivity_fast, "build", watched)
+    yield request.param
+    if sensitivity_fast.ENABLED:  # not a test that asked for the written steps (written_steps)
+        assert all(taken), "a run on a test model fell back to writing its steps"

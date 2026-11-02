@@ -13,7 +13,7 @@ from typing import Any
 # Top-level on purpose: an earlier comment here claimed report_checks imports this module back —
 # it never has (it reads only report_i18n and report_model), so the call-time import it justified
 # was a workaround for a cycle that does not exist.
-from prism_lca.engine import report_checks
+from prism_lca.engine import report_checks, report_tornado
 
 # The façade: the split halves, re-exported under their long-standing addresses (`as`-form so the
 # linter reads them as deliberate re-exports, not unused imports).
@@ -352,6 +352,8 @@ def build_data(
     #: The latest internal review's outcome (dates, staleness, the builder's per-finding verdicts) —
     #: `ReviewLogStore.for_report`. None when no review was ever run.
     review: dict | None = None,
+    #: The parameter tornado of the reference process — `report_tornado.compute`. None while it is off.
+    tornado: dict | None = None,
     lang: str = "en",
 ) -> dict[str, Any]:
     """The report's data snapshot — what gets written to ``data.json`` in an export bundle.
@@ -479,6 +481,9 @@ def build_data(
     # The three ISO 14044 §4.5 checks as numbers, so a comment on that chapter can *quote* them instead
     # of typing them out — and so the table and the sentence under it cannot disagree.
     data["checks"] = report_checks.checks_summary(data, lang=lang)
+    if tornado is not None:
+        data["checks"]["tornado"] = report_tornado.rows(tornado, data, lang)
+        data["checks"]["tornado_note"] = report_tornado.note(tornado, data, lang)
     # Where the ranking turns over between indicators. Computed, not asked of a model: this is the one
     # thing a comparison across categories can honestly say, and it is arithmetic.
     data["trade_offs"] = trade_offs(data)

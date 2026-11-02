@@ -54,18 +54,31 @@ the other key a **scenario** overriding `alloc_share` — that is exactly what p
 
 ## What a parameter is allowed to hold
 
-A parameter may carry a **rule** the modeller set — only positive, only negative, a range (one open end
-means "at least" / "at most"), or one of a list of values. `list_parameters` reports it as `allowed`
-("between 0 and 1", "one of 0.25, 0.5, 0.75"); a parameter without one accepts any number.
+A parameter may carry a **rule** — only positive, only negative, a range (one open end means "at least" /
+"at most"), or one of a list of values. `list_parameters` reports it as `allowed` ("between 0 and 1",
+"one of 0.25, 0.5, 0.75"); a parameter without one accepts any number.
 
 A value outside the rule is **refused** — the parameter's own amount, what a formula computes for it, a
 scenario override, and every cell of an imported scenario workbook. The refusal names the parameter and
 what it allows, so read it and act on it rather than retrying.
 
-You cannot set or change a rule. It is a decision about the study, and it belongs to the modeller: if a
-figure you were given breaks one — a recycling rate of 1.4 where the parameter allows 0 to 1 — do not
-work around it by renaming the parameter or dropping the rule. Say which parameter, what it allows and
-what you were given, and ask. Nine times out of ten the number was a percentage.
+**Give a parameter you create the rule its meaning fixes**, in the same `edit_parameter` call (`rule`):
+
+- a share, a rate, an efficiency, a loss → `range` with min 0 and max 1 (`recycled_share`, `return_rate`)
+- a mass, a distance, a count, a duration → `positive` (`bottle_mass_kg`, `transport_km`, `uses`)
+- an on/off choice the formulas multiply by → `switch`, which allows 0 and 1 (`use_heat_pump`)
+- nothing when the meaning does not fix a rule: a factor that can exceed 1 (`tilt_factor` = 1.16, a
+  conversion factor), a value that can be zero or negative by design — and nothing when you are unsure.
+
+The rule is what keeps a scenario and the sensitivity analysis inside what is physically possible: moved
+by +10 %, a return rate of 0.97 without one becomes 1.067, more bottles back than were sold.
+
+A parameter that already exists keeps its rule, and one without a rule stays without: you cannot set,
+change or remove the rule of an existing parameter, and the only list you can set is the switch — which
+discrete values a study allows is the modeller's decision. If a figure you were given breaks a rule — a
+recycling rate of 1.4 where the parameter allows 0 to 1 — do not work around it by renaming the parameter
+or dropping the rule. Say which parameter, what it allows and what you were given, and ask. Nine times out
+of ten the number was a percentage.
 
 ## The tools
 

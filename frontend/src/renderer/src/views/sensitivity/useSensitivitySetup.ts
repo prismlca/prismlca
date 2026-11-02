@@ -35,8 +35,8 @@ const CURVE: CurveSetup = {
 
 /**
  * What the Sensitivity analysis tab remembers per model, in the model's view (prism_meta/views.json): the
- * subject, both cards' settings, and both cards' last finished run. The runs are kept because they cost
- * minutes — a restart or a model switch must not throw one away — and each carries the settings it was
+ * subject, both cards' settings, and both cards' last finished run. The runs are kept because they cost a
+ * calculation — a restart or a model switch must not throw one away — and each carries the settings it was
  * computed with and when it started, so the card can say when it no longer answers what is asked.
  */
 export function useSensitivitySetup(activeDb: string | null): {

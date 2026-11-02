@@ -354,6 +354,9 @@ def snapshot_key(database: str, report_id: str, report: dict, body) -> tuple:
                 for s in sections
                 if s.get("kind") == "system_model"
             ],
+            # Whether the checks chapter carries a parameter tornado, on which indicators and over which
+            # range: it is computed into the snapshot (report_tornado), so switching it is a new snapshot.
+            (report.get("options") or {}).get("tornado"),
             body.code,
             body.methods,
             body.amount,

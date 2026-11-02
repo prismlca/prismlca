@@ -115,6 +115,11 @@ class ShortSettings(RenderRequest):
     #: Annex: rows of the elementary-flow table (0 = all).
     inventory_rows: int | None = None
     significance_percent: float = report_claims.DEFAULT_WEAK_DIFFERENCE_PERCENT
+    #: Interpretation checks: the parameter tornado of the reference process at its baseline
+    #: (report_tornado) — on or off, which of `methods` (none: the first) and the range as a fraction.
+    tornado: bool = False
+    tornado_methods: list[MethodRef] = Field(default_factory=list)
+    tornado_delta: float = Field(default=0.1, gt=0, lt=1)
 
 
 class ShortPreviewRequest(ShortSettings):
@@ -245,6 +250,15 @@ def definition(s: ShortSettings) -> dict[str, Any]:
             "figures": {"heatmap": s.heatmap, "radar": s.radar, "stacked": s.stacked},
             "outlines": {"contents": True, "figures": True, "tables": True},
             "significance_percent": float(s.significance_percent),
+            **(
+                {"tornado": {
+                    "enabled": True,
+                    "methods": [m if isinstance(m, list) else [m] for m in s.tornado_methods],
+                    "delta": float(s.tornado_delta),
+                }}
+                if s.tornado
+                else {}
+            ),
         },
         "sections": sections,
     }

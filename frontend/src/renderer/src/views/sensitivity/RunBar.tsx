@@ -5,7 +5,7 @@ import type { JobSnapshot, StoredRun } from './types'
 /**
  * The foot row of a sensitivity card, under its chart: Calculate, or — while the card's job runs — its
  * progress bar, the step it is on and Cancel. Each card has its own, with the chart it fills: the two runs have
- * different settings and take minutes each, and a button for one of them in the rail's foot was a button
+ * different settings and their own progress, and a button for one of them in the rail's foot was a button
  * looked for.
  */
 export function RunBar({

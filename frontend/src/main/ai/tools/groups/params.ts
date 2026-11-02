@@ -8,6 +8,7 @@ import { bool, num, obj, objArr, str, strArr } from '../schema'
 import { AI, S, batchResult, runItem } from '../format'
 import { IMPL, delegate } from '../impl'
 import { formulaKept } from '../formulaKept'
+import { RULE_SCHEMA, ruleFor } from '../paramRule'
 
 export const paramsTools: Tool[] = [
   {
@@ -87,7 +88,7 @@ export const paramsTools: Tool[] = [
       function: {
         name: 'edit_parameter',
         description:
-          'Create, update or delete parameters of the active model. action="set" (the default — omit it and you get "set") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and "A if cond else B"), plus optional unit, group and comment. action="delete" removes it (fails if a formula still references it). Pass "parameters" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule the modeller set — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read "allowed" rather than discovering the rule from a refusal. You cannot set or change a rule: it is the modeller\'s decision about their own study, so if a number you were given breaks one, say which parameter and what it allows, and ask.',
+          'Create, update or delete parameters of the active model. action="set" (the default — omit it and you get "set") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and "A if cond else B"), plus optional unit, group and comment. action="delete" removes it (fails if a formula still references it). Pass "parameters" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read "allowed" rather than discovering the rule from a refusal. When you CREATE a parameter whose meaning fixes what it may be, give it a rule in the same call: a share, rate, efficiency or loss → range 0 to 1; a mass, distance, count or duration → positive; an on/off switch → switch. Leave it out when the meaning does not fix one (a factor that can exceed 1, a value that can be negative) and on every parameter that already exists: its rule is the modeller\'s decision, so if a number you were given breaks one, say which parameter and what it allows, and ask.',
         parameters: obj(
           {
             action: str('set (default) | delete.'),
@@ -102,6 +103,7 @@ export const paramsTools: Tool[] = [
             unit: str('Optional unit label.'),
             group: str('Optional grouping label.'),
             comment: str('Optional note on meaning, source or assumptions.'),
+            rule: RULE_SCHEMA,
             parameters: objArr(
               'Several parameters at once (all are "set"); each item takes the fields above.',
               {
@@ -111,7 +113,8 @@ export const paramsTools: Tool[] = [
                 clear_formula: bool("true = replace this parameter's formula with the value."),
                 unit: str('Unit label.'),
                 group: str('Grouping label.'),
-                comment: str('Note on meaning, source or assumptions.')
+                comment: str('Note on meaning, source or assumptions.'),
+                rule: RULE_SCHEMA
               }
             )
           },
@@ -139,7 +142,8 @@ export const paramsTools: Tool[] = [
               formula: it.formula || (it.clear_formula === true ? '' : undefined),
               unit: it.unit,
               group: it.group,
-              description: it.comment
+              description: it.comment,
+              rule: ruleFor(it.rule)
             })),
             ...AI
           })

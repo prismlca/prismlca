@@ -12,7 +12,8 @@ import {
   limitedNote,
   pctLabel,
   signedPct,
-  sortedEntries
+  sortedEntries,
+  swing
 } from './sensitivity'
 import type { JobSnapshot, StoredRun, TornadoResult } from './types'
 
@@ -69,7 +70,7 @@ export function TornadoCard({
   const pct = result ? `±${pctLabel(result.delta)} %` : ''
   const name = (i: number): string =>
     result ? indicatorLabel(result.methods[i], labels) || result.methods[i][1] : ''
-  const restMax = result && sorted.length > TOP ? Math.abs(sorted[TOP].high[m] - sorted[TOP].low[m]) : 0
+  const restMax = result && sorted.length > TOP ? swing(sorted[TOP], m, result.baseline[m]) : 0
   const limited = sorted.filter((e) => e.limited)
   const broke = sorted.filter((e) => e.breaks)
   const skipped = result?.skipped ?? []
@@ -184,8 +185,8 @@ export function TornadoCard({
         <p className="sens-empty">This model has no parameter the tornado could vary.</p>
       ) : (
         <p className="sens-empty">
-          No tornado yet. Choose its settings on the left and click Calculate. A run takes a few seconds per
-          parameter; other calculations wait until it is done.
+          No tornado yet. Choose its settings on the left and click Calculate. A run usually takes a few
+          seconds.
         </p>
       )}
       <RunBar
