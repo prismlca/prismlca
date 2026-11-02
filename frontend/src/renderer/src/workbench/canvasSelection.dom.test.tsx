@@ -25,7 +25,6 @@ const deps = (routes: Routes = {}): CanvasModelDeps => {
     },
     activeDb: null,
     setConfirm: () => {},
-    setError: () => {},
     reloadAudit: vi.fn(async () => {}),
     edgeDigits: 3
   }

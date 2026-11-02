@@ -38,9 +38,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/CanvasChat.tsx': 1277, // 1252
   'renderer/src/views/report/useChapterWriter.ts': 900, // 875, after the correction path went (Update report replaces it)
   'main/ai/subagent.ts': 1279, // 1254
-  // 1199: the canvas selection lives here, so `selectOnly` does too, and its setter (now from
-  // lib/useIdListState) is listed in the dependencies of every callback that clears the selection.
-  'renderer/src/workbench/useCanvasModel.ts': 1216,
+  'renderer/src/workbench/useCanvasModel.ts': 1141, // 1116
   'renderer/src/views/DetailedResults.tsx': 1237, // 1212
   'renderer/src/views/Report.tsx': 1202, // 1177
   'renderer/src/views/ImportWizard.tsx': 1208, // 1183

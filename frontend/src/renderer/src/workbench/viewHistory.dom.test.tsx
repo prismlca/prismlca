@@ -47,7 +47,6 @@ async function mounted() {
     },
     activeDb,
     setConfirm: () => {},
-    setError: () => {},
     reloadAudit: vi.fn(async () => {}),
     edgeDigits: 3
   })

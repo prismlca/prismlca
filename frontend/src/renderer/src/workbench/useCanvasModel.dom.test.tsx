@@ -5,12 +5,13 @@
  * disagree" (the class behind the resurrected-ghost bug on the Kimi run) turns red here.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { makePrism, type PrismFixture, type Routes } from '../test/prism'
 import { resetQueryCache } from '../lib/server/useQuery'
 import { useCanvasModel, type CanvasModelDeps } from './useCanvasModel'
 import type { Graph } from '../lib/api'
-import type { ConfirmSpec } from '../views/ConfirmDialog'
+import ConfirmDialog, { type ConfirmSpec } from '../views/ConfirmDialog'
 
 beforeEach(() => resetQueryCache())
 
@@ -26,7 +27,6 @@ const GRAPH: Graph = {
 interface Rig {
   prism: PrismFixture
   confirms: ConfirmSpec[]
-  errors: (string | null)[]
   deps: CanvasModelDeps
 }
 
@@ -34,7 +34,6 @@ function rig(routes: Routes = {}, activeDb: string | null = null): Rig {
   const fixture = makePrism(routes)
   ;(window as unknown as { prism: unknown }).prism = fixture.prism
   const confirms: ConfirmSpec[] = []
-  const errors: (string | null)[] = []
   const deps: CanvasModelDeps = {
     run: async (fn) => {
       await fn()
@@ -43,11 +42,10 @@ function rig(routes: Routes = {}, activeDb: string | null = null): Rig {
     setConfirm: (spec) => {
       if (spec) confirms.push(spec)
     },
-    setError: (msg) => errors.push(msg),
     reloadAudit: vi.fn(async () => {}),
     edgeDigits: 3
   }
-  return { prism: fixture, confirms, errors, deps }
+  return { prism: fixture, confirms, deps }
 }
 
 describe('buildGraph', () => {
@@ -367,6 +365,157 @@ describe('deleteSelected', () => {
     await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toEqual(['m1/a']))
     expect(result.current.edges).toHaveLength(0)
     expect(result.current.selected).toEqual([])
+  })
+})
+
+/** A process still used outside the selection is asked about on its own, one after the other — as Delete on
+ *  a single process asks — instead of being kept with a note at the end. */
+describe('deleting several processes that are still in use', () => {
+  const THREE: Graph = {
+    ...GRAPH,
+    nodes: [
+      ...GRAPH.nodes,
+      { id: 'm1/c', name: 'Coating', location: 'DE', unit: 'kg', external: false }
+    ] as Graph['nodes']
+  } as Graph
+
+  it('asks for each in turn, naming who uses it, and deletes only what is confirmed', async () => {
+    const deleted: { code: string; force?: boolean }[] = []
+    const { deps } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/model/graph/m1': THREE,
+        'POST /api/v1/model/activities/delete': (body: unknown) => {
+          const b = body as { code: string; force?: boolean }
+          if (b.force) return (deleted.push(b), { ok: true })
+          return {
+            status: 409,
+            body: {
+              error: {
+                code: 'delete_blocked',
+                message: 'in use',
+                details: { consumers: [{ database: 'm2', code: 'z', name: 'Bike' }] }
+              }
+            }
+          }
+        }
+      },
+      'm1'
+    )
+    // The real dialog, wired as the Workbench wires it: it closes itself right after an answer.
+    let model: ReturnType<typeof useCanvasModel> | null = null
+    function Harness(): JSX.Element | null {
+      const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
+      model = useCanvasModel({ ...deps, setConfirm })
+      return confirm ? <ConfirmDialog spec={confirm} onClose={() => setConfirm(null)} /> : null
+    }
+    render(<Harness />)
+    await waitFor(() => expect(model!.nodes).toHaveLength(3))
+    act(() => model!.deleteSelected(['m1/b', 'm1/c']))
+    fireEvent.click(screen.getByText('Delete 2'))
+    await screen.findByText('Process is in use (1 of 2)')
+    expect(screen.getByText(/“Part” is still an input of “Bike” in the model “m2”/)).toBeTruthy()
+
+    fireEvent.click(screen.getByText('Cancel')) // keep Part; the next question still comes
+    await screen.findByText('Process is in use (2 of 2)')
+    expect(screen.getByText(/“Coating” is still an input/)).toBeTruthy()
+    fireEvent.click(screen.getByText('Delete anyway'))
+    await waitFor(() => expect(deleted).toEqual([{ database: 'm1', code: 'c', force: true }]))
+    await waitFor(() => expect(screen.queryByText(/Process is in use/)).toBeNull())
+  })
+
+  /** Both of THREE's processes in use; the forced delete answers as ``force`` says. The real dialog as the
+   *  Workbench wires it, and a ``run`` that keeps errors, as the Workbench's does. */
+  async function twoInUse(force: (body: { code: string }) => unknown) {
+    const blocked = {
+      status: 409,
+      body: { error: { code: 'delete_blocked', message: 'in use', details: { consumers: [] } } }
+    }
+    const { deps, prism } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/views/m2': { view: {} },
+        'PUT /api/v1/views/m2': { ok: true },
+        'GET /api/v1/model/graph/m1': THREE,
+        'GET /api/v1/model/graph/m2': { database: 'm2', nodes: [], edges: [] },
+        'POST /api/v1/model/activities/delete': (body: unknown) =>
+          (body as { force?: boolean }).force ? force(body as { code: string }) : blocked
+      },
+      'm1'
+    )
+    const errors: string[] = []
+    deps.run = async (fn) => {
+      try {
+        await fn()
+      } catch (e) {
+        errors.push(String(e))
+      }
+    }
+    let model: ReturnType<typeof useCanvasModel> | null = null
+    function Harness(): JSX.Element | null {
+      const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
+      model = useCanvasModel({ ...deps, setConfirm })
+      return confirm ? <ConfirmDialog spec={confirm} onClose={() => setConfirm(null)} /> : null
+    }
+    const view = render(<Harness />)
+    await waitFor(() => expect(model!.nodes).toHaveLength(3))
+    act(() => model!.deleteSelected(['m1/b', 'm1/c']))
+    fireEvent.click(screen.getByText('Delete 2'))
+    await screen.findByText('Process is in use (1 of 2)')
+    return { deps, prism, errors, rerender: () => view.rerender(<Harness />), model: () => model! }
+  }
+
+  it('stops asking when a forced delete fails, so its error stays in view', async () => {
+    const { errors } = await twoInUse(() => ({ status: 500, body: { error: { message: 'disk full' } } }))
+    fireEvent.click(screen.getByText('Delete anyway'))
+    await waitFor(() => expect(errors).toHaveLength(1))
+    expect(errors[0]).toContain('disk full')
+    expect(screen.queryByText(/Process is in use/)).toBeNull() // Coating is not asked about over it
+  })
+
+  it('stops when another model is opened while a forced delete is under way', async () => {
+    let answer: (v: unknown) => void = () => {}
+    const { deps, prism, rerender, model } = await twoInUse(() => new Promise((r) => (answer = r)))
+    fireEvent.click(screen.getByText('Delete anyway'))
+    deps.activeDb = 'm2'
+    rerender()
+    await waitFor(() => expect(model().activeDbRef.current).toBe('m2'))
+    const m1Reads = prism.calls.filter((c) => c.path === '/api/v1/model/graph/m1').length
+    await act(async () => answer({ ok: true }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByText(/Process is in use/)).toBeNull()
+    expect(prism.calls.filter((c) => c.path === '/api/v1/model/graph/m1')).toHaveLength(m1Reads)
+  })
+
+  it('removing several references says so, and names the inputs that go with them', async () => {
+    const boxes = {
+      ...GRAPH,
+      bg_nodes: [
+        { id: 'ei/s', dataset_id: 'ei/s', uids: ['u1'], name: 'steel', external: true },
+        { id: 'ei/e', dataset_id: 'ei/e', uids: ['u2'], name: 'electricity', external: true }
+      ],
+      bg_edges: [
+        { uid: 'u1', amount: 2, type: 'technosphere', source: 'ei/s', target: 'm1/b' },
+        { uid: 'u2', amount: 2, type: 'technosphere', source: 'ei/e', target: 'm1/b' }
+      ]
+    } as unknown as Graph
+    const { deps, confirms } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/model/graph/m1': boxes
+      },
+      'm1'
+    )
+    const { result } = renderHook(() => useCanvasModel(deps))
+    await waitFor(() => expect(result.current.nodes).toHaveLength(4))
+    act(() => result.current.deleteSelected(['ei/s', 'ei/e']))
+    expect(confirms[0].title).toBe('Remove from canvas')
+    expect(confirms[0].message).toBe(
+      'Remove the 2 selected references from the canvas? This deletes 2 inputs of your processes as well — Undo brings them back, one click per input.'
+    )
   })
 })
 

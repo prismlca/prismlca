@@ -1,8 +1,9 @@
 /**
- * The question a delete asks when the process still supplies others. The backend refuses with a
- * message for the assistant (consumer codes, `force=true`) and the same consumers as data
+ * The questions a delete asks. Above all the one when the process still supplies others: the backend
+ * refuses with a message for the assistant (consumer codes, `force=true`) and the same consumers as data
  * (`details.consumers`: database, code, name); the dialog is worded from the data, so a person reads
  * names — including the consumers in other models, which the canvas does not show but the cascade reaches.
+ * And the one question a delete of several asks ({@link deleteManyQuestion}).
  */
 
 interface Consumer {
@@ -43,4 +44,30 @@ export function inUseMessage(label: string, model: string, consumers: Consumer[]
     `“${label}” is still an input of ${who}. Deleting it removes ${one ? 'that input' : 'those inputs'} too. ` +
     `Delete anyway? Undo brings ${one ? 'it' : 'them'} back.`
   )
+}
+
+/** The one question a delete of several asks: ``processes`` of the model are deleted (Undo brings each back,
+ *  one click per process), ``references`` leave the canvas — the background data itself never changes — and
+ *  with them the ``inputs`` they feed into the model's processes. */
+export function deleteManyQuestion(
+  processes: number,
+  references: number,
+  inputs: number
+): { title: string; message: string; confirmLabel: string } {
+  const n = processes + references
+  if (processes)
+    return {
+      title: 'Delete processes',
+      message: `Delete the ${n} selected processes? Model processes can be brought back with Undo — one click per process (${processes}×).`,
+      confirmLabel: `Delete ${n}`
+    }
+  return {
+    title: 'Remove from canvas',
+    message:
+      `Remove the ${n} selected references from the canvas? ` +
+      (inputs
+        ? `This deletes ${inputs === 1 ? 'one input' : `${inputs} inputs`} of your processes as well — Undo brings ${inputs === 1 ? 'it' : 'them'} back, one click per input.`
+        : 'The background data stays as it is.'),
+    confirmLabel: `Remove ${n}`
+  }
 }

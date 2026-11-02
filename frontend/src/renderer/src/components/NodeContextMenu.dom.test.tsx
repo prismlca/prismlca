@@ -11,7 +11,7 @@ const menu = (over: Partial<CtxMenuState>): CtxMenuState => ({
   upstream: 4,
   readOnly: true,
   selCount: 1,
-  targets: { expand: ['ei/a'], collapse: [], localize: ['ei/a'] },
+  targets: { expand: ['ei/a'], collapse: [], locked: ['ei/a'], own: [] },
   groupId: null,
   addTo: null,
   ...over
@@ -46,7 +46,7 @@ describe('NodeContextMenu', () => {
     const h = open(
       menu({
         selCount: 3,
-        targets: { expand: ['ei/a', 'ei/b'], collapse: ['ei/c'], localize: ['ei/a', 'ei/b', 'ei/c'] }
+        targets: { expand: ['ei/a', 'ei/b'], collapse: ['ei/c'], locked: ['ei/a', 'ei/b', 'ei/c'], own: [] }
       })
     )
     fireEvent.click(screen.getByText('Expand upstream of 2 processes'))
@@ -55,10 +55,26 @@ describe('NodeContextMenu', () => {
     expect(h.onCollapse).toHaveBeenCalledWith(['ei/c'])
     fireEvent.click(screen.getByText('Localize 3 processes'))
     expect(h.onLocalize).toHaveBeenCalledWith(['ei/a', 'ei/b', 'ei/c'])
+    fireEvent.click(screen.getByText('Remove 3 processes from canvas'))
+    expect(h.onDelete).toHaveBeenCalledWith(['ei/a', 'ei/b', 'ei/c'])
+  })
+
+  it("deletes the selection's own processes from a process's menu", () => {
+    const h = open(
+      menu({
+        id: 'm1/p',
+        readOnly: false,
+        selCount: 3,
+        targets: { expand: [], collapse: [], locked: ['ei/a'], own: ['m1/p', 'm1/q'] }
+      })
+    )
+    fireEvent.click(screen.getByText('Delete 2 processes'))
+    expect(h.onDelete).toHaveBeenCalledWith(['m1/p', 'm1/q'])
+    expect(screen.getByText('Duplicate')).toBeTruthy() // acts on the clicked process alone
   })
 
   it('says so when nothing has hidden upstream', () => {
-    open(menu({ upstream: 0, targets: { expand: [], collapse: [], localize: ['ei/a'] } }))
+    open(menu({ upstream: 0, targets: { expand: [], collapse: [], locked: ['ei/a'], own: [] } }))
     expect((screen.getByText('No hidden upstream') as HTMLButtonElement).disabled).toBe(true)
   })
 })

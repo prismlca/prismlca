@@ -346,7 +346,6 @@ export default function Workbench(): JSX.Element {
     run,
     activeDb,
     setConfirm,
-    setError,
     reloadAudit,
     edgeDigits: settings.round.edges
   })
@@ -1512,7 +1511,7 @@ export default function Workbench(): JSX.Element {
                     onLocalize={localize}
                     onDuplicate={duplicateActivity}
                     onToLibrary={toLibrary}
-                    onDelete={deleteNode}
+                    onDelete={(ids) => (ids.length > 1 ? deleteSelected(ids) : deleteNode(ids[0]))}
                     onClose={() => setCtxMenu(null)}
                   />
                 ) : null}

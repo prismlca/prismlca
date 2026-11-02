@@ -8,7 +8,8 @@ export interface CtxMenuState {
   readOnly: boolean
   /** How many processes are selected — the menu offers to group them, not just this node. */
   selCount: number
-  /** What Expand, Collapse and Localize act on: the selection's nodes each applies to, or this node. */
+  /** What Expand, Collapse, Localize, Remove and Delete act on: the selection's nodes each applies to, or
+   *  this node. */
   targets: MenuTargets
   /** The group this node belongs to, or `null`. Membership is a list, never geometry, and a process
    *  belongs to at most one group. */
@@ -19,8 +20,8 @@ export interface CtxMenuState {
 
 /** Right-click menu on a canvas node: expand/collapse upstream, group/ungroup, plus — depending on
  * the node — localize/remove (locked reference) or duplicate / move to library / delete (foreground
- * process). Inside a multi-selection, expand, collapse and localize act on every selected node they
- * apply to (see nodeMenuTargets.ts); the other entries act on this node. */
+ * process). Inside a multi-selection, expand, collapse, localize, remove and delete act on every selected
+ * node they apply to (see nodeMenuTargets.ts); duplicate and move to library act on this node. */
 export default function NodeContextMenu({
   menu,
   onExpand,
@@ -44,10 +45,11 @@ export default function NodeContextMenu({
   onDuplicate: (id: string) => void
   /** Move this process into the library, leaving the model linked to it. */
   onToLibrary: (id: string) => void
-  onDelete: (id: string) => void
+  /** Remove (locked) or delete (own) these nodes — one confirm for several. */
+  onDelete: (ids: string[]) => void
   onClose: () => void
 }): JSX.Element {
-  const { expand, collapse, localize } = menu.targets
+  const { expand, collapse, locked, own } = menu.targets
   const many = menu.selCount > 1
   return (
     <div className="node-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
@@ -113,26 +115,30 @@ export default function NodeContextMenu({
         <>
           <button
             onClick={() => {
-              onLocalize(localize)
+              onLocalize(locked)
               onClose()
             }}
             title={
-              localize.length > 1
+              locked.length > 1
                 ? 'Copy each of these processes into the model to edit it there'
                 : 'Copy this ecoinvent process into the foreground to edit it'
             }
           >
-            {localize.length > 1 ? `Localize ${processes(localize.length)}` : 'Localize (edit)'}
+            {locked.length > 1 ? `Localize ${processes(locked.length)}` : 'Localize (edit)'}
           </button>
           <button
             className="danger"
             onClick={() => {
-              onDelete(menu.id)
+              onDelete(locked)
               onClose()
             }}
-            title="Remove this reference from the canvas (no data change)"
+            title={
+              locked.length > 1
+                ? 'Remove these references from the canvas — the background data stays as it is'
+                : 'Remove this reference from the canvas (no data change)'
+            }
           >
-            Remove from canvas
+            {locked.length > 1 ? `Remove ${processes(locked.length)} from canvas` : 'Remove from canvas'}
           </button>
         </>
       ) : (
@@ -161,12 +167,14 @@ export default function NodeContextMenu({
           <button
             className="danger"
             onClick={() => {
-              onDelete(menu.id)
+              onDelete(own)
               onClose()
             }}
-            title="Delete this process from the model"
+            title={
+              own.length > 1 ? 'Delete these processes from the model' : 'Delete this process from the model'
+            }
           >
-            Delete
+            {own.length > 1 ? `Delete ${processes(own.length)}` : 'Delete'}
           </button>
         </>
       )}

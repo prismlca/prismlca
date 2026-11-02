@@ -18,16 +18,23 @@ describe('menuTargets', () => {
     expect(menuTargets(NODES, ['ei/a', 'ei/b', 'ei/c', 'm1/p'], 'ei/a')).toEqual({
       expand: ['ei/a', 'ei/b'],
       collapse: ['ei/c'],
-      localize: ['ei/a', 'ei/b', 'ei/c']
+      locked: ['ei/a', 'ei/b', 'ei/c'],
+      own: ['m1/p']
     })
   })
 
   it('acts on the clicked node alone outside the selection', () => {
-    expect(menuTargets(NODES, ['ei/a', 'ei/b'], 'm1/p')).toEqual({ expand: [], collapse: [], localize: [] })
+    expect(menuTargets(NODES, ['ei/a', 'ei/b'], 'm1/p')).toEqual({
+      expand: [],
+      collapse: [],
+      locked: [],
+      own: ['m1/p']
+    })
     expect(menuTargets(NODES, ['ei/a', 'ei/b'], 'ei/c')).toEqual({
       expand: [],
       collapse: ['ei/c'],
-      localize: ['ei/c']
+      locked: ['ei/c'],
+      own: []
     })
   })
 

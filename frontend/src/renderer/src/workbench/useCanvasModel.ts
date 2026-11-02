@@ -43,6 +43,7 @@ import { useNodeColors } from './useNodeColors'
 import { useViewHistory } from './useViewHistory'
 import { useReferences } from './useReferences'
 import { blockedConsumers, inUseMessage } from './inUse'
+import { useDeleteSelection } from './useDeleteSelection'
 
 /** What an arrow's source supplies for its label: the unit, and the product the arrow carries. */
 type EdgeSource = { unit?: string | null; product?: string | null } | undefined
@@ -58,7 +59,6 @@ export interface CanvasModelDeps {
   run: (fn: () => Promise<void>) => Promise<void>
   activeDb: string | null
   setConfirm: (spec: ConfirmSpec | null) => void
-  setError: (msg: string | null) => void
   reloadAudit: () => Promise<void>
   /** Significant digits for the arrow labels (Settings → rounding). */
   edgeDigits: number
@@ -67,7 +67,7 @@ export interface CanvasModelDeps {
 // The return type is the API surface; spelling it out here would be a second copy of every
 // signature below, kept in step by hand.
 export function useCanvasModel(deps: CanvasModelDeps) {
-  const { run, activeDb, setConfirm, setError, reloadAudit, edgeDigits } = deps
+  const { run, activeDb, setConfirm, reloadAudit, edgeDigits } = deps
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[])
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[])
   const [selected, setSelected] = useIdListState()
@@ -794,106 +794,22 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     ]
   )
 
-  // Delete EVERYTHING selected with ONE confirm that names the count. Foreground processes go
-  // through the backend (undoable); two passes let consumer links INSIDE the selection resolve
-  // themselves without force. Locked references are removed from the canvas afterwards.
-  const deleteSelected = useCallback(() => {
-    const ids = [...selected]
-    if (ids.length < 2) return
-    const isFg = (id: string): boolean => {
-      const n = nodesRef.current.find((x) => x.id === id)
-      return splitId(id)[0] === activeDb && !(n?.data as { readOnly?: boolean } | undefined)?.readOnly
-    }
-    const fg = ids.filter(isFg)
-    const refs = ids.filter((id) => !isFg(id))
-    setConfirm({
-      title: 'Delete processes',
-      message: `Delete the ${ids.length} selected processes?${fg.length ? ` Model processes can be brought back with Undo — one click per process (${fg.length}×).` : ''}`,
-      confirmLabel: `Delete ${ids.length}`,
-      danger: true,
-      onConfirm: () =>
-        void run(async () => {
-          let queue = fg
-          // Passes until one changes nothing: a chain A→B→C selected in supplier order frees exactly one
-          // process per pass, and two fixed passes left A standing with a message that blamed a consumer
-          // outside the selection.
-          for (let progress = true; progress && queue.length; ) {
-            const blocked: string[] = []
-            for (const id of queue) {
-              const [db, code] = splitId(id)
-              try {
-                await api('POST', '/api/v1/model/activities/delete', { database: db, code })
-                stash([id])
-                delete posRef.current[id]
-                if (colorsRef.current[id]) setColorRef.current(id, '')
-              } catch (e) {
-                if (e instanceof ApiError && e.code === 'delete_blocked') blocked.push(id)
-                else throw e
-              }
-            }
-            progress = blocked.length < queue.length
-            queue = blocked
-          }
-          // Selected references: drop their exchanges into SURVIVING model processes, then
-          // remove them (and exclusively-upstream revealed nodes) from the canvas.
-          const removedRefs: string[] = []
-          if (refs.length) {
-            const remove = removeClosure(new Set(refs))
-            removedRefs.push(...remove)
-            const feed = edgesRef.current.filter(
-              (e) =>
-                remove.has(e.source) &&
-                splitId(e.target)[0] === activeDb &&
-                !remove.has(e.target) &&
-                !fg.includes(e.target) &&
-                (e.data as { uid?: string })?.uid
-            )
-            for (const e of feed) {
-              const [adb, acode] = splitId(e.target)
-              await api('POST', '/api/v1/model/exchanges/remove', {
-                activity_database: adb,
-                activity_code: acode,
-                uid: (e.data as { uid: string }).uid
-              })
-            }
-            stash(remove)
-            remove.forEach((r) => {
-              delete posRef.current[r]
-              if (colorsRef.current[r]) setColorRef.current(r, '')
-            })
-            nodesRef.current = nodesRef.current.filter((n) => !remove.has(n.id))
-            edgesRef.current = edgesRef.current.filter((e) => !remove.has(e.source) && !remove.has(e.target))
-            setNodes(nodesRef.current)
-            setEdges(edgesRef.current)
-          }
-          // Deleted, not merely off-canvas: a collapsed node comes back, a deleted one does not, so
-          // this is the moment membership is forgotten (see pruneGroups).
-          dropGroupsRef.current([...fg.filter((id) => !queue.includes(id)), ...removedRefs])
-          setSelected([])
-          if (queue.length)
-            setError(
-              `${queue.length} process(es) were kept — they are still used by processes outside the selection.`
-            )
-          if (activeDb) {
-            await reloadGraph(activeDb)
-            await reloadAudit()
-          }
-        })
-    })
-  }, [
-    selected,
-    activeDb,
-    removeClosure,
-    run,
-    reloadGraph,
-    reloadAudit,
-    setNodes,
-    setEdges,
-    setConfirm,
-    setError,
-    setSelected,
-    stash
-  ])
+  // Delete several at once — the Delete key on a selection, the node menu's Delete and Remove on part of it.
+  const deleteSelected = useDeleteSelection({
+    ...{
+      run,
+      activeDb,
+      activeDbRef,
+      selected,
+      setSelected,
+      setConfirm,
+      nodesRef,
+      edgesRef,
+      setNodes,
+      setEdges
+    },
+    ...{ posRef, colorsRef, setColorRef, dropGroupsRef, removeClosure, stash, reloadGraph, reloadAudit }
+  })
 
   // Delete the selected node. Foreground process → removed from the model (backend, undoable)
   // after a confirm. A locked background process can't be deleted (that would edit ecoinvent) —
