@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useViewField } from '../../lib/modelView'
 import type { Picked } from '../results/types'
-import { DEFAULT_POINTS } from './sensitivity'
+import { DEFAULT_POINTS } from './helpers'
 import type { CurveResult, StoredRun, TornadoResult } from './types'
 
 /** The tornado's settings. `scenario` '' is the baseline. */

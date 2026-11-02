@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { cssVar } from '../../lib/cssVar'
 import { useEChart, type ChartRegistry } from '../../lib/charts/useEChart'
 import { escapeHtml, tooltipBeside } from '../../lib/charts/tooltip'
-import { breakNote, fmtValue, pctLabel, pctOf, signedPct, stepPct } from './sensitivity'
+import { breakNote, fmtValue, pctLabel, pctOf, signedPct, stepPct } from './helpers'
 import type { TornadoEntry } from './types'
 
 /** Row height of one bar, label included. */

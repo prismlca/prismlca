@@ -14,7 +14,7 @@ import {
   signedPct,
   sortedEntries,
   swing
-} from './sensitivity'
+} from './helpers'
 import type { JobSnapshot, StoredRun, TornadoResult } from './types'
 
 const SKIP_TEXT: Record<string, string> = {

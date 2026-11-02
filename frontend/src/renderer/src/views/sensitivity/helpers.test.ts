@@ -10,7 +10,7 @@ import {
   sortedEntries,
   swing,
   violates
-} from './sensitivity'
+} from './helpers'
 import type { SensInput, TornadoEntry, TornadoResult } from './types'
 
 const entry = (

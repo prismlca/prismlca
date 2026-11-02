@@ -1,6 +1,6 @@
 import { NumberInput } from '../../components/NumberInput'
 import type { MethodInfo } from '../results/types'
-import { defaultRange, fmtValue, MAX_POINTS } from './sensitivity'
+import { defaultRange, fmtValue, MAX_POINTS } from './helpers'
 import type { SensInput } from './types'
 import type { CurveSetup } from './useSensitivitySetup'
 

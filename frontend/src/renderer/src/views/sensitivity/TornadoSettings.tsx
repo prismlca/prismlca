@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NumberInput } from '../../components/NumberInput'
 import { IndicatorPicker } from '../results/IndicatorPicker'
-import { DELTA_PRESETS, fmtValue } from './sensitivity'
+import { DELTA_PRESETS, fmtValue } from './helpers'
 import type { SensInput } from './types'
 import type { TornadoSetup } from './useSensitivitySetup'
 

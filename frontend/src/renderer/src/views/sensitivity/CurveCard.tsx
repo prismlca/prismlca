@@ -4,7 +4,7 @@ import { indicatorLabel } from '../../lib/methods'
 import { CURVE_PALETTE } from '../../lib/palette'
 import { CurveChart } from './CurveChart'
 import { RunBar } from './RunBar'
-import { type RunState, fmtValue } from './sensitivity'
+import { type RunState, fmtValue } from './helpers'
 import type { CurveResult, JobSnapshot, StoredRun } from './types'
 
 /**

@@ -1,7 +1,7 @@
 import { cssVar } from '../../lib/cssVar'
 import { useEChart, type ChartRegistry } from '../../lib/charts/useEChart'
 import { escapeHtml, tooltipBeside } from '../../lib/charts/tooltip'
-import { fmtValue } from './sensitivity'
+import { fmtValue } from './helpers'
 import type { CurveResult } from './types'
 
 /**

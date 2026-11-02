@@ -3,7 +3,7 @@ import { methodKey } from '../../components/IndicatorPicker'
 import { indicatorLabel } from '../../lib/methods'
 import type { StoredReportFull } from '../../lib/report/model'
 import { NumberInput } from '../../components/NumberInput'
-import { DELTA_PRESETS } from '../sensitivity/sensitivity'
+import { DELTA_PRESETS } from '../sensitivity/helpers'
 
 /** The parameter tornado of a report: on or off, which of the report's indicators (method keys), the range. */
 export interface TornadoChoice {

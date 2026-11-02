@@ -1,5 +1,5 @@
 import { CalculatorIcon } from '../../components/icons'
-import { fmtDuration, fmtWhen, type RunState } from './sensitivity'
+import { fmtDuration, fmtWhen, type RunState } from './helpers'
 import type { JobSnapshot, StoredRun } from './types'
 
 /**
