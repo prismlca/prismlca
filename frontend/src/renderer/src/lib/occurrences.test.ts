@@ -66,6 +66,40 @@ describe('reconcileBoxes', () => {
     const moves = reconcileBoxes(current, [{ id: 'lib/p#abcdef012345', dataset_id: 'lib/p', uids: ['u9'] }])
     expect(moves.get('lib/p#abcdef012345')).toBe('lib/p')
   })
+
+  // Localize turns a box into a process of the model, and its Undo turns it back: the consumers' inputs
+  // keep their uids across both, and they are what says the two are one node.
+  const process = (id: string): Node =>
+    ({ id, type: 'prism', position: { x: 0, y: 0 }, data: { readOnly: false } }) as Node
+  const arrow = (source: string, uid: string | null) => ({ source, target: 'm1/b', data: { uid } })
+
+  it('hands a localized process the place of the box whose inputs now draw on it', () => {
+    const moves = reconcileBoxes(
+      [box('ei/s', { uids: ['u1'] }), process('m1/b')],
+      [{ id: 'm1/p', process: true, uids: ['u1'] }]
+    )
+    expect(moves.get('m1/p')).toBe('ei/s')
+  })
+
+  it('hands the box back the place of the process that left with its inputs (Undo of Localize)', () => {
+    const moves = reconcileBoxes(
+      [process('m1/p'), process('m1/b')],
+      [{ id: 'ei/s', dataset_id: 'ei/s', uids: ['u1'] }],
+      [arrow('m1/p', 'u1'), arrow('m1/b', 'u-other')]
+    )
+    expect(moves.get('ei/s')).toBe('m1/p')
+  })
+
+  it('matches a process by its inputs only — never by dataset, never one without inputs', () => {
+    expect(
+      reconcileBoxes([box('m1/p', { uids: [] })], [{ id: 'm1/p#x', process: true, uids: [] }]).size
+    ).toBe(0)
+    // A node revealed under an expanded box carries an exchange of the background, not one of the model.
+    const revealed = { ...box('ei/coal', {}), data: { readOnly: true, revealed: true } } as Node
+    expect(
+      reconcileBoxes([revealed], [{ id: 'm1/q', process: true, uids: ['u7'] }], [arrow('ei/coal', 'u7')]).size
+    ).toBe(0)
+  })
 })
 
 describe('connecting from a box', () => {

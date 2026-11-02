@@ -40,6 +40,7 @@ import { NODE_COLORS } from './lib/palette'
 import { type SearchHit, secondaryBackgrounds } from './lib/search'
 import SearchPanel from './components/SearchPanel'
 import NodeContextMenu, { type CtxMenuState } from './components/NodeContextMenu'
+import { menuTargets } from './components/nodeMenuTargets'
 import { usePersisted } from './lib/persist'
 import { useSettings } from './lib/settings'
 import Parameters from './views/Parameters'
@@ -387,8 +388,8 @@ export default function Workbench(): JSX.Element {
     reloadGraph,
     autoLayout,
     history,
-    expandNode,
-    collapse,
+    expandNodes,
+    collapseNodes,
     deleteSelected,
     deleteNode,
     addReference,
@@ -1245,10 +1246,10 @@ export default function Workbench(): JSX.Element {
                       id: node.id,
                       upstream: (node.data as { upstream?: number }).upstream ?? 0,
                       readOnly: (node.data as { readOnly?: boolean }).readOnly ?? false,
-                      expanded: (node.data as { expanded?: boolean }).expanded ?? false,
                       // Same rule as colours and tags: a right-click inside a multi-selection acts on
                       // the selection, a right-click outside it acts on the one node.
                       selCount: sel.includes(node.id) && sel.length > 1 ? sel.length : 1,
+                      targets: menuTargets(nodes, sel, node.id),
                       groupId: groupOf(groupsRef.current, node.id)?.id ?? null,
                       addTo: (() => {
                         // Read off the node selection alone — a selected box clears it, so "a box and
@@ -1503,8 +1504,8 @@ export default function Workbench(): JSX.Element {
                 {ctxMenu ? (
                   <NodeContextMenu
                     menu={ctxMenu}
-                    onExpand={expandNode}
-                    onCollapse={collapse}
+                    onExpand={expandNodes}
+                    onCollapse={collapseNodes}
                     onGroup={() => groupSelection()}
                     onAddTo={addSelectionToGroup}
                     onUngroup={ungroup}

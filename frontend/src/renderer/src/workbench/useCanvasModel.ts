@@ -38,7 +38,6 @@ import { getSettings, fmtSig } from '../lib/settings'
 import { shortUnit } from '../lib/units'
 import type { ConfirmSpec } from '../views/ConfirmDialog'
 import type { BoxData } from '../lib/occurrences'
-import { rememberGone, takeGone } from './goneBoxes'
 import { useBoxes } from './useBoxes'
 import { useNodeColors } from './useNodeColors'
 import { useViewHistory } from './useViewHistory'
@@ -96,7 +95,6 @@ export function useCanvasModel(deps: CanvasModelDeps) {
   // every time a group changes.
   const dropGroupsRef = useRef<(ids: string[]) => void>(() => {})
   const posRef = useRef<Record<string, { x: number; y: number }>>({})
-  const goneRef = useRef<Record<string, { x: number; y: number }>>({}) // see goneBoxes.ts
   // Live mirror of the canvas so buildGraph() can preserve frontend-only nodes
   // (locked ecoinvent references + expanded background tiers) across reloads.
   const nodesRef = useRef<Node[]>([])
@@ -391,7 +389,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
   })
 
   // Boxes per occurrence: the copies the user connected, and what goes with a box that changes its id.
-  const { prepareGraph, noteConnected, loadBoxes, saveBoxes } = useBoxes({
+  const { prepareGraph, handOver, stash, noteConnected, loadBoxes, saveBoxes } = useBoxes({
     nodesRef,
     edgesRef,
     posRef,
@@ -412,15 +410,8 @@ export function useCanvasModel(deps: CanvasModelDeps) {
       const current = new Map(nodesRef.current.map((n) => [n.id, n.position]))
       const { graph: g, dropped: connected } = prepareGraph(raw)
       const backendIds = new Set(g.nodes.map((n) => n.id))
-      // A box leaving with this graph keeps its spot, a box coming back (Undo) gets it again.
-      const present = new Set([...backendIds, ...(g.bg_nodes ?? []).map((n) => n.id)])
-      rememberGone(nodesRef.current, present, goneRef.current)
       // A node with no stored spot stays where it stands; only a new one takes a fallback place.
-      const spot = (id: string): { x: number; y: number } | undefined => {
-        const back = posRef.current[id] ? undefined : takeGone(id, goneRef.current)
-        if (back) posRef.current[id] = back
-        return posRef.current[id] ?? current.get(id)
-      }
+      const spot = (id: string) => posRef.current[id] ?? current.get(id)
       // Arrow labels carry the input's unit and product → every known node id to what it supplies.
       const srcById = new Map<string, EdgeSource>()
       g.nodes.forEach((n) => srcById.set(n.id, n))
@@ -556,73 +547,82 @@ export function useCanvasModel(deps: CanvasModelDeps) {
   // the new inputs are stacked one tier to the LEFT of the expanded node; every other node keeps
   // its position (no horizontal reshuffle of unrelated processes). Use "Auto-layout" for a full
   // re-arrange.
-  const expandNode = useCallback(
-    (id: string) => {
-      void run(async () => {
-        const [db, code] = splitId(id)
-        const ex = await api<ExpandResult>('POST', '/api/v1/model/expand', { database: db, code })
-        // Read AFTER the await, from the mirrors: two expansions in flight each started from the canvas
-        // as it was before either answer, and the later one painted over the earlier one's nodes.
-        // The setters below merge for the same reason.
-        const nodes = nodesRef.current
-        const edges = edgesRef.current
-        const have = new Set(nodes.map((n) => n.id))
-        const parent = nodes.find((n) => n.id === id)
-        const px = parent?.position.x ?? 0
-        const py = parent?.position.y ?? 0
-        const TIER = 360 // one upstream tier to the left (node width 210 + ~150 gap)
-        const ROW = 120 // vertical spacing between the revealed siblings
+  const expandOne = useCallback(
+    async (id: string) => {
+      const [db, code] = splitId(id)
+      const ex = await api<ExpandResult>('POST', '/api/v1/model/expand', { database: db, code })
+      // Read AFTER the await, from the mirrors: two expansions in flight each started from the canvas
+      // as it was before either answer, and the later one painted over the earlier one's nodes.
+      // The setters below merge for the same reason.
+      const nodes = nodesRef.current
+      const edges = edgesRef.current
+      const have = new Set(nodes.map((n) => n.id))
+      const parent = nodes.find((n) => n.id === id)
+      const px = parent?.position.x ?? 0
+      const py = parent?.position.y ?? 0
+      const TIER = 360 // one upstream tier to the left (node width 210 + ~150 gap)
+      const ROW = 120 // vertical spacing between the revealed siblings
 
-        // Every box expands on its own: an input already on the canvas gets a node of its own under this
-        // parent (`<dataset>#<parent>`), so two boxes of one dataset never share their upstream.
-        const idOf = new Map(
-          ex.inputs.map((inp) => {
-            const plain = `${inp.database}/${inp.code}`
-            return [plain, have.has(plain) ? `${plain}#${id}` : plain]
-          })
-        )
-        const fresh = ex.inputs.filter((inp) => !have.has(idOf.get(`${inp.database}/${inp.code}`)!))
-        const startY = py - ((fresh.length - 1) / 2) * ROW // stack centred on the parent
-        const newNodes: Node[] = fresh.map((inp, i) => {
-          const nid = idOf.get(`${inp.database}/${inp.code}`)!
-          const pos = { x: px - TIER, y: startY + i * ROW }
-          posRef.current[nid] = pos
-          // `revealed` marks nodes brought in by expand → collapse may remove them again. A node the
-          // user placed themselves (search/drag reference) is NOT revealed and is never swept.
-          return {
-            id: nid,
-            type: 'prism',
-            position: pos,
-            data: { ...nodeData({ ...inp, id: nid }), revealed: true }
-          }
+      // Every box expands on its own: an input already on the canvas gets a node of its own under this
+      // parent (`<dataset>#<parent>`), so two boxes of one dataset never share their upstream.
+      const idOf = new Map(
+        ex.inputs.map((inp) => {
+          const plain = `${inp.database}/${inp.code}`
+          return [plain, have.has(plain) ? `${plain}#${id}` : plain]
         })
-        const haveEdges = new Set(edges.map((e) => e.id))
-        // Source unit and product for the new arrows: from the freshly revealed inputs, plus placed nodes.
-        const srcById = new Map<string, EdgeSource>()
-        ex.inputs.forEach((inp) => srcById.set(`${inp.database}/${inp.code}`, inp))
-        nodes.forEach((n) => srcById.set(n.id, n.data as EdgeSource))
-        const newEdges: Edge[] = ex.edges
-          .map((e) => ({
-            ...edgeStyle(e.uid, e.amount, 'technosphere', srcById.get(e.source)),
-            // Named after both ends: the same exchange shows under every box that was expanded.
-            id: `${idOf.get(e.source) ?? e.source}__${id}${e.uid ? `__${e.uid}` : ''}`,
-            source: idOf.get(e.source) ?? e.source,
-            target: id
-          }))
-          .filter((e) => !haveEdges.has(e.id))
-        // mark the node expanded → its badge flips to ⊖ (collapse); everyone else stays put
-        setNodes((cur) => {
-          const present = new Set(cur.map((n) => n.id))
-          const base = cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, expanded: true } } : n))
-          return [...base, ...newNodes.filter((n) => !present.has(n.id))]
-        })
-        setEdges((cur) => {
-          const present = new Set(cur.map((e) => e.id))
-          return [...cur, ...newEdges.filter((e) => !present.has(e.id))]
-        })
+      )
+      const fresh = ex.inputs.filter((inp) => !have.has(idOf.get(`${inp.database}/${inp.code}`)!))
+      const startY = py - ((fresh.length - 1) / 2) * ROW // stack centred on the parent
+      const newNodes: Node[] = fresh.map((inp, i) => {
+        const nid = idOf.get(`${inp.database}/${inp.code}`)!
+        const pos = { x: px - TIER, y: startY + i * ROW }
+        posRef.current[nid] = pos
+        // `revealed` marks nodes brought in by expand → collapse may remove them again. A node the
+        // user placed themselves (search/drag reference) is NOT revealed and is never swept.
+        return {
+          id: nid,
+          type: 'prism',
+          position: pos,
+          data: { ...nodeData({ ...inp, id: nid }), revealed: true }
+        }
+      })
+      const haveEdges = new Set(edges.map((e) => e.id))
+      // Source unit and product for the new arrows: from the freshly revealed inputs, plus placed nodes.
+      const srcById = new Map<string, EdgeSource>()
+      ex.inputs.forEach((inp) => srcById.set(`${inp.database}/${inp.code}`, inp))
+      nodes.forEach((n) => srcById.set(n.id, n.data as EdgeSource))
+      const newEdges: Edge[] = ex.edges
+        .map((e) => ({
+          ...edgeStyle(e.uid, e.amount, 'technosphere', srcById.get(e.source)),
+          // Named after both ends: the same exchange shows under every box that was expanded.
+          id: `${idOf.get(e.source) ?? e.source}__${id}${e.uid ? `__${e.uid}` : ''}`,
+          source: idOf.get(e.source) ?? e.source,
+          target: id
+        }))
+        .filter((e) => !haveEdges.has(e.id))
+      // mark the node expanded → its badge flips to ⊖ (collapse); everyone else stays put
+      setNodes((cur) => {
+        const present = new Set(cur.map((n) => n.id))
+        const base = cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, expanded: true } } : n))
+        return [...base, ...newNodes.filter((n) => !present.has(n.id))]
+      })
+      // The mirror at once, for the next expansion of a series: its inputs already here get their own node.
+      nodesRef.current = [...nodes, ...newNodes]
+      setEdges((cur) => {
+        const present = new Set(cur.map((e) => e.id))
+        return [...cur, ...newEdges.filter((e) => !present.has(e.id))]
       })
     },
-    [run, setNodes, setEdges]
+    [setNodes, setEdges]
+  )
+  const expandNode = useCallback((id: string) => void run(() => expandOne(id)), [run, expandOne])
+  /** Expand several (the node menu on a selection), one after the other — each sees the inputs before it. */
+  const expandNodes = useCallback(
+    (ids: string[]) =>
+      void run(async () => {
+        for (const id of ids) await expandOne(id)
+      }),
+    [run, expandOne]
   )
   expandNodeRef.current = expandNode
 
@@ -684,27 +684,32 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     [edges, activeDb]
   )
 
-  // Collapse a node's revealed upstream: hide the inputs it expanded (+ their exclusive ancestors)
-  // and restore its ⊕ badge. Pure view op — never touches background data.
-  const collapse = useCallback(
-    (id: string) => {
-      // Only hide inputs this node revealed via expand — never a reference the user placed.
+  // Collapse nodes' revealed upstream: hide the inputs they expanded (+ their exclusive ancestors)
+  // and restore their ⊕ badges. Pure view op — never touches background data. Several at once (the node
+  // menu on a selection) in one sweep, so an ancestor shared by two of them goes as well.
+  const collapseNodes = useCallback(
+    (ids: string[]) => {
+      const folded = new Set(ids)
+      // Only hide inputs these nodes revealed via expand — never a reference the user placed.
       const revealed = new Set(
         nodesRef.current.filter((n) => (n.data as { revealed?: boolean }).revealed).map((n) => n.id)
       )
-      const directInputs = edges.filter((e) => e.target === id && revealed.has(e.source)).map((e) => e.source)
+      const directInputs = edges
+        .filter((e) => folded.has(e.target) && revealed.has(e.source))
+        .map((e) => e.source)
       const remove = directInputs.length ? removeClosure(new Set(directInputs)) : new Set<string>()
       remove.forEach((r) => delete posRef.current[r])
       setNodes((ns) =>
         ns
           .filter((n) => !remove.has(n.id))
-          .map((n) => (n.id === id ? { ...n, data: { ...n.data, expanded: false } } : n))
+          .map((n) => (folded.has(n.id) ? { ...n, data: { ...n.data, expanded: false } } : n))
       )
       setEdges((es) => es.filter((e) => !remove.has(e.source) && !remove.has(e.target)))
       setSelected([])
     },
     [edges, removeClosure, setNodes, setEdges, setSelected]
   )
+  const collapse = useCallback((id: string) => collapseNodes([id]), [collapseNodes])
   collapseRef.current = collapse
 
   // Remove a background reference node from the canvas (itself + its exclusive upstream). If that
@@ -760,6 +765,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
                     uid: (e.data as { uid: string }).uid
                   })
                 }
+                stash(remove) // Undo brings the inputs back, and with them the box
                 applyLocal()
                 removed = true
                 if (activeDb) {
@@ -783,7 +789,8 @@ export function useCanvasModel(deps: CanvasModelDeps) {
       setNodes,
       setEdges,
       setSelected,
-      setConfirm
+      setConfirm,
+      stash
     ]
   )
 
@@ -816,6 +823,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
               const [db, code] = splitId(id)
               try {
                 await api('POST', '/api/v1/model/activities/delete', { database: db, code })
+                stash([id])
                 delete posRef.current[id]
                 if (colorsRef.current[id]) setColorRef.current(id, '')
               } catch (e) {
@@ -848,6 +856,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
                 uid: (e.data as { uid: string }).uid
               })
             }
+            stash(remove)
             remove.forEach((r) => {
               delete posRef.current[r]
               if (colorsRef.current[r]) setColorRef.current(r, '')
@@ -882,7 +891,8 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     setEdges,
     setConfirm,
     setError,
-    setSelected
+    setSelected,
+    stash
   ])
 
   // Delete the selected node. Foreground process → removed from the model (backend, undoable)
@@ -903,6 +913,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
       }
       const doDelete = async (force: boolean): Promise<void> => {
         await api('POST', '/api/v1/model/activities/delete', { database: db, code, force })
+        stash([id]) // what Undo brings back with the process
         delete posRef.current[id]
         if (colorsRef.current[id]) setColorRef.current(id, '') // free the persisted colour too
         dropGroupsRef.current([id])
@@ -939,11 +950,11 @@ export function useCanvasModel(deps: CanvasModelDeps) {
           })
       })
     },
-    [nodes, activeDb, deleteRef, run, reloadGraph, reloadAudit, setConfirm, setSelected]
+    [nodes, activeDb, deleteRef, run, reloadGraph, reloadAudit, setConfirm, setSelected, stash]
   )
 
-  // Placing references, Localize and the move to the library live in useReferences — they work on single
-  // boxes and hand the result to a reload, so the box bookkeeping above stays the one place it happens.
+  // Placing references, Localize and the move to the library live in useReferences — they work box by box
+  // and hand the result to a reload, so the box bookkeeping above stays the one place it happens.
   const { addReference, localize, toLibrary } = useReferences({
     run,
     activeDb,
@@ -953,6 +964,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     setNodes,
     setEdges,
     nodeData,
+    handOver,
     reloadGraph,
     reloadAudit
   })
@@ -1180,7 +1192,9 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     // the canvas's own undo history (workbench/useViewHistory.ts)
     history,
     expandNode,
+    expandNodes,
     collapse,
+    collapseNodes,
     removeClosure,
     deleteRef,
     deleteSelected,

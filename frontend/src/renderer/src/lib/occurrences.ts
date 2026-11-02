@@ -112,40 +112,67 @@ interface NextBox {
   dataset_id?: string
   uids?: string[]
   tags?: Tag[]
+  /** A process of the model, whose ``uids`` are the inputs that draw on it: matched by those alone. */
+  process?: boolean
+}
+
+/** The model inputs a canvas node supplies: a box holds them, a process of the model is drawn on by them
+ *  (the uids on its arrows out). A node revealed under an expanded box supplies none of the model's. */
+function supplied(n: Node, edges: { source: string; data?: unknown }[]): string[] {
+  const d = n.data as BoxData & { readOnly?: boolean }
+  if (d.uids) return d.uids
+  if (d.readOnly) return []
+  return edges.flatMap((e) => {
+    const uid = e.source === n.id ? (e.data as { uid?: string | null } | undefined)?.uid : null
+    return uid ? [uid] : []
+  })
 }
 
 /**
- * For every box of the incoming graph that is not on the canvas yet, the id of the canvas box it replaces:
+ * For every box of the incoming graph that is not on the canvas yet, the id of the canvas node it replaces:
  * the one that shared the most inputs with it, else (a process that became a reference) the node of the
  * same dataset that is no longer there. Matched by what is on the canvas NOW — a position remembered from
  * an earlier visit of the same id must not stop the box from taking the place, group and colour it has
- * today. Copies the user placed are never matched: they keep their own id (see {@link applyManualBoxes}).
- * Returns ``newId → oldId``.
+ * today. Copies the user placed are never matched to another box: they keep their own id (see
+ * {@link applyManualBoxes}).
+ *
+ * The inputs are what stays when a box turns into a process of the model and back — Localize, its Undo and
+ * Redo, the move to the library and its Undo, whoever made them: the consumers' exchanges keep their uids.
+ * So the incoming processes are matched as well (``process``), and a process leaving the canvas offers the
+ * inputs on its arrows (``edges``, the canvas's own). Returns ``newId → oldId``.
  */
-export function reconcileBoxes(current: Node[], next: NextBox[]): Map<string, string> {
+export function reconcileBoxes(
+  current: Node[],
+  next: NextBox[],
+  edges: { source: string; data?: unknown }[] = []
+): Map<string, string> {
   const nextIds = new Set(next.map((b) => b.id))
   const onCanvas = new Set(current.map((n) => n.id))
   const taken = new Set<string>()
   const out = new Map<string, string>()
-  const before = current.filter((n) => !nextIds.has(n.id) && !isCopyId(n.id))
+  const before = current.filter((n) => !nextIds.has(n.id))
+  const supplies = new Map(before.map((n) => [n.id, supplied(n, edges)]))
   for (const box of next) {
     if (onCanvas.has(box.id)) continue
     const uids = new Set(box.uids ?? [])
     let best: { id: string; overlap: number } | null = null
     for (const n of before) {
-      if (taken.has(n.id)) continue
-      const own = ((n.data as BoxData).uids ?? []).filter((u) => uids.has(u)).length
+      // A copy hands its place on only to the process it became (Localize, and its Redo).
+      if (taken.has(n.id) || (isCopyId(n.id) && !box.process)) continue
+      const own = supplies.get(n.id)!.filter((u) => uids.has(u)).length
       if (own > 0 && (!best || own > best.overlap)) best = { id: n.id, overlap: own }
     }
     const dataset = box.dataset_id ?? datasetIdOf(box.id)
-    const fallback = best
-      ? null
-      : before.find(
-          (n) =>
-            !taken.has(n.id) &&
-            (n.id === dataset || datasetIdOf(n.id) === dataset) &&
-            !(n.data as BoxData).uids?.length
-        )
+    const fallback =
+      best || box.process
+        ? null
+        : before.find(
+            (n) =>
+              !taken.has(n.id) &&
+              !isCopyId(n.id) &&
+              (n.id === dataset || datasetIdOf(n.id) === dataset) &&
+              !(n.data as BoxData).uids?.length
+          )
     const from = best?.id ?? fallback?.id
     if (from) {
       out.set(box.id, from)

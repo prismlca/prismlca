@@ -400,3 +400,311 @@ describe('saving the canvas', () => {
     )
   })
 })
+
+/**
+ * Localize, Delete and removing a supplier take a node away through a model edit, and Undo brings it back —
+ * under its old id, or for Localize as the box the process came from. It came back in the fallback column,
+ * without its colour and outside its group box.
+ */
+describe('what Undo brings back', () => {
+  const STEEL: NonNullable<Graph['bg_nodes']>[number] = {
+    database: 'ei',
+    code: 's',
+    product: 'steel',
+    read_only: true,
+    id: 'ei/s',
+    dataset_id: 'ei/s',
+    uids: ['u1'],
+    tags: [],
+    name: 'steel',
+    location: 'GLO',
+    unit: 'kg',
+    external: true
+  }
+  const BOX: Graph = {
+    ...GRAPH,
+    bg_nodes: [STEEL],
+    bg_edges: [{ uid: 'u1', amount: 2, type: 'technosphere', source: 'ei/s', target: 'm1/b' }]
+  } as Graph
+  // After Localize: the copy m1/p supplies Part through the very same input.
+  const LOCALIZED: Graph = {
+    ...GRAPH,
+    nodes: [...GRAPH.nodes, { id: 'm1/p', name: 'steel', location: 'GLO', unit: 'kg', external: false }],
+    edges: [...GRAPH.edges, { uid: 'u1', amount: 2, type: 'technosphere', source: 'm1/p', target: 'm1/b' }]
+  } as Graph
+  const SPOT = { x: 640, y: 410 }
+  type Hook = ReturnType<typeof renderHook<ReturnType<typeof useCanvasModel>, unknown>>['result']
+  const at = (r: Hook, id: string) => r.current.nodes.find((n) => n.id === id)?.position
+  const members = (r: Hook) => [...(r.current.groupsRef.current[0]?.members ?? [])].sort()
+
+  /** The model open, arranged by hand; steel painted, and in a group box with Part. */
+  async function arranged(routes: Routes) {
+    const { deps, confirms, prism } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/model/graph/m1': BOX,
+        ...routes
+      },
+      'm1'
+    )
+    const { result } = renderHook(() => useCanvasModel(deps))
+    await waitFor(() => expect(result.current.nodes).toHaveLength(3))
+    act(() =>
+      result.current.setNodes((ns) => ns.map((n) => (n.id === 'ei/s' ? { ...n, position: SPOT } : n)))
+    )
+    result.current.posRef.current = { 'm1/a': { x: 0, y: 0 }, 'm1/b': { x: 300, y: 0 }, 'ei/s': SPOT }
+    act(() => result.current.setNodeColor('ei/s', '#e11d48'))
+    act(() => result.current.putGroups([{ id: 'g1', color: '#000000', members: ['ei/s', 'm1/b'] }]))
+    const reload = async (g: Graph) => {
+      prism.setRoute('GET /api/v1/model/graph/m1', g)
+      await act(async () => {
+        await result.current.reloadGraph('m1')
+      })
+    }
+    return { result, confirms, prism, reload }
+  }
+
+  it('Localize hands spot, colour and group to the process, Undo back to the box, Redo again', async () => {
+    const { result, prism, reload } = await arranged({
+      'POST /api/v1/model/activities/copy': { activity: { code: 'p' } }
+    })
+    prism.setRoute('GET /api/v1/model/graph/m1', LOCALIZED)
+    act(() => result.current.localize(['ei/s']))
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toContain('m1/p'))
+    const copy = prism.calls.find((c) => c.path === '/api/v1/model/activities/copy')
+    expect(copy?.body).toMatchObject({ source_code: 's', relink_consumers: true, uids: ['u1'] })
+    expect(at(result, 'm1/p')).toEqual(SPOT)
+    await waitFor(() => expect(result.current.nodeColors['m1/p']).toBe('#e11d48'))
+    expect(members(result)).toEqual(['m1/b', 'm1/p'])
+
+    await reload(BOX) // Undo: the copy is gone, the input draws on steel again
+    expect(at(result, 'ei/s')).toEqual(SPOT)
+    expect(result.current.nodeColors['ei/s']).toBe('#e11d48')
+    expect(members(result)).toEqual(['ei/s', 'm1/b'])
+
+    await reload(LOCALIZED) // Redo
+    expect(at(result, 'm1/p')).toEqual(SPOT)
+    expect(result.current.nodeColors['m1/p']).toBe('#e11d48')
+    expect(members(result)).toEqual(['m1/b', 'm1/p'])
+  })
+
+  it('a removed supplier comes back with its input on Undo — on its spot, in its colour and group', async () => {
+    const { result, confirms, reload, prism } = await arranged({
+      'POST /api/v1/model/exchanges/remove': { ok: true }
+    })
+    prism.setRoute('GET /api/v1/model/graph/m1', GRAPH)
+    act(() => void result.current.deleteRef('ei/s'))
+    await act(async () => confirms[0].onConfirm())
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).not.toContain('ei/s'))
+    // The delete forgets both, so a later box of steel starts plain …
+    expect(result.current.nodeColors['ei/s']).toBeUndefined()
+    expect(members(result)).toEqual(['m1/b'])
+
+    await reload(BOX) // … but Undo brings them back
+    expect(at(result, 'ei/s')).toEqual(SPOT)
+    expect(result.current.nodeColors['ei/s']).toBe('#e11d48')
+    expect(members(result)).toEqual(['ei/s', 'm1/b'])
+  })
+
+  it('a new input of the same dataset under the old id does not bring back the deleted box', async () => {
+    const { result, confirms, reload, prism } = await arranged({
+      'POST /api/v1/model/exchanges/remove': { ok: true }
+    })
+    prism.setRoute('GET /api/v1/model/graph/m1', GRAPH)
+    act(() => void result.current.deleteRef('ei/s'))
+    await act(async () => confirms[0].onConfirm())
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).not.toContain('ei/s'))
+    // Not an Undo: the assistant adds a fresh input from steel, which lands in a box of the same id.
+    await reload({
+      ...BOX,
+      bg_nodes: [{ ...STEEL, uids: ['u9'] }],
+      bg_edges: [{ uid: 'u9', amount: 1, type: 'technosphere', source: 'ei/s', target: 'm1/a' }]
+    } as Graph)
+    expect(result.current.nodeColors['ei/s']).toBeUndefined()
+    expect(members(result)).toEqual(['m1/b'])
+  })
+
+  it("keeps what a model's box left with to that model — another model's box of the dataset starts plain", async () => {
+    // Model m2 draws on steel through an input of the same uid (a duplicate of m1, say).
+    const M2 = {
+      ...BOX,
+      database: 'm2',
+      nodes: [{ id: 'm2/x', name: 'Other', location: 'DE', unit: 'kg', external: false }] as Graph['nodes'],
+      edges: [],
+      bg_edges: [{ uid: 'u1', amount: 2, type: 'technosphere', source: 'ei/s', target: 'm2/x' }]
+    } as Graph
+    const { deps, confirms, prism } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/views/m2': { view: {} },
+        'PUT /api/v1/views/m2': { ok: true },
+        'GET /api/v1/model/graph/m1': BOX,
+        'GET /api/v1/model/graph/m2': M2,
+        'POST /api/v1/model/exchanges/remove': { ok: true }
+      },
+      'm1'
+    )
+    const { result, rerender } = renderHook(() => useCanvasModel(deps))
+    await waitFor(() => expect(result.current.nodes).toHaveLength(3))
+    act(() => result.current.setNodeColor('ei/s', '#e11d48'))
+    prism.setRoute('GET /api/v1/model/graph/m1', GRAPH)
+    act(() => void result.current.deleteRef('ei/s'))
+    await act(async () => confirms[0].onConfirm())
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).not.toContain('ei/s'))
+
+    deps.activeDb = 'm2'
+    rerender()
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toContain('m2/x'))
+    expect(result.current.nodeColors['ei/s']).toBeUndefined()
+
+    // Back in m1, its Undo still finds what the box left with.
+    prism.setRoute('GET /api/v1/model/graph/m1', BOX)
+    deps.activeDb = 'm1'
+    rerender()
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toContain('ei/s'))
+    await waitFor(() => expect(result.current.nodeColors['ei/s']).toBe('#e11d48'))
+  })
+
+  it('a connected copy that was localized comes back as that copy, and Redo hands it on again', async () => {
+    // Steel feeds Part (u1, its box) and, through a copy the user placed and connected, Assembly (u3).
+    const both = {
+      ...BOX,
+      bg_nodes: [{ ...STEEL, uids: ['u1', 'u3'] }],
+      bg_edges: [
+        ...BOX.bg_edges!,
+        { uid: 'u3', amount: 1, type: 'technosphere', source: 'ei/s', target: 'm1/a' }
+      ]
+    } as Graph
+    const { result, prism, reload } = await arranged({
+      'POST /api/v1/model/activities/copy': { activity: { code: 'p' } }
+    })
+    act(() =>
+      result.current.addReference({ database: 'ei', code: 's', name: 'steel' } as never, { x: 9, y: 9 })
+    )
+    const copy = result.current.nodes.find((n) => n.id.startsWith('ei/s#new-'))!.id
+    act(() => result.current.noteConnected(copy, 'u3'))
+    await reload(both)
+    act(() => result.current.putGroups([{ id: 'g2', color: '#000000', members: [copy, 'm1/a'] }]))
+    const localized = {
+      ...BOX,
+      nodes: [...GRAPH.nodes, { id: 'm1/p', name: 'steel', location: 'GLO', unit: 'kg', external: false }],
+      edges: [...GRAPH.edges, { uid: 'u3', amount: 1, type: 'technosphere', source: 'm1/p', target: 'm1/a' }]
+    } as Graph
+    prism.setRoute('GET /api/v1/model/graph/m1', localized)
+    act(() => result.current.localize([copy]))
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toContain('m1/p'))
+    const g2 = () => [...(result.current.groupsRef.current.find((g) => g.id === 'g2')?.members ?? [])].sort()
+    expect(g2()).toEqual(['m1/a', 'm1/p'])
+
+    await reload(both) // Undo
+    expect(at(result, copy)).toEqual({ x: 9, y: 9 })
+    expect(g2()).toEqual([copy, 'm1/a'].sort())
+
+    await reload(localized) // Redo
+    expect(at(result, 'm1/p')).toEqual({ x: 9, y: 9 })
+    expect(g2()).toEqual(['m1/a', 'm1/p'])
+  })
+
+  it('a deleted process comes back in its colour and its group box', async () => {
+    const { result, confirms, reload, prism } = await arranged({
+      'POST /api/v1/model/activities/delete': { ok: true }
+    })
+    act(() => result.current.setNodeColor('m1/b', '#2563eb'))
+    // Part goes, and with it the inputs on it: steel has no consumer left.
+    prism.setRoute('GET /api/v1/model/graph/m1', { ...GRAPH, nodes: [GRAPH.nodes[0]], edges: [] })
+    act(() => result.current.deleteNode('m1/b'))
+    await act(async () => confirms[0].onConfirm())
+    await waitFor(() => expect(result.current.nodes.map((n) => n.id)).toEqual(['m1/a']))
+    expect(result.current.nodeColors['m1/b']).toBeUndefined()
+
+    await reload(BOX)
+    expect(at(result, 'm1/b')).toEqual({ x: 300, y: 0 })
+    expect(result.current.nodeColors['m1/b']).toBe('#2563eb')
+    expect(members(result)).toEqual(['ei/s', 'm1/b'])
+  })
+})
+
+describe('the node menu on a selection', () => {
+  const TWO = {
+    ...GRAPH,
+    bg_nodes: [
+      {
+        id: 'ei/e',
+        dataset_id: 'ei/e',
+        uids: ['u1'],
+        tags: [],
+        name: 'electricity',
+        location: 'DE',
+        unit: 'kWh',
+        external: true
+      },
+      {
+        id: 'ei/h',
+        dataset_id: 'ei/h',
+        uids: ['u2'],
+        tags: [],
+        name: 'heat',
+        location: 'DE',
+        unit: 'MJ',
+        external: true
+      }
+    ] as unknown as Graph['bg_nodes'],
+    bg_edges: [
+      { uid: 'u1', amount: 1, type: 'technosphere', source: 'ei/e', target: 'm1/a' },
+      { uid: 'u2', amount: 1, type: 'technosphere', source: 'ei/h', target: 'm1/b' }
+    ]
+  } as Graph
+
+  it('expands several boxes one after the other — an input they share gets a node under each', async () => {
+    const { deps } = rig({
+      'POST /api/v1/model/expand': (body: unknown) => ({
+        inputs: [
+          {
+            database: 'ei',
+            code: 'coal',
+            name: 'coal',
+            location: 'GLO',
+            unit: 'kg',
+            external: true,
+            read_only: true
+          }
+        ],
+        edges: [{ uid: null, amount: 1, source: 'ei/coal', target: `ei/${(body as { code: string }).code}` }]
+      })
+    })
+    const { result } = renderHook(() => useCanvasModel(deps))
+    act(() => result.current.buildGraph(TWO))
+    act(() => result.current.expandNodes(['ei/e', 'ei/h']))
+    await waitFor(() => expect(result.current.nodes).toHaveLength(6))
+    expect(result.current.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['ei/coal', 'ei/coal#ei/h']))
+
+    act(() => result.current.collapseNodes(['ei/e', 'ei/h']))
+    expect(result.current.nodes.map((n) => n.id).sort()).toEqual(['ei/e', 'ei/h', 'm1/a', 'm1/b'])
+  })
+
+  it('localizes several boxes, each with its own inputs, under one reload', async () => {
+    let n = 0
+    const { deps, prism } = rig(
+      {
+        'GET /api/v1/views/m1': { view: {} },
+        'PUT /api/v1/views/m1': { ok: true },
+        'GET /api/v1/model/graph/m1': TWO,
+        'POST /api/v1/model/activities/copy': () => ({ activity: { code: `c${++n}` } })
+      },
+      'm1'
+    )
+    const { result } = renderHook(() => useCanvasModel(deps))
+    await waitFor(() => expect(result.current.nodes).toHaveLength(4))
+    const graphReads = () => prism.calls.filter((c) => c.path === '/api/v1/model/graph/m1').length
+    const before = graphReads()
+    act(() => result.current.localize(['ei/e', 'ei/h']))
+    await waitFor(() => expect(graphReads()).toBe(before + 1))
+    const copies = prism.calls.filter((c) => c.path === '/api/v1/model/activities/copy').map((c) => c.body)
+    expect(copies).toEqual([
+      expect.objectContaining({ source_code: 'e', uids: ['u1'] }),
+      expect.objectContaining({ source_code: 'h', uids: ['u2'] })
+    ])
+  })
+})

@@ -2,8 +2,9 @@
  * The boxes of outside datasets that the user places or converts: dropping a reference onto the canvas,
  * Localize (a box becomes an editable process of the model) and the move of a process into the library
  * (a process becomes a box). These change what a box IS; useCanvasModel owns where boxes are and how they are
- * kept — every action here ends in a graph reload, and the reload's reconciliation (lib/occurrences.ts)
- * carries position, colour and group membership to the box's new id.
+ * kept — every action here hands the node's position, colour and group membership to its new id
+ * (useBoxes' handOver) and ends in a graph reload, whose reconciliation (lib/occurrences.ts) carries them
+ * on from there, and back again when the change is undone.
  *
  * A dataset may stand on the canvas several times, one box per tag combination its inputs carry. Dropping
  * a dataset that is already there therefore adds a SECOND box: a copy that is not connected yet, may carry
@@ -41,6 +42,8 @@ export interface ReferenceDeps {
     uids?: string[]
     pending_tags?: { dimension: string; value: string }[]
   }) => Record<string, unknown>
+  /** Give the node's spot, colour and group box to the id it becomes (useBoxes). */
+  handOver: (from: string, to: string) => void
   reloadGraph: (db: string) => Promise<unknown>
   reloadAudit: () => Promise<void>
 }
@@ -55,6 +58,7 @@ export function useReferences(deps: ReferenceDeps) {
     setNodes,
     setEdges,
     nodeData,
+    handOver,
     reloadGraph,
     reloadAudit
   } = deps
@@ -108,43 +112,50 @@ export function useReferences(deps: ReferenceDeps) {
     setEdges(edgesRef.current)
   }
 
-  // Localize a box: copy its dataset into the model (editable) and point THIS box's inputs at the copy.
+  // Localize boxes: copy each one's dataset into the model (editable) and point THAT box's inputs at the copy.
   // Other boxes of the same dataset keep drawing on the original. Their common tags become the copy's own.
+  // Several at once (the node menu on a selection) are one step each, under one reload.
   const localize = useCallback(
-    (id: string): void => {
+    (ids: string[]): void => {
       void run(async () => {
         if (!activeDb) return
-        const [db, code] = splitId(id)
-        const box = nodesRef.current.find((n) => n.id === id)
-        const data = box?.data as BoxData | undefined
-        const res = await api<{ activity: { code: string } }>('POST', '/api/v1/model/activities/copy', {
-          source_database: db,
-          source_code: code,
-          target_database: activeDb,
-          // The model's inputs must follow the box, or the canvas shows a supply the calculation does not
-          // use — this box's inputs only; a copy that was never connected moves none (uids: []).
-          relink_consumers: true,
-          ...(data?.datasetId ? { uids: data.uids ?? [] } : {})
-        })
-        const newId = `${activeDb}/${res.activity.code}`
-        // An unconnected copy's tags were meant for its inputs; the process it became carries them now.
-        if (data?.datasetId && !data.uids?.length)
-          for (const t of boxTags(box))
-            await api('POST', '/api/v1/model/tags/set', {
-              keys: [{ database: activeDb, code: res.activity.code }],
-              group: t.dimension,
-              value: t.value
+        try {
+          for (const id of ids) {
+            const box = nodesRef.current.find((n) => n.id === id)
+            if (!box) continue // went with a box localized before it (it was revealed under that one)
+            const [db, code] = splitId(id)
+            const data = box.data as BoxData
+            const res = await api<{ activity: { code: string } }>('POST', '/api/v1/model/activities/copy', {
+              source_database: db,
+              source_code: code,
+              target_database: activeDb,
+              // The model's inputs must follow the box, or the canvas shows a supply the calculation does not
+              // use — this box's inputs only; a copy that was never connected moves none (uids: []).
+              relink_consumers: true,
+              ...(data.datasetId ? { uids: data.uids ?? [] } : {})
             })
-        posRef.current[newId] = posRef.current[id] ?? { x: 120, y: 120 }
-        delete posRef.current[id]
-        dropRevealedUnder(id)
-        nodesRef.current = nodesRef.current.filter((n) => n.id !== id)
-        await reloadGraph(activeDb)
-        await reloadAudit()
+            const newId = `${activeDb}/${res.activity.code}`
+            // An unconnected copy's tags were meant for its inputs; the process it became carries them now.
+            if (data.datasetId && !data.uids?.length)
+              for (const t of boxTags(box))
+                await api('POST', '/api/v1/model/tags/set', {
+                  keys: [{ database: activeDb, code: res.activity.code }],
+                  group: t.dimension,
+                  value: t.value
+                })
+            handOver(id, newId)
+            dropRevealedUnder(id)
+            nodesRef.current = nodesRef.current.filter((n) => n.id !== id)
+          }
+        } finally {
+          // Also after a failure part-way: the copies made so far are on the model, and the canvas must say so.
+          await reloadGraph(activeDb)
+          await reloadAudit()
+        }
       })
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [run, activeDb, reloadGraph, reloadAudit]
+    [run, activeDb, handOver, reloadGraph, reloadAudit]
   )
 
   /**
@@ -166,8 +177,7 @@ export function useReferences(deps: ReferenceDeps) {
           }
         )
         const newId = `${res.database}/${res.code}`
-        posRef.current[newId] = posRef.current[id] ?? { x: 120, y: 120 }
-        delete posRef.current[id]
+        handOver(id, newId)
         nodesRef.current = nodesRef.current.map((n) =>
           n.id === id ? { ...n, id: newId, data: { ...n.data, readOnly: true, uids: [] } } : n
         )
@@ -180,7 +190,7 @@ export function useReferences(deps: ReferenceDeps) {
         await reloadAudit()
       })
     },
-    [run, activeDb, nodesRef, edgesRef, posRef, reloadGraph, reloadAudit]
+    [run, activeDb, nodesRef, edgesRef, handOver, reloadGraph, reloadAudit]
   )
 
   return { addReference, localize, toLibrary }

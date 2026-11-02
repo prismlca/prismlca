@@ -1,12 +1,15 @@
+import { processes, type MenuTargets } from './nodeMenuTargets'
+
 export interface CtxMenuState {
   x: number
   y: number
   id: string
   upstream: number
   readOnly: boolean
-  expanded: boolean
   /** How many processes are selected — the menu offers to group them, not just this node. */
   selCount: number
+  /** What Expand, Collapse and Localize act on: the selection's nodes each applies to, or this node. */
+  targets: MenuTargets
   /** The group this node belongs to, or `null`. Membership is a list, never geometry, and a process
    *  belongs to at most one group. */
   groupId: string | null
@@ -16,7 +19,8 @@ export interface CtxMenuState {
 
 /** Right-click menu on a canvas node: expand/collapse upstream, group/ungroup, plus — depending on
  * the node — localize/remove (locked reference) or duplicate / move to library / delete (foreground
- * process). */
+ * process). Inside a multi-selection, expand, collapse and localize act on every selected node they
+ * apply to (see nodeMenuTargets.ts); the other entries act on this node. */
 export default function NodeContextMenu({
   menu,
   onExpand,
@@ -31,44 +35,47 @@ export default function NodeContextMenu({
   onClose
 }: {
   menu: CtxMenuState
-  onExpand: (id: string) => void
-  onCollapse: (id: string) => void
+  onExpand: (ids: string[]) => void
+  onCollapse: (ids: string[]) => void
   onGroup: () => void
   onAddTo: (groupId: string) => void
   onUngroup: (groupId: string) => void
-  onLocalize: (id: string) => void
+  onLocalize: (ids: string[]) => void
   onDuplicate: (id: string) => void
   /** Move this process into the library, leaving the model linked to it. */
   onToLibrary: (id: string) => void
   onDelete: (id: string) => void
   onClose: () => void
 }): JSX.Element {
+  const { expand, collapse, localize } = menu.targets
+  const many = menu.selCount > 1
   return (
     <div className="node-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-      {menu.expanded ? (
+      {collapse.length ? (
         <button
           onClick={() => {
-            onCollapse(menu.id)
+            onCollapse(collapse)
             onClose()
           }}
         >
-          Collapse upstream
+          {many ? `Collapse upstream of ${processes(collapse.length)}` : 'Collapse upstream'}
         </button>
-      ) : (
+      ) : null}
+      {expand.length ? (
         <button
-          disabled={menu.upstream === 0}
           onClick={() => {
-            onExpand(menu.id)
+            onExpand(expand)
             onClose()
           }}
         >
-          {menu.upstream === 0
-            ? 'No hidden upstream'
+          {many
+            ? `Expand upstream of ${processes(expand.length)}`
             : menu.upstream > 0
               ? `Expand upstream (${menu.upstream})`
               : 'Expand upstream'}
         </button>
-      )}
+      ) : null}
+      {!collapse.length && !expand.length ? <button disabled>No hidden upstream</button> : null}
       {menu.selCount > 1 ? (
         <button
           onClick={() => {
@@ -106,12 +113,16 @@ export default function NodeContextMenu({
         <>
           <button
             onClick={() => {
-              onLocalize(menu.id)
+              onLocalize(localize)
               onClose()
             }}
-            title="Copy this ecoinvent process into the foreground to edit it"
+            title={
+              localize.length > 1
+                ? 'Copy each of these processes into the model to edit it there'
+                : 'Copy this ecoinvent process into the foreground to edit it'
+            }
           >
-            Localize (edit)
+            {localize.length > 1 ? `Localize ${processes(localize.length)}` : 'Localize (edit)'}
           </button>
           <button
             className="danger"
