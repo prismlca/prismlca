@@ -14,9 +14,16 @@ const ACTS = [
   { code: 'spout', name: 'Spout, injection moulded' }
 ]
 
+const GWP = {
+  method: ['EF v3.1', 'climate change', 'global warming potential (GWP100)'],
+  name: 'GWP100',
+  unit: 'kg'
+}
+
 function renderRail(
   scenarios: { id: string; name: string }[],
-  settings: ShortSettings = DEFAULT_SHORT_SETTINGS
+  settings: ShortSettings = DEFAULT_SHORT_SETTINGS,
+  picked: string[] = []
 ): { update: ReturnType<typeof vi.fn> } {
   const update = vi.fn()
   renderWithPrism(
@@ -26,8 +33,8 @@ function renderRail(
       acts={ACTS}
       scenarios={scenarios}
       families={[]}
-      methods={[]}
-      picked={[]}
+      methods={picked.length ? [GWP] : []}
+      picked={picked}
       onPicked={() => {}}
       settings={settings}
       update={update}
@@ -79,5 +86,28 @@ describe('the short report rail → Compare with', () => {
     expect(screen.getByRole('checkbox', { name: 'Thinner wall' })).toBeChecked()
     await user.click(screen.getByRole('checkbox', { name: 'Recycled PP' }))
     expect(update).toHaveBeenLastCalledWith({ compare: [{ scenario: 's2' }] })
+  })
+})
+
+describe('the short report rail → the parameter tornado', () => {
+  it('sits among the charts, and says where it prints while that chapter is off', async () => {
+    const user = userEvent.setup()
+    const off = { ...DEFAULT_SHORT_SETTINGS, contents: { interpretation_checks: false } }
+    renderRail([], off, [GWP.method.join(' / ')])
+    await user.click(screen.getByText('Breakdown & charts'))
+    // Open beside the chart options, with Contents closed: it is not one of the chapter switches.
+    expect(screen.getByRole('checkbox', { name: 'Hotspot tables' })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Interpretation checks' })).not.toBeInTheDocument()
+    const box = screen.getByRole('checkbox', { name: 'Parameter sensitivity (tornado)' })
+    expect(box).toBeDisabled()
+    expect(screen.getByText(/tick it under Contents/)).toBeInTheDocument()
+  })
+
+  it('switches it on with the indicators and range it carries', async () => {
+    const user = userEvent.setup()
+    const { update } = renderRail([], DEFAULT_SHORT_SETTINGS, [GWP.method.join(' / ')])
+    await user.click(screen.getByText('Breakdown & charts'))
+    await user.click(screen.getByRole('checkbox', { name: 'Parameter sensitivity (tornado)' }))
+    expect(update).toHaveBeenLastCalledWith({ tornado: true, tornado_methods: [], tornado_delta: 0.1 })
   })
 })

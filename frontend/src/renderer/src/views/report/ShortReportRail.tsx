@@ -394,6 +394,29 @@ export default function ShortReportRail({
               <span>Hotspot tables</span>
             </label>
           </div>
+          {/* Among the charts, where a figure is chosen; it prints in the Interpretation checks chapter, so it
+              says so while that chapter is off. */}
+          {picked.length ? (
+            <TornadoOption
+              value={{
+                enabled: settings.tornado,
+                methods: settings.tornado_methods,
+                delta: settings.tornado_delta
+              }}
+              indicators={picked.map((key) => {
+                const m = methods.find((x) => methodKey(x.method) === key)
+                return { key, label: m ? indicatorLabel(m.method, labelsOf) : key }
+              })}
+              unavailable={
+                chapterOn(settings, 'interpretation_checks')
+                  ? undefined
+                  : 'Printed in the Interpretation checks chapter — tick it under Contents to use it.'
+              }
+              onChange={(next) =>
+                update({ tornado: next.enabled, tornado_methods: next.methods, tornado_delta: next.delta })
+              }
+            />
+          ) : null}
         </AccordionGroup>
 
         <AccordionGroup
@@ -462,25 +485,6 @@ export default function ShortReportRail({
                   ))}
                 </select>
               </label>
-            </>
-          ) : null}
-          {chapterOn(settings, 'interpretation_checks') && picked.length ? (
-            <>
-              <div className="sub-label">Interpretation checks</div>
-              <TornadoOption
-                value={{
-                  enabled: settings.tornado,
-                  methods: settings.tornado_methods,
-                  delta: settings.tornado_delta
-                }}
-                indicators={picked.map((key) => {
-                  const m = methods.find((x) => methodKey(x.method) === key)
-                  return { key, label: m ? indicatorLabel(m.method, labelsOf) : key }
-                })}
-                onChange={(next) =>
-                  update({ tornado: next.enabled, tornado_methods: next.methods, tornado_delta: next.delta })
-                }
-              />
             </>
           ) : null}
         </AccordionGroup>
