@@ -81,6 +81,31 @@ function Read-RunnerToken {
   }
 }
 
+# The reset wipes the VM, so the runner's own logs are copied to the host first. A Worker log exists only when the
+# runner ran a job; without one, the end of the Runner log says why it stopped.
+$name = $null
+$ranJob = $false
+function Save-RunnerLog {
+  if (-not $script:name) { return }
+  try {
+    $logs = @(Invoke-InVM {
+        Get-ChildItem 'C:\actions-runner\_diag' -Filter '*.log' -ErrorAction SilentlyContinue |
+          ForEach-Object { [pscustomobject]@{ Name = $_.Name; Text = Get-Content $_.FullName -Raw } }
+      })
+  }
+  catch { Write-Warning "Could not copy the runner logs: $($_.Exception.Message)"; return }
+  $dir = Join-Path (Split-Path $credFile) "logs\$script:name"
+  New-Item $dir -ItemType Directory -Force | Out-Null
+  foreach ($log in $logs) { Set-Content (Join-Path $dir $log.Name) $log.Text -Encoding UTF8 }
+  Write-Host "Runner logs: $dir"
+  $script:ranJob = [bool]($logs | Where-Object { $_.Name -like 'Worker_*' })
+  if (-not $script:ranJob) {
+    Write-Warning 'The runner ran no job. The end of its log:'
+    $last = $logs | Where-Object { $_.Name -like 'Runner_*' } | Select-Object -Last 1
+    if ($last) { ($last.Text -split "`r?`n") | Select-Object -Last 30 | ForEach-Object { Write-Host "  $_" } }
+  }
+}
+
 try {
   Reset-ReleaseVM
   Start-VM -Name $VMName
@@ -177,7 +202,8 @@ try {
   }
 }
 finally {
+  Save-RunnerLog
   if ($session) { Remove-PSSession $session -ErrorAction SilentlyContinue }
   Reset-ReleaseVM
 }
-Write-Host "Next: approve the release on GitHub ($Repo/actions)."
+if ($ranJob) { Write-Host "Next: approve the release on GitHub ($Repo/actions)." }
