@@ -64,6 +64,20 @@ function Invoke-InVM([scriptblock]$Block, [object[]]$Arguments = @()) {
   Invoke-Command -Session $script:session -ScriptBlock $Block -ArgumentList $Arguments
 }
 
+# GitHub's copy button takes the whole "config.cmd --url ... --token ..." line, so the token is picked out of it.
+function Read-RunnerToken {
+  while ($true) {
+    $secure = Read-Host 'Paste the token' -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { $text = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    if ($text -match '--token\s+(\S+)') { $text = $Matches[1] }
+    $text = $text.Trim()
+    if ($text -match '^[A-Za-z0-9_-]{20,}$') { return $text }
+    Write-Warning 'That is not a registration token (one word of letters and digits). Copy it again.'
+  }
+}
+
 try {
   Reset-ReleaseVM
   Start-VM -Name $VMName
@@ -88,21 +102,29 @@ try {
   }
 
   Write-Host ''
-  Write-Host 'Registration token: open this page and copy the value after --token in the "Configure" box:'
+  Write-Host 'Registration token: open this page (signed in to GitHub on this PC, never in the VM). In the box'
+  Write-Host '"Configure", copy the token after --token; the whole config.cmd line works as well.'
   Write-Host "  $Repo/settings/actions/runners/new?arch=x64&os=win"
-  $secure = Read-Host 'Paste the token' -AsSecureString
-  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-  try { $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
-  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
   $name = 'prism-release-' + (Get-Date -Format 'yyyyMMdd-HHmm')
-  Invoke-InVM {
-    param($repo, $token, $name)
-    Set-Location 'C:\actions-runner'
-    & .\config.cmd --unattended --url $repo --token $token --name $name --labels prism-release-win --ephemeral
-    if ($LASTEXITCODE -ne 0) { throw "Runner registration failed (config.cmd exit $LASTEXITCODE)." }
-    Start-ScheduledTask -TaskName 'PrismRunner'
-  } @($Repo, $token, $name)
-  $token = $null
+  for ($try = 1; ; $try++) {
+    $token = Read-RunnerToken
+    try {
+      Invoke-InVM {
+        param($repo, $token, $name)
+        Set-Location 'C:\actions-runner'
+        & .\config.cmd --unattended --url $repo --token $token --name $name --labels prism-release-win --ephemeral
+        if ($LASTEXITCODE -ne 0) { throw "Runner registration failed (config.cmd exit $LASTEXITCODE)." }
+      } @($Repo, $token, $name)
+      break
+    }
+    catch {
+      if ($try -ge 3) { throw }
+      Write-Warning ("GitHub refused the registration: $($_.Exception.Message)")
+      Write-Warning 'A token works once and for one hour. Reload the page for a fresh one and paste it again.'
+    }
+    finally { $token = $null }
+  }
+  Invoke-InVM { Start-ScheduledTask -TaskName 'PrismRunner' }
   $deadline = (Get-Date).AddMinutes($MaxMinutes)
 
   # Start-ScheduledTask only asks for the start; the runner is up once its listener process runs.
