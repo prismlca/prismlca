@@ -3,6 +3,22 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.9 — 2026-11-03
+
+### New
+
+- **A signed Windows installer.** The installer, the uninstaller, PrismLCA itself and its calculation engine carry a
+  timestamped code signature of *Open Source Developer Jonas Harth*, issued by Certum. Windows names this publisher
+  instead of an unknown one, and an installation of 0.9.9 or later takes an update only when it carries this
+  signature.
+
+**Installing.** While the certificate is new, Windows SmartScreen may still warn: check that *More info* names the
+publisher above, compare the installer with `SHA256SUMS` below, then choose *Run anyway*. On Linux the AppImage
+needs FUSE 2 (`sudo apt install libfuse2t64` on Ubuntu 24.04); the deb and the rpm need nothing extra. PrismLCA
+0.9.3 and later find this release under *Check for updates*.
+
+Changes since v0.9.8: https://github.com/prismlca/prismlca/compare/v0.9.8...v0.9.9
+
 ## 0.9.8 — 2026-11-02
 
 ### New
