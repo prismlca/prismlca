@@ -81,6 +81,32 @@ function Read-RunnerToken {
   }
 }
 
+# GitHub refuses the runner's sign-in when the VM clock is off ("The token is not valid until ..."), and the runner
+# then claims its registration was deleted. A VM started from its checkpoint can run hours off, so it gets this PC's
+# time before the registration, with Hyper-V's time synchronisation switched on.
+function Sync-VMClock {
+  $timeSync = Get-VMIntegrationService -VMName $VMName |
+    Where-Object { $_.Id -like '*2497F4DE-E9FA-4204-80E4-4B75C46419C0' }
+  if ($timeSync -and -not $timeSync.Enabled) { Enable-VMIntegrationService -VMIntegrationService $timeSync }
+  $skew = [TimeSpan]::FromTicks((Invoke-InVM { [DateTime]::UtcNow.Ticks }) - [DateTime]::UtcNow.Ticks)
+  if ([Math]::Abs($skew.TotalSeconds) -lt 30) { return }
+  $zone = Invoke-InVM { (Get-TimeZone).Id }
+  $way = if ($skew.Ticks -gt 0) { 'ahead' } else { 'behind' }
+  Write-Host "The VM clock is $($skew.Duration().ToString('hh\:mm\:ss')) $way (VM time zone: $zone); setting it from this PC."
+  $fix = 'In the VM, set the time zone and the clock under Settings > Time & language, shut it down and take the checkpoint again.'
+  try {
+    Invoke-InVM {
+      param($ticks)
+      Set-Date -Date ([DateTime]::new($ticks, [DateTimeKind]::Utc).ToLocalTime()) -ErrorAction Stop | Out-Null
+    } @([DateTime]::UtcNow.Ticks)
+  }
+  catch { throw "Could not set the VM clock ($($_.Exception.Message.TrimEnd('.'))). $fix" }
+  $skew = [TimeSpan]::FromTicks((Invoke-InVM { [DateTime]::UtcNow.Ticks }) - [DateTime]::UtcNow.Ticks)
+  if ([Math]::Abs($skew.TotalSeconds) -ge 30) {
+    throw "The VM clock is still $($skew.Duration().ToString('hh\:mm\:ss')) off. $fix"
+  }
+}
+
 # The reset wipes the VM, so the runner's own logs are copied to the host first. A Worker log exists only when the
 # runner ran a job; without one, the end of the Runner log says why it stopped.
 $name = $null
@@ -128,6 +154,7 @@ try {
     }
     Start-Sleep -Seconds 5
   }
+  Sync-VMClock
 
   Write-Host ''
   Write-Host 'Registration token: open this page (signed in to GitHub on this PC, never in the VM). In the box'
