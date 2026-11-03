@@ -137,7 +137,7 @@ function walk(dir, prefix = '') {
   return out
 }
 
-function checkArtifacts(kind, dir) {
+async function checkArtifacts(kind, dir) {
   if (!['appimage', 'deb', 'rpm', 'win'].includes(kind) || !dir || !existsSync(dir))
     die('usage: check-artifacts appimage|deb|rpm|win <unpacked dir>')
   const files = walk(dir)
@@ -153,6 +153,17 @@ function checkArtifacts(kind, dir) {
   if (!upd) problems.push('resources/app-update.yml is missing — the update check would have no feed')
   else if (!/owner:\s*prismlca/.test(readFileSync(join(dir, upd), 'utf-8')) || !/repo:\s*prismlca/.test(readFileSync(join(dir, upd), 'utf-8')))
     problems.push('app-update.yml does not point at prismlca/prismlca')
+  // Windows: the installed app accepts an update only when its installer is signed by exactly this subject.
+  if (kind === 'win' && upd) {
+    // Loaded here, not at the top: the other commands run before npm ci (and the publishing job never runs it),
+    // while js-yaml lives in node_modules.
+    const { subjectFrom } = await import('./sign-windows.mjs')
+    const { load: loadYaml } = await import('js-yaml')
+    const subject = subjectFrom(readFileSync(join(FRONTEND, 'electron-builder.yml'), 'utf-8'))
+    const names = [].concat(loadYaml(readFileSync(join(dir, upd), 'utf-8'))?.publisherName ?? [])
+    if (names.length !== 1 || names[0] !== subject)
+      problems.push(`app-update.yml must name the publisher ${subject}, names ${names.join(' | ') || 'none'}`)
+  }
   for (const name of ['LICENSE.electron.txt', 'LICENSES.chromium.html'])
     if (!has(new RegExp(`(^|/)${name.replace('.', '\\.')}$`))) problems.push(`${name} is missing`)
   // The AGPL text and the notices: unpacked next to app.asar, where licence.ts opens them with the OS
@@ -266,7 +277,7 @@ const [cmd, ...rest] = process.argv.slice(2)
 if (cmd === 'verify-tag') verifyTag()
 else if (cmd === 'electron-support') electronCheck()
 else if (cmd === 'audit') audit()
-else if (cmd === 'check-artifacts') checkArtifacts(rest[0], rest[1])
+else if (cmd === 'check-artifacts') await checkArtifacts(rest[0], rest[1])
 else if (cmd === 'notes') notes(rest[0])
 else if (cmd === 'build-info') buildInfo(rest)
 else if (cmd === 'check-feed') checkFeed(rest[0])

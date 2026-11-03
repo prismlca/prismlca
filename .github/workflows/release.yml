@@ -7,8 +7,10 @@
 # release by the last job — and that job runs only after the maintainer approves the `release` environment,
 # which is the one human gate. Nothing else here publishes.
 #
-# Unsigned for now. The Windows signing job on the self-hosted release VM (runner label prism-release-win)
-# comes with the code-signing certificate.
+# Linux is built on GitHub's runners. Windows is built and signed on the release VM on the maintainer's Windows
+# PC (runner label prism-release-win), which frontend/scripts/release/release-vm.ps1 opens for one run and resets
+# afterwards: the signing key lives in Certum's cloud HSM and opens only with a sign-in from the maintainer's phone.
+# Both build at the same time; the release goes out when both are done.
 #
 # Every action is pinned to a commit SHA (version in the comment); the workflow tripwire
 # frontend/scripts/release/workflows.test.ts enforces that and the other workflow rules.
@@ -167,9 +169,9 @@ jobs:
             frontend/release/latest-linux.yml
 
   windows:
-    name: Windows installer (unsigned)
+    name: Windows installer, signed
     needs: verify
-    runs-on: windows-2022
+    runs-on: [self-hosted, prism-release-win]
     timeout-minutes: 120
     permissions:
       contents: read
@@ -191,15 +193,29 @@ jobs:
           dist/prism-lca-backend/prism-lca-backend.exe --solver-check | tee solver.txt
           grep -q "Intel oneMKL" solver.txt
           dist/prism-lca-backend/prism-lca-backend.exe --bundle-check
-      - name: NSIS installer
+      - name: App build
         working-directory: frontend
         run: |
           npm ci
           npx electron-vite build
-          npx electron-builder --win nsis --publish never
+      # Everything that needs no key is built before this point. The signing session opens here and closes right
+      # after the installer; while it is open, electron-builder and its dependencies run with it, which is why
+      # they come pinned from the lockfile. The hook signs only our own four executables.
+      - name: Sign in to SimplySign now
+        working-directory: frontend
+        run: node scripts/release/sign-windows.mjs wait
+      - name: NSIS installer, signed
+        working-directory: frontend
+        run: npx electron-builder --win nsis --publish never
+      - name: Close the signing session
+        if: always()
+        run: powershell.exe -NoProfile -Command "Get-Process *SimplySign* -ErrorAction SilentlyContinue | Stop-Process -Force"
       - name: Check the package as shipped
         working-directory: frontend
-        run: node scripts/release/ci.mjs check-artifacts win release/win-unpacked
+        run: |
+          node scripts/release/ci.mjs check-artifacts win release/win-unpacked
+          node scripts/release/sign-windows.mjs check release/win-unpacked/PrismLCA.exe \
+            release/win-unpacked/resources/backend/prism-lca-backend.exe release/PrismLCA-Setup-*.exe
       - name: The packaged app starts on an empty machine
         working-directory: frontend
         run: |

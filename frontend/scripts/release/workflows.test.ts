@@ -11,6 +11,8 @@
  *    maintainer's approval is the gate; electron-builder never publishes on its own;
  *  - the release workflow starts only on tags and by hand, denies all permissions at the top, and every
  *    checkout keeps no credentials.
+ *  - Windows is built on the release VM, and the signing session opens only after everything that needs no
+ *    key is built and closes after the installer, also when a step failed.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -20,7 +22,7 @@ import { describe, expect, it } from 'vitest'
 // js-yaml comes with electron-updater; no extra dependency for one test.
 const yaml = createRequire(import.meta.url)('js-yaml') as { load: (s: string) => unknown }
 
-type Step = { uses?: string; run?: string; with?: Record<string, unknown> }
+type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> }
 type Job = { 'runs-on'?: unknown; permissions?: unknown; steps?: Step[] }
 type Workflow = { on?: Record<string, unknown>; permissions?: unknown; jobs?: Record<string, Job> }
 
@@ -105,5 +107,17 @@ describe('GitHub workflows', () => {
       .filter(([, job]) => (job.permissions as Record<string, string> | undefined)?.contents === 'write')
       .map(([n]) => n)
     expect(writers).toEqual(['draft'])
+  })
+
+  it('release workflow: Windows signs on the release VM, between the sign-in and the installer', () => {
+    const name = files.find((f) => f.startsWith('release.yml'))!
+    const job = load(name).wf.jobs!.windows
+    expect(job['runs-on']).toEqual(['self-hosted', 'prism-release-win'])
+    const steps = job.steps ?? []
+    const at = (re: RegExp) => steps.findIndex((s) => re.test(s.run ?? ''))
+    const order = [/pyinstaller/, /electron-vite build/, /sign-windows\.mjs wait/, /electron-builder --win/, /Stop-Process/, /sign-windows\.mjs check/].map(at)
+    expect(order.every((i) => i >= 0), `steps found: ${order}`).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(steps[at(/Stop-Process/)].if, 'the session closes also after a failed step').toBe('always()')
   })
 })

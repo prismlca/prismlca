@@ -38,8 +38,16 @@ win:
   # Explicit, like linux.icon: build/ (electron-builder's default icon place) is gitignored, so a CI
   # build would otherwise ship Electron's own icon. 512×512 PNG, converted to .ico by the builder.
   icon: resources/icon.png
-  # Local builds stay unsigned. Releases are signed with Certum Open Source Code Signing on the release
-  # runner; the sign hook is added with release.yml.
+  # Releases are signed on the release VM with Certum Open Source Code Signing: the hook signs only our own
+  # executables and only in release builds, so a local build stays unsigned. One SHA-256 signature per file.
+  signtoolOptions:
+    sign: ./scripts/release/sign-windows.mjs
+    signingHashAlgorithms:
+      - sha256
+    # The certificate subject exactly as Windows shows it. It goes into app-update.yml, and every installed
+    # copy then accepts only installers signed with it: it changes only with a planned publisher change, and a
+    # renewal must keep it letter for letter.
+    publisherName: 'CN=Open Source Developer Jonas Harth, O=Open Source Developer, L=Heidelberg, S=Baden-Württemberg, C=DE'
 
 linux:
   # Order matters: deb and rpm each write resources/package-type into the shared unpacked folder before they
