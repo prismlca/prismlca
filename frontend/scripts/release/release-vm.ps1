@@ -38,6 +38,11 @@ function Reset-ReleaseVM {
 }
 
 $null = Get-VM -Name $VMName
+# vmconnect's enhanced session is a Remote Desktop connection: it takes over the automatically signed-in session,
+# locks it behind the password and hides the VM's local smart cards, SimplySign's among them.
+if ((Get-VMHost).EnableEnhancedSessionMode) {
+  throw 'Enhanced session mode is on. Turn it off for this PC first: Set-VMHost -EnableEnhancedSessionMode $false'
+}
 if (-not (Get-VMSnapshot -VMName $VMName -Name $Checkpoint -ErrorAction SilentlyContinue)) {
   throw "VM $VMName has no checkpoint '$Checkpoint'. Take it with the VM off: Checkpoint-VM -Name $VMName -SnapshotName $Checkpoint"
 }
