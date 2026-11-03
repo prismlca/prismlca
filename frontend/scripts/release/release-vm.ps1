@@ -54,6 +54,7 @@ if (-not (Test-Path $credFile)) {
   Get-Credential -UserName 'build' -Message "Account inside the VM $VMName" | Export-Clixml $credFile
 }
 $cred = Import-Clixml $credFile
+Write-Host "VM account: $($cred.UserName)   (-ForgetPassword asks for it again)"
 
 $session = $null
 function Invoke-InVM([scriptblock]$Block, [object[]]$Arguments = @()) {
@@ -68,10 +69,21 @@ try {
   Start-VM -Name $VMName
   Write-Host 'Waiting for the VM to start and sign in by itself ...'
   $bootDeadline = (Get-Date).AddMinutes(10)
+  # While Windows boots, PowerShell Direct refuses; a wrong account refuses the same way, so the answer is shown.
+  $lastError = $null
+  $nextReport = (Get-Date).AddMinutes(1)
   while ($true) {
     try { if (Invoke-InVM { [bool](Get-Process explorer -ErrorAction SilentlyContinue) }) { break } }
-    catch { $session = $null }
-    if ((Get-Date) -gt $bootDeadline) { throw 'The VM did not reach its desktop within 10 minutes. Is automatic sign-in set up?' }
+    catch { $session = $null; $lastError = $_.Exception.Message }
+    if ((Get-Date) -gt $bootDeadline) {
+      $why = if ($lastError) { " Last answer from the VM: $lastError" } else { ' The account signed in, but no desktop.' }
+      throw ('The VM did not reach its desktop within 10 minutes.' + $why +
+        ' Wrong account or password: run again with -ForgetPassword. No desktop: check Autologon in the VM.')
+    }
+    if ($lastError -and (Get-Date) -gt $nextReport) {
+      Write-Host "  still waiting - last answer from the VM: $lastError"
+      $nextReport = (Get-Date).AddMinutes(1)
+    }
     Start-Sleep -Seconds 5
   }
 
