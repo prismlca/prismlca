@@ -132,6 +132,16 @@ function Save-RunnerLog {
   }
 }
 
+# An idle host goes to sleep and pauses the VM with it; GitHub then drops the job ("lost communication with the
+# server"). While this script runs, Windows keeps the PC awake (the screen may still turn off).
+Add-Type -Namespace PrismRelease -Name Power -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll")]
+public static extern uint SetThreadExecutionState(uint esFlags);
+'@
+$ES_CONTINUOUS = [uint32]2147483648
+$ES_SYSTEM_REQUIRED = [uint32]1
+$null = [PrismRelease.Power]::SetThreadExecutionState($ES_CONTINUOUS -bor $ES_SYSTEM_REQUIRED)
+
 try {
   Reset-ReleaseVM
   Start-VM -Name $VMName
@@ -230,6 +240,7 @@ try {
 }
 finally {
   Save-RunnerLog
+  $null = [PrismRelease.Power]::SetThreadExecutionState($ES_CONTINUOUS)
   if ($session) { Remove-PSSession $session -ErrorAction SilentlyContinue }
   Reset-ReleaseVM
 }
