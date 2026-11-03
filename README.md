@@ -36,9 +36,10 @@ Windows 10 and 11 (64-bit), the `.AppImage`, the `.deb` or the `.rpm` for Linux 
 checksum of every file, and every file carries a build provenance attestation
 (`gh attestation verify <file> --repo prismlca/prismlca`).
 
-- **Windows:** releases are not code-signed yet, so Windows shows "Windows protected your PC". Compare
-  the installer with `SHA256SUMS` first (`Get-FileHash .\<installer>.exe` in PowerShell), then choose
-  *More info → Run anyway*. By default it installs for your user only, without administrator rights.
+- **Windows:** from 0.9.9 the installer is code-signed by *Open Source Developer Jonas Harth* (Certum). While
+  the certificate is new, SmartScreen may still show "Windows protected your PC": check that *More info* names
+  that publisher, compare the installer with `SHA256SUMS` (`Get-FileHash .\<installer>.exe` in PowerShell), then
+  choose *Run anyway*. By default it installs for your user only, without administrator rights.
 - **Linux:** check with `sha256sum -c SHA256SUMS --ignore-missing`, then make the AppImage executable and start
   it, install the deb with `sudo apt install ./<package>.deb` (Debian, Ubuntu) or the rpm with
   `sudo dnf install ./<package>.rpm` (Fedora). AppImages need FUSE 2, which Ubuntu 22.04 and later do not install
