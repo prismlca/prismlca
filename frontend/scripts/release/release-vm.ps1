@@ -64,17 +64,20 @@ function Invoke-InVM([scriptblock]$Block, [object[]]$Arguments = @()) {
   Invoke-Command -Session $script:session -ScriptBlock $Block -ArgumentList $Arguments
 }
 
-# GitHub's copy button takes the whole "config.cmd --url ... --token ..." line, so the token is picked out of it.
+# The token comes from the clipboard: in a hidden Read-Host, Ctrl+V types one control character instead of pasting.
+# GitHub's copy button takes the whole "config.cmd --url ... --token ..." line, so the token is picked out of it, and
+# the clipboard is overwritten once it is read.
 function Read-RunnerToken {
   while ($true) {
-    $secure = Read-Host 'Paste the token' -AsSecureString
-    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-    try { $text = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr) }
-    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+    $null = Read-Host 'Copy the token (or the whole config.cmd line) on that page, then press Enter here'
+    $text = [string](Get-Clipboard -Raw)
     if ($text -match '--token\s+(\S+)') { $text = $Matches[1] }
     $text = $text.Trim()
-    if ($text -match '^[A-Za-z0-9_-]{20,}$') { return $text }
-    Write-Warning 'That is not a registration token (one word of letters and digits). Copy it again.'
+    if ($text -match '^[A-Za-z0-9_-]{20,}$') {
+      try { Set-Clipboard -Value ' ' } catch { Write-Warning 'Could not clear the clipboard; the token expires within the hour.' }
+      return $text
+    }
+    Write-Warning 'The clipboard holds no registration token (one word of letters and digits). Copy it again.'
   }
 }
 
@@ -120,7 +123,7 @@ try {
     catch {
       if ($try -ge 3) { throw }
       Write-Warning ("GitHub refused the registration: $($_.Exception.Message)")
-      Write-Warning 'A token works once and for one hour. Reload the page for a fresh one and paste it again.'
+      Write-Warning 'A token works once and for one hour. Reload the page and copy the fresh one.'
     }
     finally { $token = $null }
   }
