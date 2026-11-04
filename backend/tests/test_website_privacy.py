@@ -47,15 +47,10 @@ def test_page_is_current(tool):
         )
 
 
-def test_statistics_paragraph_follows_the_consent_module(tool):
-    """The notice describes statistics exactly when assets/consent.js has a website ID — the switch that also
-    decides whether the consent bar and the tracker exist. The tool is not named."""
-    if not (tool.wl.SITE / "assets" / "consent.js").exists():
-        pytest.skip(f"no site folder at {tool.wl.SITE} (set PRISM_SITE_DIR or run with --site)")
-    html = tool.website_part()
-    if tool.stats_live():
-        assert "§ 25(1) TDDDG" in html and "privacy-settings" in html
-    else:
-        assert "currently uses no visitor statistics" in html
-    assert "{STATS" not in html and "{SHORT_" not in html
-    assert "Umami" not in tool.STATS_ON["STATS"]
+def test_website_runs_no_statistics(tool):
+    """The website counts no visits: the notice says so, and nothing in it describes a statistics tool, a
+    consent question or a settings section for one."""
+    html = tool.WEBSITE
+    assert "uses no visitor statistics" in html
+    for gone in ("stats.prismlca.com", "privacy-settings", "Privacy settings", "Do Not Track", "{STATS", "{SHORT_"):
+        assert gone not in html, gone

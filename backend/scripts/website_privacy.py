@@ -7,8 +7,8 @@ Run from ``backend/``::
 
 Sources:
 
-* the website part — written below in ``WEBSITE``; it describes what the server, Cloudflare, the
-  statistics, the contact form and the mailbox do. Change it here when the setup changes (and note the
+* the website part — written below in ``WEBSITE``; it describes what the server, Cloudflare, the YouTube
+  videos, the contact form and the mailbox do. Change it here when the setup changes (and note the
   change in ``Website2/DEPLOY.md``).
 * the app part — ``PRIVACY.md``, which the app ships as ``assets/privacy-notice.md`` (a frontend test keeps
   the two equal). It is rendered unchanged; only its headings move one level down.
@@ -38,7 +38,7 @@ wl = importlib.util.module_from_spec(_spec)
 sys.modules.setdefault("website_licences", wl)
 _spec.loader.exec_module(wl)
 
-VERSION = "12 October 2026"
+VERSION = "4 November 2026"
 
 # The website's notice. Plain HTML inside the page's legal layout; every claim here must match what the
 # server is configured to do (Website2/DEPLOY.md). Hosting details are named as far as the law requires
@@ -52,12 +52,12 @@ WEBSITE = """
 
     <section class="legal-block">
       <h2>The short version</h2>
-      <p>{SHORT_STORAGE} Only Cloudflare, which delivers the website, may set short-lived security cookies (see
+      <p>This website itself sets no cookies and stores nothing in your browser. Only Cloudflare, which delivers the website, may set short-lived security cookies (see
         below). Fonts, images, videos and
         scripts come from our own website address; there are no social-media widgets. The one exception is our
         videos, on the videos page and in the product tour on the start page: they come from YouTube and load only
-        when you confirm one, and YouTube can then store data in your browser (see below). Hosting and delivery involve Hetzner and Cloudflare, as described below. {SHORT_STATS} We do
-        not sell visitor data or use it for advertising.</p>
+        when you confirm one, and YouTube can then store data in your browser (see below). Hosting and delivery involve Hetzner and Cloudflare, as described below. The website counts no
+        visits and uses no visitor statistics. We do not sell visitor data or use it for advertising.</p>
     </section>
 
     <section class="legal-block">
@@ -91,11 +91,6 @@ WEBSITE = """
         pseudonymous browser or session identifier. They serve only to protect access to the website you asked for,
         which is why they are set without consent (§ 25(2) no. 2 TDDDG); they are not used for anything else.</p>
       <p><i>Legal basis:</i> Art. 6(1)(f) GDPR — our legitimate interest in a website that stays available and safe.</p>
-    </section>
-
-    <section class="legal-block" id="statistics">
-      <h2>Visitor statistics</h2>
-{STATS}
     </section>
 
     <section class="legal-block" id="videos">
@@ -184,56 +179,6 @@ WEBSITE = """
 """
 
 
-# The statistics paragraphs in two states. Which one prints follows assets/consent.js: an empty websiteId there
-# means no statistics run (and no consent bar appears), so the notice must not describe any.
-STATS_OFF = {
-    "SHORT_STORAGE": "This website itself sets no cookies and stores nothing in your browser.",
-    "SHORT_STATS": "The website currently counts no visits.",
-    "STATS": """      <p>This website currently uses no visitor statistics. Before that changes, this notice will describe what is
-        counted, on what legal basis, and how you can decline it.</p>
-      <div id="privacy-settings"><p>No visitor statistics run, so there is nothing to choose.</p></div>""",
-}
-STATS_ON = {
-    "SHORT_STORAGE": ("This website itself sets no cookies; it stores only your answer to the statistics question in "
-                      "your browser, if you give one."),
-    "SHORT_STATS": "It counts visits with a statistics tool on our own server, and only if you allow it.",
-    "STATS": """      <p>If you allow it, we count visits with a statistics tool that runs on our own server at stats.prismlca.com;
-        no analytics data goes to another company (the requests reach our server through Cloudflare like every other
-        request to this website). Until you decide, nothing of it loads. With your consent, a script reads your screen
-        size and browser language and records the page you opened (its address without any query or fragment), its
-        title and the referring website; from the
-        request, our server derives browser, operating system, device type and an approximate location (country,
-        region, city). Your IP address is used only for that location and for a pseudonymous visit identifier
-        computed from it with a secret that changes regularly; the IP address itself is not stored. Visit-level data
-        are deleted after seven days; what remains are daily page counts without a visitor identifier, kept for up to
-        twelve months. The tool sets no cookies. If your browser
-        sends “Do Not Track”, your visit is not counted even with consent.</p>
-      <p>We remember your answer — allowed or declined, with its date and nothing else — in your browser's local
-        storage for twelve months, so that we do not ask on every page. If your browser sends Global Privacy
-        Control, we treat that as a refusal and do not ask.</p>
-      <p><i>Legal basis:</i> your consent, § 25(1) TDDDG and Art. 6(1)(a) GDPR. You can withdraw it at any time with
-        effect for the future, right here or through “Privacy settings” at the foot of every page.</p>
-      <div id="privacy-settings"><noscript><p>Statistics need JavaScript, and without it none run.</p></noscript></div>""",
-}
-
-
-def stats_live() -> bool:
-    """True when the site's assets/consent.js names a Umami website ID, i.e. the statistics (and the consent bar)
-    are on. Read from the site folder in use (``--site``), like every other input of the page."""
-    consent = wl.SITE / "assets" / "consent.js"
-    m = re.search(r"websiteId:\s*'([^']*)'", consent.read_text(encoding="utf-8"))
-    if not m:
-        raise SystemExit(f"website_privacy: could not find websiteId in {consent}")
-    return bool(m.group(1).strip())
-
-
-def website_part() -> str:
-    text = WEBSITE
-    for key, value in (STATS_ON if stats_live() else STATS_OFF).items():
-        text = text.replace("{" + key + "}", value)
-    return text
-
-
 def app_notice_html() -> str:
     """PRIVACY.md as HTML, unchanged except that its title is dropped and every heading moves one level down."""
     md = APP_NOTICE.read_text(encoding="utf-8")
@@ -255,7 +200,7 @@ def build() -> dict[Path, str]:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="only light" />
   <title>PrismLCA Privacy</title>
-  <meta name="description" content="How the PrismLCA website and the PrismLCA app handle personal data: no own cookies, no third-party tracking, statistics on our own server." />
+  <meta name="description" content="How the PrismLCA website and the PrismLCA app handle personal data: no own cookies, no tracking, no visitor statistics." />
   <link rel="icon" href="assets/img/favicon.png" type="image/png" />
   <link rel="stylesheet" href="assets/prism-theme.css" />
   <link rel="stylesheet" href="assets/site.css" />
@@ -276,7 +221,7 @@ def build() -> dict[Path, str]:
       with the app.</p>
 
     <h2 class="privacy-part" id="website">The website prismlca.com</h2>
-{website_part()}
+{WEBSITE}
     <h2 class="privacy-part" id="app">The PrismLCA app</h2>
     <div class="app-notice">
 {app_notice_html()}    </div>
