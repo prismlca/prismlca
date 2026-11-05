@@ -5,6 +5,7 @@ import base64
 import binascii
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -76,7 +77,8 @@ async def import_model(
     file: UploadFile = File(...),
 ) -> dict:
     content = await file.read()
-    parsed = interop.read_model_workbook(content)
+    # In the threadpool: a large sheet takes a while to read, and the event loop serves every other request.
+    parsed = await run_in_threadpool(interop.read_model_workbook, content)
     cmd = commands.ImportModelCommand(target_database, parsed["activities"], parsed["exchanges"])
     return request.app.state.command_bus.execute(cmd, source=source)
 
@@ -102,7 +104,9 @@ async def import_as_model(request: Request, payload: ImportAsModelRequest) -> di
         raise PrismError("Give the new model a name.", code="name_required")
     try:
         content = base64.b64decode(payload.content, validate=True)
-        parsed = interop.read_model_workbook(content)
+        parsed = await run_in_threadpool(interop.read_model_workbook, content)
+    except PrismError:
+        raise  # a refusal that already says what is wrong with the sheet
     except (binascii.Error, ValueError, KeyError, OSError) as e:
         raise PrismError("This file is not a spreadsheet PrismLCA can read.", code="sheet_unreadable",
                          hint="Choose an .xlsx with the sheets 'activities' and 'exchanges', as "

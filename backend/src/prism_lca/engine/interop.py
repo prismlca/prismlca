@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import io
 
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 
 from prism_lca.engine import workbooks
 from prism_lca.engine.bootstrap import get_bd
@@ -31,6 +31,9 @@ _ACT_HEADERS = ["code", "name", "unit", "location", "reference_product", "commen
 #: written as text because that is how a reviewer reads it; it is re-parsed on import.
 _EXC_HEADERS = ["activity_code", "input_database", "input_code", "amount", "type", "formula",
                 "comment", "uncertainty_type", "loc", "scale", "minimum", "maximum", "tags"]
+#: What one imported sheet may hold: rows with content, and the column the last header it reads sits in.
+MAX_SHEET_ROWS = 100_000
+MAX_SHEET_COLUMNS = 256
 
 
 def _production_row_needed(ex) -> bool:
@@ -92,34 +95,44 @@ def read_model_workbook(content: bytes) -> dict:
     Columns are matched BY HEADER NAME, not position — a hand-reordered sheet must not silently
     swap fields. Unknown header cells are ignored; known headers missing from the sheet yield
     None (and the import validation reports what's actually missing)."""
-    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    wb = workbooks.open_untrusted(content)
 
     def rows(sheet_name: str, headers: list[str]) -> list[dict]:
         if sheet_name not in wb.sheetnames:
             return []
         ws = wb[sheet_name]
-        out = []
+        # Header row: map each known header to the column it actually occupies.
         col_of: dict[str, int] = {}
-        for i, row in enumerate(ws.iter_rows(values_only=True)):
-            if i == 0:
-                # Header row: map each known header to the column it actually occupies.
-                for j, cell in enumerate(row or ()):
-                    name = str(cell).strip().lower() if cell is not None else ""
-                    if name in headers:
-                        col_of[name] = j
-                # Legacy sheets without a recognisable header row: fall back to positional.
-                if not col_of:
-                    col_of = {h: j for j, h in enumerate(headers)}
+        for j, cell in enumerate(workbooks.header(ws) or ()):
+            name = str(cell).strip().lower() if cell is not None else ""
+            if name in headers:
+                col_of[name] = j
+        # Legacy sheets without a recognisable header row: fall back to positional.
+        if not col_of:
+            col_of = {h: j for j, h in enumerate(headers)}
+        width = max(col_of.values()) + 1
+        if width > MAX_SHEET_COLUMNS:
+            raise workbooks.too_large(
+                f"The sheet '{sheet_name}' has a column PrismLCA reads beyond column {MAX_SHEET_COLUMNS}.",
+                hint=f"Keep the columns {', '.join(headers)} within the first {MAX_SHEET_COLUMNS}.",
+            )
+        out = []
+        for row in workbooks.rows(ws, width):
+            if row.count(None) == len(row):
                 continue
-            if row is None or all(c is None for c in row):
-                continue
-            out.append({
-                h: (row[col_of[h]] if h in col_of and col_of[h] < len(row) else None)
-                for h in headers
-            })
+            if len(out) == MAX_SHEET_ROWS:
+                raise workbooks.too_large(
+                    f"The sheet '{sheet_name}' has more than {MAX_SHEET_ROWS:,} rows.",
+                    hint=f"PrismLCA imports up to {MAX_SHEET_ROWS:,} rows per sheet; split the model "
+                    "into several files.",
+                )
+            out.append({h: (row[col_of[h]] if h in col_of else None) for h in headers})
         return out
 
-    return {
-        "activities": rows("activities", _ACT_HEADERS),
-        "exchanges": rows("exchanges", _EXC_HEADERS),
-    }
+    try:
+        return {
+            "activities": rows("activities", _ACT_HEADERS),
+            "exchanges": rows("exchanges", _EXC_HEADERS),
+        }
+    finally:
+        wb.close()
