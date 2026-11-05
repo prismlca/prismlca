@@ -78,4 +78,30 @@ describe('skillListing', () => {
     )
     expect(out.name).toBe(full)
   })
+
+  it('gives a changed name the id to load it by, so two cut names cannot be confused', async () => {
+    const stem =
+      'Packaging end-of-life rates for Germany, Austria and Switzerland from the national waste statistics ' +
+      'and the Eurostat tables, reference year'
+    const skills = [
+      { id: 'a1b2c3d4e5f6', name: `${stem} 2019`, description: 'old', content: 'the 2019 rates' },
+      { id: 'f6e5d4c3b2a1', name: `${stem} 2023`, description: 'new', content: 'the 2023 rates' },
+      { id: 'c0ffee000000', name: 'Interpreting results', description: 'd', content: 'c' }
+    ]
+    const lines = skillListing(skills).split('\n')
+    expect(lines[0].split(' (`get_skill`')[0]).toBe(lines[1].split(' (`get_skill`')[0])
+    expect(lines[0]).toContain('(`get_skill` name: `a1b2c3d4e5f6`)')
+    expect(lines[1]).toContain('(`get_skill` name: `f6e5d4c3b2a1`)')
+    expect(lines[2]).toBe('- **Interpreting results** — d')
+    const out = JSON.parse(
+      (await TOOL_BY_NAME.get_skill.run({ name: 'f6e5d4c3b2a1' }, {
+        api: async () => ({ skills }),
+        ui: async () => ({}),
+        activeDb: 'm'
+      } as never)) as string
+    )
+    expect(out.content).toBe('the 2023 rates')
+    // An id that is not one plain token is left out rather than printed.
+    expect(skillListing([{ id: 'x`\ny', name: 'a\nb', description: 'd', content: '' }])).toBe('- **a b** — d')
+  })
 })

@@ -37,11 +37,21 @@ export function oneLine(text: unknown, max: number): string {
   return flat
 }
 
+/** An id that is one plain token, as the store's own and the shipped ones are; any other stays out of the line. */
+const PLAIN_ID = /^[\w.-]{1,64}$/
+
+/**
+ * One bullet per skill. A name the listing had to change carries the skill's id as the name to load it by
+ * (`get_skill` takes an id too): two long names can be cut to the same text, and a cut name's words can all
+ * be in another skill's name.
+ */
 export function skillListing(skills: readonly Skill[]): string {
   return skills
-    .map(
-      (s) =>
-        `- **${oneLine(s.name, SKILL_NAME_MAX)}** — ${oneLine(s.description, SKILL_DESCRIPTION_MAX) || '(no description)'}`
-    )
+    .map((s) => {
+      const name = oneLine(s.name, SKILL_NAME_MAX)
+      const key = name !== s.name && typeof s.id === 'string' && PLAIN_ID.test(s.id) ? s.id : null
+      const description = oneLine(s.description, SKILL_DESCRIPTION_MAX) || '(no description)'
+      return `- **${name}**${key ? ` (\`get_skill\` name: \`${key}\`)` : ''} — ${description}`
+    })
     .join('\n')
 }
