@@ -143,6 +143,19 @@ def test_a_store_whose_index_disagrees_with_its_table_is_refused(tmp_path):
     _refused(tmp_path)
 
 
+def test_no_journal_of_a_checked_store_is_kept(tmp_path):
+    _db(tmp_path / "lci" / "databases.db", "activitydataset", "data", [pickle.dumps(PLAIN)])
+    (tmp_path / "LCI").mkdir()
+    sides = [tmp_path / "LCI" / "databases.db-journal", tmp_path / "lci" / "DATABASES.DB-WAL",
+             tmp_path / "Parameters.db-shm"]
+    for side in sides:
+        side.write_bytes(b"\x01" * 64)
+    (tmp_path / "lci" / "other.db-journal").write_bytes(b"kept")
+    workspace_pickles.assert_plain(tmp_path)
+    assert not any(side.exists() for side in sides)
+    assert (tmp_path / "lci" / "other.db-journal").exists()
+
+
 @pytest.mark.parametrize("column", [
     "data BLOB DEFAULT x'00'",
     "raw BLOB, data BLOB GENERATED ALWAYS AS (raw) VIRTUAL",

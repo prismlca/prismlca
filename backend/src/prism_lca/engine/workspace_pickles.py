@@ -99,19 +99,30 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
         con.close()
 
 
-def assert_plain(folder: Path) -> None:
-    """Refuse ``folder`` unless every value bw2data unpickles from it is plain data."""
+def _files(folder: Path) -> list[tuple[Path, str]]:
+    """Every file below ``folder`` with its relative path, casefolded."""
+    found = []
     for dirpath, _dirnames, filenames in os.walk(folder):
         for filename in filenames:
             path = Path(dirpath, filename)
-            rel = path.relative_to(folder).as_posix()
-            key = rel.casefold()
-            try:
-                if key.endswith(".pickle"):
-                    if path.stat().st_size > MAX_PICKLE:
-                        raise _NotPlain(rel)
-                    _check(path.read_bytes())
-                elif key in PICKLE_COLUMNS:
-                    _check_store(path, PICKLE_COLUMNS[key])
-            except Exception as exc:  # noqa: BLE001 - anything that does not load as plain data is refused
-                raise _refuse(rel) from exc
+            found.append((path, path.relative_to(folder).as_posix().casefold()))
+    return found
+
+
+def assert_plain(folder: Path) -> None:
+    """Refuse ``folder`` unless every value bw2data unpickles from it is plain data."""
+    for path, key in _files(folder):
+        try:
+            if key.endswith(".pickle"):
+                if path.stat().st_size > MAX_PICKLE:
+                    raise _NotPlain(key)
+                _check(path.read_bytes())
+            elif key in PICKLE_COLUMNS:
+                _check_store(path, PICKLE_COLUMNS[key])
+        except Exception as exc:  # noqa: BLE001 - anything that does not load as plain data is refused
+            raise _refuse(path.relative_to(folder).as_posix()) from exc
+    # SQLite settled each store's journal during the check; none of them, in any spelling, goes further.
+    journals = {f"{store}{suffix}" for store in PICKLE_COLUMNS for suffix in ("-journal", "-wal", "-shm")}
+    for path, key in _files(folder):
+        if key in journals:
+            path.unlink()
