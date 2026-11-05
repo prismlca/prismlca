@@ -18,6 +18,7 @@ from prism_lca.search.embeddings import EmbeddingProvider, get_embedding_provide
 from prism_lca.search.fusion import RRF_K, reciprocal_rank_fusion
 from prism_lca.search.identifiers import Identifiers
 from prism_lca.search.index import VectorIndex
+from prism_lca.search.index_location import index_base
 from prism_lca.search.indexer import activity_meta, embed_unique
 from prism_lca.search.lexical import Bm25Index, union_stats
 from prism_lca.search.market_vectors import MarketVectors
@@ -220,8 +221,7 @@ class SearchService:
 
     # -- index location ------------------------------------------------------
     def _index_base(self, db_name: str) -> Path:
-        bd = get_bd()
-        return Path(bd.projects.dir) / "prism_search" / db_name
+        return index_base(Path(get_bd().projects.dir) / "prism_search", db_name)
 
     def _cache_key(self, db_name: str) -> str:
         return f"{get_bd().projects.current}/{db_name}"
@@ -367,7 +367,7 @@ class SearchService:
         key = self._cache_key(db_name)
         if key not in self._cache:
             base = self._index_base(db_name)
-            if not VectorIndex.exists(base):
+            if db_name not in get_bd().databases or not VectorIndex.exists(base):
                 raise PrismError(
                     f"Database '{db_name}' is not indexed yet.",
                     code="not_indexed",
