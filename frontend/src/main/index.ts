@@ -75,7 +75,10 @@ function backendCommand(): { cmd: string; args: string[]; cwd?: string } {
   return { cmd: 'uv', args: ['run', 'prism-lca-backend'], cwd: backendDir }
 }
 
-function startBackend(): Promise<void> {
+/** How long the backend may stay silent before its start counts as failed. */
+const BACKEND_SILENCE_MS = 60_000
+
+function startBackend(onProgress?: (detail: string) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const { cmd, args, cwd } = backendCommand()
     // PRISM_PARENT_PID feeds the backend's self-watchdog: if this Electron process dies hard
@@ -121,6 +124,13 @@ function startBackend(): Promise<void> {
           if (msg.event === 'prism-backend-refused') {
             reject(new Error(String(msg.reason || 'The backend refused to start.')))
           }
+          // Long work before the handshake (copying workspaces out of a shared Brightway directory)
+          // reports as it goes; each report buys another silence window instead of a fixed limit that
+          // a large workspace on a slow disk would exceed.
+          if (msg.event === 'prism-backend-progress') {
+            armDeadline()
+            if (msg.detail) onProgress?.(String(msg.detail))
+          }
         } catch {
           // ordinary (non-JSON) uvicorn log line
         }
@@ -133,11 +143,16 @@ function startBackend(): Promise<void> {
     })
     backend.on('error', reject)
 
-    const deadline = setTimeout(
-      () => reject(new Error('Backend did not report readiness within 60 s.')),
-      60_000
-    )
-    deadline.unref?.() // don't keep the process alive for a timer that resolve already beat
+    let deadline: ReturnType<typeof setTimeout> | undefined
+    function armDeadline(): void {
+      if (deadline) clearTimeout(deadline)
+      deadline = setTimeout(
+        () => reject(new Error('Backend did not report readiness within 60 s.')),
+        BACKEND_SILENCE_MS
+      )
+      deadline.unref?.() // don't keep the process alive for a timer that resolve already beat
+    }
+    armDeadline()
   })
 }
 
@@ -622,7 +637,7 @@ function startApp(): void {
 
     try {
       splash?.setStatus('Starting local engine…', 12)
-      await startBackend()
+      await startBackend((detail) => splash?.setStatus(detail, 30))
       splash?.setStatus('Waiting for the LCA engine…', 55)
       await waitForHealth()
       if (backendInfo && backendInfo.version !== APP_VERSION) {

@@ -36,7 +36,13 @@ EXPECTED_BYTES = 2_293_331_623
 _WEIGHT_FILES = ("pytorch_model.bin", "model.safetensors")
 
 
-def _cache_dir() -> Path:
+def hub_cache_dir() -> Path:
+    """The one folder the search model is downloaded into, looked for in and loaded from.
+
+    Passed to sentence-transformers explicitly: left to itself it follows ``SENTENCE_TRANSFORMERS_HOME``,
+    which people who use sentence-transformers elsewhere often set — the download then lands where
+    :func:`is_cached` never looks, and the model never counts as ready.
+    """
     from huggingface_hub import constants
 
     return Path(constants.HF_HUB_CACHE)
@@ -46,7 +52,7 @@ def repo_cache_folder(repo: str) -> Path:
     """The hub cache folder of one model repo (``models--ORG--NAME``)."""
     from huggingface_hub.file_download import repo_folder_name
 
-    return _cache_dir() / repo_folder_name(repo_id=repo, repo_type="model")
+    return hub_cache_dir() / repo_folder_name(repo_id=repo, repo_type="model")
 
 
 def is_cached(repo: str, revision: str | None) -> bool:
@@ -56,7 +62,7 @@ def is_cached(repo: str, revision: str | None) -> bool:
 
         folder = Path(
             snapshot_download(
-                repo, revision=revision or None, cache_dir=_cache_dir(), local_files_only=True
+                repo, revision=revision or None, cache_dir=hub_cache_dir(), local_files_only=True
             )
         )
     except Exception as exc:  # noqa: BLE001 - LocalEntryNotFoundError, or no hub library at all
@@ -116,7 +122,7 @@ def _default_loader(repo: str, revision: str | None) -> None:
     # later offline load needs are the ones that arrive — no separate file list to keep in step.
     from sentence_transformers import SentenceTransformer
 
-    SentenceTransformer(repo, revision=revision or None)
+    SentenceTransformer(repo, revision=revision or None, cache_folder=str(hub_cache_dir()))
 
 
 class SearchModelStore:

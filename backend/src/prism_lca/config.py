@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from platformdirs import user_data_dir
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from prism_lca import __version__
@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     auth_token: str = Field(default_factory=lambda: secrets.token_urlsafe(32))
     #: Per-user data directory (Brightway projects live here from M2 on).
     data_dir: Path = Field(default_factory=lambda: Path(user_data_dir(APP_NAME, appauthor=False)))
+    #: Where the app keeps its Brightway projects; unset means ``brightway`` inside ``data_dir``. A variable
+    #: of our own on purpose: Brightway's ``BRIGHTWAY2_DIR`` usually belongs to the user's own Brightway
+    #: installation (engine/brightway_dir.py).
+    brightway_dir: Path | None = None
+
+    @field_validator("brightway_dir", mode="before")
+    @classmethod
+    def _blank_brightway_dir_is_unset(cls, value: object) -> object:
+        # An empty variable would otherwise become Path("."), the backend's working directory.
+        return None if isinstance(value, str) and not value.strip() else value
 
     app_version: str = __version__
     api_prefix: str = f"/api/{API_VERSION}"

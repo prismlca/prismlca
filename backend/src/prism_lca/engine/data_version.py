@@ -20,7 +20,7 @@ DATA_SCHEMA = 1
 STAMP_FILE = "prism-data-version.json"
 
 
-def _read_schema(data_dir: Path) -> tuple[int | None, str | None]:
+def read_schema(data_dir: Path) -> tuple[int | None, str | None]:
     """(format, writer) from the stamp, or (None, None) when there is none or it is unreadable.
 
     An unreadable stamp counts as none and is rewritten: refusing would lock a user out of their own
@@ -41,11 +41,12 @@ def check_and_stamp(data_dirs: Path | list[Path], app_version: str) -> str | Non
     refused start changes nothing anywhere.
 
     More than one directory because the Brightway databases may live outside the data directory
-    (``BRIGHTWAY2_DIR``, honoured by the instance lock and the bootstrap alike): the stamp has to sit
-    where the data actually is.
+    (``PRISM_BRIGHTWAY_DIR``): the stamp has to sit where the data actually is. A ``BRIGHTWAY2_DIR``
+    an earlier version stamped is never passed in here — the app no longer opens it, and only reads
+    the stamp to recognise it (``engine/brightway_dir.py``).
     """
     dirs = [data_dirs] if isinstance(data_dirs, Path) else list(dict.fromkeys(data_dirs))
-    found = [(d, *_read_schema(d)) for d in dirs]
+    found = [(d, *read_schema(d)) for d in dirs]
     for _d, schema, writer in found:
         if schema is not None and schema > DATA_SCHEMA:
             who = writer or "a newer version"

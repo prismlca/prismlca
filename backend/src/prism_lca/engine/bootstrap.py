@@ -3,6 +3,10 @@
 ``BRIGHTWAY2_DIR`` MUST be set before ``bw2data`` is imported for the first time — that is
 why all Brightway access goes through the lazy accessors here instead of a module-level
 ``import bw2data``.
+
+The app sets it at start-up from its own settings (``engine/brightway_dir.py``). Here it is only
+filled in when nobody set it — the case of scripts and tests, which point Brightway's variable at
+a throwaway directory and must keep it.
 """
 from __future__ import annotations
 
@@ -10,15 +14,16 @@ import os
 from types import ModuleType
 
 from prism_lca.config import get_settings
+from prism_lca.engine.brightway_dir import BRIGHTWAY_ENV, default_dir
 
 _bd: ModuleType | None = None
 
 
 def _ensure_env() -> None:
-    if "BRIGHTWAY2_DIR" not in os.environ:
-        data_dir = get_settings().data_dir / "brightway"
+    if BRIGHTWAY_ENV not in os.environ:
+        data_dir = default_dir(get_settings())
         data_dir.mkdir(parents=True, exist_ok=True)
-        os.environ["BRIGHTWAY2_DIR"] = str(data_dir)
+        os.environ[BRIGHTWAY_ENV] = str(data_dir)
     # Deterministic, ASCII-safe output on Windows consoles.
     os.environ.setdefault("PYTHONUTF8", "1")
 

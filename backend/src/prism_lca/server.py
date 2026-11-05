@@ -80,18 +80,6 @@ def _force_utf8() -> None:
                 _log.swallowed(exc, "_force_utf8")
 
 
-def _brightway_dir(settings) -> str:
-    """The directory the lock guards: whatever `bootstrap` will hand to Brightway.
-
-    Read from the environment when it is already set — the tests and a developer both override
-    ``BRIGHTWAY2_DIR``, and locking the default while working in another directory would refuse a
-    start for a database nobody was touching.
-    """
-    import os as _os
-
-    return _os.environ.get("BRIGHTWAY2_DIR") or str(settings.data_dir / "brightway")
-
-
 def _free_port(host: str) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -103,13 +91,27 @@ def main() -> None:
     _force_utf8()
     settings = get_settings()
 
+    # Our own Brightway directory, whatever the environment inherited from somebody's Brightway
+    # installation says — before anything opens a database. (The solver is pinned to our own MKL even
+    # earlier, by the entry point in __main__, before NumPy is imported.)
+    from prism_lca.engine import brightway_dir
+
+    home = brightway_dir.choose(settings, os.environ, from_source=not getattr(sys, "frozen", False))
+    if home.refusal is not None:
+        print(json.dumps({"event": "prism-backend-refused", "reason": home.refusal}), flush=True)
+        raise SystemExit(5)
+    if home.note:
+        print(home.note, file=sys.stderr, flush=True)
+    home.path.mkdir(parents=True, exist_ok=True)
+    os.environ[brightway_dir.BRIGHTWAY_ENV] = str(home.path)
+
     # One backend per data directory, before anything opens a database. Two of them write to the
     # same SQLite files and the loser gets "database is locked" at whatever moment it happens to
     # be — once, that was the write putting a scenario's overrides back after a report render, and
     # the study's baseline silently stayed the scenario. Refused here rather than survived later.
     from prism_lca.engine import instance_lock
 
-    holder = instance_lock.acquire(_brightway_dir(settings))
+    holder = instance_lock.acquire(home.path)
     if holder is not None:
         pid = holder.get("pid")
         print(
@@ -136,11 +138,29 @@ def main() -> None:
     from prism_lca.engine import data_version
 
     refusal = data_version.check_and_stamp(
-        [Path(settings.data_dir), Path(_brightway_dir(settings))], settings.app_version
+        [Path(settings.data_dir), home.path], settings.app_version
     )
     if refusal is not None:
         print(json.dumps({"event": "prism-backend-refused", "reason": refusal}), flush=True)
         raise SystemExit(4)
+
+    # Workspaces an earlier version kept in a shared Brightway directory, copied over once — before the
+    # app opens a project, and announced while it runs, because a large workspace takes longer than the
+    # shell waits for a silent backend.
+    if home.carry_over_from is not None:
+        from prism_lca.engine import workspace_carryover
+
+        refusal = workspace_carryover.carry_over(
+            home.carry_over_from,
+            home.path,
+            progress=lambda detail: print(
+                json.dumps({"event": "prism-backend-progress", "detail": detail}), flush=True
+            ),
+            log=lambda line: print(line, file=sys.stderr, flush=True),
+        )
+        if refusal is not None:
+            print(json.dumps({"event": "prism-backend-refused", "reason": refusal}), flush=True)
+            raise SystemExit(6)
 
     port = settings.port or _free_port(settings.host)
     app = create_app(settings)

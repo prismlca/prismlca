@@ -107,8 +107,13 @@ class SentenceTransformerProvider:
         self.model = model
         # local_files_only by default: loading never goes to the network. The weights arrive only
         # through search.model_store, after the user agreed to the download.
+        from prism_lca.search.model_store import hub_cache_dir
+
         self._model = SentenceTransformer(
-            model, revision=revision or None, local_files_only=local_files_only
+            model,
+            revision=revision or None,
+            local_files_only=local_files_only,
+            cache_folder=str(hub_cache_dir()),  # where the download went, whatever the environment says
         )
 
     def embed(self, texts: list[str], is_query: bool = False) -> np.ndarray:

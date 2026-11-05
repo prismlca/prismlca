@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib
 import multiprocessing
+import os
 import pkgutil
 import tempfile
 import traceback
@@ -46,6 +47,7 @@ LAZY_IMPORTS: tuple[str, ...] = (
     "bw2io.importers.ecospold2_biosphere",
     "bw2io.strategies",
     "bw2parameters",
+    "bw_processing.filesystem",
     "bw_processing.utils",
     "fastembed",
     "huggingface_hub",
@@ -159,7 +161,18 @@ def _worker_failures() -> list[str]:
 
 
 def run() -> int:
-    """Import everything; print one line per failure. 0 when all imports work, 1 otherwise."""
+    """Import everything; print one line per failure. 0 when all imports work, 1 otherwise.
+
+    In a Brightway directory of its own: bw2data creates its ``projects.db`` and a ``default`` project
+    wherever it first looks, and without one that would be the Brightway directory of whoever runs
+    the check — on a developer's machine, their own Brightway projects. The workers inherit it.
+    """
+    with tempfile.TemporaryDirectory(prefix="prism-bundle-check-bw-", ignore_cleanup_errors=True) as bw_dir:
+        os.environ["BRIGHTWAY2_DIR"] = bw_dir
+        return _check_everything()
+
+
+def _check_everything() -> int:
     import prism_lca
 
     names = [

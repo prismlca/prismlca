@@ -22,7 +22,7 @@ REV = "a" * 40  # a commit hash, so snapshot_download resolves it without refs/
 
 @pytest.fixture
 def hub_cache(tmp_path, monkeypatch) -> Path:
-    monkeypatch.setattr(model_store, "_cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(model_store, "hub_cache_dir", lambda: tmp_path)
     return tmp_path
 
 
@@ -202,7 +202,12 @@ def test_provider_loads_local_files_only(monkeypatch):
     from prism_lca.search.embeddings import SentenceTransformerProvider
 
     SentenceTransformerProvider(REPO, REV)
-    assert seen == {"model": REPO, "revision": REV, "local_files_only": True}
+    assert seen == {
+        "model": REPO,
+        "revision": REV,
+        "local_files_only": True,
+        "cache_folder": str(model_store.hub_cache_dir()),
+    }
 
 
 # --- endpoints ----------------------------------------------------------------------------------
@@ -240,3 +245,21 @@ def test_search_model_endpoints_report_and_start(client, token, hub_cache):
     assert loaded.wait(5)
     store._thread.join(5)
     assert client.get("/api/v1/system/search-model", headers=token).json()["state"] == "ready"
+
+
+def test_download_and_load_use_the_cache_the_readiness_check_reads(hub_cache, monkeypatch):
+    """sentence-transformers alone follows SENTENCE_TRANSFORMERS_HOME, often set for other projects; the
+    download would land where is_cached never looks, and the model would never count as ready."""
+    import sys
+    import types
+
+    from prism_lca.search.embeddings import SentenceTransformerProvider
+
+    calls: list[dict] = []
+    fake = types.ModuleType("sentence_transformers")
+    fake.SentenceTransformer = lambda *a, **kw: calls.append(kw)
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(hub_cache / "elsewhere"))
+    model_store._default_loader(REPO, REV)
+    SentenceTransformerProvider(REPO, REV)
+    assert [c["cache_folder"] for c in calls] == [str(hub_cache), str(hub_cache)]

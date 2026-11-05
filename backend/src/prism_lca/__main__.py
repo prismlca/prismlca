@@ -4,29 +4,34 @@ import multiprocessing
 import os
 import sys
 
-from prism_lca.mkl_runtime import bundled_mkl_rt
+from prism_lca.mkl_runtime import own_mkl_dir, pin_solver_environment
 
 
 def _solver_environment() -> None:
-    """Point pypardiso at the bundled Intel oneMKL and pick its threading layer.
+    """Point pypardiso at our own Intel oneMKL and pick its threading layer (mkl_runtime.py says why
+    each variable is set rather than defaulted).
 
-    Both variables must be set before ``mkl_rt`` is loaded, which happens on the first
-    ``import pypardiso`` — hence here, before anything else is imported.
-
-    * ``MKL_THREADING_LAYER=TBB``: MKL threads through oneTBB instead of Intel OpenMP. TBB ships
-      under the same Intel Simplified Software License as MKL itself; the OpenMP runtime would
-      bring the Intel EULA for Developer Tools into the bundle (on Windows PyTorch ships that runtime
-      anyway, in torch/lib; THIRD-PARTY-NOTICES.md says so).
-      Set in development too, so both environments run the same code paths.
-    * ``PYPARDISO_MKL_RT``: in the PyInstaller bundle the MKL libraries sit next to the executable's
-      ``_internal`` files (prism_backend.spec), where neither ``ctypes.util.find_library`` nor
-      pypardiso's ``sys.prefix/lib*`` search looks. Only set when frozen; a venv finds its own.
+    Both must be in place before ``mkl_rt`` is loaded, which happens on the first ``import pypardiso``
+    — hence here, before anything else is imported: an MKL-backed NumPy would read the threading layer
+    at its own import. In the bundle the MKL libraries sit next to the executable's ``_internal`` files
+    (prism_backend.spec), where neither ``ctypes.util.find_library`` nor pypardiso's ``sys.prefix/lib*``
+    search looks. A start from source comes through here too: the ``prism-lca-backend`` script calls
+    :func:`run`.
     """
-    os.environ.setdefault("MKL_THREADING_LAYER", "TBB")
+    pin_solver_environment(os.environ, own_mkl_dir())
+
+
+def _bundle_working_directory() -> None:
+    """The frozen backend works in its own folder, not wherever the shell happened to be started.
+
+    bw2data reads ``brightway-configuration.env``, ``brightway-matrix-configuration.env`` and
+    ``brightway-typo-configuration.env`` from the working directory, and our settings read ``.env``
+    there: started from a folder of somebody's own Brightway work, PrismLCA would take its matrix rules
+    and calculate different results without a word. From source the working directory stays, because
+    a developer's ``backend/.env`` is meant to be read.
+    """
     if getattr(sys, "frozen", False):
-        mkl_rt = bundled_mkl_rt(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)))
-        if mkl_rt:
-            os.environ.setdefault("PYPARDISO_MKL_RT", mkl_rt)
+        os.chdir(os.path.dirname(sys.executable))
 
 
 def _solver_check() -> int:
@@ -56,7 +61,10 @@ def _solver_check() -> int:
 
 _solver_environment()
 
-if __name__ == "__main__":
+
+def run() -> None:
+    """The backend's entry point, frozen or from source (``prism-lca-backend``)."""
+    _bundle_working_directory()
     # One encoding whatever the console: Electron reads this output as UTF-8, and a Windows console's
     # cp1252 cannot even encode "←" — the bundle check died printing its own failure on one. Before
     # anything prints, and in a worker too; an unencodable character is escaped, never fatal.
@@ -71,9 +79,9 @@ if __name__ == "__main__":
     if "--solver-check" in sys.argv[1:]:
         raise SystemExit(_solver_check())
     if "--bundle-check" in sys.argv[1:]:
-        from prism_lca.bundle_check import run
+        from prism_lca.bundle_check import run as check_bundle
 
-        code = run()
+        code = check_bundle()
         sys.stdout.flush()
         # Not SystemExit: in a bundle whose freeze_support() does not work, multiprocessing's resource
         # tracker (POSIX) starts as a second backend, and a normal exit waits for that tracker forever —
@@ -82,3 +90,7 @@ if __name__ == "__main__":
     from prism_lca.server import main
 
     main()
+
+
+if __name__ == "__main__":
+    run()

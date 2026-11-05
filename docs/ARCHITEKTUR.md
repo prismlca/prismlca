@@ -107,6 +107,16 @@ same API endpoints as the UI does (ADR-003, ADR-011).
   the data format version and leaves a directory written by a newer PrismLCA untouched. If the shell
   is killed, the backend notices and exits (parent watchdog); on a normal quit the shell asks it to
   shut down in order.
+- Next to an existing Brightway installation, whose projects PrismLCA must never change: the app takes
+  its Brightway directory from its own settings (`PRISM_BRIGHTWAY_DIR`, else `brightway` in the data
+  directory) and never opens an inherited `BRIGHTWAY2_DIR`, which usually points at the user's own
+  Brightway or Activity Browser projects (`engine/brightway_dir.py`). Workspaces an earlier version kept
+  there are copied into the app's own directory on its first start, by plain file reads only — the old
+  directory is not written (`engine/workspace_carryover.py`). The backend pins pypardiso to its own
+  Intel MKL and the threading layer it ships, overriding `PYPARDISO_MKL_RT`, `MKL_THREADING_LAYER` and
+  `MKL_INTERFACE_LAYER` (`mkl_runtime.py`, before NumPy is imported). The frozen backend works in its
+  own folder, so bw2data's `brightway-*.env` files in the folder it was started from do not apply, and
+  it ignores `PYTHONPATH`, `PYTHONHOME` and the user's site-packages.
 - Long calculations do not block the UI. A long LCIA run (a whole method family, or a deep model)
   is a **background job** that is started, polled, read back and cancelled between methods
   (`engine/calc_jobs.py`); the background import works the same way (start, then poll a status).

@@ -1,0 +1,117 @@
+"""PrismLCA next to somebody's own Brightway installation (engine/brightway_dir.py, server.main).
+
+People who use Brightway or the Activity Browser often have ``BRIGHTWAY2_DIR`` set for good — on Windows as
+a user variable every program inherits. The app used to follow it, so its workspaces, its data-format stamp
+and its instance lock landed in the user's own Brightway directory.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from backend_process import snapshot, spawn, stop, wait_for_start
+
+from prism_lca.config import Settings
+from prism_lca.engine.brightway_dir import choose, default_dir
+from prism_lca.engine.data_version import STAMP_FILE
+
+
+def _settings(tmp_path: Path, brightway_dir: Path | None = None) -> Settings:
+    return Settings(data_dir=tmp_path / "data", brightway_dir=brightway_dir)
+
+
+def _foreign(tmp_path: Path, *, stamped: bool = False) -> Path:
+    """A Brightway directory of somebody's own, as the Activity Browser leaves it."""
+    other = tmp_path / "Brightway3"
+    other.mkdir(parents=True)
+    (other / "projects.db").write_bytes(b"their projects")
+    if stamped:  # an earlier PrismLCA started here
+        (other / STAMP_FILE).write_text('{"schema": 1, "written_by": "0.9.9"}', encoding="utf-8")
+    return other
+
+
+def test_without_the_variable_the_app_uses_its_own_directory(tmp_path):
+    settings = _settings(tmp_path)
+    choice = choose(settings, {}, from_source=False)
+    assert choice.path == tmp_path / "data" / "brightway" == default_dir(settings)
+    assert choice.note is None and choice.refusal is None and choice.carry_over_from is None
+
+
+def test_a_variable_naming_the_own_directory_changes_nothing(tmp_path):
+    settings = _settings(tmp_path)
+    choice = choose(settings, {"BRIGHTWAY2_DIR": str(tmp_path / "data" / "brightway")}, from_source=True)
+    assert choice == choose(settings, {}, from_source=True)
+
+
+def test_the_installed_app_leaves_another_brightway_directory_alone(tmp_path):
+    other = _foreign(tmp_path)
+    choice = choose(_settings(tmp_path), {"BRIGHTWAY2_DIR": str(other)}, from_source=False)
+    assert choice.path == tmp_path / "data" / "brightway"
+    assert choice.refusal is None and choice.carry_over_from is None
+    assert str(other) in choice.note and "PRISM_BRIGHTWAY_DIR" in choice.note
+
+
+def test_a_variable_pointing_nowhere_does_not_stop_the_installed_app(tmp_path):
+    # bw2data raises on a BRIGHTWAY2_DIR that is not a directory — a removed drive used to end the start.
+    choice = choose(_settings(tmp_path), {"BRIGHTWAY2_DIR": str(tmp_path / "gone")}, from_source=False)
+    assert choice.path == tmp_path / "data" / "brightway" and choice.refusal is None
+
+
+def test_a_directory_an_earlier_version_worked_in_is_not_opened_but_carried_over(tmp_path):
+    other = _foreign(tmp_path, stamped=True)
+    choice = choose(_settings(tmp_path), {"BRIGHTWAY2_DIR": str(other)}, from_source=False)
+    assert choice.path == tmp_path / "data" / "brightway"
+    assert choice.carry_over_from == other and choice.refusal is None
+
+
+def test_from_source_any_foreign_directory_refuses_instead_of_falling_back(tmp_path):
+    # A developer's BRIGHTWAY2_DIR means a throwaway directory; the default — or copying into it — would
+    # be the real one. Stamped or not.
+    for stamped in (False, True):
+        other = _foreign(tmp_path / str(stamped), stamped=stamped)
+        choice = choose(_settings(tmp_path), {"BRIGHTWAY2_DIR": str(other)}, from_source=True)
+        assert choice.refusal is not None and choice.carry_over_from is None
+        assert f"PRISM_BRIGHTWAY_DIR={other}" in choice.refusal
+
+
+def test_prism_brightway_dir_wins_over_everything(tmp_path):
+    other = _foreign(tmp_path, stamped=True)
+    chosen = tmp_path / "chosen"
+    for from_source in (False, True):
+        choice = choose(_settings(tmp_path, chosen), {"BRIGHTWAY2_DIR": str(other)}, from_source=from_source)
+        assert choice.path == chosen and choice.refusal is None and choice.carry_over_from is None
+
+
+def test_an_empty_prism_brightway_dir_counts_as_unset(tmp_path, monkeypatch):
+    monkeypatch.setenv("PRISM_BRIGHTWAY_DIR", "  ")
+    assert Settings(data_dir=tmp_path).brightway_dir is None
+
+
+# --- the real start-up --------------------------------------------------------------------------------------
+
+
+def test_the_installed_backend_starts_beside_a_brightway_installation_without_touching_it(tmp_path):
+    other = _foreign(tmp_path)
+    before = snapshot(other)
+    proc = spawn({"PRISM_DATA_DIR": str(tmp_path / "data"), "BRIGHTWAY2_DIR": str(other)}, frozen=True)
+    try:
+        event, _ = wait_for_start(proc)
+        assert event["event"] == "prism-backend-ready", event
+    finally:
+        err = stop(proc)
+    assert snapshot(other) == before
+    assert (tmp_path / "data" / "brightway" / STAMP_FILE).is_file()
+    assert "is left alone" in err
+
+
+def test_a_start_from_source_with_a_foreign_brightway_dir_is_refused_untouched(tmp_path):
+    other = _foreign(tmp_path)
+    proc = spawn({"PRISM_DATA_DIR": str(tmp_path / "data"), "BRIGHTWAY2_DIR": str(other)}, frozen=False)
+    try:
+        event, _ = wait_for_start(proc)
+    finally:
+        stop(proc, terminate=False)
+    assert event["event"] == "prism-backend-refused"
+    assert "PRISM_BRIGHTWAY_DIR" in event["reason"]
+    assert proc.returncode == 5
+    assert snapshot(other) == {"projects.db": b"their projects"}
+    assert not (tmp_path / "data").exists()
