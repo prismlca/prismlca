@@ -11,7 +11,7 @@ from pathlib import Path
 from backend_process import snapshot, spawn, stop, wait_for_start
 
 from prism_lca.config import Settings
-from prism_lca.engine.brightway_dir import choose, default_dir
+from prism_lca.engine.brightway_dir import OWNER_FILE, choose, claim, default_dir
 from prism_lca.engine.data_version import STAMP_FILE
 
 
@@ -70,7 +70,44 @@ def test_from_source_any_foreign_directory_refuses_instead_of_falling_back(tmp_p
         other = _foreign(tmp_path / str(stamped), stamped=stamped)
         choice = choose(_settings(tmp_path), {"BRIGHTWAY2_DIR": str(other)}, from_source=True)
         assert choice.refusal is not None and choice.carry_over_from is None
-        assert f"PRISM_BRIGHTWAY_DIR={other}" in choice.refusal
+        assert "PRISM_BRIGHTWAY_DIR" in choice.refusal
+
+
+def test_prism_brightway_dir_cannot_point_into_somebody_elses_projects(tmp_path):
+    # Not their own Brightway, and not the one an earlier PrismLCA shared with them: the stamp says
+    # PrismLCA started there, not that the projects are its own.
+    for stamped in (False, True):
+        other = _foreign(tmp_path / str(stamped), stamped=stamped)
+        for from_source in (False, True):
+            choice = choose(_settings(tmp_path, other), {}, from_source=from_source)
+            assert choice.refusal is not None and "never works inside" in choice.refusal
+    assert {p.name for p in other.iterdir()} == {"projects.db", STAMP_FILE}
+
+
+def test_prism_brightway_dir_may_be_empty_or_made_by_prismlca(tmp_path):
+    empty = tmp_path / "empty"
+    assert choose(_settings(tmp_path, empty), {}, from_source=False).refusal is None
+    claim(empty)
+    (empty / "projects.db").write_bytes(b"ours")  # what bw2data does next
+    assert choose(_settings(tmp_path, empty), {}, from_source=False).refusal is None
+
+
+def test_claim_marks_only_a_directory_without_projects(tmp_path):
+    fresh = tmp_path / "fresh"
+    claim(fresh)
+    assert (fresh / OWNER_FILE).is_file()
+    other = _foreign(tmp_path)
+    claim(other)
+    assert not (other / OWNER_FILE).exists()
+
+
+def test_the_default_location_is_ours_without_a_mark(tmp_path):
+    # Directories from before the mark existed: nothing but PrismLCA creates its default location.
+    own = default_dir(_settings(tmp_path))
+    own.mkdir(parents=True)
+    (own / "projects.db").write_bytes(b"from 0.9.9")
+    assert choose(_settings(tmp_path), {}, from_source=False) == choose(_settings(tmp_path), {}, from_source=True)
+    assert choose(_settings(tmp_path), {}, from_source=False).refusal is None
 
 
 def test_prism_brightway_dir_wins_over_everything(tmp_path):

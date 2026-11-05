@@ -6,19 +6,19 @@ On the first start in its own directory, the workspaces PrismLCA worked in over 
 so nothing looks lost.
 
 Copied, never moved: a workspace there may just as well be an Activity Browser project the user opened
-in PrismLCA, and the other installation keeps it. Nothing in the old directory is written, and nothing
-there is opened by anything but a plain file read — not by bw2data, and not by SQLite, which in read-only
-mode may still create a WAL database's ``-shm`` file or trip over a journal left behind. ``projects.db``
-(with any journal beside it) is copied byte for byte first, and only the copy is opened.
+in PrismLCA, and the other installation keeps it. The other directory is only ever read, and only through
+``engine/foreign_read.py``: no SQLite and no bw2data there, nothing locked, nothing created, and a copy
+that does not reflect one consistent moment is taken again. ``projects.db`` is copied the same way, and
+only the copy is opened.
 
 Which projects: those whose folder holds ``prism_meta/`` or ``prism_search/``, the two folders PrismLCA
 writes into a project it works in (its stores and audit log, its search index). A project PrismLCA only
 listed has neither, and stays where it is.
 
 Each copy records where it came from (``prism_meta/carried-over.json``) — in the copy: the original keeps
-no mark of ours. The order makes it restartable: each project is copied under a temporary name and renamed when complete,
-and ``projects.db`` comes last — a SQLite backup of the old one with every other project deleted. Its
-existence is what "carried over" means, so an interrupted start simply copies again.
+no mark of ours. The order makes it restartable: each project is copied under a temporary name and
+renamed when complete, and ``projects.db`` comes last, every project but the carried ones deleted from
+its copy. Its existence is what "carried over" means, so an interrupted start continues where it stopped.
 """
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from prism_lca.engine import foreign_read
 from prism_lca.engine.data_version import DATA_SCHEMA, read_schema
 
 #: The folders PrismLCA writes into a Brightway project it works in.
@@ -40,7 +41,6 @@ PROJECTS_DB = "projects.db"
 #: In a carried-over workspace's ``prism_meta``: the folder it was copied from, and when.
 ORIGIN_FILE = "carried-over.json"
 _PARTIAL = ".carry-over-"
-_CHUNK = 16 * 1024 * 1024
 #: Room left over after the copy — an ecoinvent import or a report needs some, and a disk filled to the
 #: last byte fails the next write instead of this one.
 _HEADROOM = 512 * 1024 * 1024
@@ -58,24 +58,6 @@ def _gb(size: int) -> str:
     return f"{size / 1e9:.1f} GB"
 
 
-def _size(folder: Path) -> int:
-    return sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
-
-
-def _copy_projects_db(old: Path, new: Path) -> Path:
-    """Copy ``projects.db`` and whatever journal lies beside it into ``new``; the copy's path.
-
-    SQLite opens the copy and finishes a transaction the journal left open there, in our directory.
-    """
-    copy = new / f"{PROJECTS_DB}{_PARTIAL}tmp"
-    for suffix in ("", "-journal", "-wal", "-shm"):
-        Path(f"{copy}{suffix}").unlink(missing_ok=True)
-        source = old / f"{PROJECTS_DB}{suffix}"
-        if source.is_file():
-            shutil.copyfile(source, f"{copy}{suffix}")
-    return copy
-
-
 def workspaces_in(old: Path, projects_db: Path) -> list[Workspace]:
     """PrismLCA's workspaces in another Brightway directory, from a copy of its ``projects.db``."""
     from bw_processing.filesystem import safe_filename  # how bw2data names a project's folder
@@ -89,22 +71,17 @@ def workspaces_in(old: Path, projects_db: Path) -> list[Workspace]:
     for name, full_hash in rows:
         folder = safe_filename(name, full=bool(full_hash))
         if any((old / folder / marker).is_dir() for marker in MARKERS):
-            found.append(Workspace(name, folder, _size(old / folder)))
+            found.append(Workspace(name, folder, foreign_read.size_of(old / folder)))
     return found
 
 
-def _copy_tree(src: Path, dst: Path, on_bytes: Callable[[int], None]) -> None:
-    """``shutil.copytree`` with a word after every chunk, because one ecoinvent database is a file of
-    over a gigabyte and the shell gives up on a backend that stays silent for a minute."""
-    for root, _dirs, files in os.walk(src):
-        target = dst / Path(root).relative_to(src)
-        target.mkdir(parents=True, exist_ok=True)
-        for name in files:
-            with open(Path(root) / name, "rb") as fin, open(target / name, "wb") as fout:
-                while chunk := fin.read(_CHUNK):
-                    fout.write(chunk)
-                    on_bytes(len(chunk))
-            shutil.copystat(Path(root) / name, target / name)
+def _clear_partials(new: Path) -> None:
+    """What an interrupted carry-over of ours left in our own directory."""
+    for leftover in new.glob(f"*{_PARTIAL}*"):
+        if leftover.is_dir():
+            shutil.rmtree(leftover, ignore_errors=True)
+        else:
+            leftover.unlink(missing_ok=True)
 
 
 def _record_origin(copy: Path, source: Path) -> None:
@@ -124,9 +101,23 @@ def _finish_projects_db(copy: Path, new: Path, keep: list[str]) -> None:
         con.commit()
     finally:
         con.close()
-    for suffix in ("-journal", "-wal", "-shm"):  # settled into the file by the close above
-        Path(f"{copy}{suffix}").unlink(missing_ok=True)
     os.replace(copy, new / PROJECTS_DB)
+
+
+def _busy(old: Path) -> str:
+    return (
+        f"Another program is working in {old} — an open Brightway project, perhaps in the Activity "
+        "Browser — so PrismLCA cannot take a consistent copy of its earlier workspaces from there yet. "
+        "Nothing there was changed. Close that program and start PrismLCA again."
+    )
+
+
+def _linked(old: Path, where: str) -> str:
+    return (
+        f"A PrismLCA workspace in {old} contains a link ({where}). PrismLCA copies only plain folders and "
+        "has changed nothing there. Replace the link with the folder it points to and start again — or "
+        "unset BRIGHTWAY2_DIR to start without these workspaces."
+    )
 
 
 def carry_over(
@@ -145,28 +136,34 @@ def carry_over(
     if not (old / PROJECTS_DB).is_file():
         log(f"No Brightway projects in {old}; nothing to copy.")
         return None
+    progress(f"Looking for earlier PrismLCA workspaces in {old}…")
     new.mkdir(parents=True, exist_ok=True)
+    _clear_partials(new)
+    copy = new / f"{PROJECTS_DB}{_PARTIAL}tmp"
     try:
-        copy = _copy_projects_db(old, new)
+        foreign_read.copy_stable(old / PROJECTS_DB, copy)
         workspaces = workspaces_in(old, copy)
+    except foreign_read.Changing:
+        return _busy(old)
+    except foreign_read.Linked as exc:
+        return _linked(old, str(exc))
     except (OSError, sqlite3.Error) as exc:
-        return (
-            f"PrismLCA could not read the list of projects in {old} ({exc}). Nothing there was changed. "
-            "Close other Brightway programs such as the Activity Browser and start again."
-        )
+        copy.unlink(missing_ok=True)
+        return f"PrismLCA could not read the list of projects in {old} ({exc}). Nothing there was changed."
     if not workspaces:
-        Path(copy).unlink(missing_ok=True)
+        copy.unlink(missing_ok=True)
         log(f"No PrismLCA workspaces in {old}; nothing to copy.")
         return None
-    total = sum(w.size for w in workspaces)
+    remaining = [w for w in workspaces if not (new / w.folder).exists()]  # renamed in by an earlier start
+    total = sum(w.size for w in remaining)
     free = shutil.disk_usage(new).free
     if free < total + _HEADROOM:
-        Path(copy).unlink(missing_ok=True)
+        copy.unlink(missing_ok=True)
         return (
             f"PrismLCA no longer works inside {old}, which belongs to your Brightway installation, and "
-            f"needs to copy {len(workspaces)} workspace(s) ({_gb(total)}) from there into {new}. Only "
-            f"{_gb(free)} is free on that drive. Free some space and start again — or start PrismLCA with "
-            f"PRISM_BRIGHTWAY_DIR={old} to keep working in the old directory."
+            f"needs to copy {len(remaining)} workspace(s) ({_gb(total)}) from there into {new}. Only "
+            f"{_gb(free)} is free on that drive. Free some space and start again, or set "
+            "PRISM_BRIGHTWAY_DIR to an empty folder on a drive with more room."
         )
     copied = 0
     last = 0.0
@@ -177,29 +174,29 @@ def carry_over(
         now = time.monotonic()
         if now - last >= 0.5:
             last = now
-            progress(f"Copying workspace '{name}' into PrismLCA's own folder… {copied * 100 // max(total, 1)}%")
+            pct = min(99, copied * 100 // max(total, 1))
+            progress(f"Copying workspace '{name}' into PrismLCA's own folder… {pct}%")
 
-    for ws in workspaces:
-        target = new / ws.folder
-        if target.exists():  # renamed into place by an earlier, interrupted start
-            copied += ws.size
-            continue
+    for ws in remaining:
         partial = new / f"{_PARTIAL}{ws.folder}"
-        shutil.rmtree(partial, ignore_errors=True)
         try:
-            _copy_tree(old / ws.folder, partial, lambda n, name=ws.name: tick(n, name))
+            foreign_read.copy_stable(old / ws.folder, partial, lambda n, name=ws.name: tick(n, name))
             _record_origin(partial, old / ws.folder)
+        except foreign_read.Changing:
+            return _busy(old)
+        except foreign_read.Linked as exc:
+            return _linked(old, str(exc))
         except OSError as exc:
             shutil.rmtree(partial, ignore_errors=True)
             return (
                 f"Copying the workspace '{ws.name}' from {old} failed ({exc}). Nothing there was "
                 "changed; the next start tries again."
             )
-        os.replace(partial, target)
+        os.replace(partial, new / ws.folder)
     _finish_projects_db(copy, new, [w.name for w in workspaces])
     log(
-        f"Copied {len(workspaces)} workspace(s) ({_gb(total)}) from {old} into {new}: "
-        + ", ".join(w.name for w in workspaces)
+        f"Copied {len(remaining)} workspace(s) ({_gb(total)}) from {old} into {new}: "
+        + ", ".join(w.name for w in remaining)
         + f". {old} itself is unchanged."
     )
     return None

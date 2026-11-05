@@ -127,10 +127,11 @@ BRIGHTWAY2_DIR=/path/to/brightway OMP_NUM_THREADS=8 uv run --no-sync python scri
 
 The scripts follow Brightway's `BRIGHTWAY2_DIR`; the app does not. It keeps its projects in `brightway` inside
 its data directory (`PRISM_DATA_DIR`) or wherever `PRISM_BRIGHTWAY_DIR` says — `BRIGHTWAY2_DIR` usually belongs
-to an existing Brightway or Activity Browser installation, and PrismLCA leaves that alone. To open such a
-directory in the app, start it with `PRISM_BRIGHTWAY_DIR=/path/to/brightway npm run dev`. Started from source
-with `BRIGHTWAY2_DIR` set to any other directory, the backend refuses to start rather than fall back to the
-default one.
+to an existing Brightway or Activity Browser installation, and PrismLCA leaves that alone. To open a directory
+the scripts created in the app, start it with `PRISM_BRIGHTWAY_DIR=/path/to/brightway npm run dev`. The app opens
+only Brightway directories PrismLCA created (the engine marks a new one with `prism-brightway-owner.json`) and
+refuses one that holds somebody else's projects. Started from source with `BRIGHTWAY2_DIR` set to any other
+directory, the backend refuses to start rather than fall back to the default one.
 
 ### The backend on its own
 

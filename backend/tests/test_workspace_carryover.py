@@ -254,3 +254,31 @@ def test_the_installed_app_starts_with_its_workspace_and_without_theirs(theirs, 
     assert not names & {"steel-bottle-study", "Übung 2"}
     assert progress, "a carry-over says what it is doing while it runs"
     assert "Copied 1 workspace" in err
+
+
+def test_a_brightway_program_writing_there_stops_the_copy_without_touching_anything(theirs, tmp_path):
+    # The Activity Browser in the middle of a commit: SQLite's journal sits beside the database.
+    workspace = next(p for p in theirs.iterdir() if p.name.startswith("prism-workspace."))
+    (workspace / "lci" / "databases.db-journal").write_bytes(b"\x00" * 4096)
+    before = snapshot(theirs)
+    own = tmp_path / "own"
+    with _read_only(theirs):
+        refusal, _, _ = _carry(theirs, own)
+    assert refusal is not None and "Close that program" in refusal
+    assert snapshot(theirs) == before
+    assert not (own / PROJECTS_DB).exists()
+    assert not list(own.glob("prism-workspace.*"))
+
+
+def test_after_an_interruption_only_the_rest_needs_space(theirs, tmp_path, monkeypatch):
+    own = tmp_path / "own"
+    assert _carry(theirs, own)[0] is None
+    (own / PROJECTS_DB).unlink()  # interrupted after the workspace, before projects.db
+    (own / f"{workspace_carryover._PARTIAL}stale").mkdir()  # and a leftover of ours
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _p: shutil._ntuple_diskusage(10**12, 10**12, workspace_carryover._HEADROOM)
+    )
+    refusal, _, log = _carry(theirs, own)
+    assert refusal is None and "Copied 0 workspace" in log[-1]
+    assert (own / PROJECTS_DB).exists()
+    assert not list(own.glob(f"*{workspace_carryover._PARTIAL}*"))

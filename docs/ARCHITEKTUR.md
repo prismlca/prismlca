@@ -110,9 +110,12 @@ same API endpoints as the UI does (ADR-003, ADR-011).
 - Next to an existing Brightway installation, whose projects PrismLCA must never change: the app takes
   its Brightway directory from its own settings (`PRISM_BRIGHTWAY_DIR`, else `brightway` in the data
   directory) and never opens an inherited `BRIGHTWAY2_DIR`, which usually points at the user's own
-  Brightway or Activity Browser projects (`engine/brightway_dir.py`). Workspaces an earlier version kept
-  there are copied into the app's own directory on its first start, by plain file reads only — the old
-  directory is not written (`engine/workspace_carryover.py`). The backend pins pypardiso to its own
+  Brightway or Activity Browser projects (`engine/brightway_dir.py`); nor a directory with projects it did
+  not create, whatever variable names it (an owner mark goes into every Brightway directory the engine
+  creates). Workspaces an earlier version kept in a shared directory are copied into the app's own one on
+  its first start (`engine/workspace_carryover.py`) — read only, never through SQLite or bw2data, with
+  Windows sharing modes that let the other program go on writing, and accepted only when nothing changed
+  while it was read (`engine/foreign_read.py`). The backend pins pypardiso to its own
   Intel MKL and the threading layer it ships, overriding `PYPARDISO_MKL_RT`, `MKL_THREADING_LAYER` and
   `MKL_INTERFACE_LAYER` (`mkl_runtime.py`, before NumPy is imported). The frozen backend works in its
   own folder, so bw2data's `brightway-*.env` files in the folder it was started from do not apply, and

@@ -147,6 +147,7 @@ def main() -> None:
     # Workspaces an earlier version kept in a shared Brightway directory, copied over once — before the
     # app opens a project, and announced while it runs, because a large workspace takes longer than the
     # shell waits for a silent backend.
+    brightway_dir.claim(home.path)  # a directory still without projects becomes PrismLCA's own
     if home.carry_over_from is not None:
         from prism_lca.engine import workspace_carryover
 

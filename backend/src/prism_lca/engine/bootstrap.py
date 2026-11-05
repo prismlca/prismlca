@@ -11,10 +11,11 @@ a throwaway directory and must keep it.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from types import ModuleType
 
 from prism_lca.config import get_settings
-from prism_lca.engine.brightway_dir import BRIGHTWAY_ENV, default_dir
+from prism_lca.engine.brightway_dir import BRIGHTWAY_ENV, claim, default_dir
 
 _bd: ModuleType | None = None
 
@@ -24,6 +25,9 @@ def _ensure_env() -> None:
         data_dir = default_dir(get_settings())
         data_dir.mkdir(parents=True, exist_ok=True)
         os.environ[BRIGHTWAY_ENV] = str(data_dir)
+    # A directory bw2data is about to create is ours — marked, so the app may open it later (a script's
+    # import, say). One that already holds projects keeps no mark of ours.
+    claim(Path(os.environ[BRIGHTWAY_ENV]))
     # Deterministic, ASCII-safe output on Windows consoles.
     os.environ.setdefault("PYTHONUTF8", "1")
 
