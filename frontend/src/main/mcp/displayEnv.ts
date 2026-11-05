@@ -66,12 +66,11 @@ export function resolveDisplayEnv(
       if (wl) notes.push(`WAYLAND_DISPLAY=${wl} from the configuration is stale; the session has ${found}.`)
     }
   }
-  // X11: a LOCAL display (":0", "unix:0") must be this user's (xOurs); a remote or TCP display
-  // ("localhost:10.0", "host:1") has no socket here and is kept as given — an SSH-forwarded session
-  // is a supported way to work, not a stale value.
+  // X11: a LOCAL display (":0", "unix:0", "unix/:0") must be this user's (xOurs); a remote or TCP
+  // display ("localhost:10.0", "host:1") has no socket here and is kept as given — an SSH-forwarded
+  // session is a supported way to work, not a stale value. Any other spelling is not used.
   const x = env.DISPLAY
-  const local = (d: string): boolean => /^(unix)?:\d+(\.\d+)?$/.test(d)
-  const num = (d: string): string => d.replace(/^(unix)?:/, '').split('.')[0]
+  const target = x ? xDisplayTarget(x) : null
   // An X display is this user's when the live process its lock names, of the socket's owner, holds both
   // of its listeners itself — the file and the abstract name, which X clients try first. A server run
   // as root (a display manager's) counts when logind assigns its display to one of this user's sessions.
@@ -83,8 +82,8 @@ export function resolveDisplayEnv(
     if (s.uid === uid) return server.holds === true
     return s.uid === 0 && server.holds !== false && fs.sessionDisplays().includes(`:${n}`)
   }
-  if (x && !local(x)) out.DISPLAY = x
-  else if (x && xOurs(num(x))) out.DISPLAY = x
+  if (x && target === 'remote') out.DISPLAY = x
+  else if (x && target && target !== 'remote' && xOurs(target.local)) out.DISPLAY = x
   else {
     const found = fs.list(X11_DIR).find((n) => /^X\d+$/.test(n) && xOurs(n.slice(1)))
     if (found) {
@@ -100,7 +99,7 @@ export function resolveDisplayEnv(
   // exists, else the session's — GNOME writes .mutter-Xwaylandauth.<rand>, KDE/SDDM xauth_<rand>
   // (measured on KDE: the GNOME-only lookup left X without authorization) — else the classic
   // ~/.Xauthority.
-  const remoteX = !!out.DISPLAY && !local(out.DISPLAY)
+  const remoteX = !!out.DISPLAY && xDisplayTarget(out.DISPLAY) === 'remote'
   if (out.DISPLAY) {
     const xa = env.XAUTHORITY
     if (xa && fs.exists(xa)) out.XAUTHORITY = xa
@@ -164,4 +163,25 @@ export function displayForLaunch(
   for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY'] as const) delete env[k]
   Object.assign(env, fixed)
   return { env, args: platform ? [`--ozone-platform=${platform}`] : [], notes, platform }
+}
+
+/**
+ * Where an X client connects for a DISPLAY value, read with libxcb's grammar
+ * `[protocol/][host]:display[.screen]`: the local socket of display n (protocol "unix", or an empty
+ * or "unix" host), a network host, or null for a spelling we do not accept.
+ */
+export function xDisplayTarget(d: string): { local: string } | 'remote' | null {
+  if (d.startsWith('/')) return null
+  const slash = d.lastIndexOf('/')
+  const protocol = slash >= 0 ? d.slice(0, slash) : null
+  const rest = d.slice(slash + 1)
+  const colon = rest.lastIndexOf(':')
+  if (colon < 0) return null
+  const host = rest.slice(0, colon)
+  const m = /^(\d+)(\.\d+)?$/.exec(rest.slice(colon + 1))
+  if (!m) return null
+  const unixHost = host === '' || host === 'unix'
+  if (protocol === 'unix' || (protocol === null && unixHost)) return { local: String(Number(m[1])) }
+  if (!unixHost && (protocol === null || ['tcp', 'inet', 'inet6'].includes(protocol))) return 'remote'
+  return null
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { displayForLaunch, resolveDisplayEnv, type DisplayFs } from './displayEnv'
+import { displayForLaunch, resolveDisplayEnv, xDisplayTarget, type DisplayFs } from './displayEnv'
 
 const UID = 1000
 
@@ -273,6 +273,50 @@ describe('resolveDisplayEnv: only displays of this user', () => {
     )
     expect(r.env.WAYLAND_DISPLAY).toBeUndefined()
     expect(r.platform).toBeNull()
+  })
+})
+
+describe('xDisplayTarget', () => {
+  it('reads DISPLAY the way libxcb does', () => {
+    for (const d of [':0', ':0.1', 'unix:0', 'unix/:0', 'unix/somehost:0.0', ':00'])
+      expect(xDisplayTarget(d)).toEqual({ local: '0' })
+    for (const d of ['localhost:10.0', 'host:1', 'tcp/localhost:10', 'inet6/::1:0', '127.0.0.1:0'])
+      expect(xDisplayTarget(d)).toBe('remote')
+    for (const d of ['/tmp/.X11-unix/X0', 'tcp/:0', 'other/:0', ':', ':x', ': 0', ':0.', 'host', ''])
+      expect(xDisplayTarget(d)).toBeNull()
+  })
+
+  it('checks every local spelling for its owner, and uses no spelling it cannot read', () => {
+    for (const d of ['unix/:0', 'unix/somehost:0', 'unix:0', ':0.0']) {
+      const r = resolveDisplayEnv(
+        { XDG_RUNTIME_DIR: '/run/user/1000', DISPLAY: d, XAUTHORITY: '/run/user/1000/xauth_A' },
+        fs({
+          existing: ['/run/user/1000/xauth_A'],
+          runtime: ['wayland-0', 'xauth_A'],
+          x11: ['X0'],
+          owners: { '/tmp/.X11-unix/X0': { uid: 1001, mode: 0o777, socket: true } },
+          servers: { '0': { uid: 1001, holds: true } }
+        }),
+        UID
+      )
+      expect(r.platform).toBe('wayland')
+      expect(r.env.DISPLAY).toBeUndefined()
+      expect(r.env.XAUTHORITY).toBeUndefined()
+    }
+    const own = resolveDisplayEnv(
+      { XDG_RUNTIME_DIR: '/run/user/1000', DISPLAY: 'unix/:0' },
+      fs({ runtime: ['xauth_A'], x11: ['X0'] }),
+      UID
+    )
+    expect(own.env).toMatchObject({ DISPLAY: 'unix/:0', XAUTHORITY: '/run/user/1000/xauth_A' })
+    expect(own.platform).toBe('x11')
+    const path = resolveDisplayEnv(
+      { XDG_RUNTIME_DIR: '/run/user/1000', DISPLAY: '/tmp/.X11-unix/X0' },
+      fs({ runtime: ['xauth_A'] }),
+      UID
+    )
+    expect(path.env.DISPLAY).toBeUndefined()
+    expect(path.platform).toBeNull()
   })
 })
 
