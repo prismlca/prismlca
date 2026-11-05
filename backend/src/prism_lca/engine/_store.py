@@ -132,11 +132,19 @@ class JsonFileStore:
 
 @dataclass(frozen=True)
 class ModelScopedStore:
-    """One per-model store, as the cascade sees it: a name and the two lifecycle moves."""
+    """One per-model store, as the cascade sees it: a name and the lifecycle moves.
+
+    ``snapshot`` reads the model's share as stored, without changing anything; ``restore`` makes such a
+    share the model's data in the store again, replacing whatever it holds now, under the name it is
+    given (which may differ from the one it was read under). Together they set a deleted model's data
+    aside until the deletion is taken back (``engine/model_aside.py``).
+    """
 
     name: str
     rename: Callable[[str, str], None]
     remove: Callable[[str], None]
+    snapshot: Callable[[str], Any]
+    restore: Callable[[str, Any], None]
 
 
 def per_model_stores() -> list[ModelScopedStore]:
@@ -157,17 +165,28 @@ def per_model_stores() -> list[ModelScopedStore]:
     from prism_lca.engine.tags import TagStore
     from prism_lca.engine.view_store import ViewStore
 
+    def of(name: str, store: Any) -> ModelScopedStore:
+        return ModelScopedStore(
+            name, store.rename_database, store.remove_database, store.snapshot_database, store.restore_database
+        )
+
     return [
-        ModelScopedStore("tags", TagStore().rename_database, TagStore().remove_database),
-        ModelScopedStore("chats", ChatStore().rename_database, ChatStore().remove_database),
-        ModelScopedStore("parameter_groups", parameter_groups.rename_database, parameter_groups.remove_database),
-        ModelScopedStore("scenarios", ScenarioStore().rename_database, ScenarioStore().remove_database),
-        ModelScopedStore("study", StudyMetaStore().rename_database, StudyMetaStore().remove_database),
-        ModelScopedStore("reports", ReportStore().rename_database, ReportStore().remove_database),
-        ModelScopedStore("research_log", ResearchLogStore().rename_database, ResearchLogStore().remove_database),
-        ModelScopedStore("review_log", ReviewLogStore().rename_database, ReviewLogStore().remove_database),
-        ModelScopedStore("views", ViewStore().rename_database, ViewStore().remove_database),
+        of("tags", TagStore()),
+        of("chats", ChatStore()),
+        of("parameter_groups", parameter_groups),
+        of("scenarios", ScenarioStore()),
+        of("study", StudyMetaStore()),
+        of("reports", ReportStore()),
+        of("research_log", ResearchLogStore()),
+        of("review_log", ReviewLogStore()),
+        of("views", ViewStore()),
         # Folder membership is keyed by model name too. It used to be moved only by the API route,
         # so a rename through the repository (bundle import, tests) stranded it silently.
-        ModelScopedStore("model_folders", model_folders.rename_database, model_folders.forget_database),
+        ModelScopedStore(
+            "model_folders",
+            model_folders.rename_database,
+            model_folders.forget_database,
+            model_folders.snapshot_database,
+            model_folders.restore_database,
+        ),
     ]

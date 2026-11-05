@@ -1296,7 +1296,9 @@ class ImportBundleCommand(Command):
 
     Every background reference is resolved *before* this runs (the endpoint refuses otherwise), so the
     only failures left here are real ones: a name collision, a malformed section. Undo deletes the
-    model and everything that came with it, which is exactly what `delete_foreground_database` does.
+    model and everything that came with it, which is exactly what `delete_foreground_database` does —
+    after setting the model's own stores aside (chats, reports, views …: what it gathered since the
+    import), which a redo puts back over what the bundle brings (engine/model_aside.py).
     """
 
     action = "import_bundle"
@@ -1312,10 +1314,12 @@ class ImportBundleCommand(Command):
         self._unknown_files: list[str] = []
         self._library_added: list[str] = []
         self._uids: dict[int, str] = {}  # per graph row, the exchange uid — the same on redo
+        # Between an undo and its redo: the model's own stores as the undo found them (a ModelAside).
+        self._aside = None
 
     def execute(self) -> dict:
         from prism_lca.engine import bundle as _bundle
-        from prism_lca.engine import bundle_unknown
+        from prism_lca.engine import bundle_unknown, model_aside
 
         sections = self.opened.get("sections") or {}
         manifest = self.opened.get("manifest") or {}
@@ -1372,13 +1376,19 @@ class ImportBundleCommand(Command):
             self._unknown_files = bundle_unknown.store_unknown(
                 self._database, self.opened.get("unknown") or {}, self.opened.get("unknown_entries") or {}
             )
+            # A redo: what the model held when it was undone replaces what the bundle just wrote. Inside
+            # the rollback as well, and kept for a retry if it fails.
+            if self._aside is not None:
+                model_aside.put_back(self._aside, self._database)
         except Exception:
             # The graph is already written by now, so an exception here would leave a half-imported
             # model behind — which is exactly what this command promises not to do. Found by importing
             # a real export whose reports section was refused: the model stayed, minus its parameters.
-            self.undo()
+            # Not `undo()`: a half-import has nothing to set aside, and a pending set-aside must survive.
+            self._remove()
             self._database = ""
             raise
+        self._aside = None
 
         lca.invalidate_lca_cache()
         return {
@@ -1392,6 +1402,14 @@ class ImportBundleCommand(Command):
         }
 
     def undo(self) -> None:
+        from prism_lca.engine import model_aside
+
+        # Read before the delete takes the stores along; kept only once the delete went through.
+        aside = model_aside.set_aside(self._database) if self._database else None
+        self._remove()
+        self._aside = aside
+
+    def _remove(self) -> None:
         from prism_lca.engine import bundle as _bundle
         from prism_lca.engine.brightway_repository import BrightwayRepository
 

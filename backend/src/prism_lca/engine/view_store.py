@@ -26,6 +26,7 @@ cost of getting it wrong is one model's view rather than somebody's export.
 """
 from __future__ import annotations
 
+import copy
 import re
 from typing import Any
 
@@ -276,6 +277,24 @@ class ViewStore(JsonFileStore):
             data = self._load()
             if data["models"].pop(name, None) is not None:
                 self._save(data)
+
+    def snapshot_database(self, name: str) -> dict:
+        """The model's entry, with the name its own keys carry."""
+        return {"name": name, "view": self._load()["models"].get(name)}
+
+    def restore_database(self, name: str, snapshot: dict) -> None:
+        """Make the entry the model's view again; under another name its own keys follow, as on a rename."""
+        view = snapshot.get("view")
+        if isinstance(view, dict) and snapshot.get("name") != name:
+            view = copy.deepcopy(view)
+            rename_in_view(view, str(snapshot.get("name") or ""), name, _codes_of(name))
+        with self._lock:
+            data = self._load()
+            data["models"].pop(name, None)
+            if isinstance(view, dict):
+                data["models"][name] = view
+            data["schema"] = SCHEMA
+            self._save(data)
 
     def all_models(self) -> list[str]:
         """Which models have a stored view — for the renderer's one-time migration check."""

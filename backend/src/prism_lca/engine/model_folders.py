@@ -170,6 +170,21 @@ def forget_database(name: str) -> None:
             _save(data)
 
 
+def snapshot_database(name: str) -> str | None:
+    """The folder the model is filed in, if any."""
+    return _load()["of"].get(name)
+
+
+def restore_database(name: str, folder_id: str | None) -> None:
+    """File the model where it was — unless that folder has been deleted meanwhile, which released it."""
+    with _LOCK:
+        data = _load()
+        data["of"].pop(name, None)
+        if folder_id and _find(data, folder_id) is not None:
+            data["of"][name] = folder_id
+        _save(data)
+
+
 def copy(src: str, dst: str) -> None:
     """A duplicate lands beside its original, which is where a person looks for it."""
     with _LOCK:

@@ -72,13 +72,36 @@ def save(chat_id: str, turn_id: str, history_after: list, messages: list) -> int
     raw = json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(raw) > MAX_FILE_BYTES:
         raise TranscriptTooLarge(len(raw))
+    _write(path, raw)
+    return len(raw)
+
+
+def _write(path: Path, raw: bytes) -> None:
     with _lock:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_bytes(raw)
         os.replace(tmp, path)
         _enforce_folder_cap(keep=path)
-    return len(raw)
+
+
+def read_raw(chat_id: str) -> bytes | None:
+    """The stored file byte for byte, or None when there is none — what a set-aside chat keeps
+    (``engine/model_aside.py``); bytes rather than parsed JSON, which would take several times the memory."""
+    path = _path(chat_id)
+    if path is None:
+        return None
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def write_raw(chat_id: str, raw: bytes) -> None:
+    """Put back what :func:`read_raw` returned, under the same per-file and per-folder caps as :func:`save`."""
+    path = _path(chat_id)
+    if path is not None and len(raw) <= MAX_FILE_BYTES:
+        _write(path, raw)
 
 
 def load(chat_id: str) -> Any | None:

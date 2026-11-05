@@ -283,6 +283,19 @@ class ScenarioStore(JsonFileStore):
                     data.pop(k, None)
                 self._write(data)
 
+    def snapshot_database(self, database: str) -> list[dict]:
+        return self.list_all(database)
+
+    def restore_database(self, database: str, entries: list[dict]) -> None:
+        """Make ``entries`` the model's scenarios again, under their ids: reports and the results
+        setup name scenarios by id. An id another model holds by now gets a fresh one."""
+        with self._lock:
+            data = {k: e for k, e in self._load().items() if e.get("database") != database}
+            for e in entries or []:
+                sid = e["id"] if e.get("id") and e["id"] not in data else new_uid()
+                data[sid] = {**e, "id": sid, "database": database}
+            self._write(data)
+
     # --------------------------------------------------------------------- #
     # Legacy (project-global) migration helpers
     # --------------------------------------------------------------------- #

@@ -77,55 +77,65 @@ class TestOnDiskFormat:
                 pass
 
 
+def _seed_every_store(name: str) -> dict:
+    """Give model ``name`` data in every registered store; returns, per store, "does the model have it?".
+
+    The model gets one process, ``c1``: a tag belongs to a model by its process codes."""
+    from prism_lca.engine import model_folders, parameter_groups
+    from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.engine.chat_store import ChatStore
+    from prism_lca.engine.report_store import ReportStore
+    from prism_lca.engine.research_log import ResearchLogStore
+    from prism_lca.engine.review_log import ReviewLogStore
+    from prism_lca.engine.scenarios import ScenarioStore
+    from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.tags import TagStore
+    from prism_lca.engine.view_store import ViewStore
+
+    get_bd().Database(name).new_activity(code="c1", name="p", unit="kilogram", type="process").save()
+    TagStore().add(name, "c1", "phase", "Production")
+    ChatStore().create_chat(name, "hello")
+    parameter_groups.create(name, "Masses")
+    ScenarioStore().create(name, "High demand")
+    StudyMetaStore().update(name, {"goal": "registry guard"})
+    ReportStore().create(name, name="Guard report")
+    ResearchLogStore().record(name, [{"question": "q?", "findings": [{"text": "f", "sources": []}]}])
+    ReviewLogStore().record_review(name, "looks fine")
+    ViewStore().put(name, {"layout": {"c1": [0, 0]}})
+    folder = model_folders.create(f"Folder of {name}")
+    model_folders.assign(name, folder["id"])
+
+    seeded = {
+        "tags": lambda db: bool(TagStore().list_for(db, "c1")),
+        "chats": lambda db: bool(ChatStore().list_chats(db)),
+        "parameter_groups": lambda db: bool(parameter_groups.list_groups(db)),
+        "scenarios": lambda db: bool(ScenarioStore().list_all(db)),
+        "study": lambda db: bool(StudyMetaStore().get(db)),
+        "reports": lambda db: bool(ReportStore().list_reports(db)),
+        "research_log": lambda db: bool(ResearchLogStore().list(db)),
+        "review_log": lambda db: bool(ReviewLogStore().list(db)),
+        "views": lambda db: bool(ViewStore().get(db)),
+        "model_folders": lambda db: db in model_folders.state()["of"],
+    }
+    assert set(seeded) == {s.name for s in per_model_stores()}, (
+        "a store joined (or left) the registry — seed it here so the cascade walk covers it"
+    )
+    for store, has in seeded.items():
+        assert has(name), f"seeding failed for {store}"
+    return seeded
+
+
 class TestPerModelRegistry:
     def test_cascade_covers_every_registered_store(self, project):
         """Seed every registry store, rename through the REAL repository cascade, then delete —
         nothing may strand under the old name, survive the delete, or resurrect under a re-created
         model of the same name."""
-        from prism_lca.engine import model_folders, parameter_groups
         from prism_lca.engine.brightway_repository import BrightwayRepository
-        from prism_lca.engine.chat_store import ChatStore
-        from prism_lca.engine.report_store import ReportStore
-        from prism_lca.engine.research_log import ResearchLogStore
-        from prism_lca.engine.review_log import ReviewLogStore
-        from prism_lca.engine.scenarios import ScenarioStore
-        from prism_lca.engine.study import StudyMetaStore
-        from prism_lca.engine.tags import TagStore
-        from prism_lca.engine.view_store import ViewStore
 
         repo = BrightwayRepository()
         old, new = "registry-model", "registry-model-renamed"
         repo.create_foreground_database(old)
-
-        TagStore().add(old, "c1", "phase", "Production")
-        ChatStore().create_chat(old, "hello")
-        parameter_groups.create(old, "Masses")
-        ScenarioStore().create(old, "High demand")
-        StudyMetaStore().update(old, {"goal": "registry guard"})
-        ReportStore().create(old, name="Guard report")
-        ResearchLogStore().record(old, [{"question": "q?", "findings": [{"text": "f", "sources": []}]}])
-        ReviewLogStore().record_review(old, "looks fine")
-        ViewStore().put(old, {"layout": {"c1": [0, 0]}})
-        folder = model_folders.create("Registry folder")
-        model_folders.assign(old, folder["id"])
-
-        seeded = {
-            "tags": lambda db: bool(TagStore().list_for(db, "c1")),
-            "chats": lambda db: bool(ChatStore().list_chats(db)),
-            "parameter_groups": lambda db: bool(parameter_groups.list_groups(db)),
-            "scenarios": lambda db: bool(ScenarioStore().list_all(db)),
-            "study": lambda db: bool(StudyMetaStore().get(db)),
-            "reports": lambda db: bool(ReportStore().list_reports(db)),
-            "research_log": lambda db: bool(ResearchLogStore().list(db)),
-            "review_log": lambda db: bool(ReviewLogStore().list(db)),
-            "views": lambda db: bool(ViewStore().get(db)),
-            "model_folders": lambda db: db in model_folders.state()["of"],
-        }
-        assert set(seeded) == {s.name for s in per_model_stores()}, (
-            "a store joined (or left) the registry — seed it here so the cascade walk covers it"
-        )
-        for name, has in seeded.items():
-            assert has(old), f"seeding failed for {name}"
+        seeded = _seed_every_store(old)
 
         repo.rename_foreground_database(old, new)
         for name, has in seeded.items():
@@ -138,6 +148,33 @@ class TestPerModelRegistry:
         repo.create_foreground_database(new)
         for name, has in seeded.items():
             assert not has(new), f"{name} resurrected on a re-created model of the same name"
+
+    @pytest.mark.parametrize("back_as", ["aside-model", "aside-model (2)"])
+    def test_every_registered_store_is_set_aside_and_put_back(self, project, back_as):
+        """What a deletion that can be taken back keeps: every registered store's share, read before the
+        delete and put back after it — under the old name, or another one when the old one was taken."""
+        from prism_lca.engine import model_aside
+        from prism_lca.engine.bootstrap import get_bd
+        from prism_lca.engine.brightway_repository import BrightwayRepository
+
+        repo = BrightwayRepository()
+        name = "aside-model"
+        repo.create_foreground_database(name)
+        seeded = _seed_every_store(name)
+
+        aside = model_aside.set_aside(name)
+        repo.delete_foreground_database(name)
+        for store, has in seeded.items():
+            assert not has(name), f"{store} survived the delete"
+
+        repo.create_foreground_database(back_as)
+        get_bd().Database(back_as).new_activity(code="c1", name="p", unit="kilogram", type="process").save()
+        assert model_aside.put_back(aside, back_as)
+        for store, has in seeded.items():
+            assert has(back_as), f"{store} was not put back"
+        if back_as != name:
+            for store, has in seeded.items():
+                assert not has(name), f"{store} came back under the old name"
 
     def test_every_per_model_store_module_is_registered(self):
         """Static guard: a module under engine/ that defines a per-model lifecycle move

@@ -17,10 +17,13 @@ transcript of the last turn lives in its own file (``chat_transcripts``), not in
 """
 from __future__ import annotations
 
+import threading
 import uuid
+import weakref
+from pathlib import Path
 
 from prism_lca.engine import chat_transcripts
-from prism_lca.engine._store import JsonFileStore, now_iso
+from prism_lca.engine._store import JsonFileStore, now_iso, prism_meta_dir
 
 # Keep in step with TRACE_PREVIEW_CHARS / TRACE_ARGS_CHARS in frontend/src/main/ai/agent.ts.
 # Enforced again here on purpose: the client is not the only defence against a chat file growing
@@ -218,6 +221,28 @@ def provisional_title(text: object, limit: int = PROVISIONAL_TITLE_CHARS) -> str
     return head.rstrip(" ,;:.-") + "…"
 
 
+class SetAsideChats:
+    """A model's chats with their tool transcripts, read before the model was deleted by a step that
+    can still be taken back (``engine/model_aside.py``).
+
+    The files their messages attach stay cited while this object is held — ``attachment_ids`` counts
+    it — so a prune in between cannot take what a redo puts back. Only in the workspace it was read in.
+    """
+
+    __slots__ = ("chats", "transcripts", "where", "__weakref__")
+
+    def __init__(self, chats: list[dict], transcripts: dict[str, bytes], where: Path) -> None:
+        self.chats = chats
+        self.transcripts = transcripts
+        self.where = where
+
+
+#: Every set-aside chat list an undo step still holds. Weak, so it goes with the step and nothing
+#: needs cleaning up; the lock because a prune may read it while an undo adds to it.
+_SET_ASIDE: weakref.WeakSet[SetAsideChats] = weakref.WeakSet()
+_SET_ASIDE_LOCK = threading.Lock()
+
+
 class ChatStore(JsonFileStore):
     FILENAME = "ai_chats.json"
     # Corrupt file → start fresh: chats are a convenience log, not the model. The lock lives in the
@@ -405,9 +430,13 @@ class ChatStore(JsonFileStore):
                 chat_transcripts.delete(chat_id)
 
     def attachment_ids(self) -> set[str]:
-        """Every attachment id any stored message of any model still names — what keeps a file alive."""
+        """Every attachment id any stored message of any model still names — what keeps a file alive.
+        Chats set aside in this workspace count as stored: a redo puts them back."""
+        here = prism_meta_dir()
+        with _SET_ASIDE_LOCK:
+            aside = [a.chats for a in _SET_ASIDE if a.where == here]
         ids: set[str] = set()
-        for chats in self._load().values():
+        for chats in [*self._load().values(), *aside]:
             for chat in chats or []:
                 for message in chat.get("messages", []):
                     for a in message.get("attachments") or []:
@@ -430,3 +459,31 @@ class ChatStore(JsonFileStore):
                 self._save(data)
                 # A rename needs nothing (transcripts are keyed by chat id); a removal takes them along.
                 chat_transcripts.delete_many([c["id"] for c in gone or [] if isinstance(c, dict) and c.get("id")])
+
+    def snapshot_database(self, database: str) -> SetAsideChats:
+        """The model's chats and their transcripts as stored; their attachments stay cited meanwhile."""
+        chats = [c for c in self._load().get(database) or [] if isinstance(c, dict)]
+        transcripts: dict[str, bytes] = {}
+        for chat in chats:
+            raw = chat_transcripts.read_raw(str(chat.get("id") or ""))
+            if raw is not None:
+                transcripts[chat["id"]] = raw
+        aside = SetAsideChats(chats, transcripts, prism_meta_dir())
+        with _SET_ASIDE_LOCK:
+            _SET_ASIDE.add(aside)
+        return aside
+
+    def restore_database(self, database: str, aside: SetAsideChats) -> None:
+        """Make the set-aside chats the model's chats again, each with its transcript."""
+        with self._lock:
+            data = self._load()
+            replaced = data.pop(database, None) or []
+            if aside.chats:
+                data[database] = aside.chats
+            self._save(data)
+        back = {c.get("id") for c in aside.chats}
+        chat_transcripts.delete_many(
+            [c["id"] for c in replaced if isinstance(c, dict) and c.get("id") and c["id"] not in back]
+        )
+        for chat_id, raw in aside.transcripts.items():
+            chat_transcripts.write_raw(chat_id, raw)

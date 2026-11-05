@@ -198,6 +198,36 @@ class TagStore(JsonFileStore):
             if moved:
                 self._save(data)
 
+    def _own_codes(self, data: dict, database: str) -> dict[str, str]:
+        """Key → code part, for the keys of this model's processes and their inputs. By the model's own
+        codes: a model name may hold a slash and so may a code, so the prefix alone can name another
+        model's tags ("A/B/x" of a model "A/B")."""
+        from prism_lca.engine.bootstrap import get_bd
+
+        bd = get_bd()
+        codes = {a.key[1] for a in bd.Database(database)} if database in bd.databases else set()
+        prefix = f"{database}/"
+        return {
+            key: key[len(prefix):]
+            for key in data
+            if key.startswith(prefix) and self.split_code(key[len(prefix):])[0] in codes
+        }
+
+    def snapshot_database(self, database: str) -> dict[str, list[dict]]:
+        """The model's tags by code part (a process code, or an input's code with its exchange uid)."""
+        data = self._load()
+        return {code: data[key] for key, code in self._own_codes(data, database).items()}
+
+    def restore_database(self, database: str, tags: dict[str, list[dict]]) -> None:
+        """Make ``tags`` (a :meth:`snapshot_database`) the model's tags again."""
+        with self._lock:
+            data = self._load()
+            for key in self._own_codes(data, database):
+                del data[key]
+            for code, value in (tags or {}).items():
+                data[self._key(database, code)] = value
+            self._save(data)
+
     def remove_database(self, database: str) -> None:
         """Drop all tags belonging to a deleted foreground model."""
         with self._lock:

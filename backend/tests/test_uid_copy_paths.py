@@ -51,11 +51,13 @@ ALLOWED: dict[tuple[str, str, str], str] = {
     ("engine/model_folders.py", "create", "new_uid"): "a folder id",
     ("engine/parameter_groups.py", "copy", "new_uid"): "a parameter-group id",
     ("engine/parameter_groups.py", "create", "new_uid"): "a parameter-group id",
+    ("engine/parameter_groups.py", "restore_database", "new_uid"): "a parameter-group id another model holds",
     ("engine/scenarios.py", "ScenarioStore._migrate", "new_uid"): "a scenario id",
     ("engine/scenarios.py", "ScenarioStore.copy", "new_uid"): "a scenario id",
     ("engine/scenarios.py", "ScenarioStore.create", "new_uid"): "a scenario id",
     ("engine/scenarios.py", "ScenarioStore.duplicate", "new_uid"): "a scenario id",
     ("engine/scenarios.py", "ScenarioStore.import_columns", "new_uid"): "a scenario id",
+    ("engine/scenarios.py", "ScenarioStore.restore_database", "new_uid"): "a scenario id another model holds",
 }
 
 
