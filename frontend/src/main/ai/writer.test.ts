@@ -336,6 +336,7 @@ describe('looking things up while writing', () => {
     const seen: string[] = []
     const out = await writeSection({
       brief,
+      activeDb: 'm',
       api: async (_m, path) => {
         seen.push(path)
         return { activity: { name: 'incineration' }, comment: 'Municipal solid waste incinerator.' }
@@ -369,7 +370,7 @@ describe('looking things up while writing', () => {
       { calls: [call('get_process_details', { database: 'm', codes: codes('b') }, 't2')] },
       { text: 'Done.' }
     ]
-    const out = await writeSection({ brief, api: async () => ({ activity: { name: 'x' } }) })
+    const out = await writeSection({ brief, activeDb: 'm', api: async () => ({ activity: { name: 'x' } }) })
     expect(out.lookups).toHaveLength(2)
     expect(out.lookups[0].args).toBe(out.lookups[1].args) // the stored form is cut, the lookups are not one
   })
@@ -378,6 +379,45 @@ describe('looking things up while writing', () => {
     chat.rounds = [{ calls: [call('delete_model', { database: 'm' })] }, { text: 'ok' }]
     const out = await writeSection({ brief, api: async () => ({}) })
     expect(out.lookups).toHaveLength(0) // nothing was run
+    expect(out.text).toBe('ok')
+  })
+
+  it("reads only the report's model, the models it is compared with and the shared databases", async () => {
+    chat.rounds = [
+      {
+        calls: [
+          call('get_process_details', { database: 'Other', code: 'p' }, 't1'),
+          call('get_process_details', { database: 'Compared', code: 'p' }, 't2'),
+          call('get_process_details', { database: 'ecoinvent-3.12-cutoff', code: 'p' }, 't3'),
+          call('get_process_details', { database: 'Report', code: 'p' }, 't4'),
+          call('get_process_details', { database: 'nope', code: 'p' }, 't5')
+        ]
+      },
+      { text: 'ok' }
+    ]
+    const paths: string[] = []
+    const out = await writeSection({
+      brief,
+      activeDb: 'Report',
+      api: async (_m, path) => {
+        paths.push(path)
+        if (path === '/api/v1/databases')
+          return ['Report', 'Other', 'Compared', 'ecoinvent-3.12-cutoff'].map((name) => ({
+            name,
+            kind: name.startsWith('ecoinvent') ? 'background' : 'foreground'
+          }))
+        if (path.startsWith('/api/v1/study?')) return { compared_with: ['Compared', 'Report'] }
+        return { activity: { name: 'x' } }
+      }
+    })
+    const reads = paths.filter((p) => p.startsWith('/api/v1/model/'))
+    expect(reads.some((p) => p.includes('/Compared/'))).toBe(true)
+    expect(reads.some((p) => p.includes('/ecoinvent-3.12-cutoff/'))).toBe(true)
+    expect(reads.some((p) => p.includes('/Report/'))).toBe(true)
+    expect(reads.some((p) => p.includes('/Other/') || p.includes('/nope/'))).toBe(false)
+    const refused = out.lookups.filter((l) => l.result.startsWith('This lookup did not run'))
+    expect(refused.map((l) => JSON.parse(l.args).database).sort()).toEqual(['Other', 'nope'])
+    expect(refused[0].result).toContain('"Report", the models it is compared with ("Compared")')
     expect(out.text).toBe('ok')
   })
 
@@ -392,6 +432,7 @@ describe('looking things up while writing', () => {
     let ran = 0
     const out = await writeSection({
       brief,
+      activeDb: 'm',
       api: async () => {
         ran++
         return { activity: { name: 'x' } }

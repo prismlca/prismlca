@@ -30,6 +30,7 @@ import { capToolResult } from './resultBudget'
 import { costOf, type CostSample } from './stream'
 import { makeRepeatGuard } from './toolGuards'
 import { asPrinted, lookupBudget, RESEARCH_CALLS, writerTools } from './writer/lookups'
+import { writerLookups } from './writer/lookupCtx'
 import {
   answered,
   chapterOf,
@@ -323,19 +324,9 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
     opts.onCost?.(model, sample)
     logCache('writer', model, sample)
   }
-  const ctx: ToolCtx | null = opts.api
-    ? {
-        api: opts.api,
-        // The writer's tools are read-only and never touch the interface; a call would be a bug, so it
-        // fails loudly rather than silently doing nothing.
-        ui: async () => {
-          throw new Error('A chapter writer cannot drive the interface.')
-        },
-        activeDb: opts.activeDb ?? null,
-        webSearchAllowed: literature,
-        researchWeb: literature ? opts.researchWeb : undefined,
-        maxResearchQuestions: opts.maxResearchQuestions
-      }
+  // The lookups' tool context and the model fence in front of it (writer/lookupCtx.ts).
+  const ctx = opts.api
+    ? writerLookups({ ...opts, api: opts.api, activeDb: opts.activeDb ?? null, literature })
     : null
   let researched = 0
 
@@ -465,7 +456,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
         if (call.name === 'research_web') researched++
         tick({ phase: 'lookup', name: call.name, spent: allowance - budget, allowance }, true)
         try {
-          const out = await tool.run(JSON.parse(call.arguments || '{}'), ctx)
+          const out = await ctx.run(tool, call.arguments)
           result = asPrinted(typeof out === 'string' ? out : JSON.stringify(out), brief)
         } catch (e) {
           result = `Error: ${e instanceof Error ? e.message : String(e)}`
