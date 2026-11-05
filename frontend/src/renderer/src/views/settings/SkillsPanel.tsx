@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createSkill, deleteSkill, listSkills, updateSkill, type Skill } from '../../lib/ai'
+import { safeMarkdownUrl } from '../../lib/markdownUrl'
 
 /** Read-only skill viewer: the full Markdown instructions, rendered. Works for built-ins too.
  *
@@ -33,7 +34,10 @@ function SkillViewer({ skill, onClose }: { skill: Skill; onClose: () => void }):
         </h3>
         {skill.description ? <p className="settings-hint skill-view-desc">{skill.description}</p> : null}
         <div className="skill-md">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{skill.content}</ReactMarkdown>
+          {/* Skill files are untrusted Markdown: the same URL filter as a chat answer. */}
+          <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={safeMarkdownUrl}>
+            {skill.content}
+          </ReactMarkdown>
         </div>
         <div className="modal-actions">
           <button className="btn" onClick={onClose}>

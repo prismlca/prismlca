@@ -106,6 +106,44 @@ describe('a transcript row', () => {
     expect(screen.getByText(/and the rest/)).toBeInTheDocument()
   })
 
+  it('drops an image or link URL that names a host without a scheme, and keeps local ones', () => {
+    const md = [
+      '![a](//host.example/img/a.png)',
+      '![b](</\\host.example/img/b.png>)',
+      '![c](< //host.example/img/c.png>)',
+      '![d](///host.example/img/d.png)',
+      '![e](file://host.example/img/e.png)',
+      '![f][ref] [g](//host.example/img/)',
+      '',
+      '[ref]: //host.example/img/f.png',
+      '',
+      '![local](images/chart.png) ![abs](/home/user/chart.png) [web](https://example.org/x)'
+    ].join('\n')
+    const { container } = render(
+      <MessageRow
+        m={{ role: 'assistant', content: md }}
+        labels={LABELS}
+        onJump={vi.fn()}
+        onReveal={vi.fn()}
+      />
+    )
+    const src = (alt: string): string | null =>
+      container.querySelector(`img[alt="${alt}"]`)?.getAttribute('src') ?? null
+    for (const alt of ['a', 'b', 'd', 'e', 'f']) expect(src(alt) ?? '', alt).toBe('')
+    expect(screen.getByText('g').getAttribute('href') ?? '').toBe('')
+    // Resolved against the packaged file:// page, nothing names a host. (The Markdown parser
+    // percent-encodes the space of 'c', so it stays a path.)
+    const page = 'file:///opt/PrismLCA/resources/app.asar/out/renderer/index.html'
+    for (const el of container.querySelectorAll('img[src], a[href]')) {
+      const url = el.getAttribute('src') ?? el.getAttribute('href') ?? ''
+      if (url && new URL(url, page).protocol === 'file:') expect(new URL(url, page).host, url).toBe('')
+    }
+    // Local images, relative or absolute, and web links are kept.
+    expect(src('local')).toBe('images/chart.png')
+    expect(src('abs')).toBe('/home/user/chart.png')
+    expect(screen.getByRole('link', { name: 'web' })).toHaveAttribute('href', 'https://example.org/x')
+  })
+
   it('shows the files that travelled with the turn, and opens them two ways', async () => {
     const onReveal = vi.fn()
     render(

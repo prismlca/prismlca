@@ -1,7 +1,8 @@
 import { memo, useMemo, type ReactNode } from 'react'
-import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { AttachmentMeta, ChatMessage } from '../lib/ai'
+import { safeMarkdownUrl } from '../lib/markdownUrl'
 import { ArrowUpRightIcon, FolderIcon, PaperclipIcon } from '../components/icons'
 import { ToolTraceList } from './ToolTraceList'
 import { attachExtent } from './chatFormat'
@@ -72,21 +73,19 @@ export const MessageRow = memo(function MessageRow({
 const REMARK_PLUGINS = [remarkGfm]
 
 /**
- * Let our own `prism:process/<code>` links through, and keep react-markdown's filter for everything
- * else.
+ * Let our own `prism:process/<code>` links through, and filter everything else with `safeMarkdownUrl`.
  *
- * Without this the jump-to-canvas links never worked at all: `defaultUrlTransform` allows only
- * http(s), irc(s), mailto and xmpp and returns '' for anything else, so every `prism:` link reached
- * the `a` component below with an EMPTY href — the `startsWith('prism:process/')` branch was dead
- * code, and the model's process references rendered as ordinary links that did nothing when clicked.
- * Found on 11.09.2026 by the first test ever written for this row; nothing on screen said so,
- * because a link that does nothing looks exactly like a link you have not clicked yet.
+ * Without the exemption the jump-to-canvas links never work: `defaultUrlTransform` allows only
+ * http(s), irc(s), mailto and xmpp and returns '' for anything else, so every `prism:` link would reach
+ * the `a` component below with an EMPTY href — the `startsWith('prism:process/')` branch would be dead
+ * code, and the model's process references would render as ordinary links that do nothing when
+ * clicked. Nothing on screen would say so, because a link that does nothing looks exactly like a link
+ * you have not clicked yet.
  *
  * Only this one prefix is exempted, and it ends in a span that calls `jumpToProcess` — the filter is
  * there to stop `javascript:` URLs, and it still does.
  */
-const urlTransform = (url: string): string =>
-  url.startsWith('prism:process/') ? url : defaultUrlTransform(url)
+const urlTransform = (url: string): string => (url.startsWith('prism:process/') ? url : safeMarkdownUrl(url))
 
 /**
  * The process name with the arrow glued to its last word, so the arrow never opens a line on its own.
