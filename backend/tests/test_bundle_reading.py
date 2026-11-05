@@ -212,3 +212,14 @@ def test_a_study_language_or_review_answer_the_form_refuses_is_left_out(client, 
     study = client.get("/api/v1/study", params={"database": "Odd"}, headers=token).json()
     assert "language" not in study and "critical_review_done" not in study
     assert study["functional_unit"] == "1 bottle"
+
+
+def test_an_export_names_no_comparison_model(client, token, filled):
+    r = client.post("/api/v1/databases/foreground", json={"name": "Compared"}, headers=token)
+    assert r.status_code == 200, r.text
+    r = client.post("/api/v1/study/link", json={"database": filled, "other": "Compared"}, headers=token)
+    assert r.status_code == 200, r.text
+    with zipfile.ZipFile(io.BytesIO(_export(client, token, filled))) as zf:
+        study = json.loads(zf.read("study.json"))["study"]
+    assert "compared_with" not in study
+    assert study["goal"] == "PCF of a bottle"

@@ -644,9 +644,11 @@ def read_scenarios(database: str, data: Any) -> None:
 
 
 def write_study(database: str) -> dict:
-    from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.study import COMPARED_WITH, StudyMetaStore
 
-    return {"study": StudyMetaStore().get(database)}
+    study = dict(StudyMetaStore().get(database))
+    study.pop(COMPARED_WITH, None)  # comparison links name models of this workspace only
+    return {"study": study}
 
 
 def read_study(database: str, data: Any) -> None:
