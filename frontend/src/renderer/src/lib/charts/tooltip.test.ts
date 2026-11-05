@@ -48,6 +48,26 @@ describe('stackTooltipHtml', () => {
   it('escapes class names', () => {
     expect(stackTooltipHtml([p('<b>A</b>', 1)], fmt)).toContain('&lt;b&gt;A&lt;/b&gt;')
   })
+
+  it('escapes the values too, unit included', () => {
+    const tip = (v: number): string => tipValue(v, '<i>kg</i>')
+    const html = stackTooltipHtml([p('a', 1)], tip)
+    expect(html).not.toContain('<i>')
+    expect(html).toContain('1 &lt;i&gt;kg&lt;/i&gt;')
+    // All zeros: no segment row, but the Total row still carries the unit.
+    const zero = stackTooltipHtml([p('a', 0)], tip)
+    expect(zero).not.toContain('<i>')
+    expect(zero).toContain('Total')
+    expect(zero).toContain('0 &lt;i&gt;kg&lt;/i&gt;')
+    // And the "+N more" row.
+    const many = Array.from({ length: STACK_TIP_ROWS + 2 }, (_, i) => p(`c${i}`, i + 1))
+    expect(stackTooltipHtml(many, tip)).not.toContain('<i>')
+  })
+
+  it('leaves an ordinary value and unit as the reader saw them before', () => {
+    const html = stackTooltipHtml([p('a', 51.93827462)], (v) => tipValue(v, 'mol H+-Eq'))
+    expect(html).toContain('<span>51.94 mol H+-Eq</span>')
+  })
 })
 
 describe('tipValue', () => {
