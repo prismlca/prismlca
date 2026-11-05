@@ -320,6 +320,13 @@ describe('in electron-updater’s NsisUpdater', () => {
     expect(existsSync(updateFile)).toBe(true)
   })
 
+  it('refuses a web installer when told to', () => {
+    const src = readFileSync(join(dirname(require.resolve('electron-updater')), 'NsisUpdater.js'), 'utf-8')
+    expect(src).toMatch(/if \(isWebInstaller && downloadUpdateOptions\.disableWebInstaller\) \{\s*throw/)
+    const app = readFileSync(join(dirname(require.resolve('electron-updater')), 'AppUpdater.js'), 'utf-8')
+    expect(app).toMatch(/disableWebInstaller: this\.disableWebInstaller,/)
+  })
+
   it('fails closed when the updater offers no verifier slot', () => {
     expect(() => guardUpdateSignature({})).toThrow(/signature guard/)
     expect(() => guardUpdateSignature(null)).toThrow(/signature guard/)

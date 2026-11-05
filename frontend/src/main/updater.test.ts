@@ -63,6 +63,7 @@ const defaultVerifier = async (): Promise<string | null> => null
 class FakeUpdater extends EventEmitter {
   autoDownload = true
   autoInstallOnAppQuit = true
+  disableWebInstaller = false
   declare verifyUpdateCodeSignature: unknown
   constructor() {
     super()
@@ -350,6 +351,12 @@ describe('the manual update check', () => {
       'The download failed: the release has no installer file for this installation (HTTP 404).'
     )
     expect(s.version).toBe('1.3.0')
+  })
+
+  it('accepts full installers only', async () => {
+    fake.checkForUpdates.mockImplementation(async () => null)
+    await call('updates:check')
+    expect(fake.disableWebInstaller).toBe(true)
   })
 
   it('blocks an installer that fails its signature check without pointing to a manual install', async () => {

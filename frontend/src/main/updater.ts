@@ -19,7 +19,7 @@
  *  - V-4: the AppImage is swapped atomically by this file (`swapAppImage`), because electron-updater
  *    deletes the old file before it moves the new one into place.
  *  - The Windows publisher check is ours (updateSignature.ts): an installer whose signature cannot be
- *    checked is refused, never installed unchecked.
+ *    checked is refused, never installed unchecked. Web installers are refused too; we ship full ones.
  * electron-updater's own install-on-quit is therefore off; `before-quit` below does it instead.
  *
  * `electron-updater` is imported lazily, on the first click, so dev and smoke runs never load it. Its
@@ -365,6 +365,7 @@ async function loadUpdater(): Promise<AutoUpdater> {
   if (BUILD.kind === 'feedtest' && BUILD.feedUrl)
     autoUpdater.setFeedURL({ provider: 'generic', url: BUILD.feedUrl })
   autoUpdater.autoDownload = false
+  autoUpdater.disableWebInstaller = true
   // Install-on-quit is ours (`before-quit` below): electron-updater's would start the installer
   // with the backend still running (V-2) and swap the AppImage unsafely (V-4).
   autoUpdater.autoInstallOnAppQuit = false
