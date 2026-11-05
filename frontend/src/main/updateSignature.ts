@@ -19,6 +19,7 @@
  * writes ASCII-only JSON, so a subject with non-ASCII letters survives any console code page.
  */
 import { execFile } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import { win32 } from 'node:path'
 
 /** The error code of a refusal because the signature could not be checked (updater.ts words it). */
@@ -195,6 +196,19 @@ export function signedByPublisher(publisherNames: string[], subjectText: string)
   return false
 }
 
+/** One file on Windows: case-insensitive, and through the real path where it resolves (PowerShell may
+ *  spell it in another case, or long where we gave an 8.3 short name). */
+export function samePath(a: string, b: string): boolean {
+  const canonical = (p: string): string => {
+    try {
+      return realpathSync.native(p)
+    } catch {
+      return win32.normalize(p)
+    }
+  }
+  return canonical(a).toUpperCase() === canonical(b).toUpperCase()
+}
+
 type Answer = { status: number; path: string; subject: string }
 
 function parseAnswer(stdout: string): Answer | null {
@@ -229,18 +243,19 @@ export async function verifyUpdateSignature(
     throw unchecked(`PowerShell could not be started: ${err instanceof Error ? err.message : String(err)}`)
   }
   const { error, stdout, stderr } = result
+  // stderr alone decides nothing: PowerShell writes progress records there even when it succeeds. The
+  // verdict rests on the exit code and the answer on stdout; stderr only explains a refusal.
+  const said = stderr.trim() ? ` (stderr: ${stderr.trim().split(/\r?\n/)[0]})` : ''
   if (error) {
     const how = error.killed ? `stopped after ${CHECK_TIMEOUT_MS / 1000} s` : `code ${String(error.code)}`
-    throw unchecked(`PowerShell failed (${how}): ${error.message.split('\n')[0]}`)
+    throw unchecked(`PowerShell failed (${how}): ${error.message.split('\n')[0]}${said}`)
   }
-  if (stderr.trim()) throw unchecked(`PowerShell reported: ${stderr.trim().split('\n')[0]}`)
   const answer = parseAnswer(stdout)
-  if (!answer) throw unchecked('PowerShell gave no readable answer')
+  if (!answer) throw unchecked(`PowerShell gave no readable answer${said}`)
   const expected = publisherNames.join(' | ')
   if (answer.status !== 0)
     return `signature status ${answer.status}, signer "${answer.subject}", expected "${expected}"`
-  if (win32.normalize(answer.path) !== win32.normalize(file))
-    throw unchecked(`PowerShell checked ${answer.path} instead of ${file}`)
+  if (!samePath(answer.path, file)) throw unchecked(`PowerShell checked ${answer.path} instead of ${file}`)
   if (!signedByPublisher(publisherNames, answer.subject))
     return `signed by "${answer.subject}", expected "${expected}"`
   return null

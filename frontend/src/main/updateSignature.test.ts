@@ -6,7 +6,15 @@
  * calls the replacement with the publisher from app-update.yml and stops the download when it refuses.
  */
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +28,7 @@ import {
   guardUpdateSignature,
   parseDn,
   POWERSHELL_ARGS,
+  samePath,
   SIGNATURE_UNCHECKED,
   signedByPublisher,
   verifyUpdateSignature,
@@ -101,6 +110,37 @@ describe('the Windows publisher check', () => {
     expect(timeoutMs).toBe(CHECK_TIMEOUT_MS)
   })
 
+  it('accepts despite progress records on stderr, and a path PowerShell spells in another case', async () => {
+    const progress =
+      '#< CLIXML\r\n<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">' +
+      '<Obj S="progress" RefId="0"><TN RefId="0"><T>System.Management.Automation.PSCustomObject</T></TN>' +
+      '<MS><I64 N="SourceId">1</I64><PR N="Record"><AV>Preparing modules for first use.</AV></PR></MS></Obj></Objs>'
+    const run = fakeRun({ stdout: scriptOutput(valid), stderr: progress })
+    expect(await verifyUpdateSignature([PINNED], FILE, run, WIN_ENV)).toBeNull()
+    const otherCase = FILE.replace('AppData', 'APPDATA').replace('temp-PrismLCA', 'TEMP-PRISMLCA')
+    expect(otherCase).not.toBe(FILE)
+    expect(
+      await verifyUpdateSignature([PINNED], FILE, answering({ ...valid, Path: otherCase }), WIN_ENV)
+    ).toBeNull()
+  })
+
+  it('compares paths through the real file where it exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'prism-update-path-'))
+    try {
+      const real = join(dir, 'installer.exe')
+      const other = join(dir, 'other.exe')
+      writeFileSync(real, 'x')
+      writeFileSync(other, 'y')
+      symlinkSync(real, join(dir, 'link.exe'))
+      expect(samePath(join(dir, 'link.exe'), real)).toBe(true)
+      expect(samePath(other, real)).toBe(false)
+      expect(samePath('C:\\Temp\\A\\..\\setup.EXE', 'c:\\temp\\setup.exe')).toBe(true)
+      expect(samePath('C:\\Temp\\setup.exe', 'C:\\Temp\\setup2.exe')).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('returns a refusal for an unsigned, broken or foreign signature', async () => {
     const refusals = [
       { ...valid, Status: 2, Subject: '' }, // NotSigned
@@ -137,16 +177,23 @@ describe('the Windows publisher check', () => {
         'stopped after the timeout',
         fakeRun({ error: failedWith('Command failed', { killed: true, signal: 'SIGTERM' }) })
       ],
-      [
-        'an error on stderr with exit 0',
-        fakeRun({ stdout: scriptOutput(valid), stderr: 'Get-Authenticode…' })
-      ],
       ['output that is not JSON', fakeRun({ stdout: 'The command is not recognized\r\n' })],
       ['no output', fakeRun({ stdout: '' })],
       ['JSON without a subject', answering({ Status: 0, Path: FILE })],
       ['a status that is not a number', answering({ ...valid, Status: 'Valid' })],
       ['another file than the one asked for', answering({ ...valid, Path: 'C:\\other\\signed.exe' })]
     ]
+    await expect(
+      verifyUpdateSignature(
+        [PINNED],
+        FILE,
+        fakeRun({
+          error: failedWith('Command failed', { code: 1 }),
+          stderr: 'This program is blocked\r\nmore'
+        }),
+        WIN_ENV
+      )
+    ).rejects.toThrow(/\(stderr: This program is blocked\)$/)
     for (const [what, run, env] of cases) {
       await expect(verifyUpdateSignature([PINNED], FILE, run, env ?? WIN_ENV), what).rejects.toMatchObject({
         code: SIGNATURE_UNCHECKED
