@@ -3266,7 +3266,12 @@ class CommandBus:
             ),
         )
 
-    def undo(self, source: str = "user", database: str | None = None) -> dict:
+    def undo(
+        self, source: str = "user", database: str | None = None, approved: tuple[str, int] | None = None
+    ) -> dict:
+        """Take back the newest step of ``database`` (or of the workspace); ``approved`` see engine/step_owner.py."""
+        from prism_lca.engine import step_owner
+
         self._refuse_while_a_window_is_open("undo")
         with PROJECT_LOCK, self._lock:
             assert_expected_project()
@@ -3278,6 +3283,8 @@ class CommandBus:
                     hint="No actions have been performed yet.",
                 )
             at = self._pick(self._undo, database, "undo", source)
+            # Under the lock, on the step about to be taken: an external session's own, or the one the user approved.
+            step_owner.assert_may_take(self._undo[at], CURRENT_TURN.get(), approved, "undo")
             # An undo writes where the step wrote: a workspace-wide step that reached into another
             # model is not the chat's to take back — nor one whose undo rewrites the library or another
             # model's inputs (moved to the library, a forced delete), which its attribution does not say.
@@ -3299,7 +3306,12 @@ class CommandBus:
             self._record(source, "undo", f"Undo: {command.summary()}", **self._attribution(command))
             return {"undone": command.summary()}
 
-    def redo(self, source: str = "user", database: str | None = None) -> dict:
+    def redo(
+        self, source: str = "user", database: str | None = None, approved: tuple[str, int] | None = None
+    ) -> dict:
+        """Mirror of `undo`, with the same rule for external sessions."""
+        from prism_lca.engine import step_owner
+
         self._refuse_while_a_window_is_open("redo")
         with PROJECT_LOCK, self._lock:
             assert_expected_project()
@@ -3311,6 +3323,7 @@ class CommandBus:
                     hint="There is no undone action to redo.",
                 )
             at = self._pick(self._redo, database, "redo", source)
+            step_owner.assert_may_take(self._redo[at], CURRENT_TURN.get(), approved, "redo")  # see undo()
             # A redo executes again: the fence asks what it will write NOW, and what it links — the
             # step may be the user's, linking a model the chat may not.
             model_scope.fence_step(self._attribution(self._redo[at]))
@@ -3587,16 +3600,22 @@ class CommandBus:
     def undo_turn(self, turn: str, source: str = "user", database: str | None = None) -> dict:
         """Undo every command of one assistant turn, newest first — but only while the turn is the
         contiguous top of the stack, and, scoped to a model, only when every step is its."""
+        from prism_lca.engine import step_owner
+
         self._refuse_while_a_window_is_open("undo")
         with PROJECT_LOCK, self._lock:
             assert_expected_project()
+            step_owner.assert_may_take_turn(turn, CURRENT_TURN.get(), "undo")
             return self._turn_batch(self._undo, self._redo, turn, "undo", "undo", source, database)
 
     def redo_turn(self, turn: str, source: str = "user", database: str | None = None) -> dict:
         """Mirror of `undo_turn` on the redo stack."""
+        from prism_lca.engine import step_owner
+
         self._refuse_while_a_window_is_open("redo")
         with PROJECT_LOCK, self._lock:
             assert_expected_project()
+            step_owner.assert_may_take_turn(turn, CURRENT_TURN.get(), "redo")
             return self._turn_batch(self._redo, self._undo, turn, "redo", "execute", source, database)
 
     def history(self, database: str | None = None) -> dict:
@@ -3629,6 +3648,22 @@ class CommandBus:
                 held = {"model": self._owner(blocker), "summary": blocker.summary()}
             out[f"{verb}_elsewhere"] = held
         return out
+
+    def next_step(self, verb: str, database: str | None = None) -> dict:
+        """The step Undo/Redo on ``database`` would take: its id, summary, and whether this caller needs the
+        user's approval for it. Advice only, read without the lock like `history`; the undo decides again."""
+        from prism_lca.engine import step_owner
+
+        stack = list(self._undo if verb == "undo" else self._redo)
+        target = self._target(stack, database)
+        if target is None:
+            return {"step": None, "summary": None, "needs_approval": False}
+        command = stack[target]
+        return {
+            "step": step_owner.step_id(command),
+            "summary": command.summary(),
+            "needs_approval": step_owner.needs_approval(command.turn, CURRENT_TURN.get()),
+        }
 
     def audit(
         self,
