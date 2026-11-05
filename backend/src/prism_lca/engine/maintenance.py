@@ -8,8 +8,15 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
+import tempfile
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
 
+from prism_lca.engine import backup_archive
 from prism_lca.engine.bootstrap import get_bd, get_bi
 from prism_lca.engine.guardrails import is_read_only
 from prism_lca.engine.model import _db_or_404
@@ -65,84 +72,132 @@ def backup_project(dir_backup: str | None = None) -> dict:
     return {"project": project, "path": str(path)}
 
 
-def backup_project_name(fp: str) -> str:
-    """The workspace name stored in a backup archive (bw2io writes it as ``.project-name.json``)."""
-    import tarfile
-    from pathlib import Path
+#: bw2io's ``project-metadata.json`` holds four small fields.
+_MAX_METADATA_FILE = 1024 * 1024
 
-    if not Path(fp).is_file():
-        raise PrismError(f"No file at '{fp}'.", code="backup_not_found")
+
+@dataclass(frozen=True)
+class StagedBackup:
+    """A backup unpacked into a temp folder of its own and checked, not yet a workspace."""
+
+    source: str
+    name: str
+    #: The unpacked workspace folder.
+    folder: Path
+    #: Bytes of file content in ``folder``.
+    size: int
+    #: bw2io's ``project-metadata.json``, empty when the backup has none.
+    metadata: dict
+
+
+def _name_taken(name: str) -> PrismError:
+    return PrismError(f"A workspace named '{name}' already exists.", code="workspace_exists",
+                      hint="Restore it under another name, or delete the existing workspace first.",
+                      status_code=409)
+
+
+def _read_metadata(folder: Path) -> dict:
+    meta_file = folder / "project-metadata.json"
+    if not meta_file.is_file():
+        return {}
     try:
-        with tarfile.open(fp, "r:gz") as tar:
-            for member in tar:
-                if member.name.endswith("project-name.json"):
-                    handle = tar.extractfile(member)
-                    if handle is not None:
-                        return str(json.load(handle)["name"])
-    except (tarfile.TarError, OSError, KeyError, ValueError) as e:
+        if meta_file.stat().st_size > _MAX_METADATA_FILE:
+            raise ValueError("oversized")
+        metadata = json.loads(meta_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
         raise PrismError("This file is not a workspace backup.", code="backup_unreadable",
                          hint="Choose a .tar.gz written by Back up this workspace.") from e
-    raise PrismError("This file is not a workspace backup.", code="backup_unreadable",
-                     hint="Choose a .tar.gz written by Back up this workspace.")
+    if not isinstance(metadata, dict):
+        raise PrismError("This file is not a workspace backup.", code="backup_unreadable",
+                         hint="Choose a .tar.gz written by Back up this workspace.")
+    return metadata
 
 
-def restore_project(fp: str, project_name: str | None = None, overwrite: bool = False) -> dict:
-    """Restore a project from a backup tar.gz.
+@contextmanager
+def staged_backup(
+    fp: str, project_name: str | None = None, overwrite: bool = False
+) -> Iterator[StagedBackup]:
+    """Unpack and check a backup in a temp folder that is removed on exit.
+
+    Touches nothing but the file and that folder, so callers run it outside the project locks; the name is
+    checked here to refuse early and again by :func:`restore_project`, which runs inside them.
+    """
+    path = Path(fp)
+    if not path.is_file():
+        raise PrismError(f"No file at '{fp}'.", code="backup_not_found")
+    name = (project_name or "").strip() or backup_archive.read_name(path)
+    if name in get_bd().projects and not overwrite:
+        raise _name_taken(name)
+    td = Path(tempfile.mkdtemp(prefix="prism-restore-"))
+    try:
+        unpacked = backup_archive.unpack(path, td)
+        yield StagedBackup(fp, name, unpacked.folder, unpacked.size, _read_metadata(unpacked.folder))
+    finally:
+        shutil.rmtree(td, ignore_errors=True)
+
+
+def restore_project(staged: StagedBackup, overwrite: bool = False) -> dict:
+    """Make a staged backup a workspace. The caller holds the project locks.
 
     An existing workspace of the same name is a refusal with its own code, not bw2io's ValueError: the
     app asks for another name then, and never overwrites one by accident (``overwrite`` stays an explicit
     API choice).
     """
-    name = (project_name or "").strip() or backup_project_name(fp)
-    projects = get_bd().projects
-    if name in projects:
+    name = staged.name
+    if name in get_bd().projects:
         if not overwrite:
-            raise PrismError(f"A workspace named '{name}' already exists.", code="workspace_exists",
-                             hint="Restore it under another name, or delete the existing workspace first.",
-                             status_code=409)
-        # The explicit overwrite (API only) keeps bw2io's route, which switches workspaces while it copies.
-        get_bi().restore_project_directory(fp, project_name=name, overwrite_existing=True)
+            raise _name_taken(name)
+        _restore_over_existing(staged)
     else:
-        _restore_as_new_project(fp, name)
-    return {"restored_from": fp, "project_name": name}
+        _restore_as_new_project(staged)
+    return {"restored_from": staged.source, "project_name": name}
 
 
-def _restore_as_new_project(fp: str, name: str) -> None:
-    """Unpack a backup into a NEW workspace without ever making it the active one.
+def _restore_over_existing(staged: StagedBackup) -> None:
+    """The explicit overwrite (API only), as bw2io's ``restore_project_directory`` does it: switch to the
+    workspace, copy the backup over its folder, take over its metadata, switch back. The copy is of the
+    checked folder; bw2io would unpack the file again."""
+    from bw2io.backup import _remove_project_metadata, _restore_project_metadata
+
+    projects = get_bd().projects
+    previous = projects.current
+    projects.set_current(staged.name, update=False)
+    try:
+        backup_archive.assert_room(staged.size, Path(projects.dir))
+        shutil.copytree(staged.folder, projects.dir, dirs_exist_ok=True)
+        _restore_project_metadata()
+        _remove_project_metadata()
+    finally:
+        projects.set_current(previous)
+
+
+def _restore_as_new_project(staged: StagedBackup) -> None:
+    """Copy a staged backup into a NEW workspace without ever making it the active one.
 
     bw2io's restore activates the target workspace for the minutes the copy takes. Writers that do not
     take PROJECT_LOCK (chat history, views) would then land in — or be overwritten by — the workspace being
-    restored. So: extract to a temp dir, copy into the directory bw2data would
-    use for that name, and only then register the project. The active workspace never changes.
+    restored. So: copy into the directory bw2data would use for that name, and only then register the
+    project. The active workspace never changes.
     """
-    import shutil
-    import tempfile
-    from pathlib import Path
-
     from bw2data.project import ProjectDataset, project_created
-    from bw2io.backup import _METADATA_FIELDS, _extract_single_directory_tarball
+    from bw2io.backup import _METADATA_FIELDS
 
     projects = get_bd().projects
-    td = Path(tempfile.mkdtemp())
+    name, metadata = staged.name, staged.metadata
+    full_hash = bool(metadata.get("full_hash", False))
+    target = projects._project_dir(ProjectDataset(name=name, full_hash=full_hash))
+    if target.exists():
+        raise PrismError(f"A folder for a workspace named '{name}' is already on disk.",
+                         code="workspace_exists", status_code=409,
+                         hint="Restore it under another name.")
+    backup_archive.assert_room(staged.size, target.parent)
     try:
-        extracted = _extract_single_directory_tarball(filepath=Path(fp), output_dir=td)
-        meta_file = extracted / "project-metadata.json"
-        metadata = json.loads(meta_file.read_text(encoding="utf-8")) if meta_file.is_file() else {}
-        full_hash = bool(metadata.get("full_hash", False))
-        target = projects._project_dir(ProjectDataset(name=name, full_hash=full_hash))
-        if target.exists():
-            raise PrismError(f"A folder for a workspace named '{name}' is already on disk.",
-                             code="workspace_exists", status_code=409,
-                             hint="Restore it under another name.")
-        try:
-            shutil.copytree(extracted, target)
-        except BaseException:
-            # A copy that died half-way (disk full) leaves a folder no project row points to — invisible
-            # in the app and in the way of the next attempt. It did not exist before, so it goes.
-            shutil.rmtree(target, ignore_errors=True)
-            raise
-    finally:
-        shutil.rmtree(td, ignore_errors=True)
+        shutil.copytree(staged.folder, target)
+    except BaseException:
+        # A copy that died half-way (disk full) leaves a folder no project row points to — invisible
+        # in the app and in the way of the next attempt. It did not exist before, so it goes.
+        shutil.rmtree(target, ignore_errors=True)
+        raise
     try:
         row = ProjectDataset.create(data={"25": True}, name=name, full_hash=full_hash)
     except BaseException:

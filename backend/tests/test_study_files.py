@@ -9,6 +9,7 @@ Two lifecycle gaps of the per-model study files, fixed together:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 
 from prism_lca.engine import study
@@ -302,6 +303,7 @@ def test_a_restore_migrates_with_the_backup_winning_only_in_the_active_workspace
     current = get_bd().projects.current
     for restored, expected in (("some-other-workspace", []), (current, [{"prefer_legacy": True}])):
         calls.clear()
+        monkeypatch.setattr(maintenance, "staged_backup", lambda *a, **k: contextlib.nullcontext())
         monkeypatch.setattr(maintenance, "restore_project", lambda *a, _n=restored, **k: {"project_name": _n})
         r = client.post("/api/v1/projects/restore", json={"path": "/x.tar.gz", "overwrite": True}, headers=token)
         assert r.status_code == 200, r.text
@@ -318,6 +320,7 @@ def test_a_restore_whose_study_files_cannot_be_put_in_place_says_so(client, toke
 
     monkeypatch.setattr(study, "migrate_active_workspace", unwritable)
     current = get_bd().projects.current
+    monkeypatch.setattr(maintenance, "staged_backup", lambda *a, **k: contextlib.nullcontext())
     monkeypatch.setattr(maintenance, "restore_project", lambda *a, **k: {"project_name": current})
     from prism_lca.api.v1 import projects as projects_api
 

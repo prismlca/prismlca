@@ -141,8 +141,9 @@ def test_a_restore_that_dies_while_copying_leaves_no_folder_behind(client, token
             raise OSError("No space left on device")
 
     monkeypatch.setattr(shutil, "copytree", half_copy)
-    with pytest.raises(OSError):
-        maintenance.restore_project(path, "half-copied")
+    with pytest.raises(OSError), maintenance.staged_backup(path, "half-copied") as staged:
+        maintenance.restore_project(staged)
     projects = get_bd().projects
     assert "half-copied" not in projects
     assert not projects._project_dir(ProjectDataset(name="half-copied", full_hash=False)).exists()
+

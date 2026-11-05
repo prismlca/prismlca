@@ -103,15 +103,23 @@ def backup_project(body: BackupRequest) -> dict:
 
 @router.post("/restore", summary="Restore a project from a backup tar.gz")
 def restore_project(request: Request, body: RestoreRequest) -> dict:
-    with lca._LCA_LOCK, commands.PROJECT_LOCK:
+    from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.errors import PrismError
+
+    # Unpacking and checking the archive touches only the file and a temp folder of its own, so the locks
+    # are taken after it, for the step that makes it a workspace; every check that step depends on is
+    # repeated inside them.
+    ecoinvent.assert_no_import_running("restoring a workspace")
+    with (
+        maintenance.staged_backup(body.path, body.project_name, body.overwrite) as staged,
+        lca._LCA_LOCK,
+        commands.PROJECT_LOCK,
+    ):
         ecoinvent.assert_no_import_running("restoring a workspace")
-        result = maintenance.restore_project(body.path, body.project_name, body.overwrite)
+        result = maintenance.restore_project(staged, body.overwrite)
         # An overwrite of the ACTIVE workspace can put a legacy layout under it (engine/study.py). Brightway
         # copies the backup OVER the folder, so its legacy files are the backup's and must win. A restore
         # into another workspace leaves the active one alone; that one is migrated when it is activated.
-        from prism_lca.engine.bootstrap import get_bd
-        from prism_lca.errors import PrismError
-
         study_error: OSError | None = None
         if body.overwrite and result.get("project_name") == get_bd().projects.current:
             from prism_lca.engine import study
