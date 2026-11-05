@@ -73,7 +73,10 @@ def workbook_markdown(
     path: Path, limit: int, whole: Callable[[Path, int], tuple[str, bool]]
 ) -> tuple[str, bool]:
     """`whole(path, limit)` for a workbook within the budget, its leading rows for any other."""
-    plan = rows_that_fit(path, MAX_CELLS)
+    try:
+        plan = rows_that_fit(path, MAX_CELLS)
+    except Exception:  # noqa: BLE001 - a workbook openpyxl cannot open fails in the converter, as before
+        plan = None
     if plan is None:
         return whole(path, limit)
     return leading_rows(path, plan)[:limit], True

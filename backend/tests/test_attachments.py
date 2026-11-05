@@ -293,3 +293,10 @@ def test_a_workbook_that_unpacks_beyond_the_limit_is_refused(
     )
     assert r.status_code == 415
     assert "unpacks to more than" in r.json()["detail"]
+
+
+def test_a_workbook_that_cannot_be_opened_is_read_by_the_converter_as_before(
+    client: TestClient, token: dict[str, str], project: str
+) -> None:
+    meta = _post(client, token, "broken.xlsx", b"not a workbook at all")
+    assert "not a workbook at all" in _text(client, token, meta["id"])["text"]
