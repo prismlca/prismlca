@@ -10,6 +10,7 @@ import { access, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { noticesSummary, openLicence, openNotices } from './licence'
 import { openInBrowser } from './windowGuard'
+import { isStoredFileOf, isViewSafe, shownInFolderNote } from './viewSafeFiles'
 
 import { attachGrants } from './attachGrants'
 import { lastDialogDir, rememberDialogPick } from './dialogDirs'
@@ -41,17 +42,26 @@ export function registerCore(deps: CoreDeps): void {
   // Their summary tables, for the in-app sheet (the file itself is 2 MB).
   ipcMain.handle('prism:noticesSummary', () => noticesSummary())
   // A file the user attached to a chat. The renderer knows only the attachment's id — the project
-  // directory belongs to the backend — so the path is fetched here and handed straight to the OS.
+  // directory belongs to the backend — so the path is fetched here. Only the attachment's own file is
+  // acted on, and only view-only formats go to their default app; the rest is shown in its folder
+  // (viewSafeFiles.ts).
   ipcMain.handle('prism:openSource', async (_e, id: string, reveal?: boolean) => {
     const r = await deps.apiRequest('GET', `/api/v1/files/attachments/${encodeURIComponent(String(id))}/path`)
-    const path = (r.body as { path?: string } | null)?.path
-    if (r.status !== 200 || !path) {
+    const path = (r.body as { path?: unknown } | null)?.path
+    if (r.status !== 200 || typeof path !== 'string' || !path) {
       const detail = (r.body as { detail?: string } | null)?.detail
       return { error: detail || `Could not locate the attachment (HTTP ${r.status}).` }
+    }
+    if (!isStoredFileOf(path, String(id))) {
+      return { error: 'The stored file does not match this attachment, so it was not opened.' }
     }
     if (reveal) {
       shell.showItemInFolder(path)
       return { path }
+    }
+    if (!isViewSafe(path)) {
+      shell.showItemInFolder(path)
+      return { path, error: shownInFolderNote(path) }
     }
     // openPath resolves to '' on success and to the OS's reason otherwise — a machine with no
     // handler for the file type says so here rather than failing silently.
