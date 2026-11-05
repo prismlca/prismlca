@@ -17,18 +17,21 @@ from openpyxl import load_workbook
 
 #: Cells a conversion may touch: a table this size is already longer than `MAX_EXTRACT_CHARS`.
 MAX_CELLS = 50_000
+#: Characters the converted cells may hold together, many times what one extract returns.
+MAX_CHARS = 1_000_000
 
 
-def rows_that_fit(path: Path, budget: int) -> list[tuple[str, int]] | None:
+def rows_that_fit(path: Path, budget: int, chars: int) -> list[tuple[str, int]] | None:
     """How many leading rows of each sheet fit the budget, or None when the whole workbook does.
 
     Counts what pandas will build — rows up to the last one with a value, each as wide as the widest — and
-    every cell and row openpyxl yields on the way, empty or not.
+    every cell and row openpyxl yields on the way, empty or not; and the text of the cells it converts.
     """
     book = load_workbook(path, read_only=True, data_only=True, keep_links=False)
     try:
         plan: list[tuple[str, int]] = []
         left = budget
+        text = 0
         for name in book.sheetnames:
             sheet = book[name]
             if not hasattr(sheet, "reset_dimensions"):
@@ -42,10 +45,11 @@ def rows_that_fit(path: Path, budget: int) -> list[tuple[str, int]] | None:
                     used -= 1
                 cost = seen + max(len(row), 1)
                 grid = (index + 1) * max(width, used) if used else with_data * width
-                if max(cost, grid) > left:
+                written = text + sum(len(str(v)) for v in row[:used] if v is not None)
+                if max(cost, grid) > left or written > chars:
                     plan.append((name, index))
                     return plan
-                seen = cost
+                seen, text = cost, written
                 if used:
                     width, with_data = max(width, used), index + 1
             plan.append((name, with_data))
@@ -74,7 +78,7 @@ def workbook_markdown(
 ) -> tuple[str, bool]:
     """`whole(path, limit)` for a workbook within the budget, its leading rows for any other."""
     try:
-        plan = rows_that_fit(path, MAX_CELLS)
+        plan = rows_that_fit(path, MAX_CELLS, MAX_CHARS)
     except Exception:  # noqa: BLE001 - a workbook openpyxl cannot open fails in the converter, as before
         plan = None
     if plan is None:
