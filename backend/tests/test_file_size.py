@@ -51,7 +51,7 @@ CEILINGS: dict[str, int] = {
     # `analysis_snapshot`, as the memo refresh belongs in `render_inputs`.
     "prism_lca/engine/report_pipeline.py": 1160,  # 1135
     "prism_lca/engine/report_bindings.py": 1075,  # 1050
-    "prism_lca/engine/dataimport/readers.py": 1046,  # 1021
+    "prism_lca/engine/dataimport/readers.py": 1035,  # 1010, after the archive limits moved to archive_limits
 }
 
 EXEMPT: dict[str, str] = {

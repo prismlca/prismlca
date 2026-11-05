@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import shutil
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from prism_lca.engine import archive_limits
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.dataimport import readers, session
 from prism_lca.engine.dataimport.matching import PACKAGE_DB
@@ -291,7 +293,7 @@ def _zip_of(root: Path, archive: Path, extra: dict[str, bytes] | None = None) ->
 
 
 def test_9_a_member_larger_than_the_limit_is_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(readers, "ZIP_MAX_MEMBER", 4096)
+    monkeypatch.setattr(archive_limits, "JSON_LD", replace(archive_limits.JSON_LD, member=4096))
     archive = _zip_of(JSONLD, tmp_path / "bomb.zip", {"flows/big.json": b" " * 100_000})
     with pytest.raises(PrismError) as caught:
         readers.read(archive)
@@ -299,7 +301,7 @@ def test_9_a_member_larger_than_the_limit_is_refused(tmp_path, monkeypatch):
 
 
 def test_9_too_many_members_are_refused(tmp_path, monkeypatch):
-    monkeypatch.setattr(readers, "ZIP_MAX_MEMBERS", 5)
+    monkeypatch.setattr(archive_limits, "JSON_LD", replace(archive_limits.JSON_LD, members=5))
     with pytest.raises(PrismError) as caught:
         readers.read(_zip_of(JSONLD, tmp_path / "many.zip"))
     assert caught.value.code == "import_archive_too_large"
@@ -315,7 +317,7 @@ def test_9_a_member_escaping_the_folder_is_refused(tmp_path):
 
 def test_9_members_outside_the_object_folders_are_not_unpacked(tmp_path, monkeypatch):
     """A huge file nobody reads does not count against the limits and is never written."""
-    monkeypatch.setattr(readers, "ZIP_MAX_MEMBER", 4096)
+    monkeypatch.setattr(archive_limits, "JSON_LD", replace(archive_limits.JSON_LD, member=4096))
     archive = _zip_of(JSONLD, tmp_path / "junk.zip", {"bin/blob.bin": b"x" * 100_000})
     _fmt, result = readers.read(archive)
     assert len(result.datasets) == 2

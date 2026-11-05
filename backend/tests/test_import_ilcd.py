@@ -153,3 +153,88 @@ def test_an_unparseable_file_is_named_not_swallowed(tmp_path: Path):
     result = ilcd.read(pkg)
     assert len(result.datasets) == 1
     assert any("could not be parsed" in n and "99999999" in n for n in result.notes), result.notes
+
+
+# --- limits of a zipped package ----------------------------------------------------------------
+
+
+def _package_zip(archive: Path, extra: dict[str, bytes], method: int = zipfile.ZIP_DEFLATED) -> Path:
+    root = FIXTURES / "ilcd-unitprocess"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(root.rglob("*.xml")):
+            zf.write(path, str(path.relative_to(root)))
+        for name, body in extra.items():
+            zf.writestr(name, body, compress_type=method)
+    return archive
+
+
+def _declare(archive: Path, member: str, size: int) -> None:
+    """Set `member`'s uncompressed size in the central directory to `size`."""
+    import struct
+
+    data = bytearray(archive.read_bytes())
+    at = data.find(b"PK\x01\x02")
+    while at != -1:
+        name_len = struct.unpack_from("<H", data, at + 28)[0]
+        if data[at + 46 : at + 46 + name_len].decode() == member:
+            struct.pack_into("<I", data, at + 24, size)
+            archive.write_bytes(bytes(data))
+            return
+        at = data.find(b"PK\x01\x02", at + 4)
+    raise AssertionError(member)
+
+
+def _refusal_and_peak(target: Path) -> tuple[str, int]:
+    import tracemalloc
+
+    from prism_lca.errors import PrismError
+
+    tracemalloc.start()
+    try:
+        ilcd.read(target)
+        code = ""
+    except PrismError as exc:
+        code = exc.code
+    finally:
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+    return code, peak
+
+
+def test_a_member_declared_above_the_limit_is_refused_before_it_is_inflated(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from prism_lca.engine import archive_limits
+
+    monkeypatch.setattr(archive_limits, "ILCD", replace(archive_limits.ILCD, member=1 << 20))
+    archive = _package_zip(tmp_path / "pkg.zip", {"flows/big.xml": bytes(32 << 20)}, zipfile.ZIP_BZIP2)
+    code, peak = _refusal_and_peak(archive)
+    assert code == "import_archive_too_large"
+    assert peak < 4 << 20
+
+
+def test_a_member_is_read_no_further_than_its_declared_size(tmp_path):
+    archive = _package_zip(tmp_path / "pkg.zip", {"flows/big.xml": bytes(64 << 20)}, zipfile.ZIP_BZIP2)
+    _declare(archive, "flows/big.xml", 1000)
+    code, peak = _refusal_and_peak(archive)
+    assert code == "import_unreadable"
+    assert peak < 4 << 20
+
+
+def test_markup_denser_than_any_dataset_is_refused_while_it_is_parsed(tmp_path):
+    body = b'<flowDataSet xmlns="http://lca.jrc.it/ILCD/Flow">' + b"<a/>" * 500_000 + b"</flowDataSet>"
+    archive = _package_zip(tmp_path / "pkg.zip", {"flows/dense.xml": body})
+    code, peak = _refusal_and_peak(archive)
+    assert code == "import_archive_too_large"
+    assert peak < 8 * len(body)
+
+
+def test_the_datasets_kept_from_one_package_are_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(ilcd, "MAX_KEPT_ELEMENTS", 40)
+    code, _peak = _refusal_and_peak(FIXTURES / "ilcd-unitprocess")
+    assert code == "import_archive_too_large"
+
+
+def test_every_fixture_reads_within_the_limits():
+    for target in (FIXTURES / "ilcd-unitprocess", FIXTURES / "ilcd-process.xml"):
+        assert ilcd.read(target).datasets

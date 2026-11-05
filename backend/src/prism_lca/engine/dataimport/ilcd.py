@@ -20,11 +20,14 @@ something that is not there.
 
 from __future__ import annotations
 
+import io
 import zipfile
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree
 
+from prism_lca.engine import archive_limits
 from prism_lca.engine.dataimport.model import (
     FlowProperty,
     ForeignDataset,
@@ -32,6 +35,7 @@ from prism_lca.engine.dataimport.model import (
     ReadResult,
     SourceKind,
 )
+from prism_lca.errors import PrismError
 
 ILCD = "http://lca.jrc.it/ILCD/Process"
 COMMON = "http://lca.jrc.it/ILCD/Common"
@@ -42,6 +46,11 @@ UG_NS = "http://lca.jrc.it/ILCD/UnitGroup"
 #: ``typeOfDataSet`` values that carry a real inventory. Everything else — "LCI result",
 #: "Partly terminated system", "EPD", "Avoided product system" — is a result, not an inventory.
 UNIT_PROCESS_TYPES = ("Unit process, single operation", "Unit process, black box")
+
+#: ILCD files carry 50 to 100 bytes of markup per element; a file denser than this is not a dataset.
+MIN_BYTES_PER_ELEMENT = 16
+#: Elements the datasets kept from one package may hold together, several times what a large package needs.
+MAX_KEPT_ELEMENTS = 10_000_000
 
 
 def _text(node: ElementTree.Element | None) -> str:
@@ -83,7 +92,26 @@ def _uuid_of(root: ElementTree.Element) -> str:
     return _text(node)
 
 
-def _load(paths: list[tuple[str, bytes]]) -> _Package:
+def _too_much_xml() -> PrismError:
+    return PrismError(
+        "This package holds more XML than PrismLCA reads in one ILCD import — not reading it.",
+        code="import_archive_too_large",
+        hint="Import the datasets you need in smaller packages.",
+    )
+
+
+def _parse(raw: bytes) -> tuple[ElementTree.Element, int]:
+    """The file's tree and how many elements it has; the count is bounded while the tree is built."""
+    allowance = len(raw) // MIN_BYTES_PER_ELEMENT + 64
+    events = ElementTree.iterparse(io.BytesIO(raw), events=("start",))
+    count = 0
+    for count, _event in enumerate(events, 1):
+        if count > allowance:
+            raise _too_much_xml()
+    return events.root, count
+
+
+def _load(paths: Iterable[tuple[str, bytes]]) -> _Package:
     pkg = _Package()
     buckets = {
         "processDataSet": pkg.processes,
@@ -91,9 +119,10 @@ def _load(paths: list[tuple[str, bytes]]) -> _Package:
         "flowPropertyDataSet": pkg.flow_properties,
         "unitGroupDataSet": pkg.unit_groups,
     }
+    kept = 0
     for _name, raw in paths:
         try:
-            root = ElementTree.fromstring(raw)
+            root, elements = _parse(raw)
         except ElementTree.ParseError:
             pkg.unreadable.append(str(_name))
             continue
@@ -110,17 +139,46 @@ def _load(paths: list[tuple[str, bytes]]) -> _Package:
             # process files under one UUID, and a folder of four datasets read as three with
             # nothing on screen to say which one went.
             pkg.shadowed.append((local, _name.rsplit("/", 1)[-1]))
+        kept += elements
+        if kept > MAX_KEPT_ELEMENTS:
+            raise _too_much_xml()
         bucket[uuid] = root
     return pkg
 
 
-def _read_members(target: Path) -> list[tuple[str, bytes]]:
+def _read_members(target: Path) -> Iterator[tuple[str, bytes]]:
+    """The package's XML files one at a time, so only the trees kept from them stay in memory."""
     if target.is_dir():
-        return [(str(p), p.read_bytes()) for p in sorted(target.rglob("*.xml")) if p.is_file()]
-    if target.suffix.lower() == ".zip" and zipfile.is_zipfile(target):
+        for p in sorted(target.rglob("*.xml")):
+            if p.is_file():
+                yield str(p), p.read_bytes()
+    elif target.suffix.lower() == ".zip" and zipfile.is_zipfile(target):
+        yield from _zip_members(target)
+    else:
+        yield str(target), target.read_bytes()
+
+
+def _zip_members(target: Path) -> Iterator[tuple[str, bytes]]:
+    """A zip's XML members, read within the ILCD archive limits."""
+    limits = archive_limits.ILCD
+
+    def too_large() -> PrismError:
+        return archive_limits.too_large_import(limits)
+
+    try:
         with zipfile.ZipFile(target) as zf:
-            return [(n, zf.read(n)) for n in zf.namelist() if n.lower().endswith(".xml")]
-    return [(str(target), target.read_bytes())]
+            wanted = [zf.getinfo(n) for n in zf.namelist() if n.lower().endswith(".xml")]
+            if not archive_limits.declared_within(zf, wanted, limits):
+                raise too_large()
+            budget = archive_limits.Budget(limits, too_large)
+            for member in wanted:
+                yield member.filename, budget.read(zf, member)
+    except archive_limits.READ_ERRORS as exc:
+        raise PrismError(
+            f"This file could not be read as .zip: {exc}",
+            code="import_unreadable",
+            hint="Check that the export is complete — a partial package is the usual cause.",
+        ) from exc
 
 
 def _unit_of_flow(pkg: _Package, flow: ElementTree.Element) -> str:

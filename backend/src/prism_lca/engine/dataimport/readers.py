@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree
 
+from prism_lca.engine import archive_limits
 from prism_lca.engine.dataimport import ilcd
 from prism_lca.engine.dataimport.detect import SourceFormat, detect
 from prism_lca.engine.dataimport.model import (
@@ -883,12 +884,6 @@ def _json_ld_root(folder: Path) -> Path:
     return folder
 
 
-#: What a zipped JSON-LD package may unpack to. An archive is data from somewhere else: a few
-#: kilobytes can expand into gigabytes, so the members are counted and measured before and WHILE
-#: they are written — a member's header can lie about its size, the byte count cannot.
-ZIP_MAX_TOTAL = 200 * 1024 * 1024
-ZIP_MAX_MEMBER = 50 * 1024 * 1024
-ZIP_MAX_MEMBERS = 20_000
 #: The object folders the reader uses. Everything else in the archive is not unpacked at all.
 _JSON_LD_FOLDERS = frozenset(
     {"processes", "flows", "unit_groups", "flow_properties", "locations", "categories"}
@@ -907,26 +902,21 @@ def _json_ld_member_wanted(name: str) -> bool:
 
 
 def _unzip_json_ld(target: Path, into: Path) -> None:
+    """Unpack the object folders of a zipped package, within the JSON-LD archive limits."""
     import zipfile
 
-    too_big = PrismError(
-        "This archive unpacks to more than PrismLCA reads from one package — not reading it.",
-        code="import_archive_too_large",
-        hint=f"At most {ZIP_MAX_MEMBERS} files, {ZIP_MAX_MEMBER // 2**20} MB each, "
-        f"{ZIP_MAX_TOTAL // 2**20} MB in all.",
-    )
+    limits = archive_limits.JSON_LD
+
+    def too_big() -> PrismError:
+        return archive_limits.too_large_import(limits)
+
     root = into.resolve()
     try:
         with zipfile.ZipFile(target) as zf:
-            members = zf.infolist()
-            if len(members) > ZIP_MAX_MEMBERS:
-                raise too_big
-            wanted = [m for m in members if not m.is_dir() and _json_ld_member_wanted(m.filename)]
-            if sum(m.file_size for m in wanted) > ZIP_MAX_TOTAL or any(
-                m.file_size > ZIP_MAX_MEMBER for m in wanted
-            ):
-                raise too_big
-            written = 0
+            wanted = [m for m in zf.infolist() if not m.is_dir() and _json_ld_member_wanted(m.filename)]
+            if not archive_limits.declared_within(zf, wanted, limits):
+                raise too_big()
+            budget = archive_limits.Budget(limits, too_big)
             for member in wanted:
                 dest = (root / member.filename).resolve()
                 # Containment on the resolved PATH, not on a string prefix: "/tmp/x-evil" starts
@@ -937,13 +927,8 @@ def _unzip_json_ld(target: Path, into: Path) -> None:
                         code="import_unreadable",
                     )
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member) as source, dest.open("wb") as sink:
-                    size = 0
-                    while chunk := source.read(1 << 16):
-                        size += len(chunk)
-                        written += len(chunk)
-                        if size > ZIP_MAX_MEMBER or written > ZIP_MAX_TOTAL:
-                            raise too_big
+                with dest.open("wb") as sink:
+                    for chunk in budget.chunks(zf, member):
                         sink.write(chunk)
     except zipfile.BadZipFile as exc:
         raise _unreadable(target, exc) from exc
