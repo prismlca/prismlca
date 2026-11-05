@@ -28,7 +28,12 @@ export function pinnedTo(project: string | null, apiRaw: ApiRaw): ApiRaw {
   return (method, path, body, extra) => apiRaw(method, path, body, { ...extra, ...pin })
 }
 
-/** `apiRaw` pinned to the workspace that is active now. */
+/** Why a run did not start: without its workspace it would run unpinned. */
+export const WORKSPACE_UNKNOWN = 'The active workspace could not be read, so nothing was started. Try again.'
+
+/** `apiRaw` pinned to the workspace that is active now; throws when that cannot be read. */
 export async function pinnedToActiveWorkspace(apiRaw: ApiRaw): Promise<ApiRaw> {
-  return pinnedTo(await activeWorkspace(apiRaw), apiRaw)
+  const project = await activeWorkspace(apiRaw)
+  if (!project) throw new Error(WORKSPACE_UNKNOWN)
+  return pinnedTo(project, apiRaw)
 }

@@ -159,7 +159,14 @@ export function registerChatIpc(
     {
       // Every request of this turn names the workspace it started in (workspacePin.ts): after a switch
       // the backend refuses it instead of serving the model of the same name in the other workspace.
-      const api = await pinnedToActiveWorkspace(deps.apiRequest)
+      let api: AiIpcDeps['apiRequest']
+      try {
+        api = await pinnedToActiveWorkspace(deps.apiRequest)
+      } catch (e) {
+        // Nothing started, so the chat must not read as running.
+        if (controllers.get(req.chatId) === controller) controllers.delete(req.chatId)
+        throw e
+      }
       // Mutable: a tool of this run may rename the chat's own model, and the backend moves the stored
       // chat with it — everything this turn still writes has to follow (onModelRenamed below).
       let model = req.activeDb

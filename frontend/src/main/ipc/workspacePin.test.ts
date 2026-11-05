@@ -56,7 +56,7 @@ const { registerReportIpc } = await import('./report')
 const { UiBridge } = await import('./uiBridge')
 
 /** The backend: one active workspace, the guard on `X-Prism-Project`, every request recorded. */
-let active = 'Main'
+let active: string | null = 'Main'
 const seen: Array<{ method: string; path: string; project?: string; status: number }> = []
 const apiRequest: ApiRaw = async (method, path, _body, headers) => {
   const named = headers?.['X-Prism-Project']
@@ -64,7 +64,8 @@ const apiRequest: ApiRaw = async (method, path, _body, headers) => {
   const status = project !== undefined && project !== active ? 409 : 200
   seen.push({ method, path, project, status })
   if (status === 409) return { status, body: { error: { code: 'project_changed', message: 'switched' } } }
-  if (path === '/api/v1/system/info') return { status, body: { current_project: { name: active } } }
+  if (path === '/api/v1/system/info')
+    return { status, body: { current_project: active === null ? null : { name: active } } }
   return { status, body: {} }
 }
 
@@ -121,5 +122,28 @@ describe('a run is bound to the workspace it started in', () => {
     )
     const run = seen.filter((r) => r.path !== '/api/v1/system/info')
     expect(run.map((r) => r.project)).toEqual(['Main Ü', 'Main Ü', 'Main Ü', 'Main Ü'])
+  })
+
+  it('starts nothing when the workspace cannot be read', async () => {
+    active = null
+    let ran = false
+    during.step = async () => {
+      ran = true
+    }
+    await expect(
+      handlers.get('ai:send')!(null, {
+        chatId: 'c2',
+        model: '',
+        activeDb: 'Twin',
+        history: [],
+        userText: 'go'
+      })
+    ).rejects.toThrow('could not be read')
+    expect(await handlers.get('ai:isRunning')!(null, 'c2')).toBe(false)
+    await expect(
+      handlers.get('ai:writeSection')!({ sender: { send: () => {} } }, { brief: {}, database: 'Twin' })
+    ).rejects.toThrow('could not be read')
+    expect(ran).toBe(false)
+    expect(seen.map((r) => r.path)).toEqual(['/api/v1/system/info', '/api/v1/system/info'])
   })
 })

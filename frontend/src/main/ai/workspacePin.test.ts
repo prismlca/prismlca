@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ApiRaw } from './execute'
-import { activeWorkspace, pinnedTo } from './workspacePin'
+import { activeWorkspace, pinnedTo, pinnedToActiveWorkspace, WORKSPACE_UNKNOWN } from './workspacePin'
 
 const answering =
   (status: number, body: unknown): ApiRaw =>
@@ -30,5 +30,16 @@ describe('the workspace a run is pinned to', () => {
       { 'X-Prism-Turn': 't', 'X-Prism-Project': 'M%C3%BCller' }
     ])
     expect(pinnedTo(null, api)).toBe(api)
+  })
+
+  it('is required: a run whose workspace cannot be read does not start', async () => {
+    for (const api of [
+      answering(200, { current_project: null }),
+      answering(500, { error: 'down' }),
+      async () => {
+        throw new Error('down')
+      }
+    ] as ApiRaw[])
+      await expect(pinnedToActiveWorkspace(api)).rejects.toThrow(WORKSPACE_UNKNOWN)
   })
 })
