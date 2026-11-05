@@ -1,6 +1,6 @@
 """Backend entrypoint.
 
-Binds to loopback on an OS-assigned free port, then prints a single-line JSON handshake
+Listens on loopback on an OS-assigned free port, then prints a single-line JSON handshake
 to stdout so the Electron shell learns the port + token. UTF-8 is forced because the
 Windows console default encoding otherwise crashes on non-ASCII output.
 """
@@ -80,11 +80,22 @@ def _force_utf8() -> None:
                 _log.swallowed(exc, "_force_utf8")
 
 
-def _free_port(host: str) -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((host, 0))
-        return int(sock.getsockname()[1])
+def _listening_socket(host: str, port: int) -> socket.socket:
+    """The socket uvicorn serves on: listening before its port is announced, held until the process ends."""
+    sock = socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if sys.platform == "win32":  # pragma: no cover - exercised only on Windows
+            # The port is ours alone for as long as we hold it.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            # What uvicorn's own bind sets: a fixed PRISM_PORT is free again right after a restart.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind((host, port))
+        sock.listen()
+    except BaseException:
+        sock.close()
+        raise
+    return sock
 
 
 def main() -> None:
@@ -165,8 +176,9 @@ def main() -> None:
             print(json.dumps({"event": "prism-backend-refused", "reason": refusal}), flush=True)
             raise SystemExit(6)
 
-    port = settings.port or _free_port(settings.host)
     app = create_app(settings)
+    sock = _listening_socket(settings.host, settings.port)
+    port = int(sock.getsockname()[1])
 
     handshake = {
         "event": "prism-backend-ready",
@@ -197,7 +209,7 @@ def main() -> None:
         uvicorn.Config(app, host=settings.host, port=port, log_level="info", timeout_keep_alive=120)
     )
     app.state.server = server
-    server.run()
+    server.run(sockets=[sock])
 
 
 if __name__ == "__main__":
