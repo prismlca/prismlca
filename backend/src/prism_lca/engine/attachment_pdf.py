@@ -25,8 +25,10 @@ TEXT_TIME_LIMIT_S = 580.0
 #: Memory a worker may hold. Reading the whole of 100 pages of dense vector charts peaks near 270 MB, the
 #: whole of a 1,100-page text PDF near 220 MB.
 MEMORY_LIMIT = 1024**3
-#: Workers that read at the same time.
-WORKERS = 2
+#: Workers that count pages, and workers that read text, at the same time. Counting has workers of its
+#: own, so a file being attached never waits behind a long reading.
+COUNTERS = 2
+READERS = 2
 
 #: How much of a reader's error message crosses back: pdfminer quotes whole streams in some of them.
 _ERROR_CHARS = 2000
@@ -100,12 +102,15 @@ def _start() -> bounded_worker.Worker:
     return bounded_worker.Worker(_serve, (MEMORY_LIMIT,), name="prism-pdf")
 
 
-_pool = bounded_worker.Pool(_start, WORKERS)
+_counting = bounded_worker.Pool(_start, COUNTERS)
+#: A reading loads the converters, which a worker would otherwise hold on to while idle; it ends instead.
+_reading = bounded_worker.Pool(_start, READERS, keep_idle=False)
 
 
 def shutdown() -> None:
     """Stop the idle workers; a running reading keeps its own until it ends."""
-    _pool.shutdown()
+    _counting.shutdown()
+    _reading.shutdown()
 
 
 class ReadError(Exception):
@@ -115,7 +120,7 @@ class ReadError(Exception):
 def page_count(path: Path) -> int | None:
     """How many pages the PDF has, or None when it cannot be counted within the budget or at all."""
     try:
-        status, value = _pool.run(("count", str(path)), COUNT_TIME_LIMIT_S)
+        status, value = _counting.run(("count", str(path)), COUNT_TIME_LIMIT_S, waiting_counts=True)
     except bounded_worker.Stopped:
         return None
     return value if status == "ok" else None
@@ -124,11 +129,12 @@ def page_count(path: Path) -> int | None:
 def text(path: Path, pages: str | None, limit: int) -> tuple[str, bool]:
     """The PDF as text: the pages in ``pages`` (``"12-14"``) with their numbers, or all of it through
     markitdown. A file the reader rejects raises :class:`ReadError` with the reader's message; a reading
-    over its budget raises a PrismError."""
+    over its budget raises a PrismError. Waiting for a free worker is part of the budget, so an answer
+    always comes before the desktop app stops waiting for one."""
     wanted = _parse_pages(pages)
     job = ("pages", str(path), sorted(wanted), limit) if wanted else ("whole", str(path), limit)
     try:
-        status, value = _pool.run(job, TEXT_TIME_LIMIT_S)
+        status, value = _reading.run(job, TEXT_TIME_LIMIT_S, waiting_counts=True)
     except bounded_worker.Stopped as stopped:
         raise _stopped(stopped.code) from None
     if status != "ok":

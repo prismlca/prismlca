@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import sys
 import tempfile
+import threading
 import time
 import zlib
 from pathlib import Path
@@ -14,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from prism_lca.engine import attachment_pdf
+from prism_lca.errors import PrismError
 
 
 @pytest.fixture
@@ -119,6 +121,28 @@ def test_reading_a_pdf_over_the_memory_limit_is_refused_and_the_next_one_works(
     ordinary = _post(client, token, "ordinary.pdf", _typeset(pages=2))
     r = client.get(f"/api/v1/files/attachments/{ordinary['id']}/text", headers=token)
     assert r.status_code == 200 and "Chapter 2" in r.json()["text"]
+
+
+def test_counting_pages_does_not_wait_behind_readings(tmp_path, monkeypatch, fresh_readers) -> None:
+    slow = tmp_path / "slow.pdf"
+    slow.write_bytes(_slow_pdf(16))
+    ordinary = tmp_path / "ordinary.pdf"
+    ordinary.write_bytes(_typeset(pages=2))
+    monkeypatch.setattr(attachment_pdf, "TEXT_TIME_LIMIT_S", 6.0)
+
+    def read() -> None:
+        with pytest.raises(PrismError):
+            attachment_pdf.text(slow, None, 1_000)
+
+    readings = [threading.Thread(target=read) for _ in range(attachment_pdf.READERS)]
+    for reading in readings:
+        reading.start()
+    time.sleep(1.0)  # every reading worker is busy now
+    started = time.monotonic()
+    assert attachment_pdf.page_count(ordinary) == 2
+    assert time.monotonic() - started < 4
+    for reading in readings:
+        reading.join()
 
 
 def test_an_ordinary_pdf_reads_in_the_worker_exactly_as_in_process(tmp_path) -> None:

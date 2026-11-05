@@ -1,7 +1,8 @@
 """Worker processes that run one job at a time within a time and memory budget.
 
-A job over its budget ends its worker, not the backend, and the next job starts a new one. Workers stay up
-between jobs, because a cold start costs a new interpreter and its imports. The Typst compiler
+A job over its budget ends its worker, not the backend, and the next job starts a new one. A pool keeps its
+workers up between jobs, because a cold start costs a new interpreter and its imports, unless what a job
+loads is too much to hold while idle. The Typst compiler
 (``typst_worker``) and the PDF reader of chat attachments (``attachment_pdf``) run in such workers; each
 brings its own job handler and says in its own words why a job was stopped.
 
@@ -171,19 +172,31 @@ class Worker:
 
 
 class Pool:
-    """Up to `size` workers at once, started by `start` when none is idle; idle ones are kept for the next
-    job and stopped when the backend exits."""
+    """Up to `size` workers at once, started by `start` when none is idle. With `keep_idle`, a worker is kept
+    for the next job and stopped when the backend exits; without, it ends with its job."""
 
-    def __init__(self, start: Callable[[], Worker], size: int) -> None:
+    def __init__(self, start: Callable[[], Worker], size: int, *, keep_idle: bool = True) -> None:
         self._start = start
+        self._keep_idle = keep_idle
         self._slots = threading.BoundedSemaphore(size)
         self._idle: list[Worker] = []
         self._idle_lock = threading.Lock()
         atexit.register(self.shutdown)
 
-    def run(self, job: Any, time_limit: float) -> Any:
-        """The worker's reply to `job`, or :class:`Stopped` when the worker ended without one."""
-        with self._slots:
+    def run(self, job: Any, time_limit: float, *, waiting_counts: bool = False) -> Any:
+        """The worker's reply to `job`, or :class:`Stopped` when the worker ended without one.
+
+        With `waiting_counts`, the time spent waiting for a free worker is part of `time_limit`: the job
+        gets what is left of it, and one that finds no worker in time is not started (code None).
+        """
+        deadline = time.monotonic() + time_limit
+        if not self._slots.acquire(timeout=time_limit if waiting_counts else None):
+            raise Stopped(None)
+        try:
+            if waiting_counts:
+                time_limit = deadline - time.monotonic()
+                if time_limit <= 0:
+                    raise Stopped(None)
             with self._idle_lock:
                 worker = self._idle.pop() if self._idle else None
             if worker is None or not worker.process.is_alive():
@@ -201,11 +214,13 @@ class Pool:
             if answer is None:
                 raise _stopped(worker, answered=False)
             reply, retire = answer
-            if retire:
+            if retire or not self._keep_idle:
                 worker.stop()
             else:
                 with self._idle_lock:
                     self._idle.append(worker)
+        finally:
+            self._slots.release()
         return reply
 
     def shutdown(self) -> None:
