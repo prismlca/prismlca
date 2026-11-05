@@ -464,8 +464,8 @@ export async function downloadUpdate(): Promise<UpdateState> {
   try {
     const u = updater
     const checked = acceptedChecks()
-    await withSystemProxy(u.netSession, () => u.downloadUpdate())
-    if (installKind() === 'nsis') await confirmChecked(u, downloadedFile, checked)
+    const downloaded = await withSystemProxy(u.netSession, () => u.downloadUpdate())
+    if (installKind() === 'nsis') await confirmChecked(u, downloaded, checked)
     const after = getUpdateState()
     if (after.phase === 'downloading')
       setState({ phase: 'downloaded', current: current(), version: after.version })

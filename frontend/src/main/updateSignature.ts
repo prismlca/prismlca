@@ -11,7 +11,8 @@
  *    `NsisUpdater` turns it into ERR_UPDATER_INVALID_SIGNATURE;
  *  - a rejection with `SIGNATURE_UNCHECKED`: there was no usable answer at all.
  * electron-updater does not call the verifier for a file it serves from its download cache, nor when
- * app-update.yml names no publisher; `confirmChecked` closes both after every Windows download.
+ * app-update.yml names no publisher, and its cache also skips the web-installer refusal;
+ * `confirmChecked` closes all three after every Windows download.
  *
  * PowerShell is started by its absolute path under %SystemRoot%, without a shell. The script uses only
  * what Constrained Language mode allows, takes the file from an environment variable (no quoting), and
@@ -31,6 +32,8 @@ export const FILE_VARIABLE = 'PRISMLCA_UPDATE_FILE'
 
 /** NsisUpdater's code for an installer that is not signed by the pinned publisher (updater.ts words it). */
 const INVALID_SIGNATURE = 'ERR_UPDATER_INVALID_SIGNATURE'
+/** electron-updater's code for a refused web installer. */
+const WEB_INSTALLER = 'ERR_UPDATER_WEB_INSTALLER_DISABLED'
 
 /** How many installers the guard has accepted: a download that does not raise it was never checked. */
 let acceptedCount = 0
@@ -269,13 +272,21 @@ export function guardUpdateSignature(u: unknown, run: RunPowerShell = runPowerSh
 }
 
 /**
- * After a Windows download, before it may be offered for install: its installer must have passed the
- * guard during this download (`acceptedBefore` is `acceptedChecks()` from before it started). One served
- * from electron-updater's cache, or downloaded while app-update.yml named no publisher, is checked now
- * through NsisUpdater's own entry point, and refused when the pin is never consulted.
+ * After a Windows download, before it may be offered for install. `downloaded` is what the download
+ * resolved to: exactly one full installer, never one with a separate package (a web installer, which the
+ * cache would otherwise hand on). The installer must have passed the guard during this download
+ * (`acceptedBefore` is `acceptedChecks()` from before it started). One served from electron-updater's
+ * cache, or downloaded while app-update.yml named no publisher, is checked now through NsisUpdater's own
+ * entry point, and refused when the pin is never consulted.
  */
-export async function confirmChecked(u: unknown, file: string | null, acceptedBefore: number): Promise<void> {
-  if (acceptedCount > acceptedBefore) return
+export async function confirmChecked(u: unknown, downloaded: unknown, acceptedBefore: number): Promise<void> {
+  const files = Array.isArray(downloaded) ? downloaded : []
+  if (files.length > 1)
+    throw Object.assign(new Error('the release offers a web installer, which this version does not accept'), {
+      code: WEB_INSTALLER
+    })
+  const file = typeof files[0] === 'string' ? files[0] : null
+  if (acceptedCount > acceptedBefore && file) return
   const nsis = u as NsisInternals | null
   if (!file || typeof nsis?.verifySignature !== 'function')
     throw unchecked('the downloaded installer was not checked')

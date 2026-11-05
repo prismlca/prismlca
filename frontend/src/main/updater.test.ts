@@ -117,19 +117,20 @@ class FakeUpdater extends EventEmitter {
     return (this.verifyUpdateCodeSignature as Verifier)([this.publisherName], file)
   }
   /** NsisUpdater's download task: the fresh file is checked under its temp name, then announced. */
-  async downloadChecked(downloadedFile = INSTALLER): Promise<unknown[]> {
+  async downloadChecked(downloadedFile = INSTALLER): Promise<string[]> {
     const verdict = await this.verifySignature(downloadedFile.replace(/[^\\/]+$/, (name) => `temp-${name}`))
     if (verdict !== null)
       throw Object.assign(new Error(`New version 1.3.0 is not signed by the application owner: ${verdict}`), {
         code: 'ERR_UPDATER_INVALID_SIGNATURE'
       })
     this.emit('update-downloaded', { version: '1.3.0', downloadedFile })
-    return []
+    return [downloadedFile]
   }
-  /** A download electron-updater serves from its cache: announced without the verifier. */
-  async downloadFromCache(): Promise<unknown[]> {
+  /** A download electron-updater serves from its cache: announced without the verifier. With
+   *  `withPackage`, a web installer: the cache hands its package on as a second file. */
+  async downloadFromCache(withPackage = false): Promise<string[]> {
     this.emit('update-downloaded', { version: '1.3.0', downloadedFile: INSTALLER })
-    return []
+    return withPackage ? [INSTALLER, INSTALLER.replace(/[^\\]+$/, 'package-1.3.0.7z')] : [INSTALLER]
   }
   // The two private members V-1 replaces, shaped like electron-updater's (a Lazy and a method).
   stagingUserIdPromise: { value: Promise<string> } = { value: Promise.resolve('a-real-installation-id') }
@@ -224,7 +225,7 @@ async function reachDownloaded(downloadedFile?: string): Promise<void> {
 }
 
 /** Check → available, with the next download done by `download`. */
-async function reachAvailable(download: () => Promise<unknown[]>): Promise<void> {
+async function reachAvailable(download: () => Promise<string[]>): Promise<void> {
   fake.checkForUpdates.mockImplementation(async () => {
     fake.emit('update-available', { version: '1.3.0' })
     return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
@@ -482,6 +483,16 @@ describe('the Windows publisher check', () => {
       phase: 'error',
       message: 'The downloaded update failed its signature check and was not installed.'
     })
+    expect((await call('updates:install')).phase).toBe('error')
+    expect(fake.install).not.toHaveBeenCalled()
+  })
+
+  it('refuses a web installer the download cache hands on', async () => {
+    await reachAvailable(() => fake.downloadFromCache(true))
+    const s = await call('updates:download')
+    expect(s).toMatchObject({ phase: 'error', version: '1.3.0' })
+    expect(s.message).toMatch(/web installer/)
+    expect(powershell.calls).toBe(0)
     expect((await call('updates:install')).phase).toBe('error')
     expect(fake.install).not.toHaveBeenCalled()
   })

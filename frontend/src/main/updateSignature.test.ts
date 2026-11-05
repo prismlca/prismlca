@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -219,7 +219,10 @@ describe('in electron-updater’s NsisUpdater', () => {
     httpExecutor: unknown
     logger: unknown
     verifySignature: (file: string) => Promise<string | null>
-    doDownloadUpdate: (options: unknown) => Promise<{ updateFile: string }>
+    disableWebInstaller: boolean
+    disableDifferentialDownload: boolean
+    updateInfoAndProvider: unknown
+    downloadUpdate: () => Promise<string[]>
   }
   let dir = ''
   let downloads: string[] = []
@@ -244,6 +247,9 @@ describe('in electron-updater’s NsisUpdater', () => {
     const u = new NsisUpdater(null, app)
     u.logger = null
     u.updateConfigPath = app.appUpdateConfigPath
+    // As updater.ts configures it.
+    u.disableWebInstaller = true
+    u.disableDifferentialDownload = true
     u.httpExecutor = {
       download: async (_url: URL, destination: string) => {
         writeFileSync(destination, INSTALLER_BYTES)
@@ -260,21 +266,26 @@ describe('in electron-updater’s NsisUpdater', () => {
     (exe, args, env, timeoutMs) =>
       answering({ ...o, Path: env[FILE_VARIABLE] }, calls)(exe, args, env, timeoutMs)
 
-  function download(u: Nsis): Promise<{ updateFile: string }> {
-    const { CancellationToken } = require('builder-util-runtime') as { CancellationToken: new () => unknown }
+  /**
+   * The download as updater.ts starts it: what the last check found (a full installer, or a web installer
+   * with its package when `web`), through the public `downloadUpdate`.
+   */
+  function download(u: Nsis, { web = false } = {}): Promise<string[]> {
     const name = 'PrismLCA-Setup-1.3.0.exe'
     const sha512 = createHash('sha512').update(INSTALLER_BYTES).digest('base64')
     const info = { version: '1.3.0', path: name, sha512, files: [{ url: name, sha512 }] }
+    const packageInfo = { path: 'https://example.invalid/prism-lca-1.3.0-x64.nsis.7z', sha512, size: 15 }
     const provider = {
-      resolveFiles: () => [{ url: new URL(`https://example.invalid/${name}`), info: info.files[0] }]
+      resolveFiles: () => [
+        {
+          url: new URL(`https://example.invalid/${name}`),
+          info: info.files[0],
+          ...(web ? { packageInfo } : {})
+        }
+      ]
     }
-    return u.doDownloadUpdate({
-      updateInfoAndProvider: { info, provider },
-      requestHeaders: {},
-      cancellationToken: new CancellationToken(),
-      disableWebInstaller: true,
-      disableDifferentialDownload: true
-    })
+    u.updateInfoAndProvider = { info, provider }
+    return u.downloadUpdate()
   }
 
   beforeEach(() => {
@@ -318,7 +329,7 @@ describe('in electron-updater’s NsisUpdater', () => {
   it('completes the download only for the pinned publisher', async () => {
     const u = nsisUpdater()
     guardUpdateSignature(u, aboutAskedFile(valid))
-    const { updateFile } = await download(u)
+    const [updateFile] = await download(u)
     expect(existsSync(updateFile)).toBe(true)
   })
 
@@ -327,8 +338,7 @@ describe('in electron-updater’s NsisUpdater', () => {
     const calls: Call[] = []
     guardUpdateSignature(u, aboutAskedFile(valid, calls))
     const before = acceptedChecks()
-    const { updateFile } = await download(u)
-    await confirmChecked(u, updateFile, before)
+    await confirmChecked(u, await download(u), before)
     expect(calls).toHaveLength(1)
   })
 
@@ -343,16 +353,16 @@ describe('in electron-updater’s NsisUpdater', () => {
     const calls: Call[] = []
     guardUpdateSignature(u, aboutAskedFile({ ...valid, Subject: 'CN=Someone Else' }, calls))
     const before = acceptedChecks()
-    const { updateFile } = await download(u)
+    const files = await download(u)
     expect(downloads).toHaveLength(1) // served from the cache
     expect(calls).toHaveLength(0) // without the check
-    await expect(confirmChecked(u, updateFile, before)).rejects.toMatchObject({
+    await expect(confirmChecked(u, files, before)).rejects.toMatchObject({
       code: 'ERR_UPDATER_INVALID_SIGNATURE'
     })
     expect(calls).toHaveLength(1)
 
     guardUpdateSignature(u, aboutAskedFile(valid))
-    await confirmChecked(u, updateFile, acceptedChecks())
+    await confirmChecked(u, files, acceptedChecks())
   })
 
   it('refuses a download when app-update.yml names no publisher', async () => {
@@ -361,17 +371,29 @@ describe('in electron-updater’s NsisUpdater', () => {
     const calls: Call[] = []
     guardUpdateSignature(u, answering(valid, calls))
     const before = acceptedChecks()
-    const { updateFile } = await download(u)
+    const files = await download(u)
     expect(calls).toHaveLength(0) // electron-updater skips the check without a publisher
-    await expect(confirmChecked(u, updateFile, before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
-    await expect(confirmChecked(u, null, before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
+    await expect(confirmChecked(u, files, before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
+    await expect(confirmChecked(u, [], before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
   })
 
-  it('refuses a web installer when told to', () => {
-    const src = readFileSync(join(dirname(require.resolve('electron-updater')), 'NsisUpdater.js'), 'utf-8')
-    expect(src).toMatch(/if \(isWebInstaller && downloadUpdateOptions\.disableWebInstaller\) \{\s*throw/)
-    const app = readFileSync(join(dirname(require.resolve('electron-updater')), 'AppUpdater.js'), 'utf-8')
-    expect(app).toMatch(/disableWebInstaller: this\.disableWebInstaller,/)
+  it('refuses a web installer, also one the cache would hand on with its package', async () => {
+    const fresh = nsisUpdater()
+    guardUpdateSignature(fresh, aboutAskedFile(valid))
+    await expect(download(fresh, { web: true })).rejects.toMatchObject({
+      code: 'ERR_UPDATER_WEB_INSTALLER_DISABLED'
+    })
+
+    // A full installer in the cache, and a release that now names a package beside it.
+    await download(fresh)
+    const u = nsisUpdater()
+    guardUpdateSignature(u, aboutAskedFile(valid))
+    const before = acceptedChecks()
+    const files = await download(u, { web: true })
+    expect(files).toHaveLength(2) // the cache passed it on, package included
+    await expect(confirmChecked(u, files, before)).rejects.toMatchObject({
+      code: 'ERR_UPDATER_WEB_INSTALLER_DISABLED'
+    })
   })
 
   it('fails closed when the updater offers no verifier slot', () => {
