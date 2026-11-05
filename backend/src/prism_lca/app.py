@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from prism_lca import _log
 from prism_lca.api.error_handlers import install_error_handlers
+from prism_lca.api.token_gate import TokenGate, has_valid_token
 from prism_lca.api.v1.router import api_router
 from prism_lca.config import Settings, get_settings
 from prism_lca.engine import model
@@ -125,9 +126,10 @@ class _AssistantTurnMiddleware:
                 # The in-app chat's model fence (engine/model_scope.py); percent-encoded like the
                 # project. Present but empty = a chat without a model, which may change none.
                 raw_model = unquote(value.decode("latin-1"))
-        if raw_project is not None:
+        if raw_project is not None and has_valid_token(scope):
             # The early answer, before the body is read: cheap, and the clear message. The check
-            # that cannot be raced sits in the command bus (assert_expected_project).
+            # that cannot be raced sits in the command bus (assert_expected_project). Token holders
+            # only: the answer names the active workspace.
             current = _current_project_name(scope)
             if current != raw_project:
                 return await _project_changed_response(send, raw_project, current)
@@ -267,6 +269,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # copies into the threadpool that sync endpoints run on.
     app.add_middleware(_AssistantTurnMiddleware)
     app.add_middleware(_InFlightMiddleware, state=app.state)
+    # Last added, so it runs first: the token is checked before any other layer handles a request.
+    public_paths = {f"{settings.api_prefix}/system/health", app.openapi_url, app.docs_url,
+                    app.redoc_url, app.swagger_ui_oauth2_redirect_url}
+    app.add_middleware(TokenGate, public_paths=frozenset(p for p in public_paths if p))
 
     install_error_handlers(app)
 
