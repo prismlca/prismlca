@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from prism_lca.engine import backup_archive
+from prism_lca.engine import backup_archive, workspace_pickles
 from prism_lca.engine.bootstrap import get_bd, get_bi
 from prism_lca.engine.guardrails import is_read_only
 from prism_lca.engine.model import _db_or_404
@@ -131,6 +131,7 @@ def staged_backup(
     td = Path(tempfile.mkdtemp(prefix="prism-restore-"))
     try:
         unpacked = backup_archive.unpack(path, td)
+        workspace_pickles.assert_plain(unpacked.folder)
         yield StagedBackup(fp, name, unpacked.folder, unpacked.size, _read_metadata(unpacked.folder))
     finally:
         shutil.rmtree(td, ignore_errors=True)
