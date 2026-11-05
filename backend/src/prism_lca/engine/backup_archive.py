@@ -23,8 +23,10 @@ MAX_MEMBERS = 100_000
 MAX_NAME_FILE = 64 * 1024
 #: Left free on every disk a restore writes to.
 RESERVE = 512 * 1024 * 1024
-#: A PAX or GNU extension header carries a long name or a few attributes, never more than this.
+#: A PAX or GNU extension header carries a long name or a few attributes, never more than this...
 MAX_EXTENSION_HEADER = 64 * 1024
+#: ...and all of them together in one archive (tarfile keeps every member's for the whole read).
+MAX_EXTENSION_TOTAL = 32 * 1024 * 1024
 
 _HINT = "Choose a .tar.gz written by Back up this workspace."
 _LINKS = "This file holds links or special files, which a workspace backup does not."
@@ -47,13 +49,17 @@ def _too_many() -> PrismError:
 
 
 class _Member(tarfile.TarInfo):
-    """A tar header whose extension payload is size-checked before tarfile reads it; sparse maps are refused."""
+    """A tar header whose extension payload is size-checked before tarfile reads it. Global PAX headers, which
+    tarfile carries into every later member and which no backup writer emits, and sparse maps are refused."""
 
     def _proc_member(self, tarfile_):
-        if self.type in _EXTENSIONS and self.size > MAX_EXTENSION_HEADER:
-            raise tarfile.ReadError("oversized extension header")
-        if self.type == tarfile.GNUTYPE_SPARSE:
-            raise tarfile.ReadError("sparse member")
+        if self.type in (tarfile.XGLTYPE, tarfile.GNUTYPE_SPARSE):
+            raise tarfile.ReadError("unsupported header")
+        if self.type in _EXTENSIONS:
+            total = getattr(tarfile_, "_prism_extension_bytes", 0) + self.size
+            if self.size > MAX_EXTENSION_HEADER or total > MAX_EXTENSION_TOTAL:
+                raise tarfile.ReadError("oversized extension header")
+            tarfile_._prism_extension_bytes = total
         return super()._proc_member(tarfile_)
 
     def _proc_gnusparse_00(self, *args):
@@ -62,8 +68,7 @@ class _Member(tarfile.TarInfo):
     _proc_gnusparse_01 = _proc_gnusparse_10 = _proc_gnusparse_00
 
 
-_EXTENSIONS = (tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK, tarfile.XHDTYPE, tarfile.XGLTYPE,
-               tarfile.SOLARIS_XHDTYPE)
+_EXTENSIONS = (tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK, tarfile.XHDTYPE, tarfile.SOLARIS_XHDTYPE)
 
 
 def _open(fp: Path) -> tarfile.TarFile:

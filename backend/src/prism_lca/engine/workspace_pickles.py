@@ -25,8 +25,8 @@ PICKLE_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("group_table", "order"),
     ),
 }
-#: Far above any real activity, exchange, parameter or LCIA method.
-MAX_PICKLE = 16 * 1024 * 1024
+#: Far above any real activity, exchange, parameter or LCIA method (a method with 5,000 factors is ~110 kB).
+MAX_PICKLE = 4 * 1024 * 1024
 
 
 class _NotPlain(Exception):

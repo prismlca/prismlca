@@ -286,3 +286,29 @@ def test_reading_the_name_stops_once_the_backup_outgrows_the_room(tmp_path, monk
     with pytest.raises(PrismError) as exc:
         backup_archive.read_name(path)
     assert exc.value.code == "backup_no_room"
+
+
+def test_global_extension_headers_are_refused(tmp_path):
+    path = tmp_path / "b.tar.gz"
+    with tarfile.open(path, "w:gz", format=tarfile.PAX_FORMAT, pax_headers={"comment": "global"}) as tar:
+        top, (name_file, name_data) = _workspace()
+        tar.addfile(top)
+        tar.addfile(name_file, io.BytesIO(name_data))
+    into = tmp_path / "into"
+    into.mkdir()
+    with pytest.raises(PrismError) as exc:
+        backup_archive.unpack(path, into)
+    assert exc.value.code == "backup_unreadable"
+    with pytest.raises(PrismError):
+        backup_archive.read_name(path)
+
+
+def test_extension_headers_are_capped_in_total(tmp_path, monkeypatch):
+    long_names = [_file("ws/" + f"{i:03d}" + "n" * 200) for i in range(20)]
+    (tmp_path / "fits").mkdir()
+    _unpack(tmp_path / "fits", *_workspace(*long_names))
+    monkeypatch.setattr(backup_archive, "MAX_EXTENSION_TOTAL", 2000)
+    (tmp_path / "too-much").mkdir()
+    with pytest.raises(PrismError) as exc:
+        _unpack(tmp_path / "too-much", *_workspace(*long_names))
+    assert exc.value.code == "backup_unreadable"

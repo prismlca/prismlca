@@ -65,6 +65,8 @@ def test_keys_of_real_data_never_share_a_hash_often():
     plain_pickle.check(pickle.dumps({(i, i + 1): 1 for i in range(50_000)}, protocol=4))
     plain_pickle.check(pickle.dumps({i / 7: 1 for i in range(50_000)}, protocol=4))
     plain_pickle.check(pickle.dumps({f"location-{i}": i for i in range(50_000)}, protocol=4))  # geomapping-like
+    plain_pickle.check(pickle.dumps({("ecoinvent", f"code-{i}"): 1.0 for i in range(50_000)}, protocol=4))
+    plain_pickle.check(pickle.dumps({("same", i): 1 for i in range(50_000)}, protocol=4))
     plain_pickle.check(pickle.dumps(set(COLLIDING[: plain_pickle.MAX_EQUAL_HASHES]), protocol=4))
 
 
@@ -73,6 +75,9 @@ def test_keys_of_real_data_never_share_a_hash_often():
     lambda keys: set(keys),
     lambda keys: frozenset(keys),
     lambda keys: {(k, 2): 1 for k in keys},
+    lambda keys: {("same", k): 1 for k in keys},
+    lambda keys: {frozenset({k}): 1 for k in keys},
+    lambda keys: {frozenset({i}): 1 for i in range(len(keys))},
 ])
 def test_many_keys_of_one_hash_are_refused(build):
     assert len({hash(k) for k in COLLIDING}) == 1
