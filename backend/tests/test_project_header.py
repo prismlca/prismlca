@@ -90,3 +90,38 @@ def test_deleting_a_model_is_guarded_outside_the_bus_too(
     assert r.json()["error"]["code"] == "project_changed"
     names = [d["name"] for d in client.get("/api/v1/databases", headers=token).json()]
     assert "Twin" in names
+
+
+def test_provenance_logs_are_guarded_like_the_bus(
+    client: TestClient, token: dict[str, str], project: str, monkeypatch
+) -> None:
+    """The research and review logs are written outside the command bus, into the active workspace. A
+    request meant for A that the middleware let pass must not land in B's model of the same name."""
+    import prism_lca.app as app_module
+
+    assert client.post("/api/v1/databases/foreground", json={"name": "Twin"}, headers=token).status_code == 200
+    other = project + "-b"
+    assert client.post("/api/v1/projects", json={"name": other}, headers=token).status_code == 200
+    assert client.post("/api/v1/databases/foreground", json={"name": "Twin"}, headers=token).status_code == 200
+    review = {"database": "Twin", "review": "B's own review", "gaps": []}
+    assert client.post("/api/v1/provenance/review", json=review, headers=token).status_code == 200
+    before = client.get("/api/v1/provenance/review?database=Twin", headers=token).json()
+
+    monkeypatch.setattr(app_module, "_current_project_name", lambda scope: project)
+    stale = {**token, "X-Prism-Project": project}
+    finding = {"text": "PET weighs 20 g", "sources": ["https://example.org/pet"]}
+    writes = (
+        ("/api/v1/provenance/research", {"database": "Twin", "entries": [{"question": "q", "findings": [finding]}]}),
+        ("/api/v1/provenance/review", {"database": "Twin", "review": "meant for A", "gaps": []}),
+        (
+            "/api/v1/provenance/review/resolutions",
+            {"database": "Twin", "resolutions": [{"finding": "f", "resolution": "fixed", "reason": "r"}]},
+        ),
+    )
+    for path, body in writes:
+        r = client.post(path, json=body, headers=stale)
+        assert r.status_code == 409, (path, r.text)
+        assert r.json()["error"]["code"] == "project_changed"
+    monkeypatch.undo()
+    assert client.get("/api/v1/provenance/research?database=Twin", headers=token).json() == []
+    assert client.get("/api/v1/provenance/review?database=Twin", headers=token).json() == before

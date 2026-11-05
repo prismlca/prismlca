@@ -3,7 +3,7 @@
 Both are logs, not model state — appended by the AI tools as a side effect of doing the work, read
 by the report (bibliography, limitations) and by anyone asking how a study knows what it claims.
 Neither goes through the command bus: there is nothing to undo about the fact that a question was
-asked or a review was run.
+asked or a review was run. The writes still take the bus's project guard, as they land in the active workspace.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import lca, model_scope
+from prism_lca.engine import commands, lca, model_scope
 from prism_lca.engine.research_log import ResearchLogStore
 from prism_lca.engine.review_log import ReviewLogStore
 
@@ -32,7 +32,8 @@ async def get_research(database: str) -> list[dict]:
 @router.post("/research", summary="Record research results for a model (idempotent per finding)")
 async def record_research(body: ResearchLogRequest) -> dict:
     model_scope.assert_model_write(body.database)
-    return ResearchLogStore().record(body.database, body.entries)
+    with commands.project_guard():
+        return ResearchLogStore().record(body.database, body.entries)
 
 
 class ReviewLogRequest(BaseModel):
@@ -59,12 +60,14 @@ async def record_review(body: ReviewLogRequest) -> dict:
     model_scope.assert_model_write(body.database)
     # Stamped HERE, not by the caller: the generation is a backend counter the frontend never sees,
     # and it is what later turns "has the model changed since this review?" into a comparison.
-    return ReviewLogStore().record_review(
-        body.database, body.review, gaps=body.gaps, generation=lca.model_generation()
-    )
+    with commands.project_guard():
+        return ReviewLogStore().record_review(
+            body.database, body.review, gaps=body.gaps, generation=lca.model_generation()
+        )
 
 
 @router.post("/review/resolutions", summary="Record the builder's outcome per review finding")
 async def record_resolutions(body: ResolutionsRequest) -> dict:
     model_scope.assert_model_write(body.database)
-    return ReviewLogStore().record_resolutions(body.database, body.resolutions, review_id=body.review_id)
+    with commands.project_guard():
+        return ReviewLogStore().record_resolutions(body.database, body.resolutions, review_id=body.review_id)
