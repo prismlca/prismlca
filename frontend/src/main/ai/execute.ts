@@ -296,7 +296,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
   const repeats = makeRepeatGuard(o.repeatEscape ?? 'answer the user with what you already have.')
 
   const run: ToolSession['run'] = async (name, rawArgs, opts) => {
-    const tool = TOOL_BY_NAME[name]
+    const tool = Object.hasOwn(TOOL_BY_NAME, name) ? TOOL_BY_NAME[name] : undefined
     const startedAt = Date.now()
     const argText = typeof rawArgs === 'string' ? rawArgs : rawArgs ? JSON.stringify(rawArgs) : ''
     try {

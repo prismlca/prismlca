@@ -184,14 +184,15 @@ function named(v: unknown): string | undefined {
  * A call without an action takes the tool's worst action, because a default (`edit_parameter` falls
  * back to "set") or a batch path (`edit_tags` assignments) may route it anywhere in the tool. Batch
  * items that carry their own action (`edit_exchange` exchanges[]) count too, and the worst one wins.
+ * Only a table's own keys count, so an inherited name (an Object.prototype member) is unknown too.
  */
 export function effectOf(tool: string, args: Record<string, unknown> | undefined): ToolEffect {
-  const table = TOOL_EFFECTS[tool]
+  const table = Object.hasOwn(TOOL_EFFECTS, tool) ? TOOL_EFFECTS[tool] : undefined
   if (!table) return 'irreversible'
-  if ('*' in table) return table['*']
-  const param = ACTION_PARAM[tool]
+  if (Object.hasOwn(table, '*')) return table['*']
+  const param = Object.hasOwn(ACTION_PARAM, tool) ? ACTION_PARAM[tool] : undefined
   const top = param ? named(args?.[param]) : undefined
-  if (!top) return worst(Object.values(table))
+  if (!param || !top) return worst(Object.values(table))
   const actions = [top]
   for (const v of Object.values(args ?? {})) {
     if (!Array.isArray(v)) continue
@@ -200,7 +201,7 @@ export function effectOf(tool: string, args: Record<string, unknown> | undefined
       if (a) actions.push(a)
     }
   }
-  return worst(actions.map((a) => table[a] ?? 'irreversible'))
+  return worst(actions.map((a) => (Object.hasOwn(table, a) ? table[a] : 'irreversible')))
 }
 
 /**

@@ -551,8 +551,10 @@ export async function delegate(
   fallback?: string
 ): ReturnType<Tool['run']> {
   const raw = String(args?.action ?? '').trim()
-  const key = raw || (fallback && routes[fallback] ? fallback : raw)
-  const target = routes[key]
+  // Own keys only: an inherited name (an Object.prototype member) is an unknown action.
+  const has = (o: object | undefined, k: string): boolean => !!o && Object.hasOwn(o, k)
+  const key = raw || (fallback && has(routes, fallback) ? fallback : raw)
+  const target = has(routes, key) ? routes[key] : undefined
   if (!target) {
     return S({
       error: raw
@@ -560,7 +562,7 @@ export async function delegate(
         : `Missing "action". Expected one of: ${Object.keys(routes).join(', ')}.`
     })
   }
-  const missing = (need?.[key] ?? []).filter(
+  const missing = (has(need, key) ? need![key] : []).filter(
     (k) => args?.[k] === undefined || args[k] === null || args[k] === ''
   )
   if (missing.length) {

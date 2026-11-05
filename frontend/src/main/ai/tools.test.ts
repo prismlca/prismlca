@@ -407,6 +407,23 @@ describe('consolidated tools', () => {
     expect(String(out)).toContain('create')
   })
 
+  it('treats an action named like an Object.prototype member as unknown, and sends nothing', async () => {
+    const ex = await run('edit_exchange', {
+      action: 'constructor',
+      activity_database: 'd',
+      activity_code: 'c',
+      uid: 'u',
+      comment: 'x'
+    })
+    expect(ex.calls).toEqual([])
+    expect(JSON.parse(String(ex.out)).error).toContain('Unknown action "constructor"')
+    for (const tool of ['manage_method_family', 'edit_lcia_method', 'edit_scenario', 'history']) {
+      const { out, calls } = await run(tool, { action: 'toString', family: 'F' })
+      expect(calls, tool).toEqual([])
+      expect(JSON.parse(String(out)).error, tool).toContain('Unknown action "toString"')
+    }
+  })
+
   // A live eval caught a model calling manage_method_family with the wrong field name twelve times
   // in a row: the API answered "HTTP 422", which told it nothing, so it kept retrying. Per-action
   // required arguments have to be named back to the model BEFORE the request goes out.
