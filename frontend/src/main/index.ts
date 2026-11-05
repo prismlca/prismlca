@@ -25,7 +25,7 @@ import { ensureSearchModel } from './searchModel'
 import { createSplash, type Splash } from './splash'
 import { guardWindow } from './windowGuard'
 import { adoptLegacyUserData } from './userDataMigration'
-import { runProxyMain } from './mcp/proxyMain'
+import { appLaunchCommand, runProxyMain } from './mcp/proxyMain'
 import { BRIDGE_IDLE_MS, BRIDGE_LAUNCH_FLAG, createIdleQuit, type IdleQuit } from './mcp/idleQuit'
 import { createKeepAwake } from './keepAwake'
 import { startupReader, waitForHealth, type BackendInfo } from './backendStartup'
@@ -472,6 +472,11 @@ function startApp(): void {
     // Only a PERSON's second start means anything here: another bridge losing the lock is just the
     // handoff (proxyMain.ts polls for the endpoint), a screenshot run must not claim the service.
     if (by !== 'human') return
+    // Quitting, with the backend still being ended: start afresh once it is gone (backendExit.ts).
+    if (quitHold.holding()) {
+      quitHold.reopenAfterEnd()
+      return
+    }
     idle.claim()
     const win = mainWindow
     if (!win) {
@@ -618,7 +623,7 @@ function startApp(): void {
     runShotHarness()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0 && !quitHold.holding()) createWindow()
     })
   })
 
@@ -627,17 +632,20 @@ function startApp(): void {
   })
   // The windows are closed (their departure saves sent); the backend is ended — in order if it can,
   // killed if it does not leave — before the app goes (backendExit.ts).
-  app.on(
-    'will-quit',
-    holdQuitForBackend({
-      backend: () => backend,
-      beforeEnd: () => {
-        keepAwake.stop()
-        mcp.shutdownNow()
-      },
-      quit: () => app.quit()
-    })
-  )
+  const quitHold = holdQuitForBackend({
+    backend: () => backend,
+    beforeEnd: () => {
+      keepAwake.stop()
+      mcp.shutdownNow()
+    },
+    quit: () => app.quit(),
+    // As a person's start: the command a bridge would use, without the bridge's flag.
+    relaunch: () => {
+      const { command, args } = appLaunchCommand()
+      app.relaunch({ execPath: command, args })
+    }
+  })
+  app.on('will-quit', quitHold.onWillQuit)
   // The last net, also for `app.exit()`, which skips `will-quit`.
   app.on('quit', () => {
     keepAwake.stop()

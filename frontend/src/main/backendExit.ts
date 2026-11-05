@@ -37,23 +37,43 @@ export async function endProcess(child: ChildProcess, graceMs = 5_000): Promise<
   return exitedWithin(child, 5_000)
 }
 
+/** What the app wires to its quit: the `will-quit` listener, and the state a second start asks. */
+export interface QuitHold {
+  onWillQuit: (event: { preventDefault: () => void }) => void
+  /** The quit is held while the backend is being ended: no new window belongs in this process. */
+  holding: () => boolean
+  /** A person started the app while it was ending: start it again once the backend is gone. */
+  reopenAfterEnd: () => void
+}
+
 /**
- * The app's `will-quit` listener: the app stays up, window-less, until the backend is gone. A backend
- * that outlives the app keeps the data-directory lock, and the next start is refused until someone
- * ends it by hand.
+ * Holds the quit — the app stays up, window-less — until the backend is gone. A backend that outlives
+ * the app keeps the data-directory lock, and the next start is refused until someone ends it by hand.
  *
  * `beforeEnd` stops what still talks to the backend (MCP sessions, the keep-awake poll); `quit` runs
- * the quit again once the backend has ended, or could not be confirmed ended.
+ * the quit again once the backend has ended, or could not be confirmed ended. A start that arrived
+ * meanwhile is `relaunch`ed, but only after a confirmed end: a new instance would meet the lock.
  */
 export function holdQuitForBackend(deps: {
   backend: () => ChildProcess | null
   beforeEnd: () => void
   quit: () => void
+  relaunch: () => void
   graceMs?: number
-}): (event: { preventDefault: () => void }) => void {
+}): QuitHold {
   let ending: Promise<void> | null = null
   let ended = false
-  return (event) => {
+  let gone = false
+  let reopen = false
+  /** A relaunch that fails must not keep the app from quitting. */
+  const relaunch = (): void => {
+    try {
+      deps.relaunch()
+    } catch (err) {
+      console.error('[prism] relaunch after quitting failed:', err)
+    }
+  }
+  const onWillQuit = (event: { preventDefault: () => void }): void => {
     if (ended) return
     if (ending) {
       event.preventDefault()
@@ -69,9 +89,21 @@ export function holdQuitForBackend(deps: {
     }
     ending = endProcess(child, deps.graceMs ?? QUIT_GRACE_MS)
       .catch(() => false)
-      .then(() => {
+      .then((confirmed) => {
         ended = true
+        gone = confirmed
+        if (reopen && gone) relaunch()
         deps.quit()
       })
+  }
+  return {
+    onWillQuit,
+    holding: () => ending !== null,
+    reopenAfterEnd: () => {
+      if (reopen) return
+      reopen = true
+      // Arriving after the end, the quit is already under way; the relaunch still takes effect on exit.
+      if (ended && gone) relaunch()
+    }
   }
 }

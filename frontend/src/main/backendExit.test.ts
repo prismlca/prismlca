@@ -30,13 +30,14 @@ const asChild = (c: FakeChild): ChildProcess => c as unknown as ChildProcess
 function hold(child: FakeChild | null) {
   const beforeEnd = vi.fn()
   const quit = vi.fn()
-  const listener = holdQuitForBackend({ backend: () => (child ? asChild(child) : null), beforeEnd, quit })
+  const relaunch = vi.fn()
+  const h = holdQuitForBackend({ backend: () => (child ? asChild(child) : null), beforeEnd, quit, relaunch })
   const willQuit = (): boolean => {
     let prevented = false
-    listener({ preventDefault: () => void (prevented = true) })
+    h.onWillQuit({ preventDefault: () => void (prevented = true) })
     return prevented
   }
-  return { willQuit, beforeEnd, quit }
+  return { willQuit, beforeEnd, quit, relaunch, h }
 }
 
 describe('ending the backend', () => {
@@ -107,5 +108,57 @@ describe('ending the backend', () => {
       expect(quit).not.toHaveBeenCalled()
       expect(child?.signals ?? []).toEqual([])
     }
+  })
+
+  it('starts the app again for a person who opened it while the backend was being ended', async () => {
+    const child = new FakeChild(['SIGKILL'])
+    const { willQuit, quit, relaunch, h } = hold(child)
+    expect(h.holding()).toBe(false)
+    expect(willQuit()).toBe(true)
+    expect(h.holding()).toBe(true)
+    h.reopenAfterEnd()
+    h.reopenAfterEnd()
+    await vi.advanceTimersByTimeAsync(QUIT_GRACE_MS)
+    expect(relaunch).toHaveBeenCalledTimes(1)
+    expect(relaunch.mock.invocationCallOrder[0]).toBeLessThan(quit.mock.invocationCallOrder[0])
+    // Still quitting: a start arriving now is not given a window here either.
+    expect(h.holding()).toBe(true)
+  })
+
+  it('relaunches a late start too, but never into a backend that may still hold the lock', async () => {
+    const leaves = hold(new FakeChild(['SIGTERM']))
+    leaves.willQuit()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(leaves.quit).toHaveBeenCalledTimes(1)
+    leaves.h.reopenAfterEnd()
+    expect(leaves.relaunch).toHaveBeenCalledTimes(1)
+
+    const stays = hold(new FakeChild([]))
+    stays.willQuit()
+    stays.h.reopenAfterEnd()
+    await vi.advanceTimersByTimeAsync(QUIT_GRACE_MS + 5_000)
+    expect(stays.quit).toHaveBeenCalledTimes(1)
+    stays.h.reopenAfterEnd()
+    expect(stays.relaunch).not.toHaveBeenCalled()
+  })
+
+  it('quits even when the relaunch fails', async () => {
+    const { willQuit, quit, relaunch, h } = hold(new FakeChild(['SIGTERM']))
+    relaunch.mockImplementation(() => {
+      throw new Error('no relaunch')
+    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    willQuit()
+    h.reopenAfterEnd()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(relaunch).toHaveBeenCalledTimes(1)
+    expect(quit).toHaveBeenCalledTimes(1)
+    log.mockRestore()
+  })
+
+  it('without a quit under way, a start is not held back', () => {
+    const { h, relaunch } = hold(new FakeChild(['SIGTERM']))
+    expect(h.holding()).toBe(false)
+    expect(relaunch).not.toHaveBeenCalled()
   })
 })
