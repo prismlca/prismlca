@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import commands, model_folders, model_scope
+from prism_lca.engine import commands, model_folders, model_names, model_scope
 from prism_lca.repository.base import DatabaseInfo
 
 router = APIRouter(prefix="/databases", tags=["databases"], dependencies=[Depends(require_token)])
@@ -88,6 +88,7 @@ async def list_databases(request: Request) -> list[DatabaseInfo]:
 )
 async def create_foreground(request: Request, body: CreateForegroundRequest) -> DatabaseInfo:
     model_scope.assert_no_new_model("create a model")
+    model_names.assert_one_line(body.name)
     # Check and mutation as one step: a project switch cannot land in between.
     with commands.project_guard():
         info = request.app.state.repository.create_foreground_database(body.name)
@@ -104,6 +105,7 @@ async def create_foreground(request: Request, body: CreateForegroundRequest) -> 
 )
 async def duplicate_foreground(request: Request, body: DuplicateForegroundRequest) -> DatabaseInfo:
     model_scope.assert_no_new_model("copy a model")
+    model_names.assert_one_line(body.name)
     with commands.project_guard():
         info = request.app.state.repository.duplicate_foreground_database(body.source, body.name)
     # The new model starts with one line and looks like it came from nothing, while all of its
@@ -122,6 +124,9 @@ async def rename_foreground(request: Request, body: RenameForegroundRequest) -> 
     # The chat may rename its own model; the cascade that follows (other models' comparison lists and
     # views point at the new name) keeps the workspace consistent and writes no content.
     model_scope.assert_model_write(body.database)
+    # Only a new name is checked, so an existing name keeps working.
+    if body.name.strip() != body.database:
+        model_names.assert_one_line(body.name)
     with commands.project_guard():
         info = request.app.state.repository.rename_foreground_database(body.database, body.name)
     # The search index is keyed by database name — drop the old one or a future database reusing

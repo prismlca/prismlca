@@ -19,7 +19,7 @@ from contextvars import ContextVar
 from pydantic import BaseModel
 
 from prism_lca import _log
-from prism_lca.engine import audit_store, lca, model, model_scope, params
+from prism_lca.engine import audit_store, lca, model, model_names, model_scope, params
 from prism_lca.engine._store import now_iso
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, set_read_only
@@ -1326,7 +1326,8 @@ class ImportBundleCommand(Command):
         wanted = (
             self.requested_name or (manifest.get("model") or {}).get("name") or "Imported model"
         )
-        self._database = _bundle.free_model_name(str(wanted))
+        # A name from a file is put on one line rather than refused (model_names).
+        self._database = _bundle.free_model_name(model_names.clean(str(wanted)))
 
         chosen = self.include if self.include is not None else list(sections)
         # The library before the graph: the model's links into "My processes" point at datasets the
