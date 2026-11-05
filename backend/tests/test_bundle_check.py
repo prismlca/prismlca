@@ -6,8 +6,11 @@ backend; the bundle check imports it explicitly, but only if it is on ``LAZY_IMP
 from __future__ import annotations
 
 import ast
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 from prism_lca import bundle_check
 
@@ -43,3 +46,21 @@ def test_every_on_demand_import_is_on_the_list():
 
 def test_everything_imports_here(capsys):
     assert bundle_check.run() == 0, capsys.readouterr().out
+
+
+def test_the_typesetting_probe_reports_a_worker_that_fails(monkeypatch):
+    from prism_lca.engine import typst_render
+    from prism_lca.errors import PrismError
+
+    assert bundle_check._typesetting_failures() == []
+
+    def stopped(*_args, **_kwargs):
+        raise PrismError("The typesetting process stopped unexpectedly (exit code 3).", code="typst_worker_failed")
+
+    monkeypatch.setattr(typst_render, "compile_pdf", stopped)
+    with pytest.raises(PrismError):
+        bundle_check._typesetting_failures()
+    monkeypatch.setattr(bundle_check, "_worker_failures", lambda: [])
+    monkeypatch.setattr(bundle_check, "_conversion_failures", lambda: [])
+    monkeypatch.setenv("BRIGHTWAY2_DIR", os.environ.get("BRIGHTWAY2_DIR", ""))  # run() sets its own
+    assert bundle_check.run() == 1
