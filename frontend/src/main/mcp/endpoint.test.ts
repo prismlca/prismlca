@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { endpointPath, pidAlive, readEndpoint, writeEndpoint } from './endpoint'
+import { endpointPath, icaclsPath, pidAlive, readEndpoint, writeEndpoint } from './endpoint'
 
 let userData: string
 
@@ -41,4 +41,14 @@ describe('the endpoint file', () => {
       expect(pidAlive(-1)).toBe(false)
     }
   )
+})
+
+describe('icaclsPath', () => {
+  it('names the system icacls by its full path', () => {
+    expect(icaclsPath({ SystemRoot: 'D:\\Windows' })).toBe('D:\\Windows\\System32\\icacls.exe')
+    expect(icaclsPath({ SYSTEMROOT: 'C:\\WINDOWS' })).toBe('C:\\WINDOWS\\System32\\icacls.exe')
+    expect(icaclsPath({ windir: 'C:/Windows' })).toBe('C:\\Windows\\System32\\icacls.exe')
+    for (const env of [{}, { SystemRoot: '' }, { SystemRoot: 'Windows' }, { SystemRoot: '.\\tools' }])
+      expect(icaclsPath(env)).toBe('C:\\Windows\\System32\\icacls.exe')
+  })
 })

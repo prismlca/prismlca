@@ -13,7 +13,7 @@
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 
 export const ENDPOINT_FILE = 'mcp-endpoint.json'
 
@@ -55,10 +55,20 @@ function restrictToOwnerOnWindows(path: string): void {
   const user = process.env.USERNAME
   if (!user) return
   try {
-    spawnSync('icacls', [path, '/inheritance:r', '/grant:r', `${user}:F`], { stdio: 'ignore', timeout: 5000 })
+    spawnSync(icaclsPath(process.env), [path, '/inheritance:r', '/grant:r', `${user}:F`], {
+      stdio: 'ignore',
+      timeout: 5000
+    })
   } catch {
     /* see above */
   }
+}
+
+/** The system's icacls by its full path, never looked up through the working directory or PATH. */
+export function icaclsPath(env: Record<string, string | undefined>): string {
+  const root = env.SystemRoot || env.SYSTEMROOT || env.windir || env.WINDIR
+  const dir = root && /^[A-Za-z]:[\\/]/.test(root) ? root : 'C:\\Windows'
+  return win32.join(dir, 'System32', 'icacls.exe')
 }
 
 export function readEndpoint(userData: string): EndpointInfo | null {
