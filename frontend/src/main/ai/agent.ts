@@ -1040,7 +1040,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       const r = await researchBom({
         ...o,
         model: req.researchModel || undefined,
-        signal: req.signal,
+        signal: spendSignal,
         onCost: meter,
         onProgress: (note) =>
           deps.emit({
@@ -1063,7 +1063,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       const r = await researchWeb({
         ...o,
         model: req.researchModel || undefined,
-        signal: req.signal,
+        signal: spendSignal,
         onCost: meter,
         onProgress: (note) =>
           deps.emit({
@@ -1076,7 +1076,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       })
       return { ...r, cost: { requests: tally.requests, usd: Number(tally.usd.toFixed(4)) } }
     },
-    review: (o) => reviewDossier({ ...o, model: req.reviewModel || undefined, signal: req.signal, onCost }),
+    review: (o) => reviewDossier({ ...o, model: req.reviewModel || undefined, signal: spendSignal, onCost }),
     // The confirmation card before an irreversible action — the MCP sessions' card (approve_tool,
     // uiBridge), on the same effects table, with the chat's own rule (approval.ts). The answer sets
     // `preApproved`, so a tool with a question of its own (the custom-method deletes) asks once, not
@@ -1281,6 +1281,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   let mutated = false
   let contextRetries = 0
   let costStopped = false
+  // The sub-agents (research, review) run under Stop AND the spend ceiling: legs in flight, their
+  // retries and follow-up passes end when the ceiling trips, not after their whole group has settled.
+  const costStop = new AbortController()
+  const spendSignal = AbortSignal.any([req.signal, costStop.signal])
   /** Set when the stream collapsed into repeating itself; ends the run with a note. */
   let repetitionLoop: { unit: string; repeats: number } | null = null
   /** One nudge per run when a round announces work and then makes no tool call. */
@@ -1321,7 +1325,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     if (typeof u.cost === 'number') {
       totalCost += u.cost
       const limit = req.maxCostUsd ?? 0
-      if (limit > 0 && totalCost >= limit) costStopped = true
+      if (limit > 0 && totalCost >= limit) {
+        costStopped = true
+        costStop.abort()
+      }
     }
   }
 
