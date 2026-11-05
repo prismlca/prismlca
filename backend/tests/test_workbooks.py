@@ -136,6 +136,21 @@ def test_xml_parts_are_bounded_in_elements(monkeypatch) -> None:
         assert _refusal(interop.read_model_workbook, content) == "sheet_too_large"
 
 
+@pytest.mark.parametrize("renamed", ["xl/worksheets/sheet1.XML", "xl/worksheets/sheet1.bin", "xl/data.bin"])
+def test_every_part_is_measured_whatever_its_name(renamed: str) -> None:
+    wide = '<row r="2">' + "<c/>" * (workbooks.MAX_COLUMNS + 1) + "</row>"
+    content = _model(_ACTIVITIES + wide)
+    src = zipfile.ZipFile(io.BytesIO(content))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for name in src.namelist():
+            data = src.read(name)
+            if name == "xl/_rels/workbook.xml.rels":
+                data = data.replace(b"/xl/worksheets/sheet1.xml", f"/{renamed}".encode())
+            z.writestr(renamed if name == "xl/worksheets/sheet1.xml" else name, data)
+    assert _refusal(interop.read_model_workbook, out.getvalue()) == "sheet_too_large"
+
+
 def test_xml_parts_carry_no_document_type() -> None:
     doctype = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e "x">]><x>&e;</x>'
     content = _workbook({"activities": _sheet(_ACTIVITIES), "exchanges": _sheet("")}, {"docProps/extra.xml": doctype})
@@ -248,3 +263,4 @@ def test_reading_a_model_sheet_leaves_the_event_loop_free(client, token, project
             assert r.json()["error"]["code"] == "sheet_empty"
 
     asyncio.run(drive())
+

@@ -113,10 +113,11 @@ def _measure(content: bytes) -> None:
                 hint=f"At most {MAX_PARTS:,} parts, {MAX_PART_BYTES // 2**20} MB each, "
                 f"{MAX_TOTAL_BYTES // 2**20} MB in all.",
             )
-        # zipfile stops every part at its declared size, so the bytes above are the bytes read.
+        # zipfile stops every part at its declared size, so the bytes above are the bytes read. Every part
+        # is scanned, whatever its name: the reader finds its parts through relationships, not extensions.
         total = 0
         for part in parts:
-            if not part.filename.endswith((".xml", ".rels")):
+            if part.is_dir():
                 continue
             limit = MAX_STREAMED_ELEMENTS if _streamed(part.filename) else MAX_OTHER_ELEMENTS
             total += _scan_part(zf, part, min(limit, MAX_TOTAL_ELEMENTS - total))
