@@ -28,6 +28,8 @@ jobs:
   cla:
     if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-latest
+    # A run takes seconds; the limit bounds how long one can hold a runner.
+    timeout-minutes: 5
     permissions:
       contents: write # the signatures file on the cla-signatures branch
       pull-requests: write # the comment on the pull request
