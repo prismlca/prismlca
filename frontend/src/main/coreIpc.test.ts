@@ -89,6 +89,7 @@ describe('opening a chat attachment', () => {
       'aaaaaaaaaaaa-notes.txt',
       'aaaaaaaaaaaa-notes.md',
       'aaaaaaaaaaaa-run.log',
+      'aaaaaaaaaaaa-flows.json',
       'aaaaaaaaaaaa-photo.JPG',
       'aaaaaaaaaaaa-chart.png',
       'aaaaaaaaaaaa-chart.webp',

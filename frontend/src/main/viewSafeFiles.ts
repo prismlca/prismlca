@@ -2,8 +2,8 @@
  * Which stored chat attachments the OS may open with their default app.
  *
  * A positive list of formats that only get viewed: PDFs, Word documents, spreadsheets without macros,
- * plain text, CSV and raster images. Every other kind the chat accepts is shown in the file manager
- * instead, and the user decides there what to do with it.
+ * plain text and JSON, CSV and raster images. Every other kind the chat accepts is shown in the file
+ * manager instead, and the user decides there what to do with it.
  */
 import { basename, extname } from 'node:path'
 
@@ -16,6 +16,7 @@ const VIEW_SAFE = new Set([
   '.log',
   '.md',
   '.markdown',
+  '.json',
   '.csv',
   '.tsv',
   '.png',
