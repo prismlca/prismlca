@@ -5,6 +5,7 @@ import collections
 import datetime
 import pickle
 import sqlite3
+import struct
 import tarfile
 from pathlib import Path
 
@@ -92,13 +93,43 @@ def test_a_column_value_that_is_not_a_blob_is_refused(tmp_path, value):
     _refused(tmp_path)
 
 
-def test_large_pickles_are_read_opcode_by_opcode(tmp_path, monkeypatch):
-    monkeypatch.setattr(workspace_pickles, "LOAD_LIMIT", 16)
+def test_memo_indexes_and_frames_stay_within_the_pickle(tmp_path):
     (tmp_path / "intermediate").mkdir()
-    big = tmp_path / "intermediate" / "big.pickle"
-    big.write_bytes(pickle.dumps([PLAIN] * 50, protocol=4))
+    target = tmp_path / "intermediate" / "m.pickle"
+    shared = {"name": "steel", "amount": 1.5, "tags": ("a", "b")}
+    target.write_bytes(pickle.dumps([shared] * 50, protocol=2))  # sequential memo indexes
     workspace_pickles.assert_plain(tmp_path)
-    big.write_bytes(pickle.dumps([PLAIN, NOT_PLAIN[0]], protocol=4))
+    head = pickle.PROTO + bytes([4]) + pickle.EMPTY_LIST
+    for body in (pickle.LONG_BINPUT + struct.pack("<I", 2**31 - 1),
+                 pickle.FRAME + struct.pack("<Q", 2**40)):
+        target.write_bytes(head + body + pickle.STOP)
+        _refused(tmp_path)
+
+
+def test_triggers_are_dropped_from_checked_stores(tmp_path):
+    db = _db(tmp_path / "parameters.db", "projectparameter", "data", [pickle.dumps(PLAIN)])
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE log (x)")
+    con.execute("CREATE TRIGGER t AFTER UPDATE ON projectparameter BEGIN INSERT INTO log VALUES (1); END")
+    con.commit()
+    con.close()
+    workspace_pickles.assert_plain(tmp_path)
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT count(*) FROM sqlite_master WHERE type = 'trigger'").fetchone() == (0,)
+    con.close()
+
+
+@pytest.mark.parametrize("column", [
+    "data BLOB DEFAULT x'00'",
+    "raw BLOB, data BLOB GENERATED ALWAYS AS (raw) VIRTUAL",
+])
+def test_pickle_columns_are_plain_stored_columns(tmp_path, column):
+    path = tmp_path / "lci" / "databases.db"
+    path.parent.mkdir()
+    con = sqlite3.connect(path)
+    con.execute(f"CREATE TABLE activitydataset (id INTEGER PRIMARY KEY, {column})")
+    con.commit()
+    con.close()
     _refused(tmp_path)
 
 

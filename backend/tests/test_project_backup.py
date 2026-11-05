@@ -236,6 +236,12 @@ def test_a_realistic_workspace_survives_the_restore_checks(client, token, projec
     finally:
         bd.projects.set_current(active)
     client.post("/api/v1/projects/round-trip/activate", headers=token)
+    # The checked copy keeps no triggers; bw2data has put its own back on opening the workspace.
+    import sqlite3
+
+    con = sqlite3.connect(Path(bd.projects.dir) / "parameters.db")
+    assert con.execute("SELECT count(*) FROM sqlite_master WHERE type = 'trigger'").fetchone()[0] > 0
+    con.close()
     assert abs(client.post("/api/v1/calc/lcia", json=calc, headers=token).json()["score"] - score) < 1e-9
     assert [s["name"] for s in client.get("/api/v1/scenarios", params={"database": "fg"},
                                           headers=token).json()] == ["efficient"]

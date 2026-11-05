@@ -2,13 +2,12 @@
 
 bw2data keeps activities, exchanges and parameters as pickled columns of ``lci/databases.db`` and
 ``parameters.db``, and some of its metadata as ``*.pickle`` files. A folder from elsewhere is untrusted input:
-before it becomes a workspace, every one of these values must load with an unpickler that resolves no globals.
+before it becomes a workspace, every one of these values must be a pickle of plain values, read opcode by
+opcode without loading it, and the stores must keep the values as they were checked.
 """
 from __future__ import annotations
 
-import io
 import os
-import pickle
 import pickletools
 import sqlite3
 from pathlib import Path
@@ -26,34 +25,26 @@ PICKLE_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
         ("group_table", "order"),
     ),
 }
-#: Up to this size a pickle is loaded; a larger one is only read opcode by opcode, which keeps memory flat.
-LOAD_LIMIT = 4 * 1024 * 1024
 #: Far above any real activity, exchange, parameter or LCIA method.
-MAX_PICKLE = 64 * 1024 * 1024
+MAX_PICKLE = 16 * 1024 * 1024
 #: Opcodes that name or call a global, or build an object through one.
 _OBJECT_OPCODES = frozenset({
     "GLOBAL", "STACK_GLOBAL", "INST", "OBJ", "REDUCE", "BUILD", "NEWOBJ", "NEWOBJ_EX",
     "EXT1", "EXT2", "EXT4", "PERSID", "BINPERSID",
 })
+#: Opcodes whose argument sizes what an unpickler allocates: memo indexes and frame lengths.
+_SIZING_OPCODES = frozenset({"PUT", "BINPUT", "LONG_BINPUT", "FRAME"})
 
 
 class _NotPlain(Exception):
     pass
 
 
-class _PlainUnpickler(pickle.Unpickler):
-    def find_class(self, module: str, name: str):
-        raise _NotPlain(f"{module}.{name}")
-
-
 def _check(data: bytes) -> None:
-    """``data`` unpickles to plain values: None, bool, int, float, str, bytes, and lists, tuples, dicts
-    and sets of them."""
-    if len(data) <= LOAD_LIMIT:
-        _PlainUnpickler(io.BytesIO(data)).load()
-        return
-    for opcode, _arg, _pos in pickletools.genops(data):
-        if opcode.name in _OBJECT_OPCODES:
+    """``data`` is a pickle of plain values (None, bool, int, float, str, bytes, and lists, tuples, dicts
+    and sets of them) whose memo indexes and frames stay within its own length."""
+    for opcode, arg, _pos in pickletools.genops(data):
+        if opcode.name in _OBJECT_OPCODES or (opcode.name in _SIZING_OPCODES and arg > len(data)):
             raise _NotPlain(opcode.name)
 
 
@@ -70,6 +61,11 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
     con = sqlite3.connect(path)
     try:
         con.execute("PRAGMA trusted_schema = OFF")
+        # bw2data creates the triggers it needs whenever it opens a store; none from elsewhere is kept.
+        triggers = [row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")]
+        for trigger in triggers:
+            con.execute('DROP TRIGGER "{}"'.format(trigger.replace('"', '""')))
+        con.commit()
         schema: dict[str, list[tuple[str, str]]] = {}
         listed = con.execute("SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'view')")
         for kind, name, sql in listed:
@@ -81,6 +77,10 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
             # Only an ordinary table reads back the same values every time.
             if len(entries) != 1 or entries[0][0] != "table" or entries[0][1].startswith("CREATE VIRTUAL"):
                 raise _NotPlain(table)
+            # ...and a plain stored column without a default of its own.
+            info = [r for r in con.execute(f'PRAGMA table_xinfo("{table}")') if r[1].casefold() == column]
+            if len(info) != 1 or info[0][4] is not None or info[0][6] != 0:
+                raise _NotPlain(f"{table}.{column}")
             rows = con.execute(
                 f'SELECT typeof("{column}"), length("{column}"), '
                 f'CASE WHEN length("{column}") <= ? THEN "{column}" END FROM "{table}"',
