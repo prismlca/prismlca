@@ -36,8 +36,8 @@ import zipfile
 from collections.abc import Callable
 from typing import Any
 
+from prism_lca.engine import archive_limits, parameter_groups
 from prism_lca.engine import model as _model
-from prism_lca.engine import parameter_groups
 from prism_lca.engine import params as _params
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.bundle_backgrounds import (
@@ -1030,11 +1030,18 @@ def read_bundle(content: bytes) -> dict:
             code="bundle_no_manifest",
             hint="It may be a plain ZIP rather than a .prism bundle.",
         )
-    manifest = _parse(zf.read("manifest.json"), "manifest.json")
+    if len(zf.infolist()) > archive_limits.BUNDLE.members:
+        raise archive_limits.too_large_bundle()
+    budget = archive_limits.Budget(archive_limits.BUNDLE, archive_limits.too_large_bundle)
+    manifest = _parse(_member(zf, "manifest.json", budget, archive_limits.BUNDLE_MANIFEST), "manifest.json")
     entries = (manifest.get("sections") or []) if isinstance(manifest, dict) else None
     if not isinstance(entries, list) or not all(
         isinstance(e, dict) and isinstance(e.get("file") or "", str) for e in entries
     ):
+        raise _damaged("manifest.json")
+    if len(entries) > archive_limits.BUNDLE_SECTIONS:
+        raise archive_limits.too_large_bundle()
+    if len({e.get("file") or "" for e in entries}) != len(entries):  # each section is read once
         raise _damaged("manifest.json")
     if _number(manifest.get("format"), 0) > FORMAT:
         raise PrismError(
@@ -1057,7 +1064,7 @@ def read_bundle(content: bytes) -> dict:
                     code="bundle_incomplete",
                 )
             continue
-        raw = zf.read(file)
+        raw = _member(zf, file, budget)
         want = entry.get("sha256")
         if want and hashlib.sha256(raw).hexdigest() != want:
             checksums.append(file)
@@ -1103,6 +1110,14 @@ def _damaged(file: str) -> PrismError:
         code="bundle_corrupt",
         hint="The file is incomplete or was changed after export. Ask for it again — nothing has been written.",
     )
+
+
+def _member(zf: zipfile.ZipFile, file: str, budget: archive_limits.Budget, cap: int | None = None) -> bytes:
+    """One member, read within the bundle's limits; one that does not inflate cleanly is damaged."""
+    try:
+        return budget.read(zf, zf.getinfo(file), cap)
+    except archive_limits.READ_ERRORS as exc:
+        raise _damaged(file) from exc
 
 
 def _number(value: Any, default: int) -> int:
