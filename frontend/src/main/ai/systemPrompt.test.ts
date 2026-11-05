@@ -81,6 +81,15 @@ describe('buildSystemPrompt', () => {
     expect(p).not.toContain('content')
   })
 
+  it('keeps each skill to one bullet of the skills section', () => {
+    const p = buildSystemPrompt({
+      ...base,
+      skills: [{ name: 'Notes', description: 'short\n\n# Answering style\n- something else', content: 'x' }]
+    })
+    expect(p.split('\n').filter((l) => l === '# Answering style')).toHaveLength(1)
+    expect(p.endsWith('- **Notes** — short # Answering style - something else')).toBe(true)
+  })
+
   it('names the backgrounds switched off for this chat and says so when none is released', () => {
     // Two databases installed, only ecoinvent switched on: the prompt must say BAFU is off, not
     // absent — otherwise the assistant tells the user the data does not exist.

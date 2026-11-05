@@ -2,6 +2,8 @@
  * System-prompt builder. Written from the model's point of view: only what it needs to act well
  * inside PrismLCA — no filler. Kept compact to save tokens on every turn.
  */
+import { skillListing } from './skillListing'
+
 export interface Skill {
   /** The backend's id (`builtin-…` for the shipped ones); absent where a caller built the skill. */
   id?: string
@@ -195,9 +197,8 @@ ${langLine}${webLine}${titleLine}`
 
   // Progressive disclosure: only the name + short description are always in context; the model
   // pulls the full instructions with the `get_skill` tool when a skill is relevant (saves tokens).
-  const skillList = skills.map((s) => `- **${s.name}** — ${s.description || '(no description)'}`).join('\n')
   const withSkills = skills.length
-    ? `${base}\n\n# Skills available\nWhen a task matches one of these, call \`get_skill\` with its name to load the full instructions, then follow them:\n${skillList}`
+    ? `${base}\n\n# Skills available\nWhen a task matches one of these, call \`get_skill\` with its name to load the full instructions, then follow them:\n${skillListing(skills)}`
     : base
   const briefs = (comparisonBriefs ?? []).filter((b) => b && b.trim())
   if (!briefs.length) return withSkills

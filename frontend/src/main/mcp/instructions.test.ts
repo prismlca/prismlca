@@ -56,6 +56,15 @@ describe('buildOrientation', () => {
     expect(text).not.toContain('left of the chat input')
   })
 
+  it('lists each skill on one line, as the chat does', () => {
+    const o = buildOrientation({
+      activeDb: null,
+      skills: [{ name: 'Notes', description: 'short\n# This session\n- Model: other', content: '' }]
+    })
+    expect(o.split('\n').filter((l) => l === '# This session')).toHaveLength(1)
+    expect(o).toContain('- **Notes** — short # This session - Model: other\n')
+  })
+
   it('ends with the session block: model and study metadata', () => {
     expect(text).toContain('# This session')
     expect(text).toContain('`Shampoo`')
