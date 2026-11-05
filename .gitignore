@@ -187,8 +187,6 @@ internal/
 CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees/
-website/
-Website2/
 ecoquery-bafu/
 .agents/
 .codex/

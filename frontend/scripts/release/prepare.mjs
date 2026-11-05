@@ -131,18 +131,12 @@ async function main() {
   const be = /^version\s*=\s*"([^"]+)"/m.exec(readFileSync(join(BACKEND, 'pyproject.toml'), 'utf-8'))?.[1]
   if (fe !== version || be !== version) fail(`versions disagree after the bump: frontend ${fe}, backend ${be}`)
 
-  // 5b. Files generated from the version: the third-party notices name it ("PrismLCA version x"), and
-  // the website's licence page copies the notices. Regenerated here and checked, or the release commit
-  // would fail test_committed_files_are_current.
+  // 5b. Files generated from the version: the third-party notices name it ("PrismLCA version x").
+  // Regenerated here and checked, or the release commit would fail test_committed_files_are_current.
   run('uv', ['run', 'python', 'scripts/third_party_notices.py'], BACKEND)
-  const site = existsSync(join(ROOT, 'Website2'))
-  if (site) run('uv', ['run', 'python', 'scripts/website_licences.py'], BACKEND)
-  run(
-    'uv',
-    ['run', 'pytest', '-q', 'tests/test_third_party_notices.py', 'tests/test_version_sync.py', 'tests/test_website_licences.py'],
-    BACKEND,
-    { inherit: true }
-  )
+  run('uv', ['run', 'pytest', '-q', 'tests/test_third_party_notices.py', 'tests/test_version_sync.py'], BACKEND, {
+    inherit: true
+  })
 
   // 6. The changelog draft — read and finished by a person before anything is committed.
   const whatsNew = JSON.parse(readFileSync(join(FRONTEND, 'src/renderer/src/assets/whats-new.json'), 'utf-8'))
@@ -169,7 +163,6 @@ async function main() {
 
   // 7. One commit, one annotated tag on exactly that commit.
   const generated = ['THIRD-PARTY-NOTICES.md', 'frontend/resources/THIRD-PARTY-NOTICES.md']
-  if (site) generated.push('Website2/THIRD-PARTY-NOTICES.md', 'Website2/LICENSE.txt', 'Website2/licenses.html')
   git(
     'add',
     'frontend/package.json',

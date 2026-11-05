@@ -2,8 +2,6 @@
  * The news parser's promises to the renderer: plain text only, https links only, newest first,
  * capped — and the website's own feed is one it can read.
  */
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   decodeEntities,
@@ -110,31 +108,7 @@ describe('parseRss', () => {
   })
 })
 
-// The website lives in its own repository; checked out next to the code as Website2/, its feed is tested here.
-const SITE_FEED = resolve(__dirname, '../../../../Website2/feed.xml')
-
 describe('fetchNewsFeed', () => {
-  it.skipIf(!existsSync(SITE_FEED))(
-    'reads the website’s own feed.xml (built from Website2/content/news.html): newest first',
-    async () => {
-      // The file the server delivers, through the same path a live answer takes — so a change to the
-      // website's feed that the app could not read fails here, not on the start page.
-      const xml = readFileSync(SITE_FEED, 'utf8')
-      const fetchImpl = (async () => new Response(xml, { status: 200 })) as unknown as typeof fetch
-      const feed = await fetchNewsFeed({ fetchImpl })
-      expect(feed.source).toBe('prismlca.com')
-      expect(feed.items.length).toBeGreaterThanOrEqual(3)
-      expect(feed.items.length).toBeLessThanOrEqual(MAX_ITEMS)
-      const dates = feed.items.map((i) => i.date)
-      expect([...dates].sort().reverse()).toEqual(dates)
-      for (const i of feed.items) {
-        expect(i.link.startsWith('https://www.prismlca.com/news.html#')).toBe(true)
-        expect(i.teaser).not.toMatch(/[<>]/)
-        expect(i.title).not.toMatch(/&amp;/)
-      }
-    }
-  )
-
   it('reads the remote feed as text', async () => {
     const body = rss(
       item({ title: 'Remote', link: 'https://prismlca.com/r', pubDate: 'Thu, 24 Sep 2026 09:00:00 GMT' })

@@ -7,7 +7,7 @@
  */
 
 /**
- * The RSS 2.0 feed the start page reads — written by `Website2/tools/build_news.py` and served with the
+ * The RSS 2.0 feed the start page reads — written by the website's news generator and served with the
  * site. Read live, even before the site itself is up: until the feed is deployed the
  * card says the source could not be reached, which is the truth. The placeholder copy the app used to
  * ship is gone, so nothing on the card can claim to come from prismlca.com without having come from there.

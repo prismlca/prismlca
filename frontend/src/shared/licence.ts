@@ -10,9 +10,8 @@ export const LICENCE_NAME =
 export const NOTICES_LABEL = 'Third-party notices'
 
 /* The sentences the app's licence and notices sheets open with. The website's licence page is generated
- * from these same strings (backend/scripts/website_licences.py reads them from this file), so app and
- * site say the same thing. Keep each a plain single-quoted literal (no template string, no `+`), which
- * is all the generator's reader understands. */
+ * from these same strings, read from this file, so app and site say the same thing. Keep each a plain
+ * single-quoted literal (no template string, no `+`), which is all the generator's reader understands. */
 export const LICENCE_BLURB =
   'PrismLCA is free software: this licence is what lets you use, study, share and change it. At its end it adds one permission under section 7 of the AGPL: PrismLCA may be passed on together with Intel’s runtime libraries, which keep their own licence. The same text ships with every copy as a file.'
 export const NOTICES_BLURB =

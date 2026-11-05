@@ -3,7 +3,7 @@
  *
  * Why a file rather than string literals in the views: an address that appears twice in two views
  * drifts apart the first time one of them is touched. The website's canonical address is
- * www.prismlca.com (prismlca.com redirects there); its sources are Website2/ in this repo.
+ * www.prismlca.com (prismlca.com redirects there); the site lives in its own repository.
  *
  * Opening goes through `openExternal` (main/coreIpc.ts), never a plain `<a href>`: an anchor
  * inside Electron navigates the app window away from PrismLCA and there is no way back.
@@ -12,8 +12,7 @@
 /** The project website's front page — Settings → About links to it by name. */
 export const WEBSITE_URL = 'https://www.prismlca.com/'
 
-/** The user manual: built from Website2/content/handbook by Website2/tools/build_handbook.py. The old
- *  website/handbook.html is an archive and is no longer maintained. */
+/** The user manual, part of the website. */
 export const HANDBOOK_URL = 'https://www.prismlca.com/handbook/'
 
 /** The news section of the project website — the start page's "Open in browser". The news card
