@@ -3,6 +3,7 @@
  * server, which discovers the host through a real endpoint file in a temp userData and forwards.
  */
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer, type IncomingHttpHeaders, type Server as HttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,8 +11,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 
 import { McpHost } from './server'
-import { readEndpoint, writeEndpoint, type EndpointInfo } from './endpoint'
-import { ProxyCore, createProxyServer, createShutdown, type ProxyDeps } from './proxy'
+import { proveEndpoint, readEndpoint, writeEndpoint } from './endpoint'
+import { ProxyCore, appSpawnOptions, createProxyServer, createShutdown, type ProxyDeps } from './proxy'
 import { mcpToolDefs } from './catalog'
 import type { ApiRaw } from '../ai/execute'
 
@@ -45,19 +46,12 @@ function makeHost(dir: string): McpHost {
   })
 }
 
-async function health(info: EndpointInfo): Promise<boolean> {
-  const r = await fetch(info.url.replace(/\/mcp$/, '/health'), {
-    headers: { Authorization: `Bearer ${info.token}` }
-  })
-  return r.ok
-}
-
 function deps(over: Partial<ProxyDeps> = {}): ProxyDeps {
   return {
     version: '1.2.3',
     endpoint: () => readEndpoint(userData),
     isPidAlive: (pid) => pid === process.pid,
-    health,
+    health: proveEndpoint,
     mcpEnabled: () => enabled,
     launchApp: () => {
       launched++
@@ -275,5 +269,61 @@ describe('the stdio bridge', () => {
     expect(r.isError).toBe(false)
     expect(host.sessions()).toHaveLength(1)
     expect(host.sessions()[0].id).not.toBe(first)
+  })
+})
+
+describe('the endpoint file', () => {
+  let other: HttpServer | null = null
+  afterEach(async () => {
+    const o = other
+    other = null
+    if (o) await new Promise<void>((r) => o.close(() => r()))
+  })
+
+  /** A listener on loopback that is not PrismLCA: 200 with the given body to every request. */
+  async function listener(body: string): Promise<{ url: string; seen: IncomingHttpHeaders[] }> {
+    const seen: IncomingHttpHeaders[] = []
+    other = createServer((req, res) => {
+      seen.push(req.headers)
+      req.resume()
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(body)
+    })
+    await new Promise<void>((r) => other!.listen(0, '127.0.0.1', () => r()))
+    const addr = other.address()
+    return { url: `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}/mcp`, seen }
+  }
+
+  it('is used only when the server behind it proves it holds the token', async () => {
+    host = makeHost(userData)
+    await host.start()
+    const info = readEndpoint(userData)!
+    expect(await proveEndpoint(info)).toBe(true)
+    expect(await proveEndpoint({ ...info, token: 'another-token' })).toBe(false)
+  })
+
+  it('names a listener that cannot prove the token: launch instead, and send it no token', async () => {
+    for (const body of ['{}', '{"proof":"AAAA"}', '{"ok":true}', 'x'.repeat(10_000)]) {
+      const { url, seen } = await listener(body)
+      writeEndpoint(userData, { url, token: 'the-token', pid: process.pid, version: '1.2.3', startedAt: 'x' })
+      launched = 0
+      const core = new ProxyCore(deps())
+      await expect(core.ensureClient({ launch: true, timeoutMs: 100 })).rejects.toThrow(/did not come up/)
+      expect(launched).toBe(1)
+      expect(seen.length).toBeGreaterThan(0)
+      expect(seen.every((h) => h.authorization === undefined)).toBe(true)
+      expect(JSON.stringify(seen)).not.toContain('the-token')
+      await new Promise<void>((r) => other!.close(() => r()))
+      other = null
+    }
+  })
+})
+
+describe('appSpawnOptions', () => {
+  it("starts the app in its own data folder, never in the client's working directory", () => {
+    const o = appSpawnOptions({ PATH: '/usr/bin' }, 7, '/home/u/.config/PrismLCA')
+    expect(o.cwd).toBe('/home/u/.config/PrismLCA')
+    expect(o.cwd).not.toBe(process.cwd())
+    expect(o).toMatchObject({ detached: true, stdio: ['ignore', 7, 7], env: { PATH: '/usr/bin' } })
   })
 })

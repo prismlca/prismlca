@@ -31,6 +31,8 @@ import { recordUsage } from '../ai/usage'
 import { researchWeb, type CostSink } from '../ai/subagent'
 import { getSettings } from '../settings'
 import { apiError } from '../../shared/backendError'
+import type { ApiRaw } from '../ai/execute'
+import { pinnedToActiveWorkspace } from '../ai/workspacePin'
 import { modelForActive, type AiIpcDeps, type RunControllers } from './shared'
 import { chapterKey, claimChapters } from './chapterClaims'
 
@@ -80,16 +82,22 @@ export function registerReportIpc(deps: AiIpcDeps, controllers: RunControllers):
   /** Questions per research call: the chat's setting, at most four for one chapter's background. */
   const researchWidth = (): number => Math.min(getSettings().maxResearchQuestions ?? 4, 4)
 
-  // Read-only backend client for the report writers — the same unwrapping the agent gives its tools,
-  // so an error reaches the model as a sentence rather than as a rejected promise.
-  const backendApi = async (method: string, path: string, body?: unknown): Promise<unknown> => {
-    const { status, body: b } = await deps.apiRequest(method, path, body)
-    // The shared unwrapper, not a local dialect: this path used to keep only message and hint, so a
-    // FastAPI 422 reached a paid chapter run as a bare "HTTP 422" with the field names dropped.
-    const failure = apiError(status, b)
-    if (failure) throw failure
-    return b
-  }
+  // Backend client for the report writers — the same unwrapping the agent gives its tools, so an error
+  // reaches the model as a sentence rather than as a rejected promise.
+  const unwrapping =
+    (apiRaw: ApiRaw) =>
+    async (method: string, path: string, body?: unknown): Promise<unknown> => {
+      const { status, body: b } = await apiRaw(method, path, body)
+      // The shared unwrapper, not a local dialect: this path used to keep only message and hint, so a
+      // FastAPI 422 reached a paid chapter run as a bare "HTTP 422" with the field names dropped.
+      const failure = apiError(status, b)
+      if (failure) throw failure
+      return b
+    }
+  /** The client for one write: every request names the workspace the write started in (workspacePin.ts),
+   *  so after a switch the backend refuses it instead of serving the same-named model of the other one. */
+  const backendApi = async (): Promise<ReturnType<typeof unwrapping>> =>
+    unwrapping(await pinnedToActiveWorkspace(deps.apiRequest))
 
   // Renderer → main: write one report chapter. A button in the Report page, not an agent tool — the
   // author sees the text before the backend gate decides whether it may be stored.
@@ -129,7 +137,7 @@ export function registerReportIpc(deps: AiIpcDeps, controllers: RunControllers):
           signal: controller.signal,
           onCost,
           maxTokens: getSettings().writerMaxTokens,
-          api: backendApi,
+          api: await backendApi(),
           activeDb: payload.database ?? null,
           // Given the section's proposal endpoint, the writer asks the gate before handing the text
           // over and revises what it objected to, instead of leaving the author to press Write again.
@@ -196,7 +204,7 @@ export function registerReportIpc(deps: AiIpcDeps, controllers: RunControllers):
           waves: payload.waves,
           model: modelForActive(payload.model),
           signal: controller.signal,
-          api: backendApi,
+          api: await backendApi(),
           activeDb: payload.database ?? null,
           onCost,
           maxTokens: getSettings().writerMaxTokens,

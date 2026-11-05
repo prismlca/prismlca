@@ -96,7 +96,7 @@ class SentenceTransformerProvider:
 
     name = "sentence-transformers"
 
-    def __init__(self, model: str, revision: str | None = None, local_files_only: bool = True) -> None:
+    def __init__(self, model: str, revision: str | None = None) -> None:
         from sentence_transformers import SentenceTransformer
 
         # transformers would otherwise spawn a background "auto_conversion" thread on every load of a
@@ -105,16 +105,13 @@ class SentenceTransformerProvider:
         # server.py sets this too; setdefault here covers every other entry point.
         os.environ.setdefault("DISABLE_SAFETENSORS_CONVERSION", "1")
         self.model = model
-        # local_files_only by default: loading never goes to the network. The weights arrive only
-        # through search.model_store, after the user agreed to the download.
-        from prism_lca.search.model_store import hub_cache_dir
+        # Loading never goes to the network: the weights arrive only through search.model_store, after
+        # the user agreed to the download. They are loaded from that download's folder by absolute path.
+        from prism_lca.search.model_store import cached_snapshot, refuse_custom_modules
 
-        self._model = SentenceTransformer(
-            model,
-            revision=revision or None,
-            local_files_only=local_files_only,
-            cache_folder=str(hub_cache_dir()),  # where the download went, whatever the environment says
-        )
+        folder = cached_snapshot(model, revision)
+        refuse_custom_modules(folder)
+        self._model = SentenceTransformer(str(folder), local_files_only=True, trust_remote_code=False)
 
     def embed(self, texts: list[str], is_query: bool = False) -> np.ndarray:
         vecs = self._model.encode(

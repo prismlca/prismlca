@@ -127,6 +127,32 @@ describe('createToolSession', () => {
     ])
   })
 
+  it('hands the gate an action named like an Object.prototype member as irreversible', async () => {
+    const seen: Array<[string, string]> = []
+    const { s, calls } = session({
+      beforeRun: async (name, _args, effect) => {
+        seen.push([name, effect])
+        if (effect !== 'read') throw new Error('not now')
+      }
+    })
+    const tags = await s.run('edit_tags', {
+      action: 'constructor',
+      group: 'Phase',
+      assignments: [{ keys: [{ database: 'Shampoo', code: 'p1' }], value: 'Use' }]
+    })
+    const params = await s.run('edit_parameter', {
+      action: 'valueOf',
+      parameters: [{ name: 'mass', value: 2 }]
+    })
+    expect(!tags.ok && tags.error).toBe('not now')
+    expect(!params.ok && params.error).toBe('not now')
+    expect(seen).toEqual([
+      ['edit_tags', 'irreversible'],
+      ['edit_parameter', 'irreversible']
+    ])
+    expect(calls).toEqual([])
+  })
+
   it('appends the unknown-field hint to a failed call', async () => {
     const { api } = fakeApi({ detail: [{ loc: ['body', 'action'], msg: 'Field required' }] }, 422)
     const { s } = session({ apiRaw: api })

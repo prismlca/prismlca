@@ -248,6 +248,18 @@ def test_import_as_model_creates_the_model_and_reproduces_the_result(client, tok
     assert again.status_code == 409, again.text
 
 
+def test_import_as_model_keeps_the_name_on_one_line(client, token, project):
+    import base64
+
+    _seed(get_bd())
+    workbook = client.get("/api/v1/interop/model/src", headers=token).content
+    tag = uuid.uuid4().hex[:6]
+    r = client.post("/api/v1/interop/model/import",
+                    json={"name": f"sheet\n{tag}\tmodel", "content": base64.b64encode(workbook).decode()},
+                    headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["database"] == f"sheet {tag} model"
+
 def test_import_as_model_leaves_no_empty_model_behind_when_refused(client, token, project):
     import base64
 
@@ -270,3 +282,48 @@ def test_import_as_model_leaves_no_empty_model_behind_when_refused(client, token
     assert "orphan-model" not in names()
     assert "junk-model" not in names()
     assert before <= names()
+
+
+# --- text stays text --------------------------------------------------------------------------------
+
+def _formula_elements(xlsx: bytes) -> list[bytes]:
+    import io
+    import re
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(xlsx)) as z:
+        return [f for name in z.namelist() if name.startswith("xl/worksheets/")
+                for f in re.findall(rb"<f[ >].*?</f>", z.read(name))]
+
+
+def test_text_is_exported_as_text_and_reads_back_unchanged(client, token, project):
+    from prism_lca.engine import interop
+
+    bd = get_bd()
+    bd.Database("biosphere").write(
+        {("biosphere", "co2"): {"name": "Carbon dioxide", "type": "emission",
+                                "categories": ("air",), "unit": "kg"}}
+    )
+    bd.Database("eqsrc").write(
+        {
+            ("eqsrc", "=2+2"): {
+                "name": "=1+1", "unit": "kg", "comment": "#N/A", "location": "=A1",
+                "exchanges": [{"input": ("eqsrc", "=2+2"), "amount": 1, "type": "production"},
+                              {"input": ("biosphere", "co2"), "amount": 0.5, "type": "biosphere"}],
+            },
+            ("eqsrc", "user"): {
+                "name": "user", "unit": "kg",
+                "exchanges": [{"input": ("eqsrc", "user"), "amount": 1, "type": "production"},
+                              {"input": ("eqsrc", "=2+2"), "amount": 2, "type": "technosphere",
+                               "comment": "=3+3"}],
+            },
+        }
+    )
+    r = client.get("/api/v1/interop/model/eqsrc", headers=token)
+    assert r.status_code == 200, r.text
+    assert _formula_elements(r.content) == []
+    parsed = interop.read_model_workbook(r.content)
+    act = next(a for a in parsed["activities"] if a["code"] == "=2+2")
+    assert (act["name"], act["comment"], act["location"]) == ("=1+1", "#N/A", "=A1")
+    link = next(e for e in parsed["exchanges"] if e["activity_code"] == "user")
+    assert (link["input_code"], link["comment"]) == ("=2+2", "=3+3")

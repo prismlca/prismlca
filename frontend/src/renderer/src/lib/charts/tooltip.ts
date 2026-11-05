@@ -75,7 +75,8 @@ interface AxisParam {
 /**
  * The tooltip of one stacked bar: the subject, its biggest segments by absolute size with their values,
  * "+N more" with what they add up to, and the total. Segments that are zero for this bar are left out.
- * `fmt` turns a plotted value back into the text the reader sees (the chart may plot scaled values).
+ * `fmt` turns a plotted value back into the text the reader sees (the chart may plot scaled values):
+ * plain text, not markup.
  */
 export function stackTooltipHtml(params: AxisParam | AxisParam[], fmt: (v: number) => string): string {
   const list = (Array.isArray(params) ? params : [params]).filter(
@@ -87,9 +88,11 @@ export function stackTooltipHtml(params: AxisParam | AxisParam[], fmt: (v: numbe
   const shown = rows.slice(0, STACK_TIP_ROWS)
   const rest = rows.slice(STACK_TIP_ROWS)
   const total = rows.reduce((s, p) => s + (p.value as number), 0)
+  // `left` is markup we build (colour marker plus an encoded name); `right` is the value with its unit,
+  // and the unit is model text, so it is encoded.
   const line = (left: string, right: string, strong = false): string =>
     `<div style="display:flex;justify-content:space-between;gap:16px${strong ? ';font-weight:600' : ''}">` +
-    `<span>${left}</span><span>${right}</span></div>`
+    `<span>${left}</span><span>${enc(right)}</span></div>`
   const name = (n: string): string => enc(n.length > NAME_CHARS ? `${n.slice(0, NAME_CHARS - 1)}…` : n)
   return [
     `<div style="font-weight:600;margin-bottom:4px">${enc(head)}</div>`,

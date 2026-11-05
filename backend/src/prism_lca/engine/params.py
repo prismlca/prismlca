@@ -17,10 +17,14 @@ import keyword
 import re
 
 from prism_lca import _log
-from prism_lca.engine import model, param_rules
+from prism_lca.engine import formula_namespace, model, param_rules
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable
 from prism_lca.errors import PrismError
+
+# Formulas are evaluated in this module and in sensitivity_fast, which imports it: restricting the
+# interpreters' namespace here comes before any of them is created.
+formula_namespace.restrict()
 
 
 def _P():

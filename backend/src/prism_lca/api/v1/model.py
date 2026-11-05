@@ -16,6 +16,7 @@ from prism_lca.engine import (
     model,
     model_graph,
     model_scope,
+    step_owner,
     tag_scope,
 )
 from prism_lca.engine.tag_groups import TagGroupStore
@@ -610,6 +611,11 @@ class HistoryStepRequest(BaseModel):
     database: str | None = None
 
 
+def _approved_step(request: Request) -> step_owner.Approval | None:
+    """The step the user approved on an external session's card (engine/step_owner.py), if any."""
+    return step_owner.parse_approval(request.headers.get("x-prism-approved-step"))
+
+
 @router.post("/undo", summary="Undo the last action (or a whole assistant turn)")
 async def undo(request: Request, body: HistoryStepRequest | None = None) -> dict:
     bus = _bus(request)
@@ -618,7 +624,7 @@ async def undo(request: Request, body: HistoryStepRequest | None = None) -> dict
     model_scope.assert_model_write(db)
     if body and body.turn:
         return bus.undo_turn(body.turn, source=body.source, database=db)
-    return bus.undo(source=body.source if body else "user", database=db)
+    return bus.undo(source=body.source if body else "user", database=db, approved=_approved_step(request))
 
 
 @router.post("/redo", summary="Redo the last undone action (or a whole assistant turn)")
@@ -628,7 +634,13 @@ async def redo(request: Request, body: HistoryStepRequest | None = None) -> dict
     model_scope.assert_model_write(db)  # see undo
     if body and body.turn:
         return bus.redo_turn(body.turn, source=body.source, database=db)
-    return bus.redo(source=body.source if body else "user", database=db)
+    return bus.redo(source=body.source if body else "user", database=db, approved=_approved_step(request))
+
+
+@router.get("/history/next", summary="The step the next undo/redo would take, and whether it needs the user")
+async def history_next(request: Request, verb: Literal["undo", "redo"], database: str | None = None) -> dict:
+    """Which step an undo/redo would take and whether this caller needs the user's approval (`CommandBus.next_step`)."""
+    return _bus(request).next_step(verb, database=database)
 
 
 @router.get("/history", summary="Undo/redo availability")

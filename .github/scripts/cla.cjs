@@ -9,7 +9,8 @@
  * It runs with a write token on pull requests from forks, so it never touches their code: it reads the pull
  * request through the API only, and the workflow checks this file out from the default branch. What a
  * contributor controls — comment text, commit author names — is only compared or stored as data; the comment
- * it writes names GitHub logins, which GitHub validates, and short commit hashes.
+ * it writes names GitHub logins, which GitHub validates, and short commit hashes. A run's time stays linear in
+ * that text, and its API calls stay bounded.
  *
  * Every run works out the whole state again from the pull request as it is now, whatever started it — a
  * push, a new base, any comment. GitHub keeps only the newest waiting run per pull request and drops the
@@ -30,12 +31,16 @@ const MAINTAINERS = ['Siever1984']
 const sameLogin = (a) => (b) => a.toLowerCase() === b.toLowerCase()
 const exempt = (login) => MAINTAINERS.some(sameLogin(login)) || login.endsWith('[bot]')
 
-const squash = (line) =>
-  line
-    .replace(/^[>\s]+/, '')
-    .replace(/[\s.!]+$/, '')
-    .replace(/\s+/g, ' ')
-    .toLowerCase()
+// One character of what a signing line may end in.
+const TAIL = /[\s.!]/
+
+const squash = (line) => {
+  const text = line.replace(/^[>\s]+/, '')
+  // Trimmed at the end by hand, in time linear in the line's length.
+  let end = text.length
+  while (end > 0 && TAIL.test(text[end - 1])) end--
+  return text.slice(0, end).replace(/\s+/g, ' ').toLowerCase()
+}
 
 /** A comment signs when one of its lines is the sentence — quoted or not, any case, with or without a full stop. */
 function signs(body) {
@@ -51,19 +56,63 @@ const missingRef = (e) => {
 }
 
 // Co-authors named in a commit message are authors too, and need an agreement as much as the author.
-const CO_AUTHOR = /^co-authored-by:\s*(.*?)\s*<([^<>\s]+)>\s*$/gim
+// Read in linear time, with exactly the result of /^co-authored-by:\s*(.*?)\s*<([^<>\s]+)>\s*$/gim.
+const TRAILER = /^co-authored-by:/gim
+const SPACE = /\s*/y // spaces, line breaks included
+// What ends a line for `^`, `$` and `.` in a pattern.
+const LINE_BREAK = /[\n\r\u2028\u2029]/g
+// The address closes its line: `<address>`, then nothing but spaces. Both are matched within one line.
+const ADDRESS_ENDS_LINE = /<([^<>\s]+)>\s*$/
+const ADDRESS_IS_LINE = /^<([^<>\s]+)>\s*$/
+
+/** Every co-author trailer in a commit message, as `[name, address]`. */
+function coAuthorTrailers(message) {
+  const found = []
+  const skipSpace = (i) => {
+    SPACE.lastIndex = i
+    SPACE.exec(message)
+    return SPACE.lastIndex
+  }
+  const lineEnd = (i) => {
+    LINE_BREAK.lastIndex = i
+    return LINE_BREAK.exec(message)?.index ?? message.length
+  }
+  TRAILER.lastIndex = 0
+  while (TRAILER.exec(message)) {
+    // The name starts at the first character that is not a space, on this line or a later one.
+    const start = skipSpace(TRAILER.lastIndex)
+    const end = lineEnd(start)
+    const line = message.slice(start, end)
+    const own = ADDRESS_ENDS_LINE.exec(line)
+    if (own) {
+      found.push([line.slice(0, own.index).trimEnd(), own[1]])
+      TRAILER.lastIndex = end
+      continue
+    }
+    // Or the whole line is the name, and the address stands alone on the next line that is not blank.
+    const next = skipSpace(end)
+    const nextEnd = lineEnd(next)
+    const alone = ADDRESS_IS_LINE.exec(message.slice(next, nextEnd))
+    if (alone) {
+      found.push([line.trimEnd(), alone[1]])
+      TRAILER.lastIndex = nextEnd
+    }
+  }
+  return found
+}
+
 // GitHub's private commit address names the account: `<id>+<login>@…`, or `<login>@…` from before 2017.
 const NOREPLY = /^(?:(\d+)\+)?([a-z\d][a-z\d-]*(?:\[bot\])?)@users\.noreply\.github\.com$/i
 // Tools that add themselves as co-authors; they hold no copyright, so there is no one to sign.
 const TOOL_EMAILS = ['noreply@anthropic.com']
 const TOOL_LOGINS = ['Copilot']
+// One lookup per account and run, at most this many a run; a commit naming more is left to the maintainer.
+const MAX_LOOKUPS = 20
 
-/** The GitHub account a co-author address names, as GitHub knows it, or null when it names none. */
-async function coAuthorAccount(github, login, id) {
+/** The GitHub account of a login, as GitHub knows it, or null when there is none. */
+async function accountOf(github, login) {
   try {
     const { data } = await github.rest.users.getByUsername({ username: login })
-    // Anyone can write any number into a trailer: the id has to be the account's own.
-    if (id && Number(id) !== data.id) return null
     return { login: data.login, id: data.id }
   } catch (e) {
     if (missingRef(e)) return null
@@ -91,17 +140,27 @@ async function commitAuthors(github, repo, number) {
   }
   const unlinked = new Set()
   const unplaced = new Set()
+  const looked = new Map() // lowercase login → account or null
+  const lookUp = async (login) => {
+    const key = login.toLowerCase()
+    if (!looked.has(key)) {
+      if (looked.size >= MAX_LOOKUPS) return null
+      looked.set(key, await accountOf(github, login))
+    }
+    return looked.get(key)
+  }
   for (const c of commits) {
     const short = c.sha.slice(0, 7)
     if (c.author?.login) add(c.author, c.commit?.author?.name ?? '')
     else unlinked.add(short)
-    for (const [, name, address] of String(c.commit?.message ?? '').matchAll(CO_AUTHOR)) {
+    for (const [name, address] of coAuthorTrailers(String(c.commit?.message ?? ''))) {
       if (TOOL_EMAILS.includes(address.toLowerCase())) continue
       const [, id, login] = NOREPLY.exec(address) ?? []
       // A tool or a bot named as co-author adds no one who could sign — as if the line were not there.
       if (login && (TOOL_LOGINS.some(sameLogin(login)) || login.endsWith('[bot]'))) continue
-      const account = login ? await coAuthorAccount(github, login, id) : null
-      if (account) add(account, name)
+      const account = login ? await lookUp(login) : null
+      // Anyone can write any number into a trailer: the id has to be the account's own.
+      if (account && (!id || Number(id) === account.id)) add(account, name)
       else unplaced.add(short)
     }
   }
@@ -309,4 +368,4 @@ async function run({ github, context }) {
   )
 }
 
-module.exports = { run, signs, PHRASE, BRANCH, FILE, STATUS, MARKER }
+module.exports = { run, signs, coAuthorTrailers, PHRASE, BRANCH, FILE, STATUS, MARKER, MAX_LOOKUPS }

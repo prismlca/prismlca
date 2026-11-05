@@ -3,8 +3,10 @@
  * (also the `.disabled` ones, so a workflow is checked before it is switched on). A rule here is cheaper
  * than a review that has to catch it:
  *  - every action pinned to a full commit SHA, so a moved tag cannot change what runs;
+ *  - every job with a time limit of its own;
  *  - `pull_request_target` only in the CLA workflow (it must answer pull requests from forks), and that
- *    workflow runs nothing from the pull request: default branch only, no token kept, no shell steps;
+ *    workflow runs nothing from the pull request: default branch only, no token kept, no shell steps, and
+ *    a short time limit;
  *  - the self-hosted release runner (label prism-release-win) only in the release workflow, and never
  *    in a workflow a pull request can start — labels route jobs, they do not protect the runner;
  *  - only the release workflow publishes, and only in the job behind the `release` environment — the
@@ -23,7 +25,13 @@ import { describe, expect, it } from 'vitest'
 const yaml = createRequire(import.meta.url)('js-yaml') as { load: (s: string) => unknown }
 
 type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> }
-type Job = { 'runs-on'?: unknown; permissions?: unknown; steps?: Step[] }
+type Job = {
+  'runs-on'?: unknown
+  'timeout-minutes'?: unknown
+  uses?: string
+  permissions?: unknown
+  steps?: Step[]
+}
 type Workflow = { on?: Record<string, unknown>; permissions?: unknown; jobs?: Record<string, Job> }
 
 const DIR = join(__dirname, '..', '..', '..', '.github', 'workflows')
@@ -46,6 +54,12 @@ describe('GitHub workflows', () => {
     for (const job of Object.values(wf.jobs ?? {}))
       for (const step of job.steps ?? [])
         if (step.uses && !step.uses.startsWith('./')) expect(step.uses).toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/)
+  })
+
+  it.each(files)('%s gives every job a time limit', (f) => {
+    for (const [name, job] of Object.entries(load(f).wf.jobs ?? {}))
+      // A job that calls a reusable workflow cannot set one; the called workflow's jobs do.
+      if (!job.uses) expect(job['timeout-minutes'], `${name} sets timeout-minutes`).toBeGreaterThan(0)
   })
 
   it.each(files)('%s uses pull_request_target only if it is the CLA workflow', (f) => {
@@ -79,7 +93,8 @@ describe('GitHub workflows', () => {
     const name = files.find((f) => /^cla\.ya?ml/.test(f))!
     const { wf } = load(name)
     expect(wf.permissions).toEqual({})
-    for (const job of Object.values(wf.jobs ?? {}))
+    for (const job of Object.values(wf.jobs ?? {})) {
+      expect(job['timeout-minutes'], 'a short time limit').toBeLessThanOrEqual(10)
       for (const step of job.steps ?? []) {
         expect(step.run).toBeUndefined()
         if (step.uses?.startsWith('actions/checkout@')) {
@@ -87,6 +102,7 @@ describe('GitHub workflows', () => {
           expect(step.with?.['persist-credentials']).toBe(false)
         }
       }
+    }
   })
 
   it('release workflow: tags and manual starts only, no default permissions, no stored credentials', () => {

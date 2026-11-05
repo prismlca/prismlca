@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from prism_lca.api.v1.deps import require_token
 from prism_lca.engine import bundle as _bundle
-from prism_lca.engine import lca, model_scope
+from prism_lca.engine import lca, model_names, model_scope
 from prism_lca.engine.bundle_backgrounds import installed_backgrounds
 from prism_lca.engine.bundle_resolve import Verdict, resolve, summary
 from prism_lca.errors import PrismError
@@ -126,7 +126,8 @@ def inspect(request: Request, payload: InspectRequest) -> dict:
     del request
     opened = _bundle.read_bundle(_decode(payload.content))
     graph = opened["sections"].get("graph") or {}
-    wanted = (opened["manifest"].get("model") or {}).get("name") or ""
+    # Cleaned as the import cleans it, so the preview shows the name the import will use.
+    wanted = model_names.clean(str((opened["manifest"].get("model") or {}).get("name") or ""))
     refs = _bundle.bundle_references(opened)
     resolutions = resolve(refs, _bundle.installed_for_bundle(opened))
     return {

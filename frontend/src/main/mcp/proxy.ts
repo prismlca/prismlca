@@ -6,7 +6,7 @@
  *
  * A state machine, not a pass-through:
  *
- *   idle → discovering (endpoint file: present, same version, process alive, health answers)
+ *   idle → discovering (endpoint file: present, same version, process alive, server proves the token)
  *        → launching   (the app is not running: start it, wait for its endpoint file)
  *        → connected   (one MCP session in the app, held for the bridge's lifetime)
  *        → disconnected (the app closed the session or quit: back to discovering on the next call)
@@ -23,6 +23,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js'
+import type { SpawnOptions } from 'node:child_process'
 
 import type { EndpointInfo } from './endpoint'
 import { INSTRUCTIONS } from './instructions'
@@ -34,7 +35,7 @@ export interface ProxyDeps {
   /** The endpoint file as it is right now (null = absent or unreadable). */
   endpoint: () => EndpointInfo | null
   isPidAlive: (pid: number) => boolean
-  /** GET /health with the token: does the server behind the file answer? */
+  /** Does the server behind the file prove it holds the file's token (endpoint.ts)? Never sends it. */
   health: (info: EndpointInfo) => Promise<boolean>
   /** Settings → AI → MCP: is the server switched on at all? Off = launching would not help. */
   mcpEnabled: () => boolean
@@ -144,8 +145,9 @@ export class ProxyCore {
   }
 
   /** The endpoint file, if it describes a server this bridge may use: same version, process alive,
-   *  health answering. Anything else is stale and treated as absent — except another version, which
-   *  is a running app that must not be driven by a bridge built for a different one. */
+   *  the server proving it holds the file's token. Anything else is stale and treated as absent — the
+   *  app is started and its start writes a new file — except another version, which is a running app
+   *  that must not be driven by a bridge built for a different one. */
   private async validEndpoint(): Promise<EndpointInfo | null> {
     const info = this.deps.endpoint()
     if (!info) return null
@@ -224,6 +226,18 @@ export class ProxyCore {
     if (t) await t.terminateSession().catch(() => undefined)
     if (c) await c.close().catch(() => undefined)
   }
+}
+
+/**
+ * How the bridge spawns the app: detached (it outlives the bridge), its output in a log file, and its
+ * own data folder as working directory, never the client's.
+ */
+export function appSpawnOptions(
+  env: Record<string, string | undefined>,
+  logFd: number,
+  dataDir: string
+): SpawnOptions {
+  return { detached: true, stdio: ['ignore', logFd, logFd], env, cwd: dataDir }
 }
 
 /**

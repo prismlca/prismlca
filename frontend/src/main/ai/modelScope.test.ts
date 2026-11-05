@@ -149,8 +149,30 @@ describe('scopeRefusal — what the in-app chat may name', () => {
     expect(await refusal('edit_exchange', batch('remove', 'add'))).toContain('not from another model')
   })
 
-  it('leaves a name that does not exist to the tool', async () => {
-    expect(await refusal('get_process_details', { database: 'nope', code: 'p' })).toBeNull()
+  it('refuses a name it cannot resolve instead of leaving it to the tool', async () => {
+    for (const database of ['nope', 'X copy', 'A/B'])
+      expect(await refusal('get_process_details', { database, code: 'p' }), database).toContain(
+        'does not name a database this chat can use'
+      )
+    const r = await refusal('list_activities', { database: 'nope' })
+    expect(r).toContain('"A" (this chat\'s model), its comparison model(s) "B" (read only)')
+    // No list of the workspace's other models in the refusal.
+    expect(r).not.toContain('"X"')
+    expect(
+      await refusal('search_background', { query: 'q', databases: ['ecoinvent', 'My processes'] })
+    ).toContain('"ecoinvent" does not name')
+  })
+
+  it('still reaches an old input whose supplier is gone, to change or remove it', async () => {
+    const edit = {
+      action: 'remove',
+      activity_database: 'A',
+      activity_code: 'p',
+      input_database: 'gone',
+      input_code: 'q'
+    }
+    expect(await refusal('edit_exchange', edit)).toBeNull()
+    expect(await refusal('edit_exchange', { ...edit, action: 'add' })).toContain('does not name a database')
   })
 })
 
@@ -176,7 +198,10 @@ describe('the fence in the shared executor', () => {
     const api: ApiRaw = async (method, path, _b, headers) => {
       calls.push([method, path, headers])
       if (path === '/api/v1/databases')
-        return { status: 200, body: Object.entries(KINDS).map(([name, kind]) => ({ name, kind })) }
+        return {
+          status: 200,
+          body: [...Object.entries(KINDS), ['Müller A', 'foreground']].map(([name, kind]) => ({ name, kind }))
+        }
       return { status: 200, body: { ok: true } }
     }
     const asked: string[] = []
@@ -243,6 +268,13 @@ describe('the fence in the shared executor', () => {
     expect(own.ok).toBe(true)
     const mcp = fenced({ modelScope: undefined })
     expect((await mcp.s.run('evaluate_formula', { formula: 'a*2', database: 'B' })).ok).toBe(true)
+  })
+
+  it('sends nothing for a name it cannot place, and reloads the list once before refusing', async () => {
+    const { s, calls } = fenced()
+    const oc = await s.run('get_process_details', { database: 'B copy', code: 'p' })
+    expect(!oc.ok && oc.error).toContain('does not name a database this chat can use')
+    expect(calls.map(([, path]) => path)).toEqual(['/api/v1/databases'])
   })
 
   it('stays closed when the list of databases cannot be had', async () => {

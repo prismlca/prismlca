@@ -65,6 +65,19 @@ describe('tool effects', () => {
     expect(toolAnnotations('no_such_tool')).toEqual({ readOnlyHint: false, destructiveHint: true })
   })
 
+  it('read only their own keys: an action named like an Object.prototype member is unknown', () => {
+    const inherited = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', '__proto__']
+    for (const [tool, param] of Object.entries(ACTION_PARAM)) {
+      for (const a of inherited) {
+        expect(effectOf(tool, { [param]: a }), `${tool} ${a}`).toBe('irreversible')
+        expect(effectOf(tool, { items: [{ [param]: a }], [param]: 'x' }), `${tool} item ${a}`).toBe(
+          'irreversible'
+        )
+      }
+    }
+    for (const a of inherited) expect(effectOf(a, {}), a).toBe('irreversible')
+  })
+
   it('pin the cases that matter', () => {
     expect(effectOf('get_current_model', {})).toBe('read')
     expect(effectOf('search_background', { query: 'steel' })).toBe('read')

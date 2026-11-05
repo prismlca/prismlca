@@ -18,6 +18,8 @@
  *    is refused here, not only hidden in the UI.
  *  - V-4: the AppImage is swapped atomically by this file (`swapAppImage`), because electron-updater
  *    deletes the old file before it moves the new one into place.
+ *  - The Windows publisher check is ours (updateSignature.ts): an installer whose signature cannot be
+ *    checked is refused, never installed unchecked. Web installers are refused too; we ship full ones.
  * electron-updater's own install-on-quit is therefore off; `before-quit` below does it instead.
  *
  * `electron-updater` is imported lazily, on the first click, so dev and smoke runs never load it. Its
@@ -45,6 +47,7 @@ import type { PrepareInstallResult, UpdateState } from '../shared/updates'
 import { BUILD } from './buildInfo'
 import { distrustIn } from './distrustedRoots'
 import { withSystemProxy } from './networkProxy'
+import { acceptedChecks, confirmChecked, guardUpdateSignature, SIGNATURE_UNCHECKED } from './updateSignature'
 
 export type { PrepareInstallResult, UpdateState }
 
@@ -218,6 +221,10 @@ export function plainNotes(raw: unknown): string | undefined {
 export function describeUpdateError(err: unknown, during: 'check' | 'download' | 'install'): string {
   const raw = err instanceof Error ? err.message : String(err ?? '')
   const code = (err as { code?: unknown } | null)?.code
+  // Windows could not tell whether the installer is ours (updateSignature.ts). Installing by hand lets
+  // Windows show the publisher before anything runs.
+  if (code === SIGNATURE_UNCHECKED)
+    return 'The update was not installed because its signature could not be checked on this computer. Install it by hand from the release page instead.'
   // A downloaded installer that fails its Authenticode check may be an attack. Say so and stop —
   // never point the user at a manual install from here.
   if (
@@ -352,11 +359,13 @@ async function loadUpdater(): Promise<AutoUpdater> {
   // An AppImage run therefore gets its updater by name, whatever the file says.
   const autoUpdater = installKind() === 'appimage' ? new mod.AppImageUpdater() : mod.autoUpdater
   neutraliseInstallationId(autoUpdater)
+  if (installKind() === 'nsis') guardUpdateSignature(autoUpdater)
   distrustIn(autoUpdater.netSession)
   // A feedtest build asks only the local test feed, never GitHub.
   if (BUILD.kind === 'feedtest' && BUILD.feedUrl)
     autoUpdater.setFeedURL({ provider: 'generic', url: BUILD.feedUrl })
   autoUpdater.autoDownload = false
+  autoUpdater.disableWebInstaller = true
   // Install-on-quit is ours (`before-quit` below): electron-updater's would start the installer
   // with the backend still running (V-2) and swap the AppImage unsafely (V-4).
   autoUpdater.autoInstallOnAppQuit = false
@@ -384,7 +393,8 @@ async function loadUpdater(): Promise<AutoUpdater> {
   })
   autoUpdater.on('update-downloaded', (info) => {
     downloadedFile = (info as { downloadedFile?: string }).downloadedFile ?? null
-    setState({ phase: 'downloaded', current: current(), version: info.version })
+    // On Windows the download counts only once its installer is known to be checked (`downloadUpdate`).
+    if (installKind() !== 'nsis') setState({ phase: 'downloaded', current: current(), version: info.version })
   })
   // Without a listener an EventEmitter 'error' would throw; the rejected promise reports it too.
   autoUpdater.on('error', (err) => {
@@ -453,11 +463,14 @@ export async function downloadUpdate(): Promise<UpdateState> {
   setState({ phase: 'downloading', current: s.current, version: s.version, percent: 0 })
   try {
     const u = updater
-    await withSystemProxy(u.netSession, () => u.downloadUpdate())
+    const checked = acceptedChecks()
+    const downloaded = await withSystemProxy(u.netSession, () => u.downloadUpdate())
+    if (installKind() === 'nsis') await confirmChecked(u, downloaded, checked)
     const after = getUpdateState()
     if (after.phase === 'downloading')
       setState({ phase: 'downloaded', current: current(), version: after.version })
   } catch (err) {
+    downloadedFile = null
     setState({
       phase: 'error',
       current: current(),

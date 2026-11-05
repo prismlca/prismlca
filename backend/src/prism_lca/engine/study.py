@@ -189,6 +189,49 @@ def _unescape(value):
     return value
 
 
+def _clean(fields: dict) -> dict:
+    """The study fields among `fields`, normalised as every save stores them."""
+    clean = {k: v for k, v in fields.items() if k in FIELDS and v is not None}
+    if "limitations" in clean:
+        clean["limitations"] = clean_limitations(clean["limitations"])
+    return {k: _unescape(v) for k, v in clean.items()}
+
+
+def language_code(value: str) -> str:
+    """The report language a study names ("de", "en", ...), or "" when it names none we know."""
+    from prism_lca.engine.report_i18n import LANGUAGES
+
+    if not value.strip():
+        return ""
+    code = value.replace("_", "-").split("-")[0].lower()
+    return code if code in LANGUAGES else ""
+
+
+def imported_fields(raw: object) -> dict:
+    """A study read from a model file, cleaned as a save from the study form cleans it.
+
+    What the form refuses — a value of the wrong type, a language or review answer it does not know — is
+    left out here instead, so one odd field does not stop the import. Comparison links are not study fields:
+    only the user links two models, on both sides at once.
+    """
+    if not isinstance(raw, dict):
+        return {}
+    fields = {
+        k: v
+        for k, v in raw.items()
+        if k in FIELDS and (isinstance(v, list) if k == "limitations" else isinstance(v, str))
+    }
+    if "language" in fields:
+        code = language_code(fields.pop("language"))
+        if code:
+            fields["language"] = code
+    if "critical_review_done" in fields:
+        answer = fields.pop("critical_review_done").strip().lower()
+        if not answer or answer in CRITICAL_REVIEW_ANSWERS:
+            fields["critical_review_done"] = answer
+    return _clean(fields)
+
+
 #: Names of the models this one is compared with (symmetric, see `StudyMetaStore.link`). Stored in
 #: the study file beside the ISO fields, but not one of `FIELDS`: only `link`/`unlink` write it.
 COMPARED_WITH = "compared_with"
@@ -240,11 +283,7 @@ class StudyMetaStore(JsonFileStore):
     def update(self, database: str, fields: dict) -> dict:
         with self._lock:
             data = self.get(database)
-            clean = {k: v for k, v in fields.items() if k in FIELDS and v is not None}
-            if "limitations" in clean:
-                clean["limitations"] = clean_limitations(clean["limitations"])
-            clean = {k: _unescape(v) for k, v in clean.items()}
-            data.update(clean)
+            data.update(_clean(fields))
             self._save(database, data)
             return data
 

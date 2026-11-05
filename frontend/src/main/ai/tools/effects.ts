@@ -10,7 +10,7 @@
  *   read          no state change in the backend, the app settings or on disk
  *   write         changes state, but the change is on the undo stack or trivially reversible
  *   irreversible  gone for good: deletes of models/methods/families, anything off the undo stack that
- *                 overwrites or evicts, undo/redo themselves, append-only logs nobody can take back
+ *                 overwrites or evicts, append-only logs nobody can take back
  *
  * It imports nothing at all (not even the registry), so it loads in plain Node and outside Electron;
  * effects.test.ts holds it against the registered specs.
@@ -146,10 +146,10 @@ export const TOOL_EFFECTS: Record<string, Record<string, ToolEffect>> = {
     open_model: 'write',
     open_page: 'write'
   },
-  // Undo/redo rewrite state the user may not expect: one global stack, whatever is on top.
-  // Undo/redo take back (or redo) the agent's OWN change and are themselves reversible via the
-  // other one; asking before each cost three clicks for one rename test (V390):
-  // the agent may undo without a card — "ask before every write" still asks.
+  // Undo and redo are reversible through each other, so they rate 'write'; asking before each cost
+  // three clicks for one rename test (V390). Whose step they take back is the backend's decision: an
+  // external MCP session undoes its own steps freely and needs the user's card for any other step.
+  // "Ask before every write" still asks.
   history: { undo: 'write', redo: 'write' },
   explain_result: { tree: 'read', flows: 'read', inventory: 'read', matrix: 'read' },
   // SetStudyMetaCommand is undoable.
@@ -184,14 +184,15 @@ function named(v: unknown): string | undefined {
  * A call without an action takes the tool's worst action, because a default (`edit_parameter` falls
  * back to "set") or a batch path (`edit_tags` assignments) may route it anywhere in the tool. Batch
  * items that carry their own action (`edit_exchange` exchanges[]) count too, and the worst one wins.
+ * Only a table's own keys count, so an inherited name (an Object.prototype member) is unknown too.
  */
 export function effectOf(tool: string, args: Record<string, unknown> | undefined): ToolEffect {
-  const table = TOOL_EFFECTS[tool]
+  const table = Object.hasOwn(TOOL_EFFECTS, tool) ? TOOL_EFFECTS[tool] : undefined
   if (!table) return 'irreversible'
-  if ('*' in table) return table['*']
-  const param = ACTION_PARAM[tool]
+  if (Object.hasOwn(table, '*')) return table['*']
+  const param = Object.hasOwn(ACTION_PARAM, tool) ? ACTION_PARAM[tool] : undefined
   const top = param ? named(args?.[param]) : undefined
-  if (!top) return worst(Object.values(table))
+  if (!param || !top) return worst(Object.values(table))
   const actions = [top]
   for (const v of Object.values(args ?? {})) {
     if (!Array.isArray(v)) continue
@@ -200,7 +201,7 @@ export function effectOf(tool: string, args: Record<string, unknown> | undefined
       if (a) actions.push(a)
     }
   }
-  return worst(actions.map((a) => table[a] ?? 'irreversible'))
+  return worst(actions.map((a) => (Object.hasOwn(table, a) ? table[a] : 'irreversible')))
 }
 
 /**

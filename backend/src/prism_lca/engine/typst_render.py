@@ -5,7 +5,8 @@ is a working state. The report can be handed over as sources the user keeps edit
 bring their own template.
 
 The compiler arrives as a **self-contained wheel** (the ``typst`` package: a compiled extension with no
-dependencies, wheels for Windows, macOS and Linux) — no CLI binary to vendor, no ``subprocess``.
+dependencies, wheels for Windows, macOS and Linux) — no CLI binary to vendor, no ``subprocess``. It runs
+in worker processes (``typst_worker``), offline and within a time and memory budget.
 
 Output is deterministic across machines: ``ignore_system_fonts=True`` means only our bundled fonts
 (``assets/fonts``, see the NOTICE there) plus the families the compiler embeds itself are available.
@@ -20,8 +21,7 @@ import tempfile
 from collections import OrderedDict
 from pathlib import Path
 
-import typst
-
+from prism_lca.engine import typst_worker
 from prism_lca.errors import PrismError
 
 _ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -311,6 +311,12 @@ def _compile_failed(exc: Exception, sources: dict[str, str | bytes]) -> PrismErr
     where = _where_it_failed(exc, sources)
     if where:
         hint = f"The compiler stopped at {where}\n{hint}"
+    if "failed to download package" in str(exc):
+        return PrismError(
+            "Themes cannot import Typst packages: PrismLCA typesets offline.",
+            code="typst_package_import",
+            hint=hint,
+        )
     return PrismError(
         f"The report could not be typeset: {exc}",
         code="typst_compile_failed",
@@ -396,7 +402,7 @@ def compile_png(
         root = Path(tmp)
         _materialise(sources, root)
         try:
-            pages = typst.compile(
+            pages = typst_worker.compile(
                 str(root / main),
                 root=str(root),
                 font_paths=[str(font_dir())],
@@ -404,6 +410,8 @@ def compile_png(
                 format="png",
                 ppi=ppi,
             )
+        except PrismError:
+            raise
         except Exception as exc:
             raise _compile_failed(exc, sources) from exc
 
@@ -437,13 +445,15 @@ def compile_pdf(sources: dict[str, str | bytes], main: str = "main.typ") -> byte
         _materialise(sources, root)
 
         try:
-            pdf = typst.compile(
+            pdf = typst_worker.compile(
                 str(root / main),
                 root=str(root),
                 font_paths=[str(font_dir())],
                 ignore_system_fonts=True,
             )
-        except Exception as exc:  # typst.TypstError and anything the extension raises
+        except PrismError:  # over its time, memory or output budget
+            raise
+        except Exception as exc:  # the compiler's error, or anything the extension raises
             raise _compile_failed(exc, sources) from exc
 
     if isinstance(pdf, list):  # a per-page result would mean the format was not PDF

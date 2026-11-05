@@ -590,6 +590,40 @@ describe('runAgent — long-run robustness', () => {
     expect(chat.seen.length).toBe(2)
   })
 
+  it('starts no research request once the spend has reached the limit', async () => {
+    // Every leg answers from media sources only, which earns it one upgrade pass; legs bill 0.3 each.
+    let booked = 0
+    const startedAt: number[] = []
+    const summariser = chat.toolless
+    chat.toolless = (opts) => {
+      if (!opts.webSearch) return summariser?.(opts)
+      startedAt.push(booked)
+      return {
+        text: '- Pavilions last 1-3 years (https://example.org/a) [media, medium: two retailer blogs agree]',
+        usage: { cost: 0.3 }
+      }
+    }
+    const questions = JSON.stringify({ questions: ['q1', 'q2', 'q3'] })
+    chat.rounds = [
+      {
+        calls: [
+          { id: 'a', name: 'research_web', arguments: questions },
+          { id: 'b', name: 'research_web', arguments: questions }
+        ]
+      },
+      { text: 'should never run' }
+    ]
+    const d = deps({ recordUsage: (_m: string, u: { cost?: number }) => (booked += u.cost ?? 0) })
+    try {
+      const res = await runAgent(request({ maxCostUsd: 1, maxResearchQuestions: 3 }), d.deps)
+      expect(res.outcome).toBe('cost')
+      expect(startedAt.length).toBeGreaterThan(0)
+      expect(startedAt.filter((spent) => spent >= 1)).toEqual([])
+    } finally {
+      chat.toolless = summariser
+    }
+  })
+
   it('ignores the cost limit when it is switched off', async () => {
     chat.rounds = [
       { usage: { cost: 5 }, calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] },

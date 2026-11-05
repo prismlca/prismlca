@@ -7,6 +7,7 @@ the loader is always a stand-in.
 """
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -188,26 +189,124 @@ def test_warm_loads_a_cached_model(hub_cache, monkeypatch):
     assert started == ["prism-embed-warmup"]
 
 
-def test_provider_loads_local_files_only(monkeypatch):
+def _fake_sentence_transformers(monkeypatch) -> list[dict]:
     import sys
     import types
 
-    seen: dict = {}
+    calls: list[dict] = []
 
     class _ST:
         def __init__(self, model, **kwargs):
-            seen.update(model=model, **kwargs)
+            calls.append({"model": model, **kwargs})
 
     monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(SentenceTransformer=_ST))
+    return calls
+
+
+def test_provider_loads_local_files_only_from_the_cached_snapshot(hub_cache, monkeypatch):
     from prism_lca.search.embeddings import SentenceTransformerProvider
 
+    _write_snapshot(hub_cache)
+    calls = _fake_sentence_transformers(monkeypatch)
     SentenceTransformerProvider(REPO, REV)
-    assert seen == {
-        "model": REPO,
-        "revision": REV,
-        "local_files_only": True,
-        "cache_folder": str(model_store.hub_cache_dir()),
-    }
+    assert calls == [
+        {
+            "model": str(_repo_root(hub_cache) / "snapshots" / REV),
+            "local_files_only": True,
+            "trust_remote_code": False,
+        }
+    ]
+
+
+def test_provider_loads_the_cache_even_with_a_folder_of_the_models_name_in_the_working_directory(
+    hub_cache, tmp_path, monkeypatch
+):
+    from prism_lca.search.embeddings import SentenceTransformerProvider
+
+    _write_snapshot(hub_cache)
+    here = tmp_path / "work"
+    (here / REPO).mkdir(parents=True)
+    (here / REPO / "modules.json").write_text("[]")
+    monkeypatch.chdir(here)
+    calls = _fake_sentence_transformers(monkeypatch)
+    SentenceTransformerProvider(REPO, REV)
+    loaded = Path(calls[0]["model"])
+    assert loaded.is_absolute() and loaded.is_relative_to(hub_cache)
+
+
+def test_provider_without_a_cached_snapshot_loads_nothing(hub_cache, monkeypatch):
+    from prism_lca.search.embeddings import SentenceTransformerProvider
+
+    calls = _fake_sentence_transformers(monkeypatch)
+    with pytest.raises(Exception, match="snapshot|cache|local"):
+        SentenceTransformerProvider(REPO, REV)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "modules",
+    [
+        '[{"idx": 0, "name": "0", "path": "", "type": "modeling_custom.Encoder"}]',
+        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},'
+        ' {"idx": 1, "name": "1", "path": "1_x", "type": "custom.Pooling"}]',
+        '[{"idx": 0, "name": "0", "path": ""}]',
+        '{"type": "modeling_custom.Encoder"}',
+        # Modules the search model does not consist of, among them one that names further classes.
+        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Router"}]',
+        '[{"idx": 0, "name": "0", "path": "",'
+        ' "type": "sentence_transformers.base.modules.router.Router"}]',
+        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},'
+        ' {"idx": 1, "name": "1", "path": "1_Dense", "type": "sentence_transformers.models.Dense"}]',
+    ],
+)
+def test_provider_loads_only_the_modules_the_search_model_consists_of(hub_cache, monkeypatch, modules):
+    from prism_lca.search.embeddings import SentenceTransformerProvider
+
+    _write_snapshot(hub_cache)
+    modules_json = _repo_root(hub_cache) / "snapshots" / REV / "modules.json"
+    modules_json.unlink()
+    modules_json.write_text(modules)
+    calls = _fake_sentence_transformers(monkeypatch)
+    with pytest.raises(RuntimeError, match="does not use"):
+        SentenceTransformerProvider(REPO, REV)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "names",
+    [
+        # bge-m3 at the pinned revision
+        ("models.Transformer", "models.Pooling", "models.Normalize"),
+        # the same modules under the library's newer module paths
+        (
+            "base.modules.transformer.Transformer",
+            "sentence_transformer.modules.pooling.Pooling",
+            "sentence_transformer.modules.normalize.Normalize",
+        ),
+    ],
+)
+def test_provider_accepts_the_search_models_modules(tmp_path, names):
+    entries = [
+        {"idx": i, "name": str(i), "path": "", "type": f"sentence_transformers.{name}"}
+        for i, name in enumerate(names)
+    ]
+    (tmp_path / "modules.json").write_text(json.dumps(entries))
+    model_store.refuse_custom_modules(tmp_path)
+
+
+def test_download_refuses_while_a_folder_of_the_models_name_is_in_the_working_directory(
+    hub_cache, tmp_path, monkeypatch
+):
+    here = tmp_path / "work"
+    (here / REPO).mkdir(parents=True)
+    monkeypatch.chdir(here)
+    calls = _fake_sentence_transformers(monkeypatch)
+    with pytest.raises(RuntimeError, match="Start PrismLCA from another folder"):
+        model_store._default_loader(REPO, REV)
+    assert calls == []
+    (here / REPO).rmdir()
+    model_store._default_loader(REPO, REV)
+    assert [c["model"] for c in calls] == [REPO]
 
 
 # --- endpoints ----------------------------------------------------------------------------------
@@ -250,16 +349,12 @@ def test_search_model_endpoints_report_and_start(client, token, hub_cache):
 def test_download_and_load_use_the_cache_the_readiness_check_reads(hub_cache, monkeypatch):
     """sentence-transformers alone follows SENTENCE_TRANSFORMERS_HOME, often set for other projects; the
     download would land where is_cached never looks, and the model would never count as ready."""
-    import sys
-    import types
-
     from prism_lca.search.embeddings import SentenceTransformerProvider
 
-    calls: list[dict] = []
-    fake = types.ModuleType("sentence_transformers")
-    fake.SentenceTransformer = lambda *a, **kw: calls.append(kw)
-    monkeypatch.setitem(sys.modules, "sentence_transformers", fake)
+    calls = _fake_sentence_transformers(monkeypatch)
     monkeypatch.setenv("SENTENCE_TRANSFORMERS_HOME", str(hub_cache / "elsewhere"))
     model_store._default_loader(REPO, REV)
+    _write_snapshot(hub_cache)
     SentenceTransformerProvider(REPO, REV)
-    assert [c["cache_folder"] for c in calls] == [str(hub_cache), str(hub_cache)]
+    assert calls[0]["cache_folder"] == str(hub_cache)
+    assert Path(calls[1]["model"]).is_relative_to(hub_cache)

@@ -549,7 +549,7 @@ export const modelTools: Tool[] = [
         const action =
           String(it?.action ?? '').trim() ||
           (it?.input_code && (it?.amount !== undefined || it?.formula) ? 'add' : '')
-        if (!(action in routes)) {
+        if (!Object.hasOwn(routes, action)) {
           throw new Error(
             action
               ? `Unknown action "${action}". Expected one of: ${Object.keys(routes).join(', ')}.`

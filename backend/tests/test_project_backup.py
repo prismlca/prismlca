@@ -141,8 +141,107 @@ def test_a_restore_that_dies_while_copying_leaves_no_folder_behind(client, token
             raise OSError("No space left on device")
 
     monkeypatch.setattr(shutil, "copytree", half_copy)
-    with pytest.raises(OSError):
-        maintenance.restore_project(path, "half-copied")
+    with pytest.raises(OSError), maintenance.staged_backup(path, "half-copied") as staged:
+        maintenance.restore_project(staged)
     projects = get_bd().projects
     assert "half-copied" not in projects
     assert not projects._project_dir(ProjectDataset(name="half-copied", full_hash=False)).exists()
+
+
+def _seed_round_trip(bd) -> None:
+    """A background, an LCIA method and a model with the values Brightway pickles: amounts, uncertainty,
+    classifications, tuples, nested dicts."""
+    bd.Database("biosphere").write(
+        {("biosphere", "co2"): {"name": "CO2", "type": "emission", "categories": ("air",), "unit": "kg"}}
+    )
+    fg = bd.Database("fg")
+    fg.write(
+        {
+            ("fg", "elec"): {
+                "name": "electricity", "unit": "kWh", "reference product": "electricity", "location": "CH",
+                "classifications": [("CPC", "17100: Electrical energy")],
+                "exchanges": [
+                    {"input": ("fg", "elec"), "amount": 1, "type": "production"},
+                    {"input": ("biosphere", "co2"), "amount": 0.5, "type": "biosphere",
+                     "uncertainty type": 2, "loc": -0.69, "scale": 0.2, "pedigree": {"reliability": 2}},
+                ],
+            },
+            ("fg", "bottle"): {
+                "name": "bottle", "unit": "unit", "reference product": "bottle",
+                "exchanges": [
+                    {"input": ("fg", "bottle"), "amount": 1, "type": "production"},
+                    {"input": ("fg", "elec"), "amount": 0.0, "type": "technosphere"},
+                    {"input": ("biosphere", "co2"), "amount": 0.1, "type": "biosphere"},
+                ],
+            },
+        }
+    )
+    for e in fg.get("bottle").technosphere():
+        e["prism_uid"] = "e"
+        e.save()
+    bd.databases["fg"]["prism_read_only"] = False
+    bd.databases.flush()
+    bd.Method(("test", "gwp")).write([(("biosphere", "co2"), 1.0)])
+    bd.calculation_setups["setup"] = {"inv": [{("fg", "bottle"): 1}], "ia": [("test", "gwp")]}
+
+
+def test_a_realistic_workspace_survives_the_restore_checks(client, token, project, tmp_path, monkeypatch):
+    """Every store bw2data pickles is present, checked and restored as it was."""
+    from prism_lca.engine import plain_pickle
+    from prism_lca.engine.bootstrap import get_bd
+
+    del project
+    bd = get_bd()
+    _seed_round_trip(bd)
+    body = {"activity_database": "fg", "activity_code": "bottle", "uid": "e"}
+    assert client.post("/api/v1/params", json={"database": "fg", "name": "kwh", "amount": 2.0},
+                       headers=token).status_code == 200
+    assert client.post("/api/v1/params/exchange-formula", json={**body, "formula": "kwh * 1"},
+                       headers=token).status_code == 200
+    assert client.post("/api/v1/model/exchanges/uncertainty",
+                       json={**body, "distribution": "lognormal", "params": {"median": 2.0, "gsd": 1.5}},
+                       headers=token).status_code == 200
+    assert client.post("/api/v1/scenarios", json={"database": "fg", "name": "efficient",
+                                                  "overrides": {"kwh": 1.0}}, headers=token).status_code == 200
+    calc = {"database": "fg", "code": "bottle", "method": ["test", "gwp"]}
+    score = client.post("/api/v1/calc/lcia", json=calc, headers=token).json()["score"]
+    path = Path(client.post("/api/v1/system/backup", json={"directory": str(tmp_path)},
+                            headers=token).json()["path"])
+    with tarfile.open(path) as tf:
+        names = tf.getnames()
+    for store in ("/lci/databases.db", "/parameters.db", "/preferences.pickle", "/geomapping.pickle",
+                  "/setups.pickle"):
+        assert any(n.endswith(store) for n in names), store
+    assert any("/intermediate/" in n and n.endswith(".pickle") for n in names)
+
+    checked: list[int] = []
+    real = plain_pickle.check
+    monkeypatch.setattr(plain_pickle, "check", lambda data: checked.append(len(data)) or real(data))
+    r = client.post("/api/v1/projects/restore", json={"path": str(path), "project_name": "round-trip"},
+                    headers=token)
+    assert r.status_code == 200, r.text
+    assert len(checked) > 10
+
+    active = bd.projects.current
+    bd.projects.set_current("round-trip")
+    try:
+        exc = next(iter(bd.Database("fg").get("bottle").technosphere()))
+        assert exc["amount"] == 2.0 and exc.get("formula") == "kwh * 1"
+        assert exc.get("uncertainty type") == 2
+        elec = bd.Database("fg").get("elec")
+        assert elec["classifications"] == [("CPC", "17100: Electrical energy")]
+        assert next(iter(elec.biosphere()))["pedigree"] == {"reliability": 2}
+        assert bd.calculation_setups["setup"]["ia"] == [("test", "gwp")]
+        assert ("test", "gwp") in bd.methods
+    finally:
+        bd.projects.set_current(active)
+    client.post("/api/v1/projects/round-trip/activate", headers=token)
+    # The checked copy keeps no triggers; bw2data has put its own back on opening the workspace.
+    import sqlite3
+
+    con = sqlite3.connect(Path(bd.projects.dir) / "parameters.db")
+    assert con.execute("SELECT count(*) FROM sqlite_master WHERE type = 'trigger'").fetchone()[0] > 0
+    con.close()
+    assert abs(client.post("/api/v1/calc/lcia", json=calc, headers=token).json()["score"] - score) < 1e-9
+    assert [s["name"] for s in client.get("/api/v1/scenarios", params={"database": "fg"},
+                                          headers=token).json()] == ["efficient"]

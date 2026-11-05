@@ -19,9 +19,9 @@ from __future__ import annotations
 import io
 from contextlib import contextmanager
 
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
 
-from prism_lca.engine import lca, param_window, params, scenario_lookup
+from prism_lca.engine import lca, param_window, params, scenario_lookup, workbooks
 from prism_lca.engine._store import JsonFileStore
 from prism_lca.engine.model import new_uid
 from prism_lca.errors import PrismError, scenario_calc_error
@@ -896,6 +896,11 @@ def template_workbook(database: str) -> bytes:
     return buf.getvalue()
 
 
+#: What one scenario workbook may hold: the width of its first row, and the parameter rows below it.
+MAX_SCENARIO_SHEET_COLUMNS = 1_024
+MAX_SCENARIO_SHEET_ROWS = 10_000
+
+
 def parse_scenarios_workbook(content: bytes) -> list[dict]:
     """Parse a scenario workbook into ordered columns ``[{"name", "overrides"}]``.
 
@@ -903,49 +908,63 @@ def parse_scenarios_workbook(content: bytes) -> list[dict]:
     parameter names. A blank cell means "don't override" (skip it); a numeric cell — including 0 —
     overrides; a text cell is a formula override (checked by the import against the model, like every
     other formula override)."""
-    wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    ws = wb.active
-    grid = list(ws.iter_rows(values_only=True))
-    if not grid:
-        raise PrismError("The workbook is empty.", code="empty_import",
-                         hint="Use the template button to get a correctly shaped file.")
+    wb = workbooks.open_untrusted(content)
+    try:
+        header = workbooks.header(wb.active) if wb.active is not None else None
+        if header is None:
+            raise PrismError("The workbook is empty.", code="empty_import",
+                             hint="Use the template button to get a correctly shaped file.")
 
-    header = grid[0] or ()
-    scen_cols: list[tuple[int, str]] = []
-    for j, cell in enumerate(header):
-        if j == 0:
-            continue  # top-left corner is the parameter-column label
-        name = str(cell).strip() if cell is not None else ""
-        if name:
-            scen_cols.append((j, name))
-    if not scen_cols:
-        raise PrismError("No scenario columns found in the first row.", code="no_scenarios",
-                         hint="Put scenario names in the first row, from the second column onward.")
+        scen_cols: list[tuple[int, str]] = []
+        for j, cell in enumerate(header):
+            if j == 0:
+                continue  # top-left corner is the parameter-column label
+            name = str(cell).strip() if cell is not None else ""
+            if name:
+                scen_cols.append((j, name))
+        if not scen_cols:
+            raise PrismError("No scenario columns found in the first row.", code="no_scenarios",
+                             hint="Put scenario names in the first row, from the second column onward.")
+        width = scen_cols[-1][0] + 1
+        if width > MAX_SCENARIO_SHEET_COLUMNS:
+            raise workbooks.too_large(
+                f"The first row reaches past column {MAX_SCENARIO_SHEET_COLUMNS:,}.",
+                hint=f"PrismLCA imports up to {MAX_SCENARIO_SHEET_COLUMNS - 1:,} scenarios from one workbook.",
+            )
 
-    columns = {j: {"name": name, "overrides": {}} for j, name in scen_cols}
-    for row in grid[1:]:
-        if row is None or all(c is None for c in row):
-            continue
-        pname = str(row[0]).strip() if row and row[0] is not None else ""
-        if not pname:
-            continue
-        for j, sname in scen_cols:
-            cell = row[j] if j < len(row) else None
-            if cell is None or (isinstance(cell, str) and not cell.strip()):
-                continue  # empty → keep baseline / existing value
-            try:
-                if isinstance(cell, str):
-                    try:
-                        value: float | str = float(cell.strip().replace(",", "."))
-                    except ValueError:
-                        value = as_override(cell)  # a formula; the import evaluates it
-                else:
-                    value = float(cell)
-            except (TypeError, ValueError) as exc:
-                raise PrismError(
-                    f"Cell for parameter '{pname}' in scenario '{sname}' is not a number or a formula: {cell!r}.",
-                    code="invalid_cell",
-                    hint="Cells must be numbers or formulas over the model's parameters; leave a cell "
-                    "empty to keep the baseline value.") from exc
-            columns[j]["overrides"][pname] = value
-    return [columns[j] for j, _ in scen_cols]
+        columns = {j: {"name": name, "overrides": {}} for j, name in scen_cols}
+        named = 0
+        for row in workbooks.rows(wb.active, width):
+            # A row without a parameter name is skipped, empty or not.
+            pname = str(row[0]).strip() if row[0] is not None else ""
+            if not pname:
+                continue
+            named += 1
+            if named > MAX_SCENARIO_SHEET_ROWS:
+                raise workbooks.too_large(
+                    f"The workbook names more than {MAX_SCENARIO_SHEET_ROWS:,} parameters.",
+                    hint="Split the parameters across several workbooks.",
+                )
+            for j, sname in scen_cols:
+                cell = row[j]
+                if cell is None or (isinstance(cell, str) and not cell.strip()):
+                    continue  # empty → keep baseline / existing value
+                try:
+                    if isinstance(cell, str):
+                        try:
+                            value: float | str = float(cell.strip().replace(",", "."))
+                        except ValueError:
+                            value = as_override(cell)  # a formula; the import evaluates it
+                    else:
+                        value = float(cell)
+                except (TypeError, ValueError) as exc:
+                    raise PrismError(
+                        f"Cell for parameter '{pname}' in scenario '{sname}' is not a number or a formula: "
+                        f"{cell!r}.",
+                        code="invalid_cell",
+                        hint="Cells must be numbers or formulas over the model's parameters; leave a cell "
+                        "empty to keep the baseline value.") from exc
+                columns[j]["overrides"][pname] = value
+        return [columns[j] for j, _ in scen_cols]
+    finally:
+        wb.close()

@@ -12,43 +12,18 @@
  */
 import { app } from 'electron'
 import { spawn } from 'node:child_process'
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { closeSync, openSync, readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { getSettings } from '../settings'
 import { mcpToolDefs } from './catalog'
-import { readEndpoint, type EndpointInfo } from './endpoint'
-import { BridgeError, ProxyCore, createProxyServer, createShutdown } from './proxy'
+import { pidAlive, proveEndpoint, readEndpoint } from './endpoint'
+import { BridgeError, ProxyCore, appSpawnOptions, createProxyServer, createShutdown } from './proxy'
 import { appLaunchCommandFor } from './clientConfig'
-import { resolveDisplayEnv } from './displayEnv'
+import { displayForLaunch } from './displayEnv'
+import { linuxDisplayFs } from './displayProbe'
 import { BRIDGE_LAUNCH_FLAG } from './idleQuit'
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    // EPERM: the process exists but is not ours — alive as far as we are concerned.
-    return (e as { code?: string }).code === 'EPERM'
-  }
-}
-
-async function health(info: EndpointInfo): Promise<boolean> {
-  const base = info.url.replace(/\/mcp$/, '')
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 2000)
-  try {
-    const r = await fetch(`${base}/health`, {
-      headers: { Authorization: `Bearer ${info.token}` },
-      signal: ctrl.signal
-    })
-    return r.ok
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 /** How to start the app from the bridge: packaged = this very binary; dev = electron + the app dir. */
 export function appLaunchCommand(): { command: string; args: string[] } {
@@ -89,7 +64,7 @@ function sweepLaunchLogs(dir: string): void {
 /**
  * The environment a client should hand the bridge on Linux so that it can start the app: the
  * display and session variables of the user's session, as the app sees them now. They are a
- * starting point — the bridge re-checks them against the live session at launch (resolveDisplayEnv).
+ * starting point — the bridge re-checks them against the live session at launch (displayEnv.ts).
  * Only for clients that strip the environment (Codex); Claude Code and Claude Desktop inherit theirs.
  */
 export function bridgeDisplayEnv(): Record<string, string> {
@@ -124,46 +99,34 @@ export async function runProxyMain(): Promise<void> {
     version: app.getVersion(),
     endpoint: () => readEndpoint(userData),
     isPidAlive: pidAlive,
-    health,
+    health: proveEndpoint,
     mcpEnabled: () => getSettings().mcpEnabled,
     launchApp: async () => {
       const { command, args } = appLaunchCommand()
       // The app learns it was started by a bridge, not by a person — it may then quit when nobody
       // claims it and the clients fall silent (mcp/idleQuit.ts).
       args.push(BRIDGE_LAUNCH_FLAG)
-      const env = { ...process.env }
+      let env: Record<string, string | undefined> = { ...process.env }
       // Inherited from a client that runs us as Node, this would turn the app into a Node process.
       delete env.ELECTRON_RUN_AS_NODE
       // The app is a window; without a display it dies on start. The values a client hands us may be
-      // stale (a configuration written in an earlier login), so they are checked against the
-      // live session and repaired from it where possible — see resolveDisplayEnv.
+      // stale (a configuration written in an earlier login) or name a display that is not this user's,
+      // so they are checked against the live session and repaired from it where possible — see
+      // displayEnv.ts.
       if (process.platform === 'linux') {
-        const { env: fixed, notes } = resolveDisplayEnv(env, {
-          exists: existsSync,
-          list: (d) => {
-            try {
-              return readdirSync(d)
-            } catch {
-              return []
-            }
-          },
-          home: homedir()
-        })
-        for (const n of notes) log(n)
-        if (!fixed.DISPLAY && !fixed.WAYLAND_DISPLAY)
+        const display = displayForLaunch(env, linuxDisplayFs())
+        for (const n of display.notes) log(n)
+        if (!display.platform)
           throw new BridgeError(
             'PrismLCA is not running, and the bridge has no usable display (DISPLAY / WAYLAND_DISPLAY) to start ' +
               "it with. Start PrismLCA yourself, or add the display variables to the server's env in the client " +
               'configuration (Settings → AI → MCP writes them).'
           )
-        Object.assign(env, fixed)
-        // X without an authority file would be refused by the server; a Wayland socket is there —
-        // take Wayland for this start, explicitly: the "auto" hint falls back to X11 unless
-        // XDG_SESSION_TYPE says wayland, and a reduced environment carries no such variable.
-        if (!fixed.XAUTHORITY && fixed.WAYLAND_DISPLAY) {
-          args.push('--ozone-platform=wayland')
-          log('no X authority file in this session — starting PrismLCA on Wayland.')
-        }
+        env = display.env
+        args.push(...display.args)
+        log(
+          `starting PrismLCA on ${display.platform === 'wayland' ? 'Wayland' : `X display ${env.DISPLAY}`}.`
+        )
       }
       // The app's output goes to a log file in userData, never to a pipe: a pipe the bridge stops
       // reading breaks the app (EPIPE on its continuous backend log — measured: the app
@@ -176,7 +139,7 @@ export async function runProxyMain(): Promise<void> {
       sweepLaunchLogs(logDir)
       const logPath = join(logDir, `mcp-launch-${process.pid}-${Date.now().toString(36)}.log`)
       const fd = openSync(logPath, 'w')
-      const child = spawn(command, args, { detached: true, stdio: ['ignore', fd, fd], env })
+      const child = spawn(command, args, appSpawnOptions(env, fd, logDir))
       closeSync(fd)
       // Three ways the first seconds can go: a clean exit 0 is the single-instance HANDOFF (another
       // PrismLCA is up or starting — keep polling for its endpoint); a fatal line in the log

@@ -173,13 +173,13 @@ def test_turning_a_page_does_not_recompile_the_document():
         ),
     }
     calls = {"n": 0}
-    real = typst_render.typst.compile
+    real = typst_render.typst_worker.compile
 
     def counting(*a, **kw):
         calls["n"] += 1
         return real(*a, **kw)
 
-    typst_render.typst.compile = counting
+    typst_render.typst_worker.compile = counting
     try:
         typst_render._PAGE_CACHE.clear()
         first, pages = typst_render.compile_png(sources, ppi=48)
@@ -191,7 +191,7 @@ def test_turning_a_page_does_not_recompile_the_document():
         typst_render.compile_png(edited, ppi=48)
         assert calls["n"] == 2
     finally:
-        typst_render.typst.compile = real
+        typst_render.typst_worker.compile = real
 
 
 # ---- paging a preview must not recompute the study -------------------------------------------

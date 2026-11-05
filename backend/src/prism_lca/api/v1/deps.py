@@ -1,23 +1,18 @@
 """Shared API dependencies."""
 from __future__ import annotations
 
-import secrets
-
 from fastapi import Header, Request
 
-from prism_lca.errors import PrismError
+from prism_lca.api.token_gate import token_matches, unauthorized
 from prism_lca.repository.base import LcaRepository
 
 
 def require_token(request: Request, x_prism_token: str | None = Header(default=None)) -> None:
-    expected = request.app.state.settings.auth_token
-    if not x_prism_token or not secrets.compare_digest(x_prism_token, expected):
-        raise PrismError(
-            "Missing or invalid API token.",
-            code="unauthorized",
-            status_code=401,
-            hint="Send the token from the backend handshake in the 'X-Prism-Token' header.",
-        )
+    """Each route's own declaration that it needs the token; compared like ``TokenGate`` does, on the
+    header's raw bytes (Starlette decoded them as Latin-1)."""
+    presented = x_prism_token.encode("latin-1") if x_prism_token else None
+    if not token_matches(presented, request.app.state.settings.auth_token):
+        raise unauthorized()
 
 
 def repository(request: Request) -> LcaRepository:

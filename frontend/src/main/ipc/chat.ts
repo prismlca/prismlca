@@ -11,6 +11,7 @@ import { getActiveProvider } from '../ai/providers/state'
 import { RESUMABLE_OUTCOMES, type ChatPlan, type ChatRun, type RunOutcome } from '../../shared/plan'
 import { addAttachments } from '../ai/attachments'
 import { attachGrants } from '../attachGrants'
+import { pinnedToActiveWorkspace } from '../ai/workspacePin'
 import { transcribeAudio } from '../ai/client'
 import type { AttachmentMeta } from '../../shared/ipc'
 import type { Skill } from '../ai/systemPrompt'
@@ -156,6 +157,16 @@ export function registerChatIpc(
     emit: (ev: AgentEvent) => void
   ): Promise<{ ok: boolean; persisted: boolean }> {
     {
+      // Every request of this turn names the workspace it started in (workspacePin.ts): after a switch
+      // the backend refuses it instead of serving the model of the same name in the other workspace.
+      let api: AiIpcDeps['apiRequest']
+      try {
+        api = await pinnedToActiveWorkspace(deps.apiRequest)
+      } catch (e) {
+        // Nothing started, so the chat must not read as running.
+        if (controllers.get(req.chatId) === controller) controllers.delete(req.chatId)
+        throw e
+      }
       // Mutable: a tool of this run may rename the chat's own model, and the backend moves the stored
       // chat with it — everything this turn still writes has to follow (onModelRenamed below).
       let model = req.activeDb
@@ -167,7 +178,7 @@ export function registerChatIpc(
         path: string,
         body?: unknown
       ): Promise<{ status: number; body: unknown }> =>
-        deps.apiRequest(method, path, body).catch((e: unknown) => ({ status: 0, body: String(e) }))
+        api(method, path, body).catch((e: unknown) => ({ status: 0, body: String(e) }))
       // The chat's stored plan and run: the plan goes to the model
       // when the transcript has to be rebuilt, a stopped run becomes the "verify before you continue"
       // note — whatever the user typed; nothing here matches on the word "continue".
@@ -248,7 +259,7 @@ export function registerChatIpc(
               settings: transport,
               keys,
               turn,
-              backend: deps.apiRequest,
+              backend: api,
               // Stop reaches the geocoding and routing still queued in their gates.
               signal: controller.signal
             })
@@ -292,7 +303,7 @@ export function registerChatIpc(
             signal: controller.signal
           },
           {
-            apiRaw: deps.apiRequest,
+            apiRaw: api,
             callUiTool,
             emit,
             getSkills,
@@ -319,44 +330,42 @@ export function registerChatIpc(
         // while still calling tools used to leave no record at all — no trace, no cost, and a
         // history the carried transcript could not match.
         if (model) {
-          const saved = await deps
-            .apiRequest(
-              'POST',
-              `/api/v1/ai/chats/${encodeURIComponent(model)}/${encodeURIComponent(req.chatId)}/messages`,
-              {
-                // The tool trace rides along, so a reloaded chat can still explain HOW the answer
-                // came about — otherwise diagnosing a bad call means reproducing it against a
-                // live model.
-                // Cost too: the limit is per RUN, so "what did that answer cost" is the question the
-                // user has, and the per-model monthly total in Settings cannot answer it after a reload.
-                messages: [
-                  {
-                    role: 'assistant',
-                    content: result.text,
-                    tools: result.trace.length ? result.trace : undefined,
-                    cost: result.cost,
-                    // And what it consumed. The chat header adds these up over the conversation;
-                    // without them on the message the total would reset on every reload, because
-                    // the monthly ledger in Settings is per model and cannot tell two chats apart.
-                    // snake_case because this crosses into the backend, where the report and chat
-                    // APIs are snake_case throughout. The agent's own event keeps camelCase.
-                    prompt_tokens: result.promptTokens,
-                    cached_tokens: result.cachedTokens,
-                    completion_tokens: result.completionTokens,
-                    // How full the context was at the end — the chat header's meter after a reload.
-                    context_tokens: result.contextTokens,
-                    // Which endpoint served it — the answer to "why was this run four times slower
-                    // than the last one", which nothing else recorded can give after the fact.
-                    provider: result.provider,
-                    // The run's turn id — the key its transcript is stored under — and, when it did
-                    // not finish, why (the renderer puts Continue next to that message).
-                    turn_id: result.turnId,
-                    outcome: result.outcome !== 'answered' ? result.outcome : undefined
-                  }
-                ]
-              }
-            )
-            .catch((e: unknown) => ({ status: 0, body: e instanceof Error ? e.message : String(e) }))
+          const saved = await api(
+            'POST',
+            `/api/v1/ai/chats/${encodeURIComponent(model)}/${encodeURIComponent(req.chatId)}/messages`,
+            {
+              // The tool trace rides along, so a reloaded chat can still explain HOW the answer
+              // came about — otherwise diagnosing a bad call means reproducing it against a
+              // live model.
+              // Cost too: the limit is per RUN, so "what did that answer cost" is the question the
+              // user has, and the per-model monthly total in Settings cannot answer it after a reload.
+              messages: [
+                {
+                  role: 'assistant',
+                  content: result.text,
+                  tools: result.trace.length ? result.trace : undefined,
+                  cost: result.cost,
+                  // And what it consumed. The chat header adds these up over the conversation;
+                  // without them on the message the total would reset on every reload, because
+                  // the monthly ledger in Settings is per model and cannot tell two chats apart.
+                  // snake_case because this crosses into the backend, where the report and chat
+                  // APIs are snake_case throughout. The agent's own event keeps camelCase.
+                  prompt_tokens: result.promptTokens,
+                  cached_tokens: result.cachedTokens,
+                  completion_tokens: result.completionTokens,
+                  // How full the context was at the end — the chat header's meter after a reload.
+                  context_tokens: result.contextTokens,
+                  // Which endpoint served it — the answer to "why was this run four times slower
+                  // than the last one", which nothing else recorded can give after the fact.
+                  provider: result.provider,
+                  // The run's turn id — the key its transcript is stored under — and, when it did
+                  // not finish, why (the renderer puts Continue next to that message).
+                  turn_id: result.turnId,
+                  outcome: result.outcome !== 'answered' ? result.outcome : undefined
+                }
+              ]
+            }
+          ).catch((e: unknown) => ({ status: 0, body: e instanceof Error ? e.message : String(e) }))
           if (saved.status === 0 || saved.status >= 400) {
             // Said, not swallowed: the answer is on screen and gone after the next reload, and the
             // user has to hear that now. After 'done' the renderer holds no

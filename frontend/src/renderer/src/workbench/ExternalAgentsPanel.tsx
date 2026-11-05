@@ -84,17 +84,28 @@ function AskCard({ ask }: { ask: PendingAsk }): JSX.Element {
 function ApprovalCard({ ask }: { ask: PendingAsk }): JSX.Element {
   const a = ask.args as {
     tool?: string
+    /** The operation(s) the call selects (main/mcp/approvalRequest.ts), named in the head. */
+    action?: string
     effect?: string
     args?: Record<string, unknown>
     database?: string
     /** What the call acts on, from its own arguments (main/ai/approval.ts) — shown over the model name. */
     target?: string | null
+    /** An undo/redo of a change the session did not make, and what that change was. */
+    step?: { verb?: string; summary?: string }
   }
-  const args = JSON.stringify(a.args ?? {})
+  // Every argument, scrollable.
+  const args = JSON.stringify(a.args ?? {}, null, 1)
   return (
     <div className="xa-card xa-approval" role="group" aria-label="Approval request from an external agent">
       <div className="xa-card-head">
         <b>{ask.clientName || 'An external agent'}</b> wants to run <code>{a.tool}</code>
+        {a.action ? (
+          <>
+            {' '}
+            with action <b>{a.action}</b>
+          </>
+        ) : null}
         {a.effect === 'irreversible' ? (
           <>
             {' '}
@@ -114,7 +125,14 @@ function ApprovalCard({ ask }: { ask: PendingAsk }): JSX.Element {
         ) : null}
         .
       </div>
-      <pre className="xa-args">{args.length > 600 ? `${args.slice(0, 600)}…` : args}</pre>
+      {a.step?.summary ? (
+        <div>
+          {a.step.verb === 'redo' ? 'Applies again' : 'Takes back'} a change this agent did not make:{' '}
+          <b>{a.step.summary}</b>
+          {a.step.verb === 'redo' ? '.' : '. Redo restores it only until the next change.'}
+        </div>
+      ) : null}
+      <pre className="xa-args">{args}</pre>
       <div className="xa-card-actions">
         <button
           type="button"

@@ -28,6 +28,7 @@ import { adoptLegacyUserData } from './userDataMigration'
 import { runProxyMain } from './mcp/proxyMain'
 import { BRIDGE_IDLE_MS, BRIDGE_LAUNCH_FLAG, createIdleQuit, type IdleQuit } from './mcp/idleQuit'
 import { createKeepAwake } from './keepAwake'
+import { startupReader, waitForHealth, type BackendInfo } from './backendStartup'
 import { onMainsPower } from './powerSource'
 import type { McpControl } from './ipc/mcp'
 import type { PrepareInstallResult } from '../shared/updates'
@@ -42,13 +43,6 @@ import type { PrepareInstallResult } from '../shared/updates'
  *    (frontend + backend ship as one atomic version — see ADR-005/007),
  *  - expose connection status + info to the renderer over IPC.
  */
-
-interface BackendInfo {
-  host: string
-  port: number
-  token: string
-  version: string
-}
 
 type AppState =
   | { state: 'starting' }
@@ -68,7 +62,8 @@ function backendCommand(): { cmd: string; args: string[]; cwd?: string } {
     // PyInstaller onedir bundle shipped via electron-builder extraResources -> resources/backend
     const dir = join(process.resourcesPath, 'backend')
     const exe = process.platform === 'win32' ? 'prism-lca-backend.exe' : 'prism-lca-backend'
-    return { cmd: join(dir, exe), args: [] }
+    // The backend works in its own folder, never in the one the app was started from.
+    return { cmd: join(dir, exe), args: [], cwd: dir }
   }
   // Dev: run the backend from source via uv.
   const backendDir = join(app.getAppPath(), '..', 'backend')
@@ -104,38 +99,19 @@ function startBackend(onProgress?: (detail: string) => void): Promise<void> {
       }
     })
 
-    let buffer = ''
-    backend.stdout?.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString()
-      let nl: number
-      while ((nl = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, nl).trim()
-        buffer = buffer.slice(nl + 1)
-        if (!line) continue
-        try {
-          const msg = JSON.parse(line)
-          if (msg.event === 'prism-backend-ready') {
-            backendInfo = { host: msg.host, port: msg.port, token: msg.token, version: msg.version }
-            resolve()
-          }
-          // A refusal is an answer, and a fast one. Without this the shell sat out the full 60 s
-          // and reported "did not report readiness" — true, and no help at all to somebody whose
-          // only problem is a second copy of PrismLCA they forgot they had open.
-          if (msg.event === 'prism-backend-refused') {
-            reject(new Error(String(msg.reason || 'The backend refused to start.')))
-          }
-          // Long work before the handshake (copying workspaces out of a shared Brightway directory)
-          // reports as it goes; each report buys another silence window instead of a fixed limit that
-          // a large workspace on a slow disk would exceed.
-          if (msg.event === 'prism-backend-progress') {
-            armDeadline()
-            if (msg.detail) onProgress?.(String(msg.detail))
-          }
-        } catch {
-          // ordinary (non-JSON) uvicorn log line
-        }
+    // Read for the process's lifetime (a full pipe would block the backend), believed until the handshake.
+    const read = startupReader({
+      ready: (info) => {
+        backendInfo = info
+        resolve()
+      },
+      refused: (reason) => reject(new Error(reason)),
+      progress: (detail) => {
+        armDeadline()
+        if (detail) onProgress?.(detail)
       }
     })
+    backend.stdout?.on('data', (chunk: Buffer) => read(chunk.toString()))
     backend.stderr?.on('data', (chunk: Buffer) => console.error('[backend]', chunk.toString().trim()))
     backend.on('exit', (code) => {
       console.error(`[backend] exited with code ${code}`)
@@ -251,19 +227,6 @@ function apiRequestOnce(
     if (payload !== undefined) req.write(payload)
     req.end()
   })
-}
-
-async function waitForHealth(): Promise<void> {
-  for (let i = 0; i < 60; i++) {
-    try {
-      const r = await apiRequest('GET', '/api/v1/system/health')
-      if (r.status === 200) return
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 500))
-  }
-  throw new Error('Backend health check did not turn green.')
 }
 
 /**
@@ -639,7 +602,7 @@ function startApp(): void {
       splash?.setStatus('Starting local engine…', 12)
       await startBackend((detail) => splash?.setStatus(detail, 30))
       splash?.setStatus('Waiting for the LCA engine…', 55)
-      await waitForHealth()
+      await waitForHealth(() => backendInfo)
       if (backendInfo && backendInfo.version !== APP_VERSION) {
         status = {
           state: 'version-mismatch',

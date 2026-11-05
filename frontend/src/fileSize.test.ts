@@ -43,7 +43,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/views/Report.tsx': 1202, // 1177
   'renderer/src/views/ImportWizard.tsx': 1208, // 1183
   'renderer/src/views/Parameters.tsx': 1198, // 1173
-  'main/ai/reportWriter.ts': 891, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts) and the continuation (writer/answers.ts) moved out
+  'main/ai/reportWriter.ts': 882, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts), the continuation (writer/answers.ts) and the lookup context (writer/lookupCtx.ts) moved out
   'renderer/src/views/Results.tsx': 1086, // 1061
   'renderer/src/views/Overview.tsx': 889, // 864
   'main/ai/tools/groups/model.ts': 862 // 837

@@ -9,10 +9,9 @@
  *
  *   - only `irreversible` effects ask — a process delete is on the undo stack and stays free, as does
  *     every ordinary edit;
- *   - `history` (undo/redo) is exempt in the chat although the table marks it irreversible: in the
- *     conversation the user is present and asked for the step, and the undo of an undo is a redo. The
- *     table keeps its verdict for the MCP, where an external client's undo lands on whatever a person
- *     did last in the window;
+ *   - `history` (undo/redo) is exempt in the chat: in the conversation the user is present and asked
+ *     for the step, and the undo of an undo is a redo. For an external MCP session the backend decides
+ *     per step: its own steps go through, a step it did not make needs the user's card;
  *   - the setting can switch the card off (`'never'`), and then the prompt goes back to telling the
  *     model to confirm with the user itself (systemPrompt.ts `approvalGate`).
  *
@@ -71,9 +70,12 @@ export function approvalTarget(
       return m ? `method "${m}"` : null
     }
     case 'manage_method_family': {
-      // The same precedence as the implementation (`a.old ?? a.family`, impl.ts edit_method_family):
-      // a call carrying both must be named by the one the backend will act on.
-      const f = str(args.old) ?? str(args.family)
+      // The family the routed implementation acts on (impl.ts). Only rename reads `old`, with the
+      // same precedence (`a.old ?? a.family`); upsert and delete act on `family` alone, so an `old`
+      // beside them must not put another family's name on the card. The action is read the way
+      // `delegate` reads it.
+      const rename = String(args.action ?? '').trim() === 'rename'
+      const f = str(rename ? (args.old ?? args.family) : args.family)
       return f ? `family "${f}"` : null
     }
     default:

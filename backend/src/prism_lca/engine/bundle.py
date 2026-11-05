@@ -36,8 +36,8 @@ import zipfile
 from collections.abc import Callable
 from typing import Any
 
+from prism_lca.engine import archive_limits, parameter_groups
 from prism_lca.engine import model as _model
-from prism_lca.engine import parameter_groups
 from prism_lca.engine import params as _params
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.bundle_backgrounds import (
@@ -45,6 +45,7 @@ from prism_lca.engine.bundle_backgrounds import (
     background_versions,
     installed_backgrounds,
 )
+from prism_lca.engine.bundle_reports import read_reports, write_reports
 from prism_lca.engine.bundle_resolve import Installed, Reference, fingerprint_of
 from prism_lca.engine.bundle_tags import (
     EXCHANGE_TAGS_KEY,
@@ -643,15 +644,17 @@ def read_scenarios(database: str, data: Any) -> None:
 
 
 def write_study(database: str) -> dict:
-    from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.study import COMPARED_WITH, StudyMetaStore
 
-    return {"study": StudyMetaStore().get(database)}
+    study = dict(StudyMetaStore().get(database))
+    study.pop(COMPARED_WITH, None)  # comparison links name models of this workspace only
+    return {"study": study}
 
 
 def read_study(database: str, data: Any) -> None:
-    from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.study import StudyMetaStore, imported_fields
 
-    study = data.get("study") or {}
+    study = imported_fields(data.get("study") if isinstance(data, dict) else None)
     if study:
         StudyMetaStore().replace(database, study)
 
@@ -680,84 +683,9 @@ def read_view(database: str, data: Any) -> None:
         ViewStore().put(database, view)
 
 
-#: Exactly the report fields `ReportStore.update` accepts. Deliberately a list here rather than
-#: "everything except a few": `list_reports` adds derived fields (`section_count`), and passing those
-#: back made the import fail with "Unknown report fields" — found by exporting a real model and
-#: importing it again, which is why that round trip is now a test.
-_REPORT_FIELDS = (
-    "name",
-    "subtitle",
-    "lang",
-    "template",
-    "palette",
-    "amount",
-    "aggregate_by",
-    "subjects",
-    "methods",
-    "options",
-    "abbreviations",
-    "palette_colors",
-    "cover_image",
-    "client_logo",
-    # The stored translation table: without it an English report of a German model came back in
-    # English with its model texts back in German. `update` validates the shape.
-    "translations",
-    # The author's answers to the writer's questions — what every later chapter is briefed with.
-    "answers",
-)
-
-
-def write_reports(database: str) -> dict:
-    """The full reports, chapters included — `list_reports` summarises and drops `sections`."""
-    from prism_lca.engine.report_store import ReportStore
-
-    store = ReportStore()
-    out = []
-    for summary in store.list_reports(database):
-        full = store.get(database, summary["id"])
-        out.append({k: v for k, v in full.items() if k in _REPORT_FIELDS or k == "sections"})
-    return {"reports": out}
-
-
-def read_reports(database: str, data: Any) -> None:
-    """Reports, minus anything the current store no longer accepts.
-
-    A report written months ago can carry option keys that have since been retired (`comparative`,
-    `for_publication`, `state_absent` were in a real project) — and `check_options` refuses those. A
-    stale switch on one report is no reason to refuse a whole model, so unknown options are dropped
-    here rather than fatal. Found by importing a real export; the test that pins it is in test_bundle.
-    """
-    from prism_lca.engine.report_store import _OPTION_CHECKS, ReportStore
-
-    store = ReportStore()
-    scenario_ids = _IMPORTED_SCENARIO_IDS.pop(database, {})
-    for rep in data.get("reports") or []:
-        created = store.create(database, name=rep.get("name") or "Report")
-        patch = {k: v for k, v in rep.items() if k in _REPORT_FIELDS}
-        if scenario_ids and isinstance(patch.get("subjects"), list):
-            # …and where a scenario could not keep its id, the variant follows it.
-            patch["subjects"] = [
-                {**s, "scenario": scenario_ids.get(str(s.get("scenario")), s.get("scenario"))}
-                if isinstance(s, dict) and s.get("scenario")
-                else s
-                for s in patch["subjects"]
-            ]
-        if isinstance(patch.get("options"), dict):
-            patch["options"] = {k: v for k, v in patch["options"].items() if k in _OPTION_CHECKS}
-        # Same rule for a template the receiver does not have: the bundle carries the template's
-        # NAME, not its source, and `update` refuses a name it cannot find — which undid the whole
-        # model import over a report's cover design. The report falls back to the default.
-        if patch.get("template"):
-            try:
-                store.get_template(patch["template"])
-            except PrismError:
-                patch.pop("template")
-        if patch:
-            store.update(database, created["id"], patch)
-        sections = rep.get("sections")
-        if sections:
-            # Chapters go through their own path — `update` says so and refuses them.
-            store.replace_sections(database, created["id"], sections)
+def _read_reports(database: str, data: Any) -> None:
+    """The reports section, handed the scenario ids the scenarios section had to change."""
+    read_reports(database, data, _IMPORTED_SCENARIO_IDS.pop(database, {}))
 
 
 def write_chats(database: str) -> dict:
@@ -873,7 +801,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("scenarios", 2, write_scenarios, read_scenarios, schema_for=_scenarios_schema),
     Section("study", 1, write_study, read_study),
     Section("view", 1, write_view, read_view),
-    Section("reports", 1, write_reports, read_reports),
+    Section("reports", 1, write_reports, _read_reports),
     Section("chats", 1, write_chats, read_chats, preset="full"),
     Section("audit", 1, write_audit, read_audit, preset="full"),
     # Provenance logs. In the default preset on purpose: a report re-rendered after an
@@ -1030,11 +958,18 @@ def read_bundle(content: bytes) -> dict:
             code="bundle_no_manifest",
             hint="It may be a plain ZIP rather than a .prism bundle.",
         )
-    manifest = _parse(zf.read("manifest.json"), "manifest.json")
+    if len(zf.infolist()) > archive_limits.BUNDLE.members:
+        raise archive_limits.too_large_bundle()
+    budget = archive_limits.Budget(archive_limits.BUNDLE, archive_limits.too_large_bundle)
+    manifest = _parse(_member(zf, "manifest.json", budget, archive_limits.BUNDLE_MANIFEST), "manifest.json")
     entries = (manifest.get("sections") or []) if isinstance(manifest, dict) else None
     if not isinstance(entries, list) or not all(
         isinstance(e, dict) and isinstance(e.get("file") or "", str) for e in entries
     ):
+        raise _damaged("manifest.json")
+    if len(entries) > archive_limits.BUNDLE_SECTIONS:
+        raise archive_limits.too_large_bundle()
+    if len({e.get("file") or "" for e in entries}) != len(entries):  # each section is read once
         raise _damaged("manifest.json")
     if _number(manifest.get("format"), 0) > FORMAT:
         raise PrismError(
@@ -1057,7 +992,7 @@ def read_bundle(content: bytes) -> dict:
                     code="bundle_incomplete",
                 )
             continue
-        raw = zf.read(file)
+        raw = _member(zf, file, budget)
         want = entry.get("sha256")
         if want and hashlib.sha256(raw).hexdigest() != want:
             checksums.append(file)
@@ -1103,6 +1038,14 @@ def _damaged(file: str) -> PrismError:
         code="bundle_corrupt",
         hint="The file is incomplete or was changed after export. Ask for it again — nothing has been written.",
     )
+
+
+def _member(zf: zipfile.ZipFile, file: str, budget: archive_limits.Budget, cap: int | None = None) -> bytes:
+    """One member, read within the bundle's limits; one that does not inflate cleanly is damaged."""
+    try:
+        return budget.read(zf, zf.getinfo(file), cap)
+    except archive_limits.READ_ERRORS as exc:
+        raise _damaged(file) from exc
 
 
 def _number(value: Any, default: int) -> int:

@@ -12,7 +12,8 @@ tiny HTML, XLSX and DOCX file the way chat attachments are converted: markitdown
 (mammoth, pandas, openpyxl) only when it converts, so an import alone would not notice one missing. Last it
 starts two worker processes the way Windows always starts them (``spawn``: a fresh copy of the executable)
 and waits for their answers — the ecoinvent import reads its datasets in such workers, and a frozen worker
-that runs the normal start-up instead of its task never answers. It prints each failure with its original
+that runs the normal start-up instead of its task never answers. Then it typesets one tiny document offline,
+through the worker process every preview and PDF is compiled in. It prints each failure with its original
 cause. ``tests/test_bundle_check.py`` keeps the list complete: a function-level import
 of a third-party module that is not on it fails the suite.
 """
@@ -160,6 +161,17 @@ def _worker_failures() -> list[str]:
     return [] if answers == [4, 9] else [f"worker processes: answered {answers}, expected [4, 9]"]
 
 
+def _typesetting_failures() -> list[str]:
+    """One tiny offline document typeset through the compiler's worker process, as every preview is."""
+    from prism_lca.engine import typst_render, typst_worker
+
+    try:
+        pdf = typst_render.compile_pdf({"main.typ": "probe\n"})
+    finally:
+        typst_worker.shutdown()
+    return [] if pdf.startswith(b"%PDF") else ["typesetting: the worker returned something that is not a PDF"]
+
+
 def run() -> int:
     """Import everything; print one line per failure. 0 when all imports work, 1 otherwise.
 
@@ -195,10 +207,14 @@ def _check_everything() -> int:
         failures += _worker_failures()
     except Exception as exc:  # noqa: BLE001 — a pool that cannot even start is a failure too
         failures.append(f"worker processes: {_cause(exc)}")
+    try:
+        failures += _typesetting_failures()
+    except Exception as exc:  # noqa: BLE001 — reported with its cause
+        failures.append(f"typesetting: {_cause(exc)}")
     for line in failures:
         print(f"bundle: FAIL {line}")
     print(
         f"bundle: {len(names)} package modules and {len(LAZY_IMPORTS)} libraries imported, "
-        f"3 attachment formats converted, 2 worker processes asked, {len(failures)} failed"
+        f"3 attachment formats converted, 2 worker processes asked, 1 document typeset, {len(failures)} failed"
     )
     return 1 if failures else 0

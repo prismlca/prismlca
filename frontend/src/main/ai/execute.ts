@@ -26,7 +26,7 @@ import { validateToolArgs } from './argSchema'
 import { changesStructure, effectOf, type ToolEffect } from './tools/effects'
 import { apiError } from '../../shared/backendError'
 import { clampResearchQuestions } from '../../shared/aiDefaults'
-import { ignoredDatabase, resolveDatabase, scopeRefusal, type KindOf, type ModelScope } from './modelScope'
+import { ignoredDatabase, kindMap, kindsPerCall, scopeRefusal, type ModelScope } from './modelScope'
 
 /** Raw backend request, as main's `apiRequest` provides it (status + body, never throws on HTTP errors). */
 export type ApiRaw = (
@@ -237,31 +237,17 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
   // a rename, the new name. Empty = a chat without a model, which may change none.
   const headers = (): Record<string, string> =>
     ctx.scope ? { ...o.headers(), 'X-Prism-Model': encodeURIComponent(ctx.activeDb ?? '') } : o.headers()
-  // Database kinds for the fence, fetched once and again — at most once per call — when a name is new
-  // (a model the user made meanwhile). Only a fenced call that names another database ever asks. A list
-  // that cannot be had refuses the call: "unknown" would let it through.
-  let kinds: Map<string, string> | null = null
-  const loadKinds = async (): Promise<Map<string, string>> => {
+  // Database kinds for the fence (modelScope.ts `kindsPerCall`). Only a fenced call that names another
+  // database ever asks. A list that cannot be had refuses the call: "unknown" would let it through.
+  const kindsForOneCall = kindsPerCall(async () => {
     const { status, body } = await o.apiRaw('GET', '/api/v1/databases', undefined, headers())
-    if (status >= 400 || !Array.isArray(body))
+    const kinds = status < 400 ? kindMap(body) : null
+    if (!kinds)
       throw new Error(
         'This chat could not check which databases exist, so the call did not run. Send it again.'
       )
-    const list = body as Array<{ name?: string; kind?: string }>
-    return new Map(list.filter((d) => d?.name).map((d) => [String(d.name), String(d.kind ?? '')]))
-  }
-  const kindsForOneCall = (): KindOf => {
-    let fresh = false
-    // Reloaded on any name the list does not hold exactly — a loose spelling is resolved against the
-    // current list, never an old one that may lack the model it really reaches.
-    return async (name) => {
-      if (!fresh && !kinds?.has(name)) {
-        kinds = await loadKinds()
-        fresh = true
-      }
-      return kinds ? resolveDatabase(kinds, name) : undefined
-    }
-  }
+    return kinds
+  })
   const ctx: ToolCtx = {
     api,
     ui: o.ui,
@@ -296,7 +282,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
   const repeats = makeRepeatGuard(o.repeatEscape ?? 'answer the user with what you already have.')
 
   const run: ToolSession['run'] = async (name, rawArgs, opts) => {
-    const tool = TOOL_BY_NAME[name]
+    const tool = Object.hasOwn(TOOL_BY_NAME, name) ? TOOL_BY_NAME[name] : undefined
     const startedAt = Date.now()
     const argText = typeof rawArgs === 'string' ? rawArgs : rawArgs ? JSON.stringify(rawArgs) : ''
     try {

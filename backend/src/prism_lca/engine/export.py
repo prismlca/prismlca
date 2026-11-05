@@ -13,6 +13,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from prism_lca.engine.workbooks import append, put
+
 _CONTRIB_HEADERS = ["depth", "code", "name", "location", "amount", "unit", "impact", "direct", "share"]
 _LCIA_HEADERS = ["method", "unit", "score"]
 
@@ -83,7 +85,7 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
     id_cols = 2 if group_header else 1
     for idx, title in enumerate(["Subject"] + ([group_header] if group_header else [])):
         ws.merge_cells(start_row=1, start_column=1 + idx, end_row=2, end_column=1 + idx)
-        c = ws.cell(1, 1 + idx, title)
+        c = put(ws, 1, 1 + idx, title)
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor=NAVY)
         c.alignment = center
@@ -96,7 +98,7 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
         span = 1
         while i + span < len(columns) and columns[i + span]["family"] == fam:
             span += 1
-        cell = ws.cell(1, col, fam)
+        cell = put(ws, 1, col, fam)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor=NAVY)
         cell.alignment = center
@@ -108,7 +110,7 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
 
     # Row 2: indicator label + unit per column.
     for j, colinfo in enumerate(columns):
-        cell = ws.cell(2, 1 + id_cols + j, f"{colinfo['label']}\n[{colinfo.get('unit') or ''}]")
+        cell = put(ws, 2, 1 + id_cols + j, f"{colinfo['label']}\n[{colinfo.get('unit') or ''}]")
         cell.font = Font(bold=True, color=NAVY)
         cell.fill = PatternFill("solid", fgColor=LIGHT)
         cell.alignment = center
@@ -127,9 +129,9 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
             band = PatternFill("solid", fgColor=BAND) if len(seen) % 2 else None
         elif r % 2:
             band = PatternFill("solid", fgColor=BAND)
-        cells = [ws.cell(row, 1, subj.get("label"))]
+        cells = [put(ws, row, 1, subj.get("label"))]
         if group_header:
-            cells.append(ws.cell(row, 2, subj.get("group") or ""))
+            cells.append(put(ws, row, 2, subj.get("group") or ""))
         for cell in cells:
             cell.font = Font(bold=True) if (cell.column == 1 or is_total) else Font()
             cell.alignment = left
@@ -138,7 +140,7 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
                 cell.fill = band
         for j, colinfo in enumerate(columns):
             v = subj.get("scores", {}).get(colinfo["key"])
-            cell = ws.cell(row, 1 + id_cols + j, v if isinstance(v, (int, float)) else None)
+            cell = put(ws, row, 1 + id_cols + j, v if isinstance(v, (int, float)) else None)
             cell.number_format = "0.000E+00"
             cell.alignment = right
             cell.border = top_rule if is_total else border
@@ -181,14 +183,14 @@ def flows_xlsx(meta: dict, flows: list[dict]) -> bytes:
         (f"Total [{unit}]", meta.get("total")),
     ]
     for i, (label, value) in enumerate(metas, start=1):
-        ws.cell(i, 1, label).font = Font(bold=True, color=NAVY)
-        cell = ws.cell(i, 2, value)
+        put(ws, i, 1, label).font = Font(bold=True, color=NAVY)
+        cell = put(ws, i, 2, value)
         if isinstance(value, (int, float)):
             cell.number_format = "0.000E+00"
 
     head_row = 5
     for j, header in enumerate(["Flow", "Categories", "Share", f"Impact [{unit}]"], start=1):
-        cell = ws.cell(head_row, j, header)
+        cell = put(ws, head_row, j, header)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor=NAVY)
         cell.alignment = center
@@ -198,10 +200,10 @@ def flows_xlsx(meta: dict, flows: list[dict]) -> bytes:
         row = head_row + 1 + r
         band = PatternFill("solid", fgColor=BAND) if r % 2 else None
         cells = [
-            ws.cell(row, 1, flow.get("flow")),
-            ws.cell(row, 2, " / ".join(flow.get("categories") or [])),
-            ws.cell(row, 3, flow.get("share")),
-            ws.cell(row, 4, flow.get("impact")),
+            put(ws, row, 1, flow.get("flow")),
+            put(ws, row, 2, " / ".join(flow.get("categories") or [])),
+            put(ws, row, 3, flow.get("share")),
+            put(ws, row, 4, flow.get("impact")),
         ]
         cells[2].number_format = "0.0%"
         cells[3].number_format = "0.000E+00"
@@ -242,7 +244,7 @@ def lcia_factors_xlsx(methods: list[dict], flows: list[dict]) -> bytes:
         for m in methods
     ]
     for j, header in enumerate(headers, start=1):
-        cell = ws.cell(1, j, header)
+        cell = put(ws, 1, j, header)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor=NAVY)
         cell.alignment = center
@@ -252,12 +254,12 @@ def lcia_factors_xlsx(methods: list[dict], flows: list[dict]) -> bytes:
         row = 2 + r
         band = PatternFill("solid", fgColor=BAND) if r % 2 else None
         cells = [
-            ws.cell(row, 1, flow.get("flow")),
-            ws.cell(row, 2, " / ".join(flow.get("categories") or [])),
-            ws.cell(row, 3, flow.get("unit")),
+            put(ws, row, 1, flow.get("flow")),
+            put(ws, row, 2, " / ".join(flow.get("categories") or [])),
+            put(ws, row, 3, flow.get("unit")),
         ]
         for k, factor in enumerate(flow.get("factors") or []):
-            c = ws.cell(row, 4 + k, factor if isinstance(factor, (int, float)) else None)
+            c = put(ws, row, 4 + k, factor if isinstance(factor, (int, float)) else None)
             c.number_format = "0.000E+00"
             c.alignment = right
             cells.append(c)
@@ -282,9 +284,9 @@ def rows_to_xlsx(headers: list[str], rows: list[list], sheet_name: str = "Sheet1
     wb = Workbook()
     ws = wb.active
     ws.title = sheet_name[:31] or "Sheet1"
-    ws.append(headers)
+    append(ws, headers)
     for row in rows:
-        ws.append(row)
+        append(ws, row)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

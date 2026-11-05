@@ -45,13 +45,14 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
     "prism_lca/engine/lca.py": 1299,  # 1274
     "prism_lca/engine/dataimport/session.py": 1274,  # 1249
-    "prism_lca/engine/bundle.py": 1152,  # 1127, after the unknown sections and the background lookups moved out
+    # 1068, after the unknown sections, the background lookups and the reports section moved out
+    "prism_lca/engine/bundle.py": 1093,
     "prism_lca/api/v1/report.py": 1115,  # 1090
     # Raised for the review refresh on a snapshot hit (`_current_review`): it belongs beside
     # `analysis_snapshot`, as the memo refresh belongs in `render_inputs`.
     "prism_lca/engine/report_pipeline.py": 1160,  # 1135
     "prism_lca/engine/report_bindings.py": 1075,  # 1050
-    "prism_lca/engine/dataimport/readers.py": 1046,  # 1021
+    "prism_lca/engine/dataimport/readers.py": 1035,  # 1010, after the archive limits moved to archive_limits
 }
 
 EXEMPT: dict[str, str] = {
