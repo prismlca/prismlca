@@ -25,10 +25,10 @@ def _bundle_working_directory() -> None:
     """The frozen backend works in its own folder, not wherever the shell happened to be started.
 
     bw2data reads ``brightway-configuration.env``, ``brightway-matrix-configuration.env`` and
-    ``brightway-typo-configuration.env`` from the working directory, and our settings read ``.env``
-    there: started from a folder of somebody's own Brightway work, PrismLCA would take its matrix rules
-    and calculate different results without a word. From source the working directory stays, because
-    a developer's ``backend/.env`` is meant to be read.
+    ``brightway-typo-configuration.env`` from the working directory: started from a folder of somebody's
+    own Brightway work, PrismLCA would take its matrix rules and calculate different results without a
+    word. From source the working directory stays (the shell starts the backend in ``backend/``); our own
+    settings never read a file from it (config.dev_env_file).
     """
     if getattr(sys, "frozen", False):
         os.chdir(os.path.dirname(sys.executable))

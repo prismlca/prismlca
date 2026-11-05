@@ -5,7 +5,9 @@ how the Electron shell injects a fixed port/token when it spawns the backend.
 """
 from __future__ import annotations
 
+import ipaddress
 import secrets
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,11 +22,41 @@ APP_NAME = "Prism LCA"
 API_VERSION = "v1"
 
 
+def dev_env_file() -> Path | None:
+    """The ``.env`` a developer may keep in ``backend/`` for runs from source; none in the bundle.
+
+    Settings come from the environment and this file only, never from the working directory.
+    """
+    if getattr(sys, "frozen", False):
+        return None
+    return Path(__file__).resolve().parents[2] / ".env"
+
+
+def is_loopback_host(host: str) -> bool:
+    """Whether ``host`` names this computer only: ``localhost`` or a loopback address."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PRISM_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="PRISM_", env_file=dev_env_file(), extra="ignore")
 
     #: Loopback only — never bind a public interface (avoids Windows firewall prompts).
     host: str = "127.0.0.1"
+
+    @field_validator("host")
+    @classmethod
+    def _loopback_only(cls, value: str) -> str:
+        if not is_loopback_host(value):
+            raise ValueError(
+                f"The backend listens on this computer only; {value!r} is not a loopback address."
+            )
+        return value
+
     #: 0 means "let the OS assign a free port"; the chosen port is sent in the handshake.
     port: int = 0
     #: Shared secret required on every non-public request; regenerated per process unless set.

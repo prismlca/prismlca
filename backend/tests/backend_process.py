@@ -14,18 +14,22 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-_MAIN = "import sys; sys.frozen = {frozen}; from prism_lca.server import main; main()"
+_MAIN = "from prism_lca.server import main; main()"
 
 
-def spawn(env: dict[str, str], *, frozen: bool) -> subprocess.Popen:
-    """Start the backend with ``env`` on top of a clean copy of this environment."""
+def spawn(
+    env: dict[str, str], *, frozen: bool, prelude: str = "", cwd: Path | None = None
+) -> subprocess.Popen:
+    """Start the backend with ``env`` on top of a clean copy of this environment. ``prelude`` is code run
+    before ``server.main`` (to stand in for part of it), ``cwd`` the working directory it starts in."""
     base = {
         k: v for k, v in os.environ.items() if not k.startswith(("PRISM_", "BRIGHTWAY", "PYTEST", "COV_"))
     }
     base.update(PYTHONPATH=os.pathsep.join(sys.path), PRISM_EMBEDDING_BACKEND="hashing")
     return subprocess.Popen(
-        [sys.executable, "-c", _MAIN.format(frozen=frozen)],
+        [sys.executable, "-c", f"import sys; sys.frozen = {frozen}\n{prelude}\n" + _MAIN],
         env={**base, **env},
+        cwd=cwd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -81,3 +85,19 @@ def stop(proc: subprocess.Popen, *, terminate: bool = True) -> str:
 def snapshot(folder: Path) -> dict[str, bytes]:
     """Every file under ``folder`` with its bytes — to show a directory was left exactly as it was."""
     return {str(p.relative_to(folder)): p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+
+#: Settings a ``.env`` in the backend's working directory would set, were it read.
+DOTENV_VALUES = {
+    "PRISM_AUTH_TOKEN": "token-from-file",
+    "PRISM_PORT": "4321",
+    "PRISM_EMBEDDING_BACKEND": "openrouter",
+    "PRISM_OPENROUTER_BASE_URL": "http://example.invalid/api/v1",
+}
+
+
+def dotenv_folder(folder: Path) -> Path:
+    """``folder``, created, with a ``.env`` holding :data:`DOTENV_VALUES`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / ".env").write_text("".join(f"{k}={v}\n" for k, v in DOTENV_VALUES.items()), encoding="utf-8")
+    return folder
