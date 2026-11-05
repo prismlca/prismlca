@@ -57,6 +57,33 @@ def test_nesting_depth_is_bounded():
         plain_pickle.check(nested(200_000))
 
 
+COLLIDING = [i * (2**61 - 1) for i in range(1, plain_pickle.MAX_EQUAL_HASHES + 2)]  # all hash to 0
+
+
+def test_keys_of_real_data_never_share_a_hash_often():
+    plain_pickle.check(pickle.dumps({i: i for i in range(-100_000, 100_000)}, protocol=4))
+    plain_pickle.check(pickle.dumps({(i, i + 1): 1 for i in range(50_000)}, protocol=4))
+    plain_pickle.check(pickle.dumps({i / 7: 1 for i in range(50_000)}, protocol=4))
+    plain_pickle.check(pickle.dumps({f"location-{i}": i for i in range(50_000)}, protocol=4))  # geomapping-like
+    plain_pickle.check(pickle.dumps(set(COLLIDING[: plain_pickle.MAX_EQUAL_HASHES]), protocol=4))
+
+
+@pytest.mark.parametrize("build", [
+    lambda keys: {k: 1 for k in keys},
+    lambda keys: set(keys),
+    lambda keys: frozenset(keys),
+    lambda keys: {(k, 2): 1 for k in keys},
+])
+def test_many_keys_of_one_hash_are_refused(build):
+    assert len({hash(k) for k in COLLIDING}) == 1
+    for protocol in (2, 4):
+        value = build(COLLIDING)
+        if protocol == 2 and isinstance(value, (set, frozenset)):
+            continue  # spelled through a global below protocol 4
+        with pytest.raises(plain_pickle.NotPlain):
+            plain_pickle.check(pickle.dumps(value, protocol=protocol))
+
+
 def test_cycles_are_refused():
     data = pickle.PROTO + bytes([4]) + pickle.EMPTY_LIST + pickle.MEMOIZE + pickle.BINGET + b"\x00" \
         + pickle.APPEND + pickle.STOP
