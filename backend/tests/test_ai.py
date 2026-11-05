@@ -217,3 +217,42 @@ def test_rename_and_delete_model(client, token, project):
     assert client.post("/api/v1/databases/foreground/delete", json={"database": "fg-new"}, headers=token).status_code == 200
     names = [d["name"] for d in client.get("/api/v1/databases", headers=token).json()]
     assert "fg-new" not in names
+
+
+def test_restored_skills_are_held_whatever_shape_the_files_have(tmp_path):
+    """The step that switches a backup's skills off runs on any folder a backup unpacks to."""
+    import json
+
+    from prism_lca.engine.skills_store import hold_restored
+
+    meta = tmp_path / "prism_meta"
+    meta.mkdir()
+    (meta / "ai_skills.json").write_text(json.dumps([
+        {"id": "a", "name": "A", "description": "d", "content": "c", "enabled": True},
+        {"id": "b", "name": "B", "description": "d", "content": "c"},
+        "not a skill",
+    ]), encoding="utf-8")
+    (meta / "ai_skills_builtin.json").write_text(json.dumps({"builtin-review": {"enabled": False}}),
+                                                 encoding="utf-8")
+    hold_restored(tmp_path)
+    held = json.loads((meta / "ai_skills.json").read_text(encoding="utf-8"))
+    assert held == [
+        {"id": "a", "name": "A", "description": "d", "content": "c", "enabled": False, "restored": True},
+        {"id": "b", "name": "B", "description": "d", "content": "c", "enabled": False, "restored": True},
+    ]
+    assert not (meta / "ai_skills_builtin.json").exists()
+
+    # Not a list: nothing to keep. A folder where a file belongs: gone, so the store can write its file.
+    (meta / "ai_skills.json").write_text(json.dumps({"id": "a"}), encoding="utf-8")
+    hold_restored(tmp_path)
+    assert json.loads((meta / "ai_skills.json").read_text(encoding="utf-8")) == []
+    (meta / "ai_skills.json").unlink()
+    (meta / "ai_skills.json").mkdir()
+    (meta / "ai_skills_builtin.json").mkdir()
+    hold_restored(tmp_path)
+    assert not (meta / "ai_skills.json").exists() and not (meta / "ai_skills_builtin.json").exists()
+
+    # A backup without skills, or without the folder at all, is left as it is.
+    hold_restored(tmp_path)
+    hold_restored(tmp_path / "missing")
+    assert not (meta / "ai_skills.json").exists()

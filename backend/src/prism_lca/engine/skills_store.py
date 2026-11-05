@@ -5,25 +5,34 @@ JSON file in ``prism_meta``.
 Built-in skills (``builtin_skills.py``) are merged into the same list: they ship with the app,
 cannot be edited or deleted, but can be toggled — only the enabled flag is persisted, in a
 separate overrides file so ``ai_skills.json`` keeps its plain-list format.
+
+Skills that arrive with a restored workspace backup start switched off (``hold_restored``).
 """
 from __future__ import annotations
 
+import shutil
 import uuid
 from pathlib import Path
 
 from prism_lca.engine._store import JsonFileStore, read_json, write_json_atomic
 from prism_lca.engine.builtin_skills import BUILTIN_IDS, BUILTIN_SKILLS
 
+SKILLS_FILE = "ai_skills.json"
+OVERRIDES_FILE = "ai_skills_builtin.json"
+#: On a skill that came with a restored backup and has not been switched on since; the Skills panel
+#: says where it came from. Switching the skill on removes it.
+RESTORED = "restored"
+
 
 class SkillStore(JsonFileStore):
-    FILENAME = "ai_skills.json"
+    FILENAME = SKILLS_FILE
     ON_ERROR = "empty"  # corrupt file → start fresh: skills are re-creatable guidance, not the model
 
     def _default(self) -> list[dict]:
         return []
 
     def _overrides_path(self) -> Path:
-        return self._path().with_name("ai_skills_builtin.json")
+        return self._path().with_name(OVERRIDES_FILE)
 
     def _load_overrides(self) -> dict:
         return read_json(self._overrides_path(), default={}, on_error="empty")
@@ -83,6 +92,8 @@ class SkillStore(JsonFileStore):
                         s["content"] = content
                     if enabled is not None:
                         s["enabled"] = bool(enabled)
+                        if enabled:
+                            s.pop(RESTORED, None)
                     self._save(data)
                     return s
             raise KeyError(skill_id)
@@ -93,3 +104,30 @@ class SkillStore(JsonFileStore):
                 raise ValueError("Built-in skills cannot be deleted (disable them instead).")
             data = self._load()
             self._save([s for s in data if s["id"] != skill_id])
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def hold_restored(workspace: Path) -> None:
+    """A workspace backup is untrusted input: its skills stay off until the user switches them on.
+
+    ``workspace`` is the unpacked backup folder, before it becomes a workspace. Each skill is switched
+    off and marked ``RESTORED``; the backup's switches for the built-in skills are dropped, so those run
+    as shipped. Entries that are not skills go, as the store would drop an unreadable file.
+    """
+    meta = workspace / "prism_meta"
+    if not meta.is_dir():
+        return
+    _remove(meta / OVERRIDES_FILE)
+    path = meta / SKILLS_FILE
+    if not path.is_file():
+        _remove(path)
+        return
+    data = read_json(path, default=[], on_error="empty")
+    skills = data if isinstance(data, list) else []
+    write_json_atomic(path, [{**s, "enabled": False, RESTORED: True} for s in skills if isinstance(s, dict)])
