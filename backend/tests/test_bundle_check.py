@@ -64,3 +64,28 @@ def test_the_typesetting_probe_reports_a_worker_that_fails(monkeypatch):
     monkeypatch.setattr(bundle_check, "_conversion_failures", lambda: [])
     monkeypatch.setenv("BRIGHTWAY2_DIR", os.environ.get("BRIGHTWAY2_DIR", ""))  # run() sets its own
     assert bundle_check.run() == 1
+
+
+def test_the_pdf_probe_reports_a_reader_that_fails(monkeypatch):
+    from prism_lca.engine import attachment_pdf
+    from prism_lca.errors import PrismError
+
+    assert bundle_check._pdf_failures() == []
+
+    def stopped(*_args, **_kwargs):
+        raise PrismError("The process reading this PDF stopped unexpectedly (exit code 3).")
+
+    monkeypatch.setattr(attachment_pdf, "text", stopped)
+    with pytest.raises(PrismError):
+        bundle_check._pdf_failures()
+    monkeypatch.setattr(attachment_pdf, "text", lambda *_args: ("", False))
+    monkeypatch.setattr(attachment_pdf, "page_count", lambda _path: None)
+    assert bundle_check._pdf_failures() == [
+        "pdf: the marker is missing from the text",
+        "pdf: counted None pages, expected 1",
+    ]
+    monkeypatch.setattr(bundle_check, "_worker_failures", lambda: [])
+    monkeypatch.setattr(bundle_check, "_conversion_failures", lambda: [])
+    monkeypatch.setattr(bundle_check, "_typesetting_failures", lambda: [])
+    monkeypatch.setenv("BRIGHTWAY2_DIR", os.environ.get("BRIGHTWAY2_DIR", ""))  # run() sets its own
+    assert bundle_check.run() == 1
