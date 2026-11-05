@@ -33,6 +33,7 @@ from prism_lca.engine import (
     health,
     lca,
     report_graph,
+    report_images,
     report_render,
     report_snapshot,
     report_tornado,
@@ -146,6 +147,7 @@ def image_b64(value: str | None, what: str = "cover image") -> str | None:
             code="cover_image_unsupported",
             hint="Typst can place PNG, JPEG and SVG; export the file as PNG or JPEG.",
         )
+    report_images.check_pixels(blob, what)
     return base64.b64encode(blob).decode("ascii")
 
 

@@ -409,3 +409,57 @@ def test_the_subtitle_does_not_repeat_the_title():
     # An explicit subtitle always wins, and nothing is invented when there is no process.
     assert _cover_subtitle({"subtitle": "For internal review"}, "X report", process) == "For internal review"
     assert _cover_subtitle({}, "LCA report", {"name": "", "database": "db"}) == ""
+
+
+def _declared_png(width: int, height: int) -> bytes:
+    """Only the signature and the header chunk: enough for the size check, which reads nothing else."""
+    ihdr = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([1, 0, 0, 0, 0])
+    return (
+        b"\x89PNG\r\n\x1a\n" + len(ihdr).to_bytes(4, "big") + b"IHDR" + ihdr
+        + zlib.crc32(b"IHDR" + ihdr).to_bytes(4, "big")
+    )
+
+
+def test_a_picture_larger_than_the_pixel_bound_is_refused(client, token, project):
+    """The compiler decodes every pixel on every render, so the bound is on width times height."""
+    db, code = _model(client, token)
+    rid = _report(client, token, db, code)
+    for field in ("cover_image", "client_logo"):
+        r = client.post(
+            f"/api/v1/report/one/{db}/{rid}",
+            json={field: base64.b64encode(_declared_png(12_000, 12_000)).decode()},
+            headers=token,
+        )
+        assert r.status_code == 400, r.text
+        assert r.json()["error"]["code"] == "cover_image_too_large"
+    r = client.post(
+        "/api/v1/report/identity",
+        json={"company_logo": base64.b64encode(_declared_png(12_000, 12_000)).decode()},
+        headers=token,
+    )
+    assert r.status_code == 400 and r.json()["error"]["code"] == "cover_image_too_large"
+
+
+def test_the_pixel_bound_reads_png_and_jpeg_headers():
+    import pytest
+
+    from prism_lca.engine import report_images, report_pipeline
+    from prism_lca.errors import PrismError
+
+    assert report_images.pixel_size(_png(40, 30)) == (40, 30)
+    assert report_images.pixel_size(_jpeg()) == (40, 24)
+    # A JPEG's size is in its frame header; one that declares 12000 x 12000 is refused like the PNG.
+    jpeg = bytearray(_jpeg())
+    frame = next(i for i in range(2, len(jpeg) - 1) if jpeg[i] == 0xFF and jpeg[i + 1] == 0xC0)
+    jpeg[frame + 5 : frame + 9] = (12_000).to_bytes(2, "big") * 2
+    assert report_images.pixel_size(bytes(jpeg)) == (12_000, 12_000)
+    for blob in (bytes(jpeg), _declared_png(10_001, 10_000)):
+        with pytest.raises(PrismError) as exc:
+            report_pipeline.image_b64(base64.b64encode(blob).decode(), what="logo")
+        assert exc.value.code == "cover_image_too_large"
+        assert "logo" in exc.value.message
+    assert report_pipeline.image_b64(base64.b64encode(_declared_png(10_000, 10_000)).decode())
+    # A file whose header gives no size is refused as unreadable, before it reaches a render.
+    with pytest.raises(PrismError) as exc:
+        report_pipeline.image_b64(base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40).decode())
+    assert exc.value.code == "cover_image_invalid"
