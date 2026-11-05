@@ -650,9 +650,9 @@ def write_study(database: str) -> dict:
 
 
 def read_study(database: str, data: Any) -> None:
-    from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.study import StudyMetaStore, imported_fields
 
-    study = data.get("study") or {}
+    study = imported_fields(data.get("study") if isinstance(data, dict) else None)
     if study:
         StudyMetaStore().replace(database, study)
 

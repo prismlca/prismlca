@@ -1,5 +1,5 @@
-"""Reading a bundle someone else wrote: what its members may unpack to, and what its report pictures may
-carry into the receiver's workspace."""
+"""Reading a bundle someone else wrote: what its members may unpack to, and what its report pictures and
+study fields may carry into the receiver's workspace."""
 
 from __future__ import annotations
 
@@ -164,3 +164,51 @@ def test_a_report_picture_that_an_upload_would_refuse_is_left_out(client, token,
     report = _imported_report(client, token, data, "Unpictured copy")
     assert report["client_logo"] == ""
     assert report["cover_image"] == "default"
+
+
+# --- study fields -------------------------------------------------------------------------------
+
+
+def test_an_imported_study_keeps_its_fields_cleaned_as_the_form_cleans_them(client, token, filled):
+    r = client.post("/api/v1/databases/foreground", json={"name": "Neighbour"}, headers=token)
+    assert r.status_code == 200, r.text
+
+    def edit(section):
+        section["study"].update(
+            {
+                "compared_with": ["Neighbour"],
+                "extra_key": "kept nowhere",
+                "language": "DE-ch",
+                "critical_review_done": " YES ",
+                "scope": "Cradle &lt;to&gt; gate",
+                "notes": 42,
+                "limitations": ["Transport is estimated."],
+                "ai_model": "some-model",
+            }
+        )
+
+    data = _repack(_export(client, token, filled), "study.json", edit)
+    r = client.post("/api/v1/bundle/import", json={"content": _b64(data), "name": "Studied"}, headers=token)
+    assert r.status_code == 200, r.text
+    study = client.get("/api/v1/study", params={"database": "Studied"}, headers=token).json()
+    assert "compared_with" not in study and "extra_key" not in study and "notes" not in study
+    assert study["language"] == "de"
+    assert study["critical_review_done"] == "yes"
+    assert study["scope"] == "Cradle <to> gate"
+    assert study["limitations"] == [{"text": "Transport is estimated.", "kind": "limitation"}]
+    assert study["ai_model"] == "some-model"
+    assert study["goal"] == "PCF of a bottle"
+    neighbour = client.get("/api/v1/study", params={"database": "Neighbour"}, headers=token).json()
+    assert not neighbour.get("compared_with")
+
+
+def test_a_study_language_or_review_answer_the_form_refuses_is_left_out(client, token, filled):
+    def edit(section):
+        section["study"].update({"language": "xx", "critical_review_done": "maybe"})
+
+    data = _repack(_export(client, token, filled), "study.json", edit)
+    r = client.post("/api/v1/bundle/import", json={"content": _b64(data), "name": "Odd"}, headers=token)
+    assert r.status_code == 200, r.text
+    study = client.get("/api/v1/study", params={"database": "Odd"}, headers=token).json()
+    assert "language" not in study and "critical_review_done" not in study
+    assert study["functional_unit"] == "1 bottle"
