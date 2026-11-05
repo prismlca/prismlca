@@ -12,10 +12,10 @@
 import { createToolSession, type ApiRaw, type ToolOutcome, type ToolSession } from '../ai/execute'
 import type { ToolCtx } from '../ai/tools'
 import { effectOf, type ToolEffect } from '../ai/tools/effects'
-import { approvalTarget } from '../ai/approval'
 import type { Skill } from '../ai/systemPrompt'
 import type { McpApprovalMode, McpCallRecord, McpSessionSnapshot } from '../../shared/ipc'
 import { buildOrientation } from './instructions'
+import { approvalRequest, historyVerb, type ForeignStep } from './approvalRequest'
 import { MCP_EXCLUDED_TOOLS, ORIENTATION_TOOL, isMcpTool, mcpToolDefs, type McpToolDef } from './catalog'
 
 /** What the backend accepts as a client label (commands.py CLIENT_LABEL_RE); anything else is dropped. */
@@ -75,6 +75,8 @@ export class McpSession {
   private ended = false
   /** Aborted by end(): every wait and every backend request of this session stops. */
   private readonly abort = new AbortController()
+  /** The undo/redo step the user approved for the call in flight (`<verb>:<step id>`), see engine/step_owner.py. */
+  private approvedStep: string | null = null
 
   constructor(
     readonly id: string,
@@ -103,7 +105,8 @@ export class McpSession {
         'X-Prism-Client': this.label(),
         // Percent-encoded: a header value is Latin-1 on the wire, and "Müller" or "研究" are
         // permitted project names. The backend unquotes it.
-        ...(this.project ? { 'X-Prism-Project': encodeURIComponent(this.project) } : {})
+        ...(this.project ? { 'X-Prism-Project': encodeURIComponent(this.project) } : {}),
+        ...(this.approvedStep ? { 'X-Prism-Approved-Step': this.approvedStep } : {})
       }),
       signal: this.abort.signal,
       ui: async (name, args) => {
@@ -163,18 +166,25 @@ export class McpSession {
    * project whose background is being rebuilt is the kind of state nobody can explain later), and
    * the approval mode decides whether the user sees a card first. An approved irreversible call
    * carries `preApproved`, so the tool's own confirmation does not ask twice.
+   * An undo or redo of a step this session did not make asks in every mode, for that one step.
    */
   private async beforeRun(name: string, args: Record<string, unknown>, effect: ToolEffect): Promise<void> {
     this.tools.ctx.preApproved = false
+    this.approvedStep = null
     if (effect === 'read') return
     const busy = await this.busyReason()
     if (busy) throw new Error(busy)
+    const verb = historyVerb(name, args)
+    const next = verb ? await this.nextStep(verb) : null
+    const foreign: ForeignStep | undefined =
+      verb && next?.needsApproval ? { verb, summary: next.summary } : undefined
     const needsCard =
-      this.approval === 'every-write'
+      !!foreign ||
+      (this.approval === 'every-write'
         ? true
         : this.approval === 'irreversible'
           ? effect === 'irreversible'
-          : false
+          : false)
     if (!needsCard) return
     let r: unknown
     // The card waits on a person: the server reports it as progress meanwhile (humanWait).
@@ -185,13 +195,7 @@ export class McpSession {
         this.clientName,
         this.activeDb,
         'approve_tool',
-        {
-          tool: name,
-          effect,
-          args,
-          target: approvalTarget(name, args, this.activeDb),
-          database: this.activeDb
-        },
+        { ...approvalRequest(name, args, effect, this.activeDb, foreign) },
         this.signal
       )
     } catch (e) {
@@ -202,11 +206,35 @@ export class McpSession {
     }
     this.humanWait = null
     if (!(r && typeof r === 'object' && (r as { approved?: unknown }).approved === true))
-      throw new Error('Declined by the user in PrismLCA.')
+      throw new Error(foreign ? declinedForeign(foreign) : 'Declined by the user in PrismLCA.')
     // The card may have waited minutes: what was allowed then may be switched off now.
     const gone = this.revoked(name)
     if (gone) throw new Error(gone)
     this.tools.ctx.preApproved = effect === 'irreversible'
+    if (verb && next?.step != null) this.approvedStep = `${verb}:${next.step}`
+  }
+
+  /** The step `history` would take and whether it needs the user; null when unknown (the backend still decides). */
+  private async nextStep(
+    verb: 'undo' | 'redo'
+  ): Promise<{ step: number | null; summary: string; needsApproval: boolean } | null> {
+    const q = new URLSearchParams({ verb })
+    if (this.activeDb) q.set('database', this.activeDb)
+    try {
+      const r = (await this.tools.ctx.api('GET', `/api/v1/model/history/next?${q}`)) as {
+        step?: unknown
+        summary?: unknown
+        needs_approval?: unknown
+      } | null
+      if (!r || typeof r !== 'object') return null
+      return {
+        step: typeof r.step === 'number' ? r.step : null,
+        summary: typeof r.summary === 'string' ? r.summary : '',
+        needsApproval: r.needs_approval === true
+      }
+    } catch {
+      return null
+    }
   }
 
   /** A background import in flight makes every write wait; reads are fine. */
@@ -321,6 +349,7 @@ export class McpSession {
           this.signal = undefined
           this.runningTool = null
           this.tools.ctx.preApproved = false
+          this.approvedStep = null
         }
         if (oc.ok && oc.mutated) this.deps.onMutated(this.activeDb)
         if (oc.ok && name === 'get_skill') oc = withoutChatOnlyTools(oc)
@@ -429,4 +458,13 @@ function withoutChatOnlyAdvice(oc: ToolOutcome): ToolOutcome {
     .replace(/\bresearch_web\b/g, 'your own web research')
     .replace(/\breview_model\b/g, 'a critical read of the model')
   return text === oc.result ? oc : { ...oc, result: text }
+}
+
+/** The refusal after the user declined an undo/redo of a step this session did not make. */
+function declinedForeign(step: ForeignStep): string {
+  const [what, it] = step.verb === 'undo' ? ['take back', 'take it back'] : ['apply again', 'apply it again']
+  return (
+    `Declined by the user in PrismLCA. The ${step.verb} would have had to ${what} a change this session did not make ` +
+    `(${step.summary}), so it did not run. Leave that change as it is unless the user asks you to ${it}.`
+  )
 }

@@ -81,6 +81,50 @@ describe('ExternalAgentsPanel', () => {
     expect(disconnect).toHaveBeenCalledWith('s1')
   })
 
+  it('names the action in the head and shows every argument', () => {
+    const note = 'n'.repeat(700)
+    const long: PendingAsk = {
+      ...approval,
+      reqId: 'ui9',
+      args: {
+        tool: 'edit_lcia_method',
+        action: 'delete',
+        effect: 'irreversible',
+        args: { action: 'delete', note, method: ['My family', 'My indicator'] },
+        target: 'method "My family · My indicator"',
+        database: 'Shampoo'
+      }
+    }
+    renderWithPrism(<ExternalAgentsPanel sessions={[session]} asks={[long]} running onClose={() => {}} />)
+    const card = screen.getByRole('group', { name: 'Approval request from an external agent' })
+    const head = card.querySelector('.xa-card-head')
+    expect(head).toHaveTextContent('wants to run edit_lcia_method with action delete — cannot be undone')
+    expect(card.querySelector('.xa-args')?.textContent).toContain(note)
+    expect(card).toHaveTextContent('My indicator')
+  })
+
+  it("says which change an undo of someone else's step takes back", () => {
+    const foreign: PendingAsk = {
+      ...approval,
+      reqId: 'ui10',
+      args: {
+        tool: 'history',
+        action: 'undo',
+        effect: 'write',
+        args: { action: 'undo' },
+        target: 'model "Shampoo"',
+        database: 'Shampoo',
+        step: { verb: 'undo', summary: "Import model 'Client Study' from a bundle" }
+      }
+    }
+    renderWithPrism(<ExternalAgentsPanel sessions={[session]} asks={[foreign]} running onClose={() => {}} />)
+    const card = screen.getByRole('group', { name: 'Approval request from an external agent' })
+    expect(card).toHaveTextContent('wants to run history with action undo on model "Shampoo"')
+    expect(card).toHaveTextContent(
+      "Takes back a change this agent did not make: Import model 'Client Study' from a bundle."
+    )
+  })
+
   it('answers a question card with the picked option, or a typed answer', async () => {
     const user = userEvent.setup()
     const uiResult = vi.fn()
