@@ -190,3 +190,106 @@ def test_stored_path_points_at_the_file_and_says_when_it_is_gone(
 
     unknown = client.get("/api/v1/files/attachments/nope-nothing.pdf/path", headers=token)
     assert unknown.status_code == 404
+
+
+# --- what a workbook may cost --------------------------------------------------------------------
+
+
+def _sparse_xlsx(last_row: int) -> bytes:
+    """Two cells, A1 and the last column of `last_row`, under a declared extent of A1:B2."""
+    import io
+    import zipfile
+
+    sheet = (
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<dimension ref="A1:B2"/><sheetData>'
+        '<row r="1"><c r="A1" t="inlineStr"><is><t>a</t></is></c></row>'
+        f'<row r="{last_row}"><c r="XFD{last_row}" t="inlineStr"><is><t>z</t></is></c></row>'
+        "</sheetData></worksheet>"
+    )
+    rels = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    pkg = "http://schemas.openxmlformats.org/package/2006/relationships"
+    members = {
+        "[Content_Types].xml": (
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'
+        ),
+        "_rels/.rels": (
+            f'<Relationships xmlns="{pkg}"><Relationship Id="rId1" '
+            f'Type="{rels}/officeDocument" Target="xl/workbook.xml"/></Relationships>'
+        ),
+        "xl/workbook.xml": (
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            f'xmlns:r="{rels}"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>'
+        ),
+        "xl/_rels/workbook.xml.rels": (
+            f'<Relationships xmlns="{pkg}"><Relationship Id="rId1" '
+            f'Type="{rels}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'
+        ),
+        "xl/worksheets/sheet1.xml": sheet,
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, body in members.items():
+            zf.writestr(name, body)
+    return buf.getvalue()
+
+
+def test_a_sparse_workbook_converts_only_what_fits(
+    client: TestClient, token: dict[str, str], project: str, monkeypatch
+) -> None:
+    from prism_lca.engine import attachments
+
+    def whole(*_args):
+        raise AssertionError("the whole-workbook conversion must not run")
+
+    monkeypatch.setattr(attachments, "_convert", whole)
+    meta = _post(client, token, "sparse.xlsx", _sparse_xlsx(last_row=200))
+    body = _text(client, token, meta["id"])
+    assert body["truncated"] is True
+    assert "| a |" in body["text"]
+    assert len(body["text"]) < 10_000
+
+
+def test_a_workbook_within_the_budget_converts_exactly_as_before(tmp_path) -> None:
+    from prism_lca.engine import attachment_sheets, attachments
+
+    path = tmp_path / "bom.xlsx"
+    path.write_bytes(_xlsx(rows=40))
+    assert attachment_sheets.rows_that_fit(path, attachment_sheets.MAX_CELLS) is None
+    assert attachment_sheets.workbook_markdown(path, 100_000, attachments._convert) == attachments._convert(
+        path, 100_000
+    )
+
+
+def test_a_workbook_over_the_budget_shows_the_same_beginning(tmp_path, monkeypatch) -> None:
+    from prism_lca.engine import attachment_sheets, attachments
+
+    monkeypatch.setattr(attachment_sheets, "MAX_CELLS", 300)
+    path = tmp_path / "bom.xlsx"
+    path.write_bytes(_xlsx(rows=400))
+    text, truncated = attachment_sheets.workbook_markdown(path, 2_000, attachments._convert)
+    assert truncated is True
+    assert (text, truncated) == attachments._convert(path, 2_000)
+
+
+def test_a_workbook_that_unpacks_beyond_the_limit_is_refused(
+    client: TestClient, token: dict[str, str], project: str, monkeypatch
+) -> None:
+    from dataclasses import replace
+
+    from prism_lca.engine import archive_limits
+
+    monkeypatch.setattr(archive_limits, "OFFICE", replace(archive_limits.OFFICE, total=1_000))
+    r = client.post(
+        "/api/v1/files/attachments",
+        json={"name": "bom.xlsx", "data_b64": base64.b64encode(_xlsx(rows=40)).decode("ascii")},
+        headers=token,
+    )
+    assert r.status_code == 415
+    assert "unpacks to more than" in r.json()["detail"]

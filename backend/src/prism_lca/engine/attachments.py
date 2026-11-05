@@ -34,11 +34,14 @@ the page images itself. What has no text layer says so instead of being guessed 
 from __future__ import annotations
 
 import hashlib
+import io
 import re
+import zipfile
 from datetime import UTC
 from pathlib import Path
 from typing import Any, ClassVar
 
+from prism_lca.engine import archive_limits
 from prism_lca.engine._store import JsonFileStore, LoadPolicy, now_iso, prism_meta_dir
 
 #: Hard cap on extracted text per file. ~25k tokens; beyond this the model is reading noise, and the
@@ -195,6 +198,8 @@ def store(name: str, data: bytes) -> dict:
     if not kind:
         suffix = Path(name).suffix.lower() or "(none)"
         raise ValueError(f"Cannot attach {suffix} files — supported: PDF, images, spreadsheets, documents, text.")
+    if kind in ("sheet", "document"):
+        _refuse_if_oversized(data)
     digest = hashlib.sha256(data).hexdigest()[:12]
     stored = f"{digest}-{_safe_name(name)}"
     attachment_id = stored
@@ -219,6 +224,21 @@ def store(name: str, data: bytes) -> dict:
     meta.update(measure(target, kind))
     index.put(attachment_id, meta)
     return meta
+
+
+def _refuse_if_oversized(data: bytes) -> None:
+    """A Word or Excel file is a zip: its declared sizes have to fit before any reader inflates it."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            fits = archive_limits.declared_within(zf, zf.infolist(), archive_limits.OFFICE)
+    except zipfile.BadZipFile:
+        return  # not a zip: measuring and converting say so in their own way, as before
+    if not fits:
+        limits = archive_limits.OFFICE
+        raise ValueError(
+            f"This file unpacks to more than {limits.total // archive_limits.MB} MB or holds more than "
+            f"{limits.members} parts — more than PrismLCA reads from one attachment."
+        )
 
 
 def measure(path: Path, kind: str) -> dict:
@@ -375,8 +395,11 @@ def extract(
     elif kind == "pdf" and pages:
         text, truncated = _pdf_pages(path, pages, limit)
     elif kind == "sheet":
+        # pandas and markitdown's converters load with the first workbook, not with the backend
+        from prism_lca.engine.attachment_sheets import workbook_markdown
+
         head = _sheet_header(meta.get("sheets"))
-        body, truncated = _convert(path, max(limit - len(head), 1_000))
+        body, truncated = workbook_markdown(path, max(limit - len(head), 1_000), _convert)
         text = head + body
     else:
         text, truncated = _convert(path, limit)
