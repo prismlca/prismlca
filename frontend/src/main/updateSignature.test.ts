@@ -5,6 +5,7 @@
  * refuses exactly the subjects electron-updater's verifier accepts and refuses; and NsisUpdater really
  * calls the replacement with the publisher from app-update.yml and stops the download when it refuses.
  */
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,9 @@ import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  acceptedChecks,
   CHECK_TIMEOUT_MS,
+  confirmChecked,
   FILE_VARIABLE,
   guardUpdateSignature,
   parseDn,
@@ -220,6 +223,8 @@ describe('in electron-updater’s NsisUpdater', () => {
   }
   let dir = ''
   let downloads: string[] = []
+  const INSTALLER_BYTES = 'installer bytes'
+  const APP_UPDATE_YML = `owner: prismlca\nrepo: prismlca\nprovider: github\nupdaterCacheDirName: prism-lca-updater\n`
 
   function nsisUpdater(): Nsis {
     const { NsisUpdater } = require('electron-updater/out/NsisUpdater') as {
@@ -241,7 +246,7 @@ describe('in electron-updater’s NsisUpdater', () => {
     u.updateConfigPath = app.appUpdateConfigPath
     u.httpExecutor = {
       download: async (_url: URL, destination: string) => {
-        writeFileSync(destination, 'installer bytes')
+        writeFileSync(destination, INSTALLER_BYTES)
         downloads.push(destination)
         return destination
       }
@@ -251,14 +256,15 @@ describe('in electron-updater’s NsisUpdater', () => {
 
   /** Answers about whichever file NsisUpdater asks for: its temp name is not known in advance. */
   const aboutAskedFile =
-    (o: Record<string, unknown>): RunPowerShell =>
+    (o: Record<string, unknown>, calls: Call[] = []): RunPowerShell =>
     (exe, args, env, timeoutMs) =>
-      answering({ ...o, Path: env[FILE_VARIABLE] })(exe, args, env, timeoutMs)
+      answering({ ...o, Path: env[FILE_VARIABLE] }, calls)(exe, args, env, timeoutMs)
 
   function download(u: Nsis): Promise<{ updateFile: string }> {
     const { CancellationToken } = require('builder-util-runtime') as { CancellationToken: new () => unknown }
     const name = 'PrismLCA-Setup-1.3.0.exe'
-    const info = { version: '1.3.0', path: name, sha512: 'x', files: [{ url: name, sha512: 'x' }] }
+    const sha512 = createHash('sha512').update(INSTALLER_BYTES).digest('base64')
+    const info = { version: '1.3.0', path: name, sha512, files: [{ url: name, sha512 }] }
     const provider = {
       resolveFiles: () => [{ url: new URL(`https://example.invalid/${name}`), info: info.files[0] }]
     }
@@ -277,11 +283,7 @@ describe('in electron-updater’s NsisUpdater', () => {
     // The guard reads the real environment, as on Windows.
     vi.stubEnv('SystemRoot', 'C:\\Windows')
     // As electron-builder writes it: the pinned subject as a one-entry list.
-    writeFileSync(
-      join(dir, 'app-update.yml'),
-      `owner: prismlca\nrepo: prismlca\nprovider: github\nupdaterCacheDirName: prism-lca-updater\npublisherName:\n  - '${PINNED}'\n`,
-      'utf-8'
-    )
+    writeFileSync(join(dir, 'app-update.yml'), `${APP_UPDATE_YML}publisherName:\n  - '${PINNED}'\n`, 'utf-8')
   })
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -320,6 +322,51 @@ describe('in electron-updater’s NsisUpdater', () => {
     expect(existsSync(updateFile)).toBe(true)
   })
 
+  it('counts a fresh download that passed the check as checked', async () => {
+    const u = nsisUpdater()
+    const calls: Call[] = []
+    guardUpdateSignature(u, aboutAskedFile(valid, calls))
+    const before = acceptedChecks()
+    const { updateFile } = await download(u)
+    await confirmChecked(u, updateFile, before)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('checks an installer a previous run left in the cache, which the download itself skips', async () => {
+    const first = nsisUpdater()
+    guardUpdateSignature(first, aboutAskedFile(valid))
+    await download(first)
+    expect(downloads).toHaveLength(1)
+
+    // The next start: same cache, and an installer that would not pass any more.
+    const u = nsisUpdater()
+    const calls: Call[] = []
+    guardUpdateSignature(u, aboutAskedFile({ ...valid, Subject: 'CN=Someone Else' }, calls))
+    const before = acceptedChecks()
+    const { updateFile } = await download(u)
+    expect(downloads).toHaveLength(1) // served from the cache
+    expect(calls).toHaveLength(0) // without the check
+    await expect(confirmChecked(u, updateFile, before)).rejects.toMatchObject({
+      code: 'ERR_UPDATER_INVALID_SIGNATURE'
+    })
+    expect(calls).toHaveLength(1)
+
+    guardUpdateSignature(u, aboutAskedFile(valid))
+    await confirmChecked(u, updateFile, acceptedChecks())
+  })
+
+  it('refuses a download when app-update.yml names no publisher', async () => {
+    writeFileSync(join(dir, 'app-update.yml'), APP_UPDATE_YML, 'utf-8')
+    const u = nsisUpdater()
+    const calls: Call[] = []
+    guardUpdateSignature(u, answering(valid, calls))
+    const before = acceptedChecks()
+    const { updateFile } = await download(u)
+    expect(calls).toHaveLength(0) // electron-updater skips the check without a publisher
+    await expect(confirmChecked(u, updateFile, before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
+    await expect(confirmChecked(u, null, before)).rejects.toMatchObject({ code: SIGNATURE_UNCHECKED })
+  })
+
   it('refuses a web installer when told to', () => {
     const src = readFileSync(join(dirname(require.resolve('electron-updater')), 'NsisUpdater.js'), 'utf-8')
     expect(src).toMatch(/if \(isWebInstaller && downloadUpdateOptions\.disableWebInstaller\) \{\s*throw/)
@@ -329,6 +376,7 @@ describe('in electron-updater’s NsisUpdater', () => {
 
   it('fails closed when the updater offers no verifier slot', () => {
     expect(() => guardUpdateSignature({})).toThrow(/signature guard/)
+    expect(() => guardUpdateSignature({ verifyUpdateCodeSignature: null })).toThrow(/signature guard/)
     expect(() => guardUpdateSignature(null)).toThrow(/signature guard/)
   })
 })

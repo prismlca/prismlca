@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { FILE_VARIABLE } from './updateSignature'
+
 type Handler = (event: unknown, ...args: unknown[]) => unknown
 const handlers = new Map<string, Handler>()
 const ipcListeners = new Map<string, Handler[]>()
@@ -59,6 +61,35 @@ vi.mock('./buildInfo', () => ({
 
 /** Stands in for electron-updater's default Windows verifier until updater.ts replaces it. */
 const defaultVerifier = async (): Promise<string | null> => null
+type Verifier = (publisherNames: string[], file: string) => Promise<string | null>
+
+/** The publisher app-update.yml pins in these tests. */
+const PIN = 'CN=PrismLCA Test, O=PrismLCA, C=DE'
+/** Where electron-updater keeps a finished Windows download. */
+const INSTALLER = 'C:\\Users\\u\\AppData\\Local\\prism-lca-updater\\pending\\PrismLCA-Setup-1.3.0.exe'
+
+/** What the publisher check's PowerShell answers (updateSignature.ts starts it through execFile). */
+type PowerShellAnswer = { error: Error | null; stdout: string; stderr: string }
+const signedBy = (subject: string, env: Record<string, string>): PowerShellAnswer => ({
+  error: null,
+  stderr: '',
+  stdout: JSON.stringify({ Status: 0, Path: env[FILE_VARIABLE], Subject: subject })
+})
+const powershell = {
+  calls: 0,
+  answer: async (env: Record<string, string>): Promise<PowerShellAnswer> => signedBy(PIN, env)
+}
+vi.mock('node:child_process', () => ({
+  execFile: (
+    _exe: string,
+    _args: string[],
+    options: { env: Record<string, string> },
+    done: (error: Error | null, stdout: string, stderr: string) => void
+  ) => {
+    powershell.calls++
+    void powershell.answer(options.env).then((r) => done(r.error, r.stdout, r.stderr))
+  }
+}))
 
 class FakeUpdater extends EventEmitter {
   autoDownload = true
@@ -77,6 +108,28 @@ class FakeUpdater extends EventEmitter {
         if (next) verifier = next
       }
     })
+  }
+  /** app-update.yml's publisherName as NsisUpdater reads it; null when the file names none. */
+  publisherName: string | null = PIN
+  /** NsisUpdater.verifySignature: no pin, no check; otherwise the verifier with the pin. */
+  async verifySignature(file: string): Promise<string | null> {
+    if (this.publisherName === null) return null
+    return (this.verifyUpdateCodeSignature as Verifier)([this.publisherName], file)
+  }
+  /** NsisUpdater's download task: the fresh file is checked under its temp name, then announced. */
+  async downloadChecked(downloadedFile = INSTALLER): Promise<unknown[]> {
+    const verdict = await this.verifySignature(downloadedFile.replace(/[^\\/]+$/, (name) => `temp-${name}`))
+    if (verdict !== null)
+      throw Object.assign(new Error(`New version 1.3.0 is not signed by the application owner: ${verdict}`), {
+        code: 'ERR_UPDATER_INVALID_SIGNATURE'
+      })
+    this.emit('update-downloaded', { version: '1.3.0', downloadedFile })
+    return []
+  }
+  /** A download electron-updater serves from its cache: announced without the verifier. */
+  async downloadFromCache(): Promise<unknown[]> {
+    this.emit('update-downloaded', { version: '1.3.0', downloadedFile: INSTALLER })
+    return []
   }
   // The two private members V-1 replaces, shaped like electron-updater's (a Lazy and a method).
   stagingUserIdPromise: { value: Promise<string> } = { value: Promise.resolve('a-real-installation-id') }
@@ -165,12 +218,19 @@ async function reachDownloaded(downloadedFile?: string): Promise<void> {
     fake.emit('update-available', { version: '1.3.0' })
     return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
   })
-  fake.downloadUpdate.mockImplementation(async () => {
-    fake.emit('update-downloaded', { version: '1.3.0', downloadedFile })
-    return []
-  })
+  fake.downloadUpdate.mockImplementation(() => fake.downloadChecked(downloadedFile))
   await call('updates:check')
   expect((await call('updates:download')).phase).toBe('downloaded')
+}
+
+/** Check → available, with the next download done by `download`. */
+async function reachAvailable(download: () => Promise<unknown[]>): Promise<void> {
+  fake.checkForUpdates.mockImplementation(async () => {
+    fake.emit('update-available', { version: '1.3.0' })
+    return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
+  })
+  fake.downloadUpdate.mockImplementation(download)
+  expect((await call('updates:check')).phase).toBe('available')
 }
 
 beforeEach(async () => {
@@ -179,6 +239,9 @@ beforeEach(async () => {
   fake = new FakeUpdater()
   setPlatform('win32')
   vi.stubEnv('APPIMAGE', '')
+  vi.stubEnv('SystemRoot', 'C:\\Windows')
+  powershell.calls = 0
+  powershell.answer = async (env) => signedBy(PIN, env)
   await setup()
 })
 
@@ -386,21 +449,13 @@ describe('the Windows publisher check', () => {
   })
 
   it('refuses an update whose signature cannot be checked, and points to the release page', async () => {
-    // A Windows environment whose PowerShell cannot be started: the spawn fails, nothing answers.
-    vi.stubEnv('SystemRoot', 'C:\\Windows')
-    fake.checkForUpdates.mockImplementation(async () => {
-      fake.emit('update-available', { version: '1.3.0' })
-      return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
+    // PowerShell cannot be started: the spawn fails, nothing answers.
+    powershell.answer = async () => ({
+      error: Object.assign(new Error('spawn powershell.exe ENOENT'), { code: 'ENOENT' }),
+      stdout: '',
+      stderr: ''
     })
-    fake.downloadUpdate.mockImplementation(async () => {
-      // As NsisUpdater does before it accepts the file: the pinned names from app-update.yml, the file.
-      const verify = fake.verifyUpdateCodeSignature as (n: string[], f: string) => Promise<string | null>
-      const verdict = await verify(['CN=PrismLCA Test'], 'C:\\Temp\\temp-PrismLCA-Setup-1.3.0.exe')
-      if (verdict !== null) throw new Error(`not signed by the application owner: ${verdict}`)
-      fake.emit('update-downloaded', { version: '1.3.0' })
-      return []
-    })
-    await call('updates:check')
+    await reachAvailable(() => fake.downloadChecked())
     const s = await call('updates:download')
     expect(s).toEqual({
       phase: 'error',
@@ -411,6 +466,48 @@ describe('the Windows publisher check', () => {
     })
     expect(fake.install).not.toHaveBeenCalled()
     expect((await call('updates:install')).phase).toBe('error')
+    expect(fake.install).not.toHaveBeenCalled()
+  })
+
+  it('checks an installer served from the download cache before offering it', async () => {
+    await reachAvailable(() => fake.downloadFromCache())
+    expect((await call('updates:download')).phase).toBe('downloaded')
+    expect(powershell.calls).toBe(1)
+
+    await call('updates:discard')
+    powershell.answer = async (env) => signedBy('CN=Someone Else', env)
+    await reachAvailable(() => fake.downloadFromCache())
+    const s = await call('updates:download')
+    expect(s).toMatchObject({
+      phase: 'error',
+      message: 'The downloaded update failed its signature check and was not installed.'
+    })
+    expect((await call('updates:install')).phase).toBe('error')
+    expect(fake.install).not.toHaveBeenCalled()
+  })
+
+  it('refuses a download when app-update.yml names no publisher', async () => {
+    fake.publisherName = null
+    await reachAvailable(() => fake.downloadChecked())
+    const s = await call('updates:download')
+    expect(s).toMatchObject({ phase: 'error', version: '1.3.0' })
+    expect(s.message).toMatch(/signature could not be checked/)
+    expect(powershell.calls).toBe(0)
+  })
+
+  it('offers nothing to install while a cached installer is still being checked', async () => {
+    let answer: () => void = () => {}
+    powershell.answer = (env) => new Promise((resolve) => (answer = () => resolve(signedBy(PIN, env))))
+    await reachAvailable(() => fake.downloadFromCache())
+    const pending = call('updates:download')
+    await vi.waitFor(() => expect(powershell.calls).toBe(1))
+    expect((await call('updates:state')).phase).toBe('downloading')
+    // A quit now is an ordinary quit: nothing is ready to install yet.
+    const preventDefault = vi.fn()
+    appListeners.get('before-quit')![0]({ preventDefault })
+    expect(preventDefault).not.toHaveBeenCalled()
+    answer()
+    expect((await pending).phase).toBe('downloaded')
     expect(fake.install).not.toHaveBeenCalled()
   })
 

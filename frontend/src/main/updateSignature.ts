@@ -10,6 +10,8 @@
  *  - a string: Windows reports something else (unsigned, another signer, a broken signature) —
  *    `NsisUpdater` turns it into ERR_UPDATER_INVALID_SIGNATURE;
  *  - a rejection with `SIGNATURE_UNCHECKED`: there was no usable answer at all.
+ * electron-updater does not call the verifier for a file it serves from its download cache, nor when
+ * app-update.yml names no publisher; `confirmChecked` closes both after every Windows download.
  *
  * PowerShell is started by its absolute path under %SystemRoot%, without a shell. The script uses only
  * what Constrained Language mode allows, takes the file from an environment variable (no quoting), and
@@ -26,6 +28,15 @@ export const CHECK_TIMEOUT_MS = 30_000
 
 /** The environment variable that carries the installer's path into the script. */
 export const FILE_VARIABLE = 'PRISMLCA_UPDATE_FILE'
+
+/** NsisUpdater's code for an installer that is not signed by the pinned publisher (updater.ts words it). */
+const INVALID_SIGNATURE = 'ERR_UPDATER_INVALID_SIGNATURE'
+
+/** How many installers the guard has accepted: a download that does not raise it was never checked. */
+let acceptedCount = 0
+export function acceptedChecks(): number {
+  return acceptedCount
+}
 
 const SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
@@ -62,6 +73,12 @@ const runPowerShell: RunPowerShell = (exe, args, env, timeoutMs) =>
       (error, stdout, stderr) => resolve({ error, stdout: String(stdout), stderr: String(stderr) })
     )
   })
+
+function notOwners(why: string): Error {
+  return Object.assign(new Error(`the downloaded update is not signed by the application owner: ${why}`), {
+    code: INVALID_SIGNATURE
+  })
+}
 
 function unchecked(why: string): Error {
   return Object.assign(new Error(`the update signature could not be checked: ${why}`), {
@@ -226,17 +243,43 @@ export async function verifyUpdateSignature(
   return null
 }
 
+type NsisInternals = {
+  verifyUpdateCodeSignature?: unknown
+  /** NsisUpdater's own entry point: reads the pin from app-update.yml and calls the verifier with it. */
+  verifySignature?: (file: string) => Promise<string | null>
+}
+
 /**
  * Put `verifyUpdateSignature` in place of electron-updater's default verifier. Throws when the updater no
- * longer offers the setter — the check then fails with a sentence instead of running unguarded.
+ * longer offers the setter or its own entry point — the check then fails with a sentence instead of
+ * running unguarded.
  */
 export function guardUpdateSignature(u: unknown, run: RunPowerShell = runPowerShell): void {
-  const target = u as { verifyUpdateCodeSignature?: unknown } | null
-  if (!target || !('verifyUpdateCodeSignature' in target))
+  const target = u as NsisInternals | null
+  if (!target || !('verifyUpdateCodeSignature' in target) || typeof target.verifySignature !== 'function')
     throw new Error('its signature guard could not be applied, so no request was sent')
-  const verify = (names: string[], file: string): Promise<string | null> =>
-    verifyUpdateSignature(names, file, run)
+  const verify = async (names: string[], file: string): Promise<string | null> => {
+    const verdict = await verifyUpdateSignature(names, file, run)
+    if (verdict === null) acceptedCount++
+    return verdict
+  }
   target.verifyUpdateCodeSignature = verify
   if (target.verifyUpdateCodeSignature !== verify)
     throw new Error('its signature guard could not be applied, so no request was sent')
+}
+
+/**
+ * After a Windows download, before it may be offered for install: its installer must have passed the
+ * guard during this download (`acceptedBefore` is `acceptedChecks()` from before it started). One served
+ * from electron-updater's cache, or downloaded while app-update.yml named no publisher, is checked now
+ * through NsisUpdater's own entry point, and refused when the pin is never consulted.
+ */
+export async function confirmChecked(u: unknown, file: string | null, acceptedBefore: number): Promise<void> {
+  if (acceptedCount > acceptedBefore) return
+  const nsis = u as NsisInternals | null
+  if (!file || typeof nsis?.verifySignature !== 'function')
+    throw unchecked('the downloaded installer was not checked')
+  const verdict = await nsis.verifySignature(file)
+  if (verdict !== null) throw notOwners(verdict)
+  if (acceptedCount === acceptedBefore) throw unchecked('no publisher is configured to check against')
 }

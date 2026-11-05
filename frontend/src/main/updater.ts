@@ -47,7 +47,7 @@ import type { PrepareInstallResult, UpdateState } from '../shared/updates'
 import { BUILD } from './buildInfo'
 import { distrustIn } from './distrustedRoots'
 import { withSystemProxy } from './networkProxy'
-import { guardUpdateSignature, SIGNATURE_UNCHECKED } from './updateSignature'
+import { acceptedChecks, confirmChecked, guardUpdateSignature, SIGNATURE_UNCHECKED } from './updateSignature'
 
 export type { PrepareInstallResult, UpdateState }
 
@@ -393,7 +393,8 @@ async function loadUpdater(): Promise<AutoUpdater> {
   })
   autoUpdater.on('update-downloaded', (info) => {
     downloadedFile = (info as { downloadedFile?: string }).downloadedFile ?? null
-    setState({ phase: 'downloaded', current: current(), version: info.version })
+    // On Windows the download counts only once its installer is known to be checked (`downloadUpdate`).
+    if (installKind() !== 'nsis') setState({ phase: 'downloaded', current: current(), version: info.version })
   })
   // Without a listener an EventEmitter 'error' would throw; the rejected promise reports it too.
   autoUpdater.on('error', (err) => {
@@ -462,11 +463,14 @@ export async function downloadUpdate(): Promise<UpdateState> {
   setState({ phase: 'downloading', current: s.current, version: s.version, percent: 0 })
   try {
     const u = updater
+    const checked = acceptedChecks()
     await withSystemProxy(u.netSession, () => u.downloadUpdate())
+    if (installKind() === 'nsis') await confirmChecked(u, downloadedFile, checked)
     const after = getUpdateState()
     if (after.phase === 'downloading')
       setState({ phase: 'downloaded', current: current(), version: after.version })
   } catch (err) {
+    downloadedFile = null
     setState({
       phase: 'error',
       current: current(),
