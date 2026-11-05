@@ -187,7 +187,7 @@ def _seed_round_trip(bd) -> None:
 
 def test_a_realistic_workspace_survives_the_restore_checks(client, token, project, tmp_path, monkeypatch):
     """Every store bw2data pickles is present, checked and restored as it was."""
-    from prism_lca.engine import workspace_pickles
+    from prism_lca.engine import plain_pickle
     from prism_lca.engine.bootstrap import get_bd
 
     del project
@@ -215,8 +215,8 @@ def test_a_realistic_workspace_survives_the_restore_checks(client, token, projec
     assert any("/intermediate/" in n and n.endswith(".pickle") for n in names)
 
     checked: list[int] = []
-    real = workspace_pickles._check
-    monkeypatch.setattr(workspace_pickles, "_check", lambda data: checked.append(len(data)) or real(data))
+    real = plain_pickle.check
+    monkeypatch.setattr(plain_pickle, "check", lambda data: checked.append(len(data)) or real(data))
     r = client.post("/api/v1/projects/restore", json={"path": str(path), "project_name": "round-trip"},
                     headers=token)
     assert r.status_code == 200, r.text

@@ -1,7 +1,8 @@
 """Reading a workspace backup (bw2io's ``.tar.gz`` of one workspace folder) into a folder of ours.
 
 A backup file is untrusted input: only regular files and folders are unpacked, every name stays inside the
-target folder, and the member count and the bytes written are capped before anything is written.
+target folder, and header sizes, the member count and the bytes written are capped before they are read or
+written.
 """
 from __future__ import annotations
 
@@ -9,6 +10,7 @@ import json
 import os
 import shutil
 import tarfile
+import tempfile
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +23,8 @@ MAX_MEMBERS = 100_000
 MAX_NAME_FILE = 64 * 1024
 #: Left free on every disk a restore writes to.
 RESERVE = 512 * 1024 * 1024
+#: A PAX or GNU extension header carries a long name or a few attributes, never more than this.
+MAX_EXTENSION_HEADER = 64 * 1024
 
 _HINT = "Choose a .tar.gz written by Back up this workspace."
 _LINKS = "This file holds links or special files, which a workspace backup does not."
@@ -42,19 +46,49 @@ def _too_many() -> PrismError:
     )
 
 
+class _Member(tarfile.TarInfo):
+    """A tar header whose extension payload is size-checked before tarfile reads it; sparse maps are refused."""
+
+    def _proc_member(self, tarfile_):
+        if self.type in _EXTENSIONS and self.size > MAX_EXTENSION_HEADER:
+            raise tarfile.ReadError("oversized extension header")
+        if self.type == tarfile.GNUTYPE_SPARSE:
+            raise tarfile.ReadError("sparse member")
+        return super()._proc_member(tarfile_)
+
+    def _proc_gnusparse_00(self, *args):
+        raise tarfile.ReadError("sparse member")
+
+    _proc_gnusparse_01 = _proc_gnusparse_10 = _proc_gnusparse_00
+
+
+_EXTENSIONS = (tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK, tarfile.XHDTYPE, tarfile.XGLTYPE,
+               tarfile.SOLARIS_XHDTYPE)
+
+
+def _open(fp: Path) -> tarfile.TarFile:
+    return tarfile.open(fp, "r:gz", tarinfo=_Member)
+
+
 def read_name(fp: Path) -> str:
     """The workspace name stored in the backup (bw2io's ``.project-name.json``)."""
+    room = room_on(Path(tempfile.gettempdir()))
+    passed = 0
     try:
-        with tarfile.open(fp, "r:gz") as tar:
+        with _open(fp) as tar:
             for count, member in enumerate(tar, 1):
                 if count > MAX_MEMBERS:
                     raise _too_many()
+                # Unpacking would refuse a backup this large; reading on to its name would only cost time.
+                passed += member.size
+                if passed > room:
+                    raise _no_room(passed, room)
                 if (member.name.endswith("project-name.json") and member.isreg() and not member.issparse()
                         and member.size <= MAX_NAME_FILE):
                     handle = tar.extractfile(member)
                     if handle is not None:
                         return str(json.load(handle)["name"])
-    except (*_READ_ERRORS, KeyError, ValueError, TypeError) as e:
+    except (*_READ_ERRORS, KeyError, ValueError, TypeError, RecursionError) as e:
         raise _unreadable() from e
     raise _unreadable()
 
@@ -93,7 +127,7 @@ def unpack(fp: Path, into: Path) -> Unpacked:
     room = room_on(into)
     written = 0
     try:
-        with tarfile.open(fp, "r:gz") as tar:
+        with _open(fp) as tar:
             for count, member in enumerate(tar, 1):
                 if count > MAX_MEMBERS:
                     raise _too_many()
@@ -106,7 +140,7 @@ def unpack(fp: Path, into: Path) -> Unpacked:
                 tar.extract(member, into, filter="data")
     except tarfile.FilterError as e:
         raise _unreadable(_OUTSIDE) from e
-    except (tarfile.TarError, EOFError, zlib.error) as e:
+    except (tarfile.TarError, EOFError, zlib.error, RecursionError) as e:
         raise _unreadable() from e
     folders = [p for p in into.iterdir() if p.is_dir() and not p.is_symlink()]
     if len(folders) != 1:

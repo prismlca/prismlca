@@ -106,6 +106,13 @@ def test_memo_indexes_and_frames_stay_within_the_pickle(tmp_path):
         _refused(tmp_path)
 
 
+def test_a_pickle_whose_shared_values_expand_too_far_is_refused(tmp_path):
+    nested = (pickle.PROTO + bytes([4]) + pickle.EMPTY_DICT + pickle.EMPTY_TUPLE
+              + (pickle.DUP + pickle.TUPLE2) * 40 + pickle.NONE + pickle.SETITEM + pickle.STOP)
+    (tmp_path / "preferences.pickle").write_bytes(nested)
+    _refused(tmp_path)
+
+
 def test_triggers_are_dropped_from_checked_stores(tmp_path):
     db = _db(tmp_path / "parameters.db", "projectparameter", "data", [pickle.dumps(PLAIN)])
     con = sqlite3.connect(db)

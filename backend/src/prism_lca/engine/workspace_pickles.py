@@ -2,16 +2,16 @@
 
 bw2data keeps activities, exchanges and parameters as pickled columns of ``lci/databases.db`` and
 ``parameters.db``, and some of its metadata as ``*.pickle`` files. A folder from elsewhere is untrusted input:
-before it becomes a workspace, every one of these values must be a pickle of plain values, read opcode by
-opcode without loading it, and the stores must keep the values as they were checked.
+before it becomes a workspace, every one of these values must be a pickle of plain values
+(:mod:`prism_lca.engine.plain_pickle`), and the stores must keep the values as they were checked.
 """
 from __future__ import annotations
 
 import os
-import pickletools
 import sqlite3
 from pathlib import Path
 
+from prism_lca.engine import plain_pickle
 from prism_lca.errors import PrismError
 
 #: bw2data's ``PickleField`` columns per store, by path inside the workspace folder. Paths, tables and columns
@@ -27,25 +27,10 @@ PICKLE_COLUMNS: dict[str, tuple[tuple[str, str], ...]] = {
 }
 #: Far above any real activity, exchange, parameter or LCIA method.
 MAX_PICKLE = 16 * 1024 * 1024
-#: Opcodes that name or call a global, or build an object through one.
-_OBJECT_OPCODES = frozenset({
-    "GLOBAL", "STACK_GLOBAL", "INST", "OBJ", "REDUCE", "BUILD", "NEWOBJ", "NEWOBJ_EX",
-    "EXT1", "EXT2", "EXT4", "PERSID", "BINPERSID",
-})
-#: Opcodes whose argument sizes what an unpickler allocates: memo indexes and frame lengths.
-_SIZING_OPCODES = frozenset({"PUT", "BINPUT", "LONG_BINPUT", "FRAME"})
 
 
 class _NotPlain(Exception):
     pass
-
-
-def _check(data: bytes) -> None:
-    """``data`` is a pickle of plain values (None, bool, int, float, str, bytes, and lists, tuples, dicts
-    and sets of them) whose memo indexes and frames stay within its own length."""
-    for opcode, arg, _pos in pickletools.genops(data):
-        if opcode.name in _OBJECT_OPCODES or (opcode.name in _SIZING_OPCODES and arg > len(data)):
-            raise _NotPlain(opcode.name)
 
 
 def _refuse(where: str) -> PrismError:
@@ -94,7 +79,7 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
                     continue
                 if kind != "blob" or size > MAX_PICKLE:
                     raise _NotPlain(table)
-                _check(value)
+                plain_pickle.check(value)
     finally:
         con.close()
 
@@ -116,7 +101,7 @@ def assert_plain(folder: Path) -> None:
             if key.endswith(".pickle"):
                 if path.stat().st_size > MAX_PICKLE:
                     raise _NotPlain(key)
-                _check(path.read_bytes())
+                plain_pickle.check(path.read_bytes())
             elif key in PICKLE_COLUMNS:
                 _check_store(path, PICKLE_COLUMNS[key])
         except Exception as exc:  # noqa: BLE001 - anything that does not load as plain data is refused

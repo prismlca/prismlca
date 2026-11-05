@@ -252,3 +252,37 @@ def test_an_overwrite_puts_the_backup_over_the_workspace(client, token, project,
     assert bd.projects.current == project
     assert "Kept" in bd.databases and "Added later" not in bd.databases
     assert not (Path(bd.projects.dir) / "project-metadata.json").exists()
+
+
+@pytest.mark.parametrize("fmt", [tarfile.PAX_FORMAT, tarfile.GNU_FORMAT])
+def test_extension_headers_are_capped_before_they_are_read(tmp_path, fmt):
+    info, data = _file("ws/" + "n" * (backup_archive.MAX_EXTENSION_HEADER + 1))
+    path = _archive(tmp_path / "b.tar.gz", *_workspace((info, data)), fmt=fmt)
+    into = tmp_path / "into"
+    into.mkdir()
+    with pytest.raises(PrismError) as exc:
+        backup_archive.unpack(path, into)
+    assert exc.value.code == "backup_unreadable"
+    late = _archive(tmp_path / "late.tar.gz", _dir("ws"), (info, data),
+                    _file("ws/.project-name.json", b'{"name": "late"}'), fmt=fmt)
+    with pytest.raises(PrismError):
+        backup_archive.read_name(late)
+
+
+def test_sparse_maps_in_extension_headers_are_refused(tmp_path):
+    info, data = _file("ws/data.bin", b"")
+    info.pax_headers = {"GNU.sparse.major": "1", "GNU.sparse.minor": "0", "GNU.sparse.name": "ws/data.bin",
+                        "GNU.sparse.realsize": "1048576"}
+    with pytest.raises(PrismError) as exc:
+        _unpack(tmp_path, *_workspace((info, data)))
+    assert exc.value.code == "backup_unreadable"
+
+
+def test_reading_the_name_stops_once_the_backup_outgrows_the_room(tmp_path, monkeypatch):
+    path = _archive(tmp_path / "b.tar.gz", _dir("ws"), _file("ws/a", bytes(2000)),
+                    _file("ws/.project-name.json", b'{"name": "late"}'))
+    assert backup_archive.read_name(path) == "late"
+    monkeypatch.setattr(backup_archive, "room_on", lambda where: 1000)
+    with pytest.raises(PrismError) as exc:
+        backup_archive.read_name(path)
+    assert exc.value.code == "backup_no_room"
