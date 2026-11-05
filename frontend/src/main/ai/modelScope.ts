@@ -146,6 +146,32 @@ export function resolveDatabase(
   return hits.length === 1 ? { name: hits[0], kind: kinds.get(hits[0]) ?? '' } : undefined
 }
 
+/** The `GET /databases` answer as name → kind; null when it is not a list. */
+export function kindMap(body: unknown): Map<string, string> | null {
+  if (!Array.isArray(body)) return null
+  const list = body as Array<{ name?: string; kind?: string }>
+  return new Map(list.filter((d) => d?.name).map((d) => [String(d.name), String(d.kind ?? '')]))
+}
+
+/**
+ * Resolvers over one session's database list: loaded when first needed, and again — at most once per
+ * call — when a name is not on it exactly (a model made meanwhile). A loose spelling is resolved against
+ * the current list, never an old one that may lack the model it really reaches.
+ */
+export function kindsPerCall(load: () => Promise<Map<string, string>>): () => KindOf {
+  let kinds: Map<string, string> | null = null
+  return () => {
+    let fresh = false
+    return async (name) => {
+      if (!fresh && !kinds?.has(name)) {
+        kinds = await load()
+        fresh = true
+      }
+      return kinds ? resolveDatabase(kinds, name) : undefined
+    }
+  }
+}
+
 function quoteList(names: string[]): string {
   return names.map((n) => `"${n}"`).join(', ')
 }
@@ -156,10 +182,22 @@ function readableClause(scope: ModelScope): string {
     : ''
 }
 
+/** The answer to a name the fence cannot place: only a name it resolved is one it has checked. */
+function unknownDatabase(name: string, here: string, scope: ModelScope): string {
+  const open = [
+    ...(here ? [`"${here}" (this chat's model)`] : []),
+    ...(scope.readable.length ? [`its comparison model(s) ${quoteList(scope.readable)} (read only)`] : []),
+    'the background databases, the biosphere and the library listed there'
+  ]
+  return (
+    `"${name}" does not name a database this chat can use, so the call did not run. Use a name exactly as ` +
+    `list_models gives it: ${open.join(', ')}. A model list_models does not show is not open to this chat.`
+  )
+}
+
 /**
  * Why this call may not run in the chat, or null when it may. `kindOf` resolves a name the scope does
- * not know; a name it cannot resolve does not exist, and the call goes on to the tool, which says
- * "not found" — the fence has nothing to protect there.
+ * not know; a name it cannot resolve is refused (`unknownDatabase`).
  */
 export async function scopeRefusal(
   tool: string,
@@ -180,14 +218,15 @@ export async function scopeRefusal(
   const writes = effect !== 'read'
   for (const named of namedDatabases(args)) {
     if (named.name === here) continue
+    // An input the model already has, named to change or remove it: no new link, nothing read there —
+    // and its supplier may be gone, so the name need not resolve.
+    if (writes && identifiesInput(named.field, named.action)) continue
     const hit = scope.readable.includes(named.name)
       ? { name: named.name, kind: 'foreground' }
       : await kindOf(named.name)
-    if (!hit) continue // no such database: the tool answers that
+    if (!hit) return unknownDatabase(named.name, here, scope)
     const { name, kind } = hit
     if (name === here) continue
-    // An input the model already has, named to change or remove it: no new link, nothing read there.
-    if (writes && identifiesInput(named.field, named.action)) continue
     const comparison = scope.readable.includes(name)
     const model = kind === 'foreground'
     const role =
