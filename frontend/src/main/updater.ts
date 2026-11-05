@@ -18,6 +18,8 @@
  *    is refused here, not only hidden in the UI.
  *  - V-4: the AppImage is swapped atomically by this file (`swapAppImage`), because electron-updater
  *    deletes the old file before it moves the new one into place.
+ *  - The Windows publisher check is ours (updateSignature.ts): an installer whose signature cannot be
+ *    checked is refused, never installed unchecked.
  * electron-updater's own install-on-quit is therefore off; `before-quit` below does it instead.
  *
  * `electron-updater` is imported lazily, on the first click, so dev and smoke runs never load it. Its
@@ -45,6 +47,7 @@ import type { PrepareInstallResult, UpdateState } from '../shared/updates'
 import { BUILD } from './buildInfo'
 import { distrustIn } from './distrustedRoots'
 import { withSystemProxy } from './networkProxy'
+import { guardUpdateSignature, SIGNATURE_UNCHECKED } from './updateSignature'
 
 export type { PrepareInstallResult, UpdateState }
 
@@ -218,6 +221,10 @@ export function plainNotes(raw: unknown): string | undefined {
 export function describeUpdateError(err: unknown, during: 'check' | 'download' | 'install'): string {
   const raw = err instanceof Error ? err.message : String(err ?? '')
   const code = (err as { code?: unknown } | null)?.code
+  // Windows could not tell whether the installer is ours (updateSignature.ts). Installing by hand lets
+  // Windows show the publisher before anything runs.
+  if (code === SIGNATURE_UNCHECKED)
+    return 'The update was not installed because its signature could not be checked on this computer. Install it by hand from the release page instead.'
   // A downloaded installer that fails its Authenticode check may be an attack. Say so and stop —
   // never point the user at a manual install from here.
   if (
@@ -352,6 +359,7 @@ async function loadUpdater(): Promise<AutoUpdater> {
   // An AppImage run therefore gets its updater by name, whatever the file says.
   const autoUpdater = installKind() === 'appimage' ? new mod.AppImageUpdater() : mod.autoUpdater
   neutraliseInstallationId(autoUpdater)
+  if (installKind() === 'nsis') guardUpdateSignature(autoUpdater)
   distrustIn(autoUpdater.netSession)
   // A feedtest build asks only the local test feed, never GitHub.
   if (BUILD.kind === 'feedtest' && BUILD.feedUrl)

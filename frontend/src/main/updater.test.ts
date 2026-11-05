@@ -57,9 +57,26 @@ vi.mock('./buildInfo', () => ({
   }
 }))
 
+/** Stands in for electron-updater's default Windows verifier until updater.ts replaces it. */
+const defaultVerifier = async (): Promise<string | null> => null
+
 class FakeUpdater extends EventEmitter {
   autoDownload = true
   autoInstallOnAppQuit = true
+  declare verifyUpdateCodeSignature: unknown
+  constructor() {
+    super()
+    // NsisUpdater's verifier slot: an accessor whose setter ignores an empty value.
+    let verifier: unknown = defaultVerifier
+    Object.defineProperty(this, 'verifyUpdateCodeSignature', {
+      configurable: true,
+      enumerable: true,
+      get: () => verifier,
+      set: (next: unknown) => {
+        if (next) verifier = next
+      }
+    })
+  }
   // The two private members V-1 replaces, shaped like electron-updater's (a Lazy and a method).
   stagingUserIdPromise: { value: Promise<string> } = { value: Promise.resolve('a-real-installation-id') }
   computeFinalHeaders(headers: Record<string, string>): Record<string, string> {
@@ -343,6 +360,61 @@ describe('the manual update check', () => {
     const msg = describeUpdateError(err, 'download')
     expect(msg).toBe('The downloaded update failed its signature check and was not installed.')
     expect(msg).not.toMatch(/manual|release page|download it/i)
+  })
+})
+
+describe('the Windows publisher check', () => {
+  it('replaces the default verifier on Windows, and only there', async () => {
+    fake.checkForUpdates.mockImplementation(async () => null)
+    await call('updates:check')
+    expect(typeof fake.verifyUpdateCodeSignature).toBe('function')
+    expect(fake.verifyUpdateCodeSignature).not.toBe(defaultVerifier)
+
+    setPlatform('linux')
+    vi.stubEnv('APPIMAGE', join(appState.userData, 'PrismLCA.AppImage'))
+    fake = new FakeUpdater()
+    await setup()
+    await call('updates:check')
+    expect(fake.verifyUpdateCodeSignature).toBe(defaultVerifier)
+  })
+
+  it('refuses an update whose signature cannot be checked, and points to the release page', async () => {
+    // A Windows environment whose PowerShell cannot be started: the spawn fails, nothing answers.
+    vi.stubEnv('SystemRoot', 'C:\\Windows')
+    fake.checkForUpdates.mockImplementation(async () => {
+      fake.emit('update-available', { version: '1.3.0' })
+      return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
+    })
+    fake.downloadUpdate.mockImplementation(async () => {
+      // As NsisUpdater does before it accepts the file: the pinned names from app-update.yml, the file.
+      const verify = fake.verifyUpdateCodeSignature as (n: string[], f: string) => Promise<string | null>
+      const verdict = await verify(['CN=PrismLCA Test'], 'C:\\Temp\\temp-PrismLCA-Setup-1.3.0.exe')
+      if (verdict !== null) throw new Error(`not signed by the application owner: ${verdict}`)
+      fake.emit('update-downloaded', { version: '1.3.0' })
+      return []
+    })
+    await call('updates:check')
+    const s = await call('updates:download')
+    expect(s).toEqual({
+      phase: 'error',
+      current: '1.2.0',
+      message:
+        'The update was not installed because its signature could not be checked on this computer. Install it by hand from the release page instead.',
+      version: '1.3.0'
+    })
+    expect(fake.install).not.toHaveBeenCalled()
+    expect((await call('updates:install')).phase).toBe('error')
+    expect(fake.install).not.toHaveBeenCalled()
+  })
+
+  it('fails closed: without the verifier slot, a Windows check sends nothing', async () => {
+    const bare = new FakeUpdater() as unknown as Record<string, unknown>
+    delete bare.verifyUpdateCodeSignature
+    fake = bare as unknown as FakeUpdater
+    const s = await call('updates:check')
+    expect(s.phase).toBe('error')
+    expect(s.message).toMatch(/signature guard/)
+    expect(fake.checkForUpdates).not.toHaveBeenCalled()
   })
 })
 
