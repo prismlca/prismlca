@@ -12,7 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from prism_lca.mkl_runtime import bundled_mkl_rt, own_mkl_dir, pin_solver_environment
+from prism_lca.mkl_runtime import (
+    bundled_mkl_rt,
+    bundled_tbb,
+    load_threading_runtime,
+    own_mkl_dir,
+    pin_solver_environment,
+)
 
 
 def _touch(folder: Path, *names: str) -> None:
@@ -70,8 +76,8 @@ def test_without_an_own_mkl_nothing_is_touched(tmp_path):
 def test_a_real_solve_survives_an_mkl_environment_set_for_somebody_else():
     # In a child process: the pinned layer is process-wide, and the test process must keep its own.
     code = (
-        "import os; from prism_lca.mkl_runtime import own_mkl_dir, pin_solver_environment;"
-        "pin_solver_environment(os.environ, own_mkl_dir());"
+        "import os; from prism_lca.mkl_runtime import load_threading_runtime, own_mkl_dir, pin_solver_environment;"
+        "pin_solver_environment(os.environ, own_mkl_dir()); load_threading_runtime(own_mkl_dir());"
         "import numpy as np, scipy.sparse as sp, pypardiso;"
         "x = pypardiso.spsolve(sp.csr_matrix(np.array([[4.0, 1.0], [1.0, 3.0]])), np.array([1.0, 2.0]));"
         "assert np.allclose(x, [1 / 11, 7 / 11]), x; print('solved')"
@@ -79,3 +85,19 @@ def test_a_real_solve_survives_an_mkl_environment_set_for_somebody_else():
     env = {**os.environ, **_FOREIGN, "PYTHONPATH": os.pathsep.join(sys.path)}
     out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=120)
     assert out.returncode == 0 and "solved" in out.stdout, out.stderr[-2000:]
+
+
+def test_finds_the_tbb_runtime_by_its_soname(tmp_path):
+    _touch(tmp_path, "libtbb.so.12", "libtbb.so.12.19", "libtbbbind.so.3", "libtbbmalloc.so.2", "libtbb.so.2")
+    assert bundled_tbb(str(tmp_path)) == str(tmp_path / "libtbb.so.12")
+
+
+def test_loads_no_tbb_without_an_own_mkl(tmp_path):
+    _touch(tmp_path, "libtbb.so.12")
+    assert load_threading_runtime(str(tmp_path)) is None
+
+
+def test_loads_no_tbb_outside_linux(tmp_path, monkeypatch):
+    _touch(tmp_path, "libmkl_rt.so.3", "libtbb.so.12")
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert load_threading_runtime(str(tmp_path)) is None

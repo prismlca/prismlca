@@ -4,7 +4,7 @@ import multiprocessing
 import os
 import sys
 
-from prism_lca.mkl_runtime import own_mkl_dir, pin_solver_environment
+from prism_lca.mkl_runtime import load_threading_runtime, own_mkl_dir, pin_solver_environment
 
 
 def _solver_environment() -> None:
@@ -16,9 +16,11 @@ def _solver_environment() -> None:
     at its own import. In the bundle the MKL libraries sit next to the executable's ``_internal`` files
     (prism_backend.spec), where neither ``ctypes.util.find_library`` nor pypardiso's ``sys.prefix/lib*``
     search looks. A start from source comes through here too: the ``prism-lca-backend`` script calls
-    :func:`run`.
+    :func:`run`. The TBB runtime is loaded here as well, so the threading layer finds it (mkl_runtime.py).
     """
-    pin_solver_environment(os.environ, own_mkl_dir())
+    mkl_dir = own_mkl_dir()
+    pin_solver_environment(os.environ, mkl_dir)
+    load_threading_runtime(mkl_dir)
 
 
 def _bundle_working_directory() -> None:

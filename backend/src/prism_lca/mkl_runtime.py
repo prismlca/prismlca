@@ -1,4 +1,4 @@
-"""Intel MKL for pypardiso: which library is ours, and the variables that keep it ours. Free of side effects.
+"""Intel MKL for pypardiso: which library is ours, and the variables that keep it ours. Importing it has no side effects.
 
 ``__main__`` and ``server.main`` apply the solver environment at start-up; this module only looks and
 writes into the mapping it is given, so a test can import it without switching the whole test process
@@ -63,3 +63,31 @@ def pin_solver_environment(environ: MutableMapping[str, str], mkl_dir: str) -> s
     environ["MKL_THREADING_LAYER"] = "TBB"
     environ.pop("MKL_INTERFACE_LAYER", None)
     return mkl_rt
+
+
+def bundled_tbb(base: str) -> str | None:
+    """The oneTBB runtime next to our MKL on Linux (``libtbb.so.<major>``, by its soname), or None."""
+    hits = glob.glob(os.path.join(base, "libtbb.so.*"))
+    # libtbb.so.12 and libtbb.so.12.19 are one file; the soname is the name MKL asks the loader for.
+    sonames = [h for h in hits if os.path.basename(h).count(".") == 2 and h.rsplit(".", 1)[1].isdigit()]
+    return max(sonames, key=lambda h: int(h.rsplit(".", 1)[1])) if sonames else None
+
+
+def load_threading_runtime(mkl_dir: str) -> str | None:
+    """Load the oneTBB runtime that sits next to our MKL, before MKL's TBB layer needs it. Returns its path.
+
+    MKL's ``libmkl_tbb_thread`` names ``libtbb.so.12`` without a search path of its own, so outside the
+    frozen bundle (whose loader path holds its own folder) Linux looks only system-wide: a solve worked where
+    a system TBB happened to be installed and aborted the process everywhere else. The loader matches a
+    library that is already loaded by its soname, so loading ours first is all it takes. Linux only: Windows
+    finds a DLL's dependencies next to it, and macOS records them relative to the library.
+    """
+    if not sys.platform.startswith("linux") or bundled_mkl_rt(mkl_dir) is None:
+        return None
+    tbb = bundled_tbb(mkl_dir)
+    if tbb is None:
+        return None
+    import ctypes
+
+    ctypes.CDLL(tbb, mode=ctypes.RTLD_GLOBAL)
+    return tbb
