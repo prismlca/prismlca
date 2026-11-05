@@ -37,6 +37,12 @@ def test_two_names_never_share_a_place():
     assert len({index_base(ROOT, n) for n in names}) == len(names)
 
 
+def test_a_name_spelled_like_a_hashed_place_gets_a_place_of_its_own():
+    hashed = index_base(ROOT, "../victim")
+    assert index_base(ROOT, hashed.name) != hashed
+    assert index_base(ROOT, f"a/{hashed.name}").parent == ROOT
+
+
 def _seed(name: str) -> None:
     get_bd().Database(name).write(
         {
