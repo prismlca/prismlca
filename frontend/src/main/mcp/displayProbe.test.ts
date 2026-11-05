@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { ownerOf, sessionDisplaysOf, xServerOf, type ProbeRoots } from './displayProbe'
+import { ownerOf, sessionDisplaysOf, tcpListenersOf, xServerOf, type ProbeRoots } from './displayProbe'
 
 const linux = process.platform === 'linux'
 const uid = process.getuid?.() ?? -1
@@ -123,5 +123,41 @@ describe('sessionDisplaysOf', () => {
   it('skips session ids that are not plain names', () => {
     logind({ '1000': 'SESSIONS=../users/1000 2\n' }, { '2': 'UID=1000\nSTATE=online\nDISPLAY=:4.0\n' })
     expect(sessionDisplaysOf(1000, roots)).toEqual([':4'])
+  })
+})
+
+describe('tcpListenersOf', () => {
+  const head =
+    '  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode'
+  const row = (addr: string, st: string, uid: number): string =>
+    `   0: ${addr} 00000000:0000 ${st} 00000000:00000000 00:00000000 00000000  ${uid}        0 1 1 0 100 0 0 10 0`
+
+  it('lists the owners of loopback and wildcard listeners on the port, IPv4 and IPv6', () => {
+    const proc = join(dir, 'proc')
+    mkdirSync(join(proc, 'net'), { recursive: true })
+    writeFileSync(
+      join(proc, 'net', 'tcp'),
+      [
+        head,
+        row('0100007F:177A', '0A', 1000), // 127.0.0.1:6010
+        row('00000000:177A', '0A', 1001), // 0.0.0.0:6010
+        row('0100A8C0:177A', '0A', 1002), // 192.168.0.1:6010, not loopback
+        row('0100007F:177A', '01', 1003), // a connection, not a listener
+        row('0100007F:177B', '0A', 1004) // another port
+      ].join('\n')
+    )
+    writeFileSync(
+      join(proc, 'net', 'tcp6'),
+      [
+        head,
+        row('00000000000000000000000001000000:177A', '0A', 1000), // ::1
+        row('0000000000000000FFFF00000100007F:177A', '0A', 1005), // ::ffff:127.0.0.1
+        row('00000000000000000000000000000000:177A', '0A', 1006), // ::
+        row('B80D0120000000000000000001000000:177A', '0A', 1007) // 2001:db8::1, not loopback
+      ].join('\n')
+    )
+    expect(tcpListenersOf(6010, { ...roots, proc })).toEqual([1000, 1001, 1000, 1005, 1006])
+    expect(tcpListenersOf(6012, { ...roots, proc })).toEqual([])
+    expect(tcpListenersOf(6010, { ...roots, proc: join(dir, 'missing') })).toEqual([])
   })
 })

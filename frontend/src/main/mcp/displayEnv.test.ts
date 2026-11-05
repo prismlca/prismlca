@@ -19,6 +19,8 @@ function fs(opts: {
   /** X servers by display number; default for a listed X<n>: the user's, holding both listeners. */
   servers?: Record<string, { uid: number; holds: boolean | null } | null>
   sessionDisplays?: string[]
+  /** Owners of loopback TCP listeners by port; default: the user's own SSH forwarding on 6010. */
+  tcp?: Record<number, number[]>
 }): DisplayFs {
   const existing = new Set(opts.existing ?? [])
   const runtime = opts.runtime ?? []
@@ -45,7 +47,8 @@ function fs(opts: {
       if (opts.servers && n in opts.servers) return opts.servers[n]
       return x11.includes(`X${n}`) ? { uid: UID, holds: true } : null
     },
-    sessionDisplays: () => opts.sessionDisplays ?? []
+    sessionDisplays: () => opts.sessionDisplays ?? [],
+    tcpListeners: (port: number) => (opts.tcp ?? { 6010: [UID, UID] })[port] ?? []
   }
 }
 
@@ -279,9 +282,11 @@ describe('resolveDisplayEnv: only displays of this user', () => {
 describe('xDisplayTarget', () => {
   it('reads DISPLAY the way libxcb does', () => {
     for (const d of [':0', ':0.1', 'unix:0', 'unix/:0', 'unix/somehost:0.0', ':00'])
-      expect(xDisplayTarget(d)).toEqual({ local: '0' })
-    for (const d of ['localhost:10.0', 'host:1', 'tcp/localhost:10', 'inet6/::1:0', '127.0.0.1:0'])
-      expect(xDisplayTarget(d)).toBe('remote')
+      expect(xDisplayTarget(d)).toEqual({ via: 'unix', n: '0' })
+    for (const d of ['localhost:10.0', 'tcp/localhost:10', 'inet6/::1:10', '127.0.0.1:10', 'LOCALHOST:10'])
+      expect(xDisplayTarget(d)).toEqual({ via: 'loopback', n: '10' })
+    for (const d of ['host:1', 'tcp/host.example:1', '192.168.1.5:1'])
+      expect(xDisplayTarget(d)).toEqual({ via: 'remote', n: '1' })
     for (const d of ['/tmp/.X11-unix/X0', 'tcp/:0', 'other/:0', ':', ':x', ': 0', ':0.', 'host', ''])
       expect(xDisplayTarget(d)).toBeNull()
   })
@@ -317,6 +322,48 @@ describe('xDisplayTarget', () => {
     )
     expect(path.env.DISPLAY).toBeUndefined()
     expect(path.platform).toBeNull()
+  })
+})
+
+describe('resolveDisplayEnv: a TCP display on this machine', () => {
+  const run = (display: string, tcp: Record<number, number[]>, runtime: string[] = []) =>
+    resolveDisplayEnv(
+      { XDG_RUNTIME_DIR: '/run/user/1000', DISPLAY: display },
+      fs({ existing: ['/home/u/.Xauthority'], runtime, tcp }),
+      UID
+    )
+
+  it("keeps an SSH-forwarded display whose listeners are all the user's", () => {
+    for (const d of ['localhost:10.0', '127.0.0.1:10', 'tcp/localhost:10.0']) {
+      const r = run(d, { 6010: [UID, UID] }, ['wayland-0'])
+      expect(r.env).toMatchObject({ DISPLAY: d, XAUTHORITY: '/home/u/.Xauthority' })
+      expect(r.platform).toBe('x11')
+    }
+  })
+
+  it('drops it when a listener on its port belongs to another account, or none listens', () => {
+    const cases: Array<Record<number, number[]>> = [
+      { 6010: [1001] },
+      { 6010: [UID, 1001] },
+      {},
+      { 6011: [UID] }
+    ]
+    for (const tcp of cases) {
+      const r = run('localhost:10.0', tcp)
+      expect(r.env.DISPLAY).toBeUndefined()
+      expect(r.env.XAUTHORITY).toBeUndefined()
+      expect(r.platform).toBeNull()
+      expect(r.notes.join(' ')).toMatch(/cannot be confirmed/)
+    }
+    const wl = run('localhost:10.0', { 6010: [1001] }, ['wayland-0'])
+    expect(wl.platform).toBe('wayland')
+    expect(wl.env.DISPLAY).toBeUndefined()
+  })
+
+  it('keeps a display on another host as given', () => {
+    const r = run('build-server:1', {})
+    expect(r.env.DISPLAY).toBe('build-server:1')
+    expect(r.platform).toBe('x11')
   })
 })
 

@@ -52,7 +52,8 @@ export function linuxDisplayFs(uid: number | undefined = process.getuid?.()): Di
     home: homedir(),
     owner: ownerOf,
     xServer: (n) => xServerOf(n),
-    sessionDisplays: () => (uid === undefined ? [] : sessionDisplaysOf(uid))
+    sessionDisplays: () => (uid === undefined ? [] : sessionDisplaysOf(uid)),
+    tcpListeners: (port) => tcpListenersOf(port)
   }
 }
 
@@ -166,4 +167,52 @@ export function sessionDisplaysOf(uid: number, roots: ProbeRoots = LINUX_ROOTS):
     if (display && /^:\d+(\.\d+)?$/.test(display)) displays.push(display.split('.')[0])
   }
   return displays
+}
+
+/** The 16 bytes of a /proc/net/tcp6 address (four 32-bit words, each in host byte order). */
+function ipv6Bytes(hex: string): number[] {
+  const out: number[] = []
+  for (let w = 0; w < 32; w += 8) {
+    const word = hex.slice(w, w + 8)
+    for (let b = 6; b >= 0; b -= 2) out.push(Number.parseInt(word.slice(b, b + 2), 16))
+  }
+  return out
+}
+
+/**
+ * The owners of TCP listeners on `port` that a connection to this machine's loopback can reach: bound to
+ * a loopback address or to the wildcard, IPv4 and IPv6 (/proc/net/tcp and tcp6, state 0A = LISTEN).
+ */
+export function tcpListenersOf(port: number, roots: ProbeRoots = LINUX_ROOTS): number[] {
+  const owners: number[] = []
+  const hexPort = port.toString(16).toUpperCase().padStart(4, '0')
+  for (const file of ['tcp', 'tcp6']) {
+    let text: string
+    try {
+      text = readFileSync(join(roots.proc, 'net', file), 'utf-8')
+    } catch {
+      continue
+    }
+    for (const line of text.split('\n').slice(1)) {
+      // sl local_address rem_address st tx:rx tr:when retrnsmt uid ...
+      const f = line.trim().split(/\s+/)
+      if (f.length < 8 || f[3] !== '0A') continue
+      const [addr, p] = f[1].split(':')
+      if (p?.toUpperCase() !== hexPort) continue
+      let reachable: boolean
+      if (addr.length === 8) {
+        const first = Number.parseInt(addr.slice(6, 8), 16)
+        reachable = addr === '00000000' || first === 127
+      } else if (addr.length === 32) {
+        const b = ipv6Bytes(addr)
+        const zeros = (from: number, to: number): boolean => b.slice(from, to).every((x) => x === 0)
+        const any = zeros(0, 16)
+        const one = zeros(0, 15) && b[15] === 1
+        const mapped = zeros(0, 10) && b[10] === 0xff && b[11] === 0xff && (b[12] === 127 || zeros(12, 16))
+        reachable = any || one || mapped
+      } else continue
+      if (reachable) owners.push(Number(f[7]))
+    }
+  }
+  return owners
 }

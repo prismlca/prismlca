@@ -24,6 +24,8 @@ export interface DisplayFs {
   xServer: (n: string) => { uid: number; holds: boolean | null } | null
   /** The X displays (":0") systemd-logind lists for this user's live sessions. */
   sessionDisplays: () => string[]
+  /** The owners (uids) of the TCP listeners on `port` that a loopback connection can reach. */
+  tcpListeners: (port: number) => number[]
 }
 
 export type DisplayPlatform = 'wayland' | 'x11'
@@ -66,9 +68,9 @@ export function resolveDisplayEnv(
       if (wl) notes.push(`WAYLAND_DISPLAY=${wl} from the configuration is stale; the session has ${found}.`)
     }
   }
-  // X11: a LOCAL display (":0", "unix:0", "unix/:0") must be this user's (xOurs); a remote or TCP
-  // display ("localhost:10.0", "host:1") has no socket here and is kept as given — an SSH-forwarded
-  // session is a supported way to work, not a stale value. Any other spelling is not used.
+  // X11: a LOCAL display (":0", "unix:0", "unix/:0") must be this user's (xOurs), and so must a TCP
+  // display on this machine's loopback ("localhost:10.0", as SSH forwarding sets it: tcpOurs); a
+  // display on another host ("host:1") is kept as given. Any other spelling is not used.
   const x = env.DISPLAY
   const target = x ? xDisplayTarget(x) : null
   // An X display is this user's when the live process its lock names, of the socket's owner, holds both
@@ -82,8 +84,14 @@ export function resolveDisplayEnv(
     if (s.uid === uid) return server.holds === true
     return s.uid === 0 && server.holds !== false && fs.sessionDisplays().includes(`:${n}`)
   }
-  if (x && target === 'remote') out.DISPLAY = x
-  else if (x && target && target !== 'remote' && xOurs(target.local)) out.DISPLAY = x
+  // A loopback TCP display is this user's when every listener a connection to its port can reach is.
+  const tcpOurs = (n: string): boolean => {
+    const owners = fs.tcpListeners(6000 + Number(n))
+    return owners.length > 0 && owners.every((o) => o === uid)
+  }
+  if (x && target?.via === 'remote') out.DISPLAY = x
+  else if (x && target?.via === 'loopback' && tcpOurs(target.n)) out.DISPLAY = x
+  else if (x && target?.via === 'unix' && xOurs(target.n)) out.DISPLAY = x
   else {
     const found = fs.list(X11_DIR).find((n) => /^X\d+$/.test(n) && xOurs(n.slice(1)))
     if (found) {
@@ -99,7 +107,7 @@ export function resolveDisplayEnv(
   // exists, else the session's — GNOME writes .mutter-Xwaylandauth.<rand>, KDE/SDDM xauth_<rand>
   // (measured on KDE: the GNOME-only lookup left X without authorization) — else the classic
   // ~/.Xauthority.
-  const remoteX = !!out.DISPLAY && xDisplayTarget(out.DISPLAY) === 'remote'
+  const remoteX = !!out.DISPLAY && xDisplayTarget(out.DISPLAY)?.via !== 'unix'
   if (out.DISPLAY) {
     const xa = env.XAUTHORITY
     if (xa && fs.exists(xa)) out.XAUTHORITY = xa
@@ -168,9 +176,10 @@ export function displayForLaunch(
 /**
  * Where an X client connects for a DISPLAY value, read with libxcb's grammar
  * `[protocol/][host]:display[.screen]`: the local socket of display n (protocol "unix", or an empty
- * or "unix" host), a network host, or null for a spelling we do not accept.
+ * or "unix" host), TCP port 6000+n on this machine's loopback, another host, or null for a spelling
+ * we do not accept.
  */
-export function xDisplayTarget(d: string): { local: string } | 'remote' | null {
+export function xDisplayTarget(d: string): { via: 'unix' | 'loopback' | 'remote'; n: string } | null {
   if (d.startsWith('/')) return null
   const slash = d.lastIndexOf('/')
   const protocol = slash >= 0 ? d.slice(0, slash) : null
@@ -180,8 +189,10 @@ export function xDisplayTarget(d: string): { local: string } | 'remote' | null {
   const host = rest.slice(0, colon)
   const m = /^(\d+)(\.\d+)?$/.exec(rest.slice(colon + 1))
   if (!m) return null
+  const n = String(Number(m[1]))
   const unixHost = host === '' || host === 'unix'
-  if (protocol === 'unix' || (protocol === null && unixHost)) return { local: String(Number(m[1])) }
-  if (!unixHost && (protocol === null || ['tcp', 'inet', 'inet6'].includes(protocol))) return 'remote'
-  return null
+  if (protocol === 'unix' || (protocol === null && unixHost)) return { via: 'unix', n }
+  if (unixHost || (protocol !== null && !['tcp', 'inet', 'inet6'].includes(protocol))) return null
+  const loopback = /^(localhost|ip6-localhost|ip6-loopback|::1|127\.\d+\.\d+\.\d+)$/i.test(host)
+  return { via: loopback ? 'loopback' : 'remote', n }
 }
