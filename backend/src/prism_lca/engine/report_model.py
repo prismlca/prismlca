@@ -25,9 +25,46 @@ from prism_lca.engine.report_kinds import DETERMINISTIC_KINDS, PROSE_KINDS  # no
 def esc(value: object) -> str:
     """Escape text for Typst markup. Typst gives special meaning to fewer characters than Markdown,
     but `#`, `$`, `@`, `*`, `_`, `<`, `` ` `` and `\\` all do something — a dataset name like
-    ``market for electricity #2`` would otherwise start a code expression."""
+    ``market for electricity #2`` would otherwise start a code expression.
+
+    `/` too, since `//` opens a line comment that would drop the rest of the line from the page. Every
+    slash is escaped rather than only a doubled one: escaped pieces are joined after this, and two lone
+    slashes from two pieces would meet. The exception is an address Typst links by itself
+    (`_link_slashes`), whose slashes it reads as part of the link."""
     text = "" if value is None else str(value)
-    return "".join("\\" + ch if ch in "\\#$@*_`<>[]" else ch for ch in text)
+    keep = _link_slashes(text) if "/" in text else frozenset()
+    return "".join(
+        "\\" + ch if ch in "\\#$@*_`<>[]" or (ch == "/" and i not in keep) else ch for i, ch in enumerate(text)
+    )
+
+
+#: An address Typst sets as a link on its own: `http://` or `https://` and the characters its lexer takes
+#: into the link — less the ones `esc` escapes, because the backslash in front of one ends the link there.
+_AUTOLINK = re.compile(r"https?://[0-9A-Za-z!%&+,\-./:;=?~'()]*")
+
+
+def _link_slashes(text: str) -> set[int]:
+    """The positions of the slashes Typst reads as part of an automatic link, which `esc` leaves alone.
+
+    Escaped, they would turn a clickable address into plain text. The lexer takes a `(`…`)` pair into the
+    link and ends it at a `)` that closes nothing; a link with a `(` left open does not compile, so such
+    an address keeps no slash and prints as text instead."""
+    keep: set[int] = set()
+    pos = 0
+    while (match := _AUTOLINK.search(text, pos)) is not None:
+        depth, end = 0, match.end()
+        for i in range(match.start(), match.end()):
+            if text[i] == "(":
+                depth += 1
+            elif text[i] == ")":
+                if not depth:
+                    end = i
+                    break
+                depth -= 1
+        if not depth:
+            keep.update(i for i in range(match.start(), end) if text[i] == "/")
+        pos = max(end, match.start() + 1)
+    return keep
 
 
 #: `**bold**`, and `*italic*` / `_italic_`. Only these two, and only around a single line's worth of text:

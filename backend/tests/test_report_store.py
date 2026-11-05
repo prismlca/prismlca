@@ -201,6 +201,56 @@ def test_rendered_blocks_compile_as_a_document():
     assert typst_render.compile_pdf(sources).startswith(b"%PDF")
 
 
+def _printed(body: str) -> str:
+    """The text a document prints around `body`, whitespace folded — what a reader of the PDF sees."""
+    import io
+
+    from pdfminer.high_level import extract_text
+
+    from prism_lca.engine import typst_render
+
+    sources = {
+        "template.typ": typst_render.template_source(),
+        "chart.svg": '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="4"><rect width="8" height="4"/></svg>',
+        "main.typ": '#import "template.typ": *\n#show: lca-report-template.with(title: "T")\n\n' + body,
+    }
+    return " ".join(extract_text(io.BytesIO(typst_render.compile_pdf(sources))).split())
+
+
+def test_a_double_slash_in_text_prints_as_two_slashes():
+    """`//` starts a Typst line comment: the rest of the line, closing brackets included, would be dropped."""
+    body = rm.render_blocks([
+        rm.heading("Executive // summary", 1, numbered=False),
+        rm.heading("Intro // duction", 1),
+        rm.prose(rm.markup("Valid // only for the 2020 grid mix.\nWe report **Scope 1 // Scope 2** emissions.")),
+        rm.figure("chart.svg", caption=rm.markup("Share by phase // stage"), caption_safe=True),
+        rm.figure("chart.svg", caption="Written // caption"),
+    ])
+    printed = _printed(body)
+    for text in ("Executive // summary", "Intro // duction", "Valid // only for the 2020 grid mix.",
+                 "Scope 1 // Scope 2 emissions", "Share by phase // stage", "Written // caption"):
+        assert text in printed, text
+
+
+def test_escaped_pieces_never_join_into_a_double_slash():
+    """Markup is escaped piece by piece and joined: a slash at the end of one piece meets the next one."""
+    for text in ("a /`/x`", "a/", "/b", "x //", "**a/**/b", "ftp://host/x", "HTTPS://host//x"):
+        assert "//" not in rm.markup(text), text
+    assert "//" not in rm.esc("a/") + rm.esc("/b")
+
+
+def test_a_web_address_in_text_stays_a_link():
+    from prism_lca.engine import typst_render
+
+    out = rm.markup("See https://example.com/a//b, or (https://example.com/c).")
+    assert "https://example.com/a//b" in out and "https://example.com/c)" in out
+    assert "See https://example.com/a//b, or (https://example.com/c)." in _printed(out)
+    # An address with a parenthesis left open cannot be a link; it prints as text rather than failing.
+    open_paren = rm.markup("see https://example.com/a(b c")
+    assert "see https://example.com/a(b c" in _printed(open_paren)
+    assert typst_render.compile_pdf({"main.typ": open_paren}).startswith(b"%PDF")
+
+
 def test_store_errors_are_prism_errors(client, token, project):
     from prism_lca.engine.report_store import ReportStore
 

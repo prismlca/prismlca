@@ -332,7 +332,7 @@ def test_the_annex_lists_the_flows_that_carry_the_leading_indicator():
     out = render_blocks(_inventory_blocks(data, "en"))
     assert "Carbon dioxide, fossil" in out
     assert "air / urban" in out  # the compartment path, not just the top level
-    assert "IPCC 2021 / climate change / GWP100" in out  # which indicator the table is about
+    assert "IPCC 2021 \\/ climate change \\/ GWP100" in out  # which indicator the table is about
     assert "90" in out and "%" in out
 
 

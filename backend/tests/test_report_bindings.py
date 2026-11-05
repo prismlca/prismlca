@@ -445,7 +445,7 @@ def test_adding_a_parameter_ahead_of_the_others_no_longer_moves_the_sentence():
     assert "mass of 0.85" not in plain  # …with the runner-up: mass_seals' 1.2 kg, not the element's
 
     bound, missing = rd.resolve(SUMMARY, shifted, "en", bindings)
-    assert "Uw = 0.92 W/m2K" in bound and "mass of 30 kg" in bound
+    assert "Uw = 0.92 W\\/m2K" in bound and "mass of 30 kg" in bound  # `\/` prints a slash
     assert missing == []
 
 
