@@ -61,6 +61,9 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
     con = sqlite3.connect(path)
     try:
         con.execute("PRAGMA trusted_schema = OFF")
+        # Pages and indexes agree with their tables, so every way of reading a row returns the value checked.
+        if con.execute("PRAGMA integrity_check(1)").fetchone() != ("ok",):
+            raise _NotPlain(path.name)
         # bw2data creates the triggers it needs whenever it opens a store; none from elsewhere is kept.
         triggers = [row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type = 'trigger'")]
         for trigger in triggers:
@@ -83,7 +86,7 @@ def _check_store(path: Path, columns: tuple[tuple[str, str], ...]) -> None:
                 raise _NotPlain(f"{table}.{column}")
             rows = con.execute(
                 f'SELECT typeof("{column}"), length("{column}"), '
-                f'CASE WHEN length("{column}") <= ? THEN "{column}" END FROM "{table}"',
+                f'CASE WHEN length("{column}") <= ? THEN "{column}" END FROM "{table}" NOT INDEXED',
                 (MAX_PICKLE,),
             )
             for kind, size, value in rows:

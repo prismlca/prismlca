@@ -119,6 +119,30 @@ def test_triggers_are_dropped_from_checked_stores(tmp_path):
     con.close()
 
 
+def test_a_store_whose_index_disagrees_with_its_table_is_refused(tmp_path):
+    """An index built over one value while the table row holds another."""
+    path = tmp_path / "lci" / "databases.db"
+    path.parent.mkdir()
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE activitydataset (id INTEGER PRIMARY KEY, data BLOB, comment TEXT)")
+    con.execute("INSERT INTO activitydataset VALUES (1, ?, ?)", (pickle.dumps(PLAIN), "x" * 5000))
+    con.execute("CREATE INDEX covering ON activitydataset (data)")
+    con.commit()
+    entry = con.execute("SELECT * FROM sqlite_master WHERE name = 'covering'").fetchone()
+    con.execute("PRAGMA writable_schema = ON")
+    con.execute("DELETE FROM sqlite_master WHERE name = 'covering'")
+    con.commit()
+    con.close()
+    con = sqlite3.connect(path)
+    con.execute("UPDATE activitydataset SET data = ? WHERE id = 1", (pickle.dumps(NOT_PLAIN[0]),))
+    con.commit()
+    con.execute("PRAGMA writable_schema = ON")
+    con.execute("INSERT INTO sqlite_master VALUES (?, ?, ?, ?, ?)", entry)
+    con.commit()
+    con.close()
+    _refused(tmp_path)
+
+
 @pytest.mark.parametrize("column", [
     "data BLOB DEFAULT x'00'",
     "raw BLOB, data BLOB GENERATED ALWAYS AS (raw) VIRTUAL",
