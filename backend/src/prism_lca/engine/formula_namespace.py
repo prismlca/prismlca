@@ -2,10 +2,11 @@
 
 Three kinds of interpreter evaluate formulas: ours (``params.evaluate_formula``, ``sensitivity_fast``), bw2data's
 recalculation and bw2parameters' ``ParameterSet``. Brightway takes no namespace from us, but every one of them
-builds its own from asteval's module tables when it is created. So the entries that read or write files or print
-are taken out of those tables, once, before anything evaluates a formula: the same tables with fewer entries, no
-function of asteval or Brightway replaced. ``params`` does it when it is imported, and every formula the backend
-evaluates is evaluated through that module or through ``sensitivity_fast``, which imports it.
+builds its own from asteval's module tables when it is created. So the entries that read or write files, print,
+or change numpy's settings for the whole process are taken out of those tables, once, before anything evaluates a
+formula: the same tables with fewer entries, no function of asteval or Brightway replaced. ``params`` does it when
+it is imported, and every formula the backend evaluates is evaluated through that module or through
+``sensitivity_fast``, which imports it; ``bootstrap.get_bd`` does it too, before Brightway is first used.
 
 The asteval and bw2parameters versions these tables were reviewed for are pinned in
 ``tests/test_formula_namespace.py``.
@@ -16,8 +17,11 @@ from __future__ import annotations
 import asteval.asteval
 from asteval import Interpreter, astutils
 
-#: Entries of asteval's default tables that read files (Python's ``open``, numpy's readers) or print (``info``).
-REMOVED_NAMES: tuple[str, ...] = ("open", "fromfile", "fromregex", "genfromtxt", "loadtxt", "info")
+#: Entries of asteval's default tables that read files (Python's ``open``, numpy's readers), print (``info``) or
+#: change numpy's settings for every later calculation of the process (``seterr``, ``setbufsize``).
+REMOVED_NAMES: tuple[str, ...] = (
+    "open", "fromfile", "fromregex", "genfromtxt", "loadtxt", "info", "seterr", "setbufsize",
+)
 
 #: Methods that write an array or a numpy scalar to a file: refused on every object, not on arrays only.
 REFUSED_ATTRIBUTES: tuple[str, ...] = ("tofile", "dump")

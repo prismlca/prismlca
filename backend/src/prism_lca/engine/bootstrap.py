@@ -36,6 +36,10 @@ def get_bd() -> ModuleType:
     """Return the ``bw2data`` module, importing it only after the data dir is configured."""
     global _bd
     if _bd is None:
+        # Brightway evaluates formulas; their namespace is restricted before Brightway is first used.
+        from prism_lca.engine import formula_namespace
+
+        formula_namespace.restrict()
         _ensure_env()
         import bw2data as bd  # noqa: E402 - env must be set before import
 

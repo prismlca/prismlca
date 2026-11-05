@@ -10,6 +10,7 @@ from __future__ import annotations
 import builtins
 import importlib.metadata
 import io
+import os
 import subprocess
 import sys
 import types
@@ -80,7 +81,8 @@ _FORBIDDEN = {
         "open": builtins.open, "io.open": io.open, "asteval open": astutils._open, "print": builtins.print,
         "fromfile": np.fromfile, "fromregex": np.fromregex, "genfromtxt": np.genfromtxt, "loadtxt": np.loadtxt,
         "load": np.load, "save": np.save, "savez": np.savez, "savez_compressed": np.savez_compressed,
-        "savetxt": np.savetxt, "memmap": np.memmap, "info": np.info,
+        "savetxt": np.savetxt, "memmap": np.memmap, "info": np.info, "seterr": np.seterr,
+        "setbufsize": np.setbufsize,
     }.items()
 }
 #: Source files of the numpy and standard-library code that reads or writes files or prints.
@@ -117,7 +119,7 @@ def test_no_attribute_a_formula_can_reach_reads_or_writes_files():
         raise Refused(msg)
 
     io_members = {"tofile", "dump", "load", "save", "savetxt", "savez", "fromfile", "loadtxt", "genfromtxt",
-                  "fromregex", "memmap", "open", "info", "write", "writelines"}
+                  "fromregex", "memmap", "open", "info", "write", "writelines", "seterr", "setbufsize"}
     roots = list(Interpreter().symtable.values()) + [
         np.array([1.0]), np.float64(1.0), np.int32(1), np.dtype("f8"), np.matrix([[1.0]]), np.poly1d([1.0]),
         np.rec.array([(1,)])[0], np.zeros(1, dtype="V4")[0], np.array([b"ab"])[0], np.array([1.0]).data,
@@ -175,6 +177,24 @@ def test_importing_the_backend_restricts_formulas_before_anything_evaluates_one(
     assert r.returncode == 0, r.stderr[-2000:]
 
 
+def test_the_first_use_of_brightway_restricts_formulas(tmp_path):
+    """Code that reaches Brightway without importing ``params`` (a script, a worker) gets the restriction too."""
+    code = (
+        "import sys\n"
+        "from asteval import Interpreter\n"
+        "from prism_lca.engine.bootstrap import get_bd\n"
+        "assert 'open' in Interpreter().symtable\n"
+        "get_bd()\n"
+        "assert 'prism_lca.engine.params' not in sys.modules\n"
+        "i = Interpreter()\n"
+        "assert 'open' not in i.symtable and 'seterr' not in i.symtable and not i.config['print']\n"
+    )
+    env = {**os.environ, "BRIGHTWAY2_DIR": str(tmp_path / "bw"), "PRISM_DATA_DIR": str(tmp_path / "bw")}
+    r = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True,
+                       timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+
+
 def test_the_package_itself_does_not_load_numpy(tmp_path):
     """The backend's entry point configures the maths libraries before numpy loads; the package import runs
     before it, so the restriction must not live there."""
@@ -202,6 +222,8 @@ WRITES = [
     "array([1.0]).data.obj.tofile({dst})",
 ]
 OUTPUT = [f"print({_spelled(MARK)})", f"info({_spelled(MARK)})"]
+#: numpy settings that hold for every later calculation of the process.
+SETTINGS = ["seterr(all='raise')", "setbufsize(16)"]
 #: Statements only the default configuration (bw2data's, bw2parameters') accepts.
 STATEMENTS = [
     "x = float64(2)\nx.dump({dst})",
@@ -226,10 +248,24 @@ def test_a_formula_reads_writes_and_prints_nothing(formula, minimal, files, prin
     assert MARK not in printed()
 
 
+@pytest.mark.parametrize("minimal", [True, False], ids=["minimal", "default"])
+@pytest.mark.parametrize("formula", SETTINGS)
+def test_a_formula_leaves_numpy_settings_alone(formula, minimal):
+    before = (np.geterr(), np.getbufsize())
+    interp = Interpreter(minimal=minimal)
+    interp(formula, show_errors=False)
+    after = (np.geterr(), np.getbufsize())
+    np.seterr(**before[0])
+    np.setbufsize(before[1])
+    assert interp.error, "the formula ran to the end"
+    assert after == before
+
+
 @pytest.mark.parametrize(
     ("formula", "expected"),
     [
         ("sqrt(4.0) * 2", 4.0),
+        ("mean(array([1.0, 3.0])) + std(array([1.0, 1.0])) + float(geterr()['divide'] == 'warn')", 3.0),
         ("max(1, 2) + abs(-1) + min(3, 4)", 6.0),
         ("log(e) + log10(100) + exp(0)", 4.0),
         ("array([1.0, 2.0]).sum() * pi / pi", 3.0),
