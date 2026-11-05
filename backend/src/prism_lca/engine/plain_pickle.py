@@ -1,9 +1,9 @@
 """Whether a pickle holds plain values only, decided by reading its opcodes without loading it.
 
 Plain values are None, bool, int, float, str, bytes, and lists, tuples, dicts and sets of them, without cycles.
-Only the opcodes that build those are accepted; references through the memo are followed, and the size of the
-values fully expanded is bounded by the pickle's own length, so whatever loads the pickle later does work in
-proportion to its size.
+Only the opcodes that build those are accepted; references through the memo are followed, the size of the
+values fully expanded is bounded by the pickle's own length, and their nesting depth is bounded, so whatever
+loads the pickle later does work in proportion to its size and recurses only shallowly.
 """
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ import pickletools
 #: strings and tuples in real data reach.
 EXPANSION_FACTOR = 64
 EXPANSION_FLOOR = 100_000
+#: Real values nest a handful of levels (an exchange's properties, a calculation setup's keys).
+MAX_DEPTH = 100
 
 _ATOMS = frozenset({
     "NONE", "NEWTRUE", "NEWFALSE", "INT", "BININT", "BININT1", "BININT2", "LONG", "LONG1", "LONG4",
@@ -34,11 +36,12 @@ class NotPlain(ValueError):
 class _Node:
     """A container in the pickle; ``kids`` is None for a value that holds no others."""
 
-    __slots__ = ("kids", "size", "state")
+    __slots__ = ("kids", "size", "depth", "state")
 
     def __init__(self, kids: list | None) -> None:
         self.kids = kids
         self.size = 1
+        self.depth = 1
         self.state = 0  # 0 not sized, 1 being sized, 2 sized
 
 
@@ -123,15 +126,19 @@ def _scan(data: bytes) -> list[_Node]:
 
 
 def _bound(containers: list[_Node], limit: int) -> None:
-    """Size every container as if all shared references were copies; refuse cycles and sizes over ``limit``."""
+    """Size every container as if all shared references were copies; refuse cycles, sizes over ``limit``
+    and nesting deeper than :data:`MAX_DEPTH`."""
     for start in containers:
         todo = [(start, False)]
         while todo:
             node, sized_kids = todo.pop()
             if sized_kids:
                 node.size = 1 + sum(kid.size for kid in node.kids)
+                node.depth = 1 + max((kid.depth for kid in node.kids if kid.kids is not None), default=0)
                 if node.size > limit:
                     raise NotPlain("expansion")
+                if node.depth > MAX_DEPTH:
+                    raise NotPlain("depth")
                 node.state = 2
             elif node.state == 0:
                 node.state = 1

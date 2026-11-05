@@ -45,6 +45,18 @@ def test_the_expanded_size_of_shared_values_is_bounded():
             plain_pickle.check(_shared_tuples(40, *tail))
 
 
+def test_nesting_depth_is_bounded():
+    def nested(depth: int) -> bytes:
+        return (pickle.PROTO + bytes([4]) + pickle.EMPTY_DICT + pickle.EMPTY_TUPLE + pickle.TUPLE1 * depth
+                + pickle.NONE + pickle.SETITEM + pickle.STOP)
+
+    plain_pickle.check(nested(plain_pickle.MAX_DEPTH - 2))
+    with pytest.raises(plain_pickle.NotPlain):
+        plain_pickle.check(nested(plain_pickle.MAX_DEPTH))
+    with pytest.raises(plain_pickle.NotPlain):
+        plain_pickle.check(nested(200_000))
+
+
 def test_cycles_are_refused():
     data = pickle.PROTO + bytes([4]) + pickle.EMPTY_LIST + pickle.MEMOIZE + pickle.BINGET + b"\x00" \
         + pickle.APPEND + pickle.STOP
