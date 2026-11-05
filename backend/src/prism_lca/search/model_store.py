@@ -76,20 +76,27 @@ def is_cached(repo: str, revision: str | None) -> bool:
     return (folder / "modules.json").is_file() and any((folder / f).is_file() for f in _WEIGHT_FILES)
 
 
-def refuse_custom_modules(folder: Path) -> None:
-    """Refuse a model folder whose ``modules.json`` names a class outside sentence-transformers.
+#: The sentence-transformers modules the search model consists of (bge-m3 at the pinned revision). None of
+#: them names further classes in its configuration, so no other code is loaded with the model.
+_MODEL_MODULES = frozenset({"Transformer", "Pooling", "Normalize"})
 
-    The search model is built from the library's own modules only; no code ships with the model.
-    """
+
+def refuse_custom_modules(folder: Path) -> None:
+    """Refuse a model folder whose ``modules.json`` names anything but :data:`_MODEL_MODULES`."""
     path = folder / "modules.json"
     if not path.is_file():
         return  # loaded as a plain transformers model, which needs trust_remote_code for any code
     entries = json.loads(path.read_text(encoding="utf-8"))
     for entry in entries if isinstance(entries, list) else [entries]:
         kind = entry.get("type") if isinstance(entry, dict) else None
-        if not (isinstance(kind, str) and kind.startswith("sentence_transformers.")):
+        if not (
+            isinstance(kind, str)
+            and kind.startswith("sentence_transformers.")
+            and kind.rsplit(".", 1)[-1] in _MODEL_MODULES
+        ):
             raise RuntimeError(
-                f"The search model in {folder} asks for a module of its own ({kind!r}); it is not loaded."
+                f"The search model in {folder} asks for a module the search model does not use ({kind!r}); "
+                "it is not loaded."
             )
 
 

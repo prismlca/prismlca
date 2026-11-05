@@ -7,6 +7,7 @@ the loader is always a stand-in.
 """
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -250,9 +251,15 @@ def test_provider_without_a_cached_snapshot_loads_nothing(hub_cache, monkeypatch
         ' {"idx": 1, "name": "1", "path": "1_x", "type": "custom.Pooling"}]',
         '[{"idx": 0, "name": "0", "path": ""}]',
         '{"type": "modeling_custom.Encoder"}',
+        # Modules the search model does not consist of, among them one that names further classes.
+        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Router"}]',
+        '[{"idx": 0, "name": "0", "path": "",'
+        ' "type": "sentence_transformers.base.modules.router.Router"}]',
+        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},'
+        ' {"idx": 1, "name": "1", "path": "1_Dense", "type": "sentence_transformers.models.Dense"}]',
     ],
 )
-def test_provider_loads_only_the_librarys_own_modules(hub_cache, monkeypatch, modules):
+def test_provider_loads_only_the_modules_the_search_model_consists_of(hub_cache, monkeypatch, modules):
     from prism_lca.search.embeddings import SentenceTransformerProvider
 
     _write_snapshot(hub_cache)
@@ -260,17 +267,30 @@ def test_provider_loads_only_the_librarys_own_modules(hub_cache, monkeypatch, mo
     modules_json.unlink()
     modules_json.write_text(modules)
     calls = _fake_sentence_transformers(monkeypatch)
-    with pytest.raises(RuntimeError, match="module of its own"):
+    with pytest.raises(RuntimeError, match="does not use"):
         SentenceTransformerProvider(REPO, REV)
     assert calls == []
 
 
-def test_provider_accepts_the_librarys_module_names(tmp_path):
-    (tmp_path / "modules.json").write_text(
-        '[{"idx": 0, "name": "0", "path": "", "type": "sentence_transformers.models.Transformer"},'
-        ' {"idx": 1, "name": "1", "path": "1_Pooling",'
-        ' "type": "sentence_transformers.sentence_transformer.modules.pooling.Pooling"}]'
-    )
+@pytest.mark.parametrize(
+    "names",
+    [
+        # bge-m3 at the pinned revision
+        ("models.Transformer", "models.Pooling", "models.Normalize"),
+        # the same modules under the library's newer module paths
+        (
+            "base.modules.transformer.Transformer",
+            "sentence_transformer.modules.pooling.Pooling",
+            "sentence_transformer.modules.normalize.Normalize",
+        ),
+    ],
+)
+def test_provider_accepts_the_search_models_modules(tmp_path, names):
+    entries = [
+        {"idx": i, "name": str(i), "path": "", "type": f"sentence_transformers.{name}"}
+        for i, name in enumerate(names)
+    ]
+    (tmp_path / "modules.json").write_text(json.dumps(entries))
     model_store.refuse_custom_modules(tmp_path)
 
 
