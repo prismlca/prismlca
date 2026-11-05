@@ -12,7 +12,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 import { setProgressEvery, McpHost } from './server'
-import { endpointPath, readEndpoint } from './endpoint'
+import { endpointPath, endpointProof, readEndpoint } from './endpoint'
 import type { ApiRaw } from '../ai/execute'
 import type { McpEvent } from '../../shared/ipc'
 
@@ -561,5 +561,20 @@ describe('McpHost: switching off and a new token', () => {
       await new Promise((r) => setTimeout(r, 10))
     expect(c2.received()).toMatch(/HTTP\/1\.1 401/)
     c2.sock.destroy()
+  })
+
+  it('proves the token for a nonce without being given it, and only on the running listener', async () => {
+    await h.start()
+    const { url: u, token } = readEndpoint(dir)!
+    const base = u.replace(/\/mcp$/, '')
+    const nonce = 'n'.repeat(32)
+    const r = await fetch(`${base}/health/proof?nonce=${nonce}`)
+    expect(r.status).toBe(200)
+    expect(await r.json()).toEqual({ proof: endpointProof(token, nonce) })
+    expect((await fetch(`${base}/health/proof?nonce=short`)).status).toBe(400)
+    // Everything else still wants the token.
+    expect((await fetch(`${base}/health`)).status).toBe(401)
+    await h.stop()
+    await expect(fetch(`${base}/health/proof?nonce=${nonce}`)).rejects.toThrow()
   })
 })

@@ -4,11 +4,12 @@
  * (the SDK serves one session per `Server` instance), our tool catalogue with our own JSON schemas.
  *
  * Security posture: loopback only; every route authenticated, the
- * health probe included; the token compared in constant time; the SDK's DNS-rebinding protection on
- * with the exact hosts this server answers as; no CORS, no remote bind, no OAuth. The endpoint file
- * that publishes port + token is written by `start` and removed by `stop`. Switching off and a new
- * token take effect at once: nothing that arrived on a stopped server is served, and its connections
- * are cut rather than waited for.
+ * health probe included — except the endpoint proof, whose answer is an HMAC under the token for a
+ * nonce the caller picks and so reveals nothing about it; the token compared in constant time; the
+ * SDK's DNS-rebinding protection on with the exact hosts this server answers as; no CORS, no remote
+ * bind, no OAuth. The endpoint file that publishes port + token is written by `start` and removed by
+ * `stop`. Switching off and a new token take effect at once: nothing that arrived on a stopped
+ * server is served, and its connections are cut rather than waited for.
  *
  * Electron-free — the window, the keys, the settings store and the user-data path come in through
  * `McpHostDeps`, so server.test.ts runs it under plain Node with a fake backend.
@@ -34,7 +35,7 @@ let PROGRESS_EVERY_MS = 30_000
 export function setProgressEvery(ms: number): void {
   PROGRESS_EVERY_MS = ms
 }
-import { removeEndpoint, writeEndpoint } from './endpoint'
+import { PROOF_NONCE, PROOF_PATH, endpointProof, removeEndpoint, writeEndpoint } from './endpoint'
 
 export const MCP_PATH = '/mcp'
 const MAX_BODY_BYTES = 8 * 1024 * 1024
@@ -203,6 +204,16 @@ export class McpHost {
     // Nothing that arrives on a stopped listener is served.
     if (srv !== this.http) return this.unauthorised(res)
     const path = (req.url ?? '/').split('?')[0]
+    // Before the token check: the bridge verifies the endpoint file with it before sending the token.
+    if (path === PROOF_PATH && req.method === 'GET') {
+      const nonce = new URL(req.url ?? '/', 'http://127.0.0.1').searchParams.get('nonce') ?? ''
+      if (!PROOF_NONCE.test(nonce)) {
+        this.json(res, 400, { error: 'Bad nonce.' })
+        return
+      }
+      this.json(res, 200, { proof: endpointProof(this.token, nonce) })
+      return
+    }
     if (!this.authorised(req)) {
       // No hint about which part was wrong: a missing header and a stale token read the same.
       this.unauthorised(res)

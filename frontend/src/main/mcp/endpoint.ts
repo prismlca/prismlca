@@ -7,9 +7,12 @@
  * token, not the backend's; the MCP server authenticates its own callers and talks to the backend
  * on their behalf. Windows has no owner/group/other modes; there the file sits in the user's
  * %APPDATA%, and restrictToOwnerOnWindows below narrows the file's ACL to the user.
+ *
+ * The bridge uses the file only after the server behind it proves it holds the file's token.
  */
 import { chmodSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { join } from 'node:path'
 
 export const ENDPOINT_FILE = 'mcp-endpoint.json'
@@ -60,8 +63,12 @@ function restrictToOwnerOnWindows(path: string): void {
 
 export function readEndpoint(userData: string): EndpointInfo | null {
   try {
-    const parsed = JSON.parse(readFileSync(endpointPath(userData), 'utf-8')) as EndpointInfo
-    return parsed && typeof parsed.url === 'string' && typeof parsed.token === 'string' ? parsed : null
+    const p = JSON.parse(readFileSync(endpointPath(userData), 'utf-8')) as Partial<EndpointInfo> | null
+    if (!p || typeof p.token !== 'string' || typeof p.version !== 'string') return null
+    // The server only ever listens on loopback; a file naming anything else is not its.
+    if (typeof p.url !== 'string' || !/^http:\/\/127\.0\.0\.1:\d{1,5}\/mcp$/.test(p.url)) return null
+    if (typeof p.pid !== 'number' || !Number.isInteger(p.pid) || p.pid <= 0) return null
+    return p as EndpointInfo
   } catch {
     return null
   }
@@ -70,4 +77,74 @@ export function readEndpoint(userData: string): EndpointInfo | null {
 export function removeEndpoint(userData: string): void {
   const f = endpointPath(userData)
   if (existsSync(f)) rmSync(f, { force: true })
+}
+
+// --- Is the server behind the file the one that wrote it? ----------------------------------------
+
+/** The route that answers the proof; it needs no token, because its answer reveals none. */
+export const PROOF_PATH = '/health/proof'
+/** What a nonce may look like: base64url, long enough to never repeat. */
+export const PROOF_NONCE = /^[A-Za-z0-9_-]{22,128}$/
+
+/** The server's answer to a nonce: an HMAC under the token, bound to this one purpose. */
+export function endpointProof(token: string, nonce: string): string {
+  return createHmac('sha256', token).update(`prism-mcp-endpoint-proof\n${nonce}`).digest('base64url')
+}
+
+/**
+ * Is the process that wrote the file still there? On Windows EPERM still means alive (an elevated
+ * instance refuses the probe); elsewhere it is another account's process, and a PrismLCA that wrote
+ * this user's endpoint file runs as this user.
+ */
+export function pidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return process.platform === 'win32' && (e as { code?: string }).code === 'EPERM'
+  }
+}
+
+/** The longest proof answer worth reading; a real one is under a hundred bytes. */
+const MAX_PROOF_BYTES = 4096
+
+/** Does the listener behind the file prove it holds the file's token? Asked with a fresh nonce, never the token. */
+export async function proveEndpoint(info: EndpointInfo, timeoutMs = 2000): Promise<boolean> {
+  const base = info.url.replace(/\/mcp$/, '')
+  const nonce = randomBytes(24).toString('base64url')
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const r = await fetch(`${base}${PROOF_PATH}?nonce=${nonce}`, { signal: ctrl.signal, redirect: 'error' })
+    if (!r.ok) return false
+    const text = await readCapped(r, MAX_PROOF_BYTES)
+    if (text === null) return false
+    const body = JSON.parse(text) as { proof?: unknown } | null
+    const got = Buffer.from(typeof body?.proof === 'string' ? body.proof : '')
+    const want = Buffer.from(endpointProof(info.token, nonce))
+    return got.length === want.length && timingSafeEqual(got, want)
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function readCapped(r: Response, max: number): Promise<string | null> {
+  const reader = r.body?.getReader()
+  if (!reader) return ''
+  const parts: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      void reader.cancel().catch(() => undefined)
+      return null
+    }
+    parts.push(value)
+  }
+  return Buffer.concat(parts).toString('utf8')
 }

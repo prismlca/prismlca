@@ -19,36 +19,11 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { getSettings } from '../settings'
 import { mcpToolDefs } from './catalog'
-import { readEndpoint, type EndpointInfo } from './endpoint'
+import { pidAlive, proveEndpoint, readEndpoint } from './endpoint'
 import { BridgeError, ProxyCore, createProxyServer, createShutdown } from './proxy'
 import { appLaunchCommandFor } from './clientConfig'
 import { resolveDisplayEnv } from './displayEnv'
 import { BRIDGE_LAUNCH_FLAG } from './idleQuit'
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    // EPERM: the process exists but is not ours — alive as far as we are concerned.
-    return (e as { code?: string }).code === 'EPERM'
-  }
-}
-
-async function health(info: EndpointInfo): Promise<boolean> {
-  const base = info.url.replace(/\/mcp$/, '')
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 2000)
-  try {
-    const r = await fetch(`${base}/health`, {
-      headers: { Authorization: `Bearer ${info.token}` },
-      signal: ctrl.signal
-    })
-    return r.ok
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 /** How to start the app from the bridge: packaged = this very binary; dev = electron + the app dir. */
 export function appLaunchCommand(): { command: string; args: string[] } {
@@ -124,7 +99,7 @@ export async function runProxyMain(): Promise<void> {
     version: app.getVersion(),
     endpoint: () => readEndpoint(userData),
     isPidAlive: pidAlive,
-    health,
+    health: proveEndpoint,
     mcpEnabled: () => getSettings().mcpEnabled,
     launchApp: async () => {
       const { command, args } = appLaunchCommand()
