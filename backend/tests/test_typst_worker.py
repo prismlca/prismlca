@@ -134,6 +134,18 @@ def test_a_result_over_the_output_limit_is_refused(monkeypatch, fresh_workers):
     assert exc.value.code == "typst_output_too_large"
 
 
+@pytest.mark.parametrize("message", ['"x" * 1000000', '"line\\n" * 200000'])
+def test_a_compiler_error_comes_back_at_a_bounded_size_and_still_located(message, fresh_workers):
+    started = time.monotonic()
+    with pytest.raises(PrismError) as exc:
+        typst_render.compile_pdf({"main.typ": f"= Results\n#panic({message})\n"})
+    assert exc.value.code == "typst_compile_failed"
+    assert len(exc.value.message) < 3000
+    assert "main.typ, line 2" in exc.value.hint and "Results" in exc.value.hint
+    assert time.monotonic() - started < 15
+    assert typst_render.compile_pdf({"main.typ": "Text.\n"}).startswith(b"%PDF")
+
+
 def test_compiles_run_side_by_side(fresh_workers):
     results: list[bytes] = []
 

@@ -35,6 +35,10 @@ OUTPUT_LIMIT = 512 * 1024**2
 #: Workers that typeset at the same time.
 WORKERS = 2
 
+#: How much of a compiler error crosses back: the message, and the diagnostic's location lines.
+_ERROR_CHARS = 2000
+_LOCATION_LINES = 5
+_LOCATION_CHARS = 500
 _POLL_S = 0.05
 _EXIT_TIME = 86
 _EXIT_MEMORY = 87
@@ -129,6 +133,17 @@ def _watch(started: list[float | None], time_limit: float, memory_limit: int, re
             os._exit(_EXIT_MEMORY)
 
 
+def _bounded_error(exc: Exception) -> tuple[str, str]:
+    """A compiler error at a bounded size: the message cut short, and of the diagnostic only the lines
+    under its box rule that name a file, a line and a column — all `typst_render` reads from it."""
+    message = str(exc)
+    if len(message) > _ERROR_CHARS:
+        message = message[:_ERROR_CHARS] + "…"
+    diagnostic = str(getattr(exc, "diagnostic", "") or "")
+    located = [line[:_LOCATION_CHARS] for line in diagnostic.splitlines() if "┌─" in line]
+    return message, "\n".join(located[:_LOCATION_LINES])
+
+
 def _go_offline() -> socket.socket:
     """Route every proxy variable to a loopback port held bound and never listened on, so a download
     attempt is refused on this machine. Held for the worker's life, so no other program can take it."""
@@ -161,7 +176,7 @@ def _serve(conn: Any, packages: str, time_limit: float, memory_limit: int, outpu
             try:
                 result = typst.compile(input_path, package_path=packages, package_cache_path=packages, **options)
             except Exception as exc:  # noqa: BLE001 - typst.TypstError and anything the extension raises
-                reply: tuple = ("error", str(exc), str(getattr(exc, "diagnostic", "") or ""))
+                reply: tuple = ("error", *_bounded_error(exc))
             else:
                 size = sum(map(len, result)) if isinstance(result, list) else len(result)
                 reply = ("ok", result) if size <= output_limit else ("too_large", size)
