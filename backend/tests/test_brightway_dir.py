@@ -92,22 +92,44 @@ def test_prism_brightway_dir_may_be_empty_or_made_by_prismlca(tmp_path):
     assert choose(_settings(tmp_path, empty), {}, from_source=False).refusal is None
 
 
-def test_claim_marks_only_a_directory_without_projects(tmp_path):
+def test_claim_marks_only_an_empty_directory(tmp_path):
     fresh = tmp_path / "fresh"
     claim(fresh)
     assert (fresh / OWNER_FILE).is_file()
     other = _foreign(tmp_path)
     claim(other)
     assert not (other / OWNER_FILE).exists()
+    project = tmp_path / "Brightway3" / "their-study.c21f969b"  # a project folder: no projects.db in it
+    (project / "lci").mkdir(parents=True)
+    claim(project)
+    assert not (project / OWNER_FILE).exists()
 
 
-def test_the_default_location_is_ours_without_a_mark(tmp_path):
-    # Directories from before the mark existed: nothing but PrismLCA creates its default location.
-    own = default_dir(_settings(tmp_path))
-    own.mkdir(parents=True)
-    (own / "projects.db").write_bytes(b"from 0.9.9")
-    assert choose(_settings(tmp_path), {}, from_source=False) == choose(_settings(tmp_path), {}, from_source=True)
-    assert choose(_settings(tmp_path), {}, from_source=False).refusal is None
+def test_a_project_folder_inside_somebody_elses_brightway_is_refused_untouched(tmp_path):
+    project = tmp_path / "Brightway3" / "their-study.c21f969b"
+    (project / "lci").mkdir(parents=True)
+    (project / "lci" / "databases.db").write_bytes(b"their data")
+    choice = choose(_settings(tmp_path, project), {}, from_source=False)
+    assert choice.refusal is not None
+    assert {str(p.relative_to(project)) for p in project.rglob("*")} == {"lci", "lci/databases.db"}
+
+
+def test_the_brightway_folder_of_a_prismlca_data_directory_may_be_named_explicitly(tmp_path):
+    # A copy of a data directory (screenshots, a test run) or the default location named on purpose.
+    data = tmp_path / "data"
+    (data / "brightway").mkdir(parents=True)
+    (data / "brightway" / "projects.db").write_bytes(b"from 0.9.9")
+    (data / STAMP_FILE).write_text('{"schema": 1}', encoding="utf-8")
+    assert choose(_settings(tmp_path, data / "brightway"), {}, from_source=False).refusal is None
+    assert choose(_settings(tmp_path), {}, from_source=True).refusal is None
+
+
+def test_a_data_directory_that_is_not_prismlcas_does_not_vouch_for_its_brightway_folder(tmp_path):
+    (tmp_path / "data" / "brightway").mkdir(parents=True)
+    (tmp_path / "data" / "brightway" / "projects.db").write_bytes(b"their projects")
+    assert choose(_settings(tmp_path), {}, from_source=False).refusal is not None
+
+
 
 
 def test_prism_brightway_dir_wins_over_everything(tmp_path):

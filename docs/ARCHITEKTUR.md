@@ -110,9 +110,9 @@ same API endpoints as the UI does (ADR-003, ADR-011).
 - Next to an existing Brightway installation, whose projects PrismLCA must never change: the app takes
   its Brightway directory from its own settings (`PRISM_BRIGHTWAY_DIR`, else `brightway` in the data
   directory) and never opens an inherited `BRIGHTWAY2_DIR`, which usually points at the user's own
-  Brightway or Activity Browser projects (`engine/brightway_dir.py`); nor a directory with projects it did
-  not create, whatever variable names it (an owner mark goes into every Brightway directory the engine
-  creates). Workspaces an earlier version kept in a shared directory are copied into the app's own one on
+  Brightway or Activity Browser projects (`engine/brightway_dir.py`); nor any folder with files it did not
+  create, whatever variable names it — only an empty one (marked as its own before anything goes in), a
+  marked one, or the `brightway` folder of a PrismLCA data directory. Workspaces an earlier version kept in a shared directory are copied into the app's own one on
   its first start (`engine/workspace_carryover.py`) — read only, never through SQLite or bw2data, with
   Windows sharing modes that let the other program go on writing, and accepted only when nothing changed
   while it was read (`engine/foreign_read.py`). The backend pins pypardiso to its own

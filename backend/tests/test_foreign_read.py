@@ -67,10 +67,42 @@ def test_a_transaction_in_flight_is_not_copied(tmp_path):
         copy_stable(src, tmp_path / "dst", pause=0)
     assert not (tmp_path / "dst").exists()
     single = tmp_path / "projects.db"
-    single.write_bytes(b"db")
+    _db(single)
     (tmp_path / "projects.db-journal").write_bytes(b"x" * 512)
     with pytest.raises(Changing):
         copy_stable(single, tmp_path / "copy.db", pause=0)
+
+
+def _db(path, wal=False):
+    con = sqlite3.connect(path)
+    if wal:
+        con.execute("PRAGMA journal_mode=WAL")
+    con.execute("CREATE TABLE t (x)")
+    con.execute("INSERT INTO t VALUES (1)")
+    con.commit()
+    return con
+
+
+def test_a_wal_database_somebody_has_open_is_not_copied(tmp_path):
+    con = _db(tmp_path / "x.db", wal=True)  # held open: -wal and -shm exist
+    try:
+        with pytest.raises(Changing):
+            copy_stable(tmp_path / "x.db", tmp_path / "copy.db", pause=0)
+    finally:
+        con.close()
+    assert not (tmp_path / "copy.db").exists()
+    # Closed, SQLite folds the WAL in and removes it: now there is one consistent file.
+    copy_stable(tmp_path / "x.db", tmp_path / "copy.db")
+    assert sqlite3.connect(tmp_path / "copy.db").execute("SELECT x FROM t").fetchall() == [(1,)]
+
+
+def test_a_commit_under_way_at_the_first_look_is_waited_for(tmp_path, monkeypatch):
+    src = _tree(tmp_path / "src")
+    journal = src / "lci" / "databases.db-journal"
+    journal.write_bytes(b"x" * 512)
+    monkeypatch.setattr(foreign_read.time, "sleep", lambda _s: journal.unlink())  # the commit ends
+    copy_stable(src, tmp_path / "dst")
+    assert (tmp_path / "dst" / "lci" / "databases.db").is_file()
 
 
 def test_an_empty_journal_is_no_transaction(tmp_path):

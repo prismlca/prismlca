@@ -15,11 +15,12 @@ first start there (``engine/workspace_carryover.py``). Run from source, any othe
 refuses the start instead of being passed over: a developer who sets it means a throwaway directory, and
 the default would be the real one.
 
-``PRISM_BRIGHTWAY_DIR`` cannot point the app into somebody else's projects either. The app opens only a
-Brightway directory it created — empty when it came, and marked then with :data:`OWNER_FILE`
-(:func:`claim`) — or the one at its default location, which nothing else creates. A directory that
-already holds Brightway projects without that mark is refused, the shared one an earlier version stamped
-included: the stamp says PrismLCA started there, not that the projects are its own.
+No variable can point the app into somebody else's projects either. It opens a Brightway directory
+only when it is empty (or not there yet), when it carries :data:`OWNER_FILE` — the mark :func:`claim`
+puts into an empty directory PrismLCA is about to fill — or when it is the ``brightway`` folder of a
+PrismLCA data directory, as every version before the mark made it. Anything else is refused before a
+single file is written: a foreign Brightway directory, the shared one an earlier version stamped (the
+stamp says PrismLCA started there, not that the projects are its own), or a project folder inside one.
 
 Scripts and tests import the engine without going through here and keep Brightway's own rule
 (``engine/bootstrap.py``).
@@ -31,7 +32,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from prism_lca.config import Settings
+from platformdirs import user_data_dir
+
+from prism_lca.config import APP_NAME, Settings
 from prism_lca.engine.data_version import STAMP_FILE
 
 #: Brightway's own variable, read by bw2data when it is first imported.
@@ -41,20 +44,31 @@ OWNER_FILE = "prism-brightway-owner.json"
 _PROJECTS_DB = "projects.db"
 
 
-def claim(path: Path) -> None:
-    """Mark ``path`` as PrismLCA's own when it holds no Brightway projects yet, before anything does.
+def _empty(path: Path) -> bool:
+    return not path.exists() or (path.is_dir() and not any(path.iterdir()))
 
-    A directory with projects is left as it is — the mark only ever goes into one PrismLCA is about to
-    create, never into one another installation made.
+
+def claim(path: Path) -> None:
+    """Mark ``path`` as PrismLCA's own if it is empty or not there yet — before anything goes into it.
+
+    Anything with content is left exactly as it is: the mark only ever goes into a directory PrismLCA is
+    about to create, never into one that holds somebody's files.
     """
-    if (path / _PROJECTS_DB).exists() or (path / OWNER_FILE).exists():
+    if not _empty(path):
         return
     path.mkdir(parents=True, exist_ok=True)
     (path / OWNER_FILE).write_text('{"created_by": "PrismLCA"}\n', encoding="utf-8")
 
 
-def _somebody_elses(path: Path) -> bool:
-    return (path / _PROJECTS_DB).exists() and not (path / OWNER_FILE).exists()
+def _may_open(path: Path, settings: Settings) -> bool:
+    if _empty(path) or (path / OWNER_FILE).is_file():
+        return True
+    # The data directory's own Brightway folder, from before the mark: the platform's data directory for
+    # PrismLCA, or one carrying PrismLCA's stamp (a copy of it, a test run's).
+    data = Path(settings.data_dir)
+    return _same(path, data / "brightway") and (
+        _same(data, Path(user_data_dir(APP_NAME, appauthor=False))) or (data / STAMP_FILE).is_file()
+    )
 
 
 def default_dir(settings: Settings) -> Path:
@@ -80,13 +94,14 @@ def _same(a: Path, b: Path) -> bool:
 def choose(settings: Settings, environ: Mapping[str, str], *, from_source: bool) -> Choice:
     """The directory this app process gives Brightway (see the module docstring for the rules)."""
     own = default_dir(settings)
-    if settings.brightway_dir and _somebody_elses(own):
+    if not _may_open(own, settings):
         return Choice(
             own,
             refusal=(
-                f"PRISM_BRIGHTWAY_DIR points at {own}, which holds Brightway projects PrismLCA did not "
-                "create. PrismLCA never works inside another Brightway installation's projects and has "
-                "changed nothing there. Choose an empty folder, or one PrismLCA created."
+                f"PrismLCA was told to keep its Brightway projects in {own}, a folder it did not create "
+                "and that already holds files. PrismLCA never works inside another Brightway "
+                "installation's projects and has changed nothing there. Choose an empty folder with "
+                "PRISM_BRIGHTWAY_DIR, or one PrismLCA created."
             ),
         )
     inherited = (environ.get(BRIGHTWAY_ENV) or "").strip()

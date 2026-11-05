@@ -10,9 +10,12 @@ Activity Browser at the same moment. Three rules:
   source files are opened with all three sharing modes there. Journals themselves are never opened.
 * **A copy counts only if nothing changed while it was taken.** Every file's size and modification time —
   and for an SQLite database the change counter in its header, which every commit raises — are read before
-  and after, and no non-empty ``-journal`` or ``-wal`` may exist meanwhile (it means a transaction is in
-  flight, or committed data not yet in the main file). Anything else, and the copy is taken again; after a
-  few tries the caller is told to ask the user to close the other program.
+  and after. A rollback-journal database must have no non-empty ``-journal`` meanwhile (a transaction in
+  flight). A WAL database must have neither ``-wal`` nor ``-shm``: its change counter does not move on a
+  checkpoint and Windows may not move the modification time while the writer holds the file, so the only
+  safe WAL database is one nobody has open. (bw2data does not use WAL; this is for whatever else wrote
+  there.) Anything else, and the copy is taken again; after a few tries the caller is told to ask the user
+  to close the other program.
 
 Linked folders and files are refused rather than followed: a link may lead to another drive or back into
 itself, and skipping it would leave a copy that looks whole and is not.
@@ -28,9 +31,8 @@ from typing import BinaryIO
 
 _CHUNK = 16 * 1024 * 1024
 _SQLITE_MAGIC = b"SQLite format 3\x00"
-#: SQLite's files beside a database: present and non-empty means "being written" (or WAL data not yet
-#: folded into the database file, which a plain copy of that file would lose).
-_IN_FLIGHT = ("-journal", "-wal")
+#: SQLite's files beside a database. Never copied: either a write is under way or they are empty.
+_SIDE_FILES = ("-journal", "-wal", "-shm")
 
 
 class Changing(Exception):
@@ -63,14 +65,25 @@ def open_shared(path: Path) -> BinaryIO:
 
 
 def _fingerprint(path: Path) -> tuple[int, int, bytes | None]:
+    """Size, modification time, and for an SQLite database its header (mode bytes and change counter)."""
     st = path.stat()
-    counter = None
+    header = None
     if st.st_size >= 100:
         with open_shared(path) as fh:
             head = fh.read(28)
         if head.startswith(_SQLITE_MAGIC):
-            counter = head[24:28]
-    return st.st_size, st.st_mtime_ns, counter
+            header = head[18:20] + head[24:28]
+    return st.st_size, st.st_mtime_ns, header
+
+
+def _check_in_flight(db: Path, header: bytes) -> None:
+    """Raise :class:`Changing` when SQLite is writing ``db`` — by its journal, or by having it open in WAL."""
+    wal = header[0] == 2 or header[1] == 2  # file format write/read version 2 = WAL
+    journal = Path(f"{db}-journal")
+    if journal.exists() and journal.stat().st_size > 0:
+        raise Changing(f"{journal.name} exists")
+    if wal and (Path(f"{db}-wal").exists() or Path(f"{db}-shm").exists()):
+        raise Changing(f"{db.name} is open in WAL mode")
 
 
 def _raise(exc: OSError) -> None:
@@ -90,11 +103,6 @@ def tree_state(root: Path, only: list[str] | None = None) -> tuple[list[str], di
     names: list[str] = []
     if only is not None:
         names = list(only)
-        for name in only:
-            for suffix in _IN_FLIGHT:
-                side = root / f"{name}{suffix}"
-                if side.exists() and side.stat().st_size > 0:
-                    raise Changing(f"{side.name} exists")
     else:
         if _is_link(root):
             raise Linked(str(root))
@@ -110,9 +118,12 @@ def tree_state(root: Path, only: list[str] | None = None) -> tuple[list[str], di
         path = root / name
         if path.is_symlink():
             raise Linked(str(path))
-        if name.endswith(_IN_FLIGHT) and path.stat().st_size > 0:
-            raise Changing(f"{name} exists")
+        if name.endswith(_SIDE_FILES):
+            files[name] = (path.stat().st_size,)  # listed, so one appearing or going counts as a change
+            continue
         files[name] = _fingerprint(path)
+        if files[name][2] is not None:
+            _check_in_flight(path, files[name][2])
     return folders, files
 
 
@@ -136,13 +147,19 @@ def copy_stable(
     single = src.is_file()
     root, only = (src.parent, [src.name]) if single else (src, None)
     for attempt in range(attempts):
-        before = tree_state(root, only)
+        try:
+            before = tree_state(root, only)
+        except Changing:  # a commit right now: wait for it like for any other change
+            if attempt + 1 < attempts:
+                time.sleep(pause)
+                continue
+            raise
         try:
             for folder in before[0]:
                 (dst / folder).mkdir(parents=True, exist_ok=True)
             for name in before[1]:
-                if name.endswith(_IN_FLIGHT):
-                    continue  # empty, so not in flight: nothing to carry
+                if name.endswith(_SIDE_FILES):
+                    continue  # empty or of a closed database: nothing to carry
                 target = dst if single else dst / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with open_shared(root / name) as fin, open(target, "wb") as fout:
