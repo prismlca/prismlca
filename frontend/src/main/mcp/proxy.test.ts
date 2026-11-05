@@ -12,7 +12,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 
 import { McpHost } from './server'
 import { proveEndpoint, readEndpoint, writeEndpoint } from './endpoint'
-import { ProxyCore, createProxyServer, createShutdown, type ProxyDeps } from './proxy'
+import { ProxyCore, appSpawnOptions, createProxyServer, createShutdown, type ProxyDeps } from './proxy'
 import { mcpToolDefs } from './catalog'
 import type { ApiRaw } from '../ai/execute'
 
@@ -316,5 +316,14 @@ describe('the endpoint file', () => {
       await new Promise<void>((r) => other!.close(() => r()))
       other = null
     }
+  })
+})
+
+describe('appSpawnOptions', () => {
+  it("starts the app in its own data folder, never in the client's working directory", () => {
+    const o = appSpawnOptions({ PATH: '/usr/bin' }, 7, '/home/u/.config/PrismLCA')
+    expect(o.cwd).toBe('/home/u/.config/PrismLCA')
+    expect(o.cwd).not.toBe(process.cwd())
+    expect(o).toMatchObject({ detached: true, stdio: ['ignore', 7, 7], env: { PATH: '/usr/bin' } })
   })
 })

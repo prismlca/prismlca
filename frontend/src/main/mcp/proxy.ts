@@ -23,6 +23,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js'
+import type { SpawnOptions } from 'node:child_process'
 
 import type { EndpointInfo } from './endpoint'
 import { INSTRUCTIONS } from './instructions'
@@ -225,6 +226,18 @@ export class ProxyCore {
     if (t) await t.terminateSession().catch(() => undefined)
     if (c) await c.close().catch(() => undefined)
   }
+}
+
+/**
+ * How the bridge spawns the app: detached (it outlives the bridge), its output in a log file, and its
+ * own data folder as working directory, never the client's.
+ */
+export function appSpawnOptions(
+  env: Record<string, string | undefined>,
+  logFd: number,
+  dataDir: string
+): SpawnOptions {
+  return { detached: true, stdio: ['ignore', logFd, logFd], env, cwd: dataDir }
 }
 
 /**

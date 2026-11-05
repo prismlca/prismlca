@@ -19,7 +19,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { getSettings } from '../settings'
 import { mcpToolDefs } from './catalog'
 import { pidAlive, proveEndpoint, readEndpoint } from './endpoint'
-import { BridgeError, ProxyCore, createProxyServer, createShutdown } from './proxy'
+import { BridgeError, ProxyCore, appSpawnOptions, createProxyServer, createShutdown } from './proxy'
 import { appLaunchCommandFor } from './clientConfig'
 import { displayForLaunch } from './displayEnv'
 import { linuxDisplayFs } from './displayProbe'
@@ -139,8 +139,7 @@ export async function runProxyMain(): Promise<void> {
       sweepLaunchLogs(logDir)
       const logPath = join(logDir, `mcp-launch-${process.pid}-${Date.now().toString(36)}.log`)
       const fd = openSync(logPath, 'w')
-      // The app works in its own data folder, never in the client's working directory.
-      const child = spawn(command, args, { detached: true, stdio: ['ignore', fd, fd], env, cwd: logDir })
+      const child = spawn(command, args, appSpawnOptions(env, fd, logDir))
       closeSync(fd)
       // Three ways the first seconds can go: a clean exit 0 is the single-instance HANDOFF (another
       // PrismLCA is up or starting — keep polling for its endpoint); a fatal line in the log
