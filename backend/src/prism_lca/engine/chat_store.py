@@ -433,10 +433,14 @@ class ChatStore(JsonFileStore):
         """Every attachment id any stored message of any model still names — what keeps a file alive.
         Chats set aside in this workspace count as stored: a redo puts them back."""
         here = prism_meta_dir()
+        # Set-aside first, store second, both under the lock a set-aside is registered with: an undo
+        # registers before it deletes and a redo writes back before it lets go, so a moving chat is
+        # always seen in one of the two.
         with _SET_ASIDE_LOCK:
             aside = [a.chats for a in _SET_ASIDE if a.where == here]
+            stored = list(self._load().values())
         ids: set[str] = set()
-        for chats in [*self._load().values(), *aside]:
+        for chats in [*stored, *aside]:
             for chat in chats or []:
                 for message in chat.get("messages", []):
                     for a in message.get("attachments") or []:

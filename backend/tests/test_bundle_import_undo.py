@@ -257,3 +257,41 @@ def test_a_redo_keeps_the_parameter_groups_under_their_ids(client, token, projec
     params = client.get("/api/v1/params", params={"database": "Grouped"}, headers=token).json()
     mass = next(p for p in params if p["name"] == "mass_kg")
     assert (mass["group"], mass["group_id"]) == ("Masses", before[0]["id"])
+
+
+def test_a_prune_meeting_an_undo_halfway_still_sees_the_chat(project, monkeypatch):
+    """A prune that has read the set-aside chats but not yet the stored ones while an undo sets a model's
+    chats aside and deletes them: the cited file must count as cited in one of the two reads."""
+    import threading
+
+    del project
+    db = "racing"
+    store = ChatStore()
+    chat = store.create_chat(db, "t")["id"]
+    store.append_messages(db, chat, [{"role": "user", "content": "x", "attachments": [{"id": "a1", "name": "a"}]}])
+
+    real = ChatStore._load
+    paused, go = threading.Event(), threading.Event()
+    seen: list[set[str]] = []
+
+    def load(self):
+        if threading.current_thread() is pruner:
+            paused.set()
+            go.wait(5)
+        return real(self)
+
+    monkeypatch.setattr(ChatStore, "_load", load)
+    pruner = threading.Thread(target=lambda: seen.append(ChatStore().attachment_ids()))
+    pruner.start()
+    assert paused.wait(5)
+
+    held: list = []
+    undo = threading.Thread(target=lambda: (held.append(ChatStore().snapshot_database(db)),
+                                            ChatStore().remove_database(db)))
+    undo.start()
+    undo.join(1)  # it may finish here, or wait for the prune to let go
+    go.set()
+    pruner.join(5)
+    undo.join(5)
+    assert seen == [{"a1"}]
+    assert held and not ChatStore().list_chats(db)
