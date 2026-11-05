@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import commands, interop, lca, model_scope
+from prism_lca.engine import commands, interop, lca, model_names, model_scope
 from prism_lca.errors import PrismError
 
 router = APIRouter(prefix="/interop", tags=["interop"], dependencies=[Depends(require_token)])
@@ -118,7 +118,8 @@ async def import_as_model(request: Request, payload: ImportAsModelRequest) -> di
     stay inside the new model; every other input must already exist (ImportModelCommand).
     """
     model_scope.assert_no_new_model("import a model")
-    name = (payload.name or "").strip()
+    # A name taken from a file is cleaned onto one line, like a bundle's.
+    name = model_names.clean((payload.name or "").strip())
     if not name:
         raise PrismError("Give the new model a name.", code="name_required")
     with _in_starting_workspace(request):
