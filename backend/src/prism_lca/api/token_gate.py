@@ -39,19 +39,10 @@ def has_valid_token(scope) -> bool:  # noqa: ANN001 - ASGI scope
     return isinstance(expected, str) and token_matches(_header(scope, TOKEN_HEADER), expected)
 
 
-def _is_preflight(scope) -> bool:  # noqa: ANN001 - ASGI scope
-    # Exactly what Starlette's CORSMiddleware answers on its own, without passing the request on.
-    return (
-        scope.get("method") == "OPTIONS"
-        and _header(scope, b"origin") is not None
-        and _header(scope, b"access-control-request-method") is not None
-    )
-
-
 class TokenGate:
     """Pure ASGI, outermost: a request without the token gets 401 before its body is read.
 
-    Exempt are the public read-only paths and CORS preflights; none of them reads a body.
+    Exempt are the public read-only paths; none of them reads a body.
     """
 
     def __init__(self, app, *, public_paths: frozenset[str]) -> None:  # noqa: ANN001 - ASGI app callable
@@ -63,7 +54,6 @@ class TokenGate:
         if (
             scope["type"] != "http"
             or (scope.get("method") in ("GET", "HEAD") and scope.get("path") in self.public_paths)
-            or _is_preflight(scope)
             or has_valid_token(scope)
         ):
             return await self.app(scope, receive, send)

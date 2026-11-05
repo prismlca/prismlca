@@ -11,7 +11,6 @@ import time
 from urllib.parse import unquote
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from prism_lca import _log
 from prism_lca.api.error_handlers import install_error_handlers
@@ -249,13 +248,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         summary="Local API for the PrismLCA desktop app. Every UI and AI action goes through here.",
     )
 
-    # Loopback-only backend; permissive CORS is safe because access is gated by the token.
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # No CORS middleware: the only client is the desktop shell's main process, never a browser origin.
 
     # Carry the assistant-turn id from the header into the command bus's contextvar. The AI
     # loop sends ``X-Prism-Turn`` with every call of one agent run; every command executed under it

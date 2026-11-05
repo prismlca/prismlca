@@ -45,18 +45,18 @@ def test_the_public_paths_stay_public_for_reading(client: TestClient) -> None:
     assert client.post("/api/v1/system/health", content=b"x").status_code == 401
 
 
-def test_a_cors_preflight_is_answered_without_the_token(client: TestClient) -> None:
-    r = client.options(
+def test_no_response_allows_a_browser_origin(client: TestClient, token: dict[str, str]) -> None:
+    origin = {"Origin": "https://example.org"}
+    preflight = client.options(
         "/api/v1/system/info",
-        headers={
-            "Origin": "http://localhost:5173",
-            "Access-Control-Request-Method": "POST",
-            "Access-Control-Request-Headers": "content-type,x-prism-token",
-        },
+        headers={**origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "x-prism-token"},
     )
-    assert r.status_code == 200, r.text
-    assert r.headers["access-control-allow-origin"] == "*"
-    assert client.options("/api/v1/system/info").status_code == 401
+    health = client.get("/api/v1/system/health", headers=origin)
+    refused = client.get("/api/v1/system/info", headers=origin)
+    answered = client.get("/api/v1/system/info", headers={**origin, **token})
+    assert (preflight.status_code, health.status_code, refused.status_code, answered.status_code) == (401, 200, 401, 200)
+    for r in (preflight, health, refused, answered):
+        assert "access-control-allow-origin" not in r.headers
 
 
 def test_the_token_still_opens_every_route(client: TestClient, token: dict[str, str]) -> None:
