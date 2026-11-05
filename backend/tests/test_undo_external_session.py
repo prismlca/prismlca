@@ -117,8 +117,41 @@ def test_an_approved_step_is_taken_and_only_that_step(shared):
     # An approval to undo is not one to redo the same step.
     r = _step(client, token, "redo", SESSION + "3", approved=f"undo:{ask['step']}")
     assert r.status_code == 409, r.text
-    assert r.json()["error"]["code"] == "redo_not_yours"
+    assert r.json()["error"]["code"] == "redo_changed"
     assert _step(client, token, "redo", SESSION + "4", approved=f"redo:{ask['step']}").status_code == 200
+
+
+def test_an_approval_covers_only_its_step_also_when_the_next_one_is_the_sessions_own(shared):
+    client, token = shared
+    _process(client, token, "agent's", SESSION + "1")
+    _process(client, token, "user's")
+    ask = _next(client, token, "undo", SESSION + "2")
+    assert ask["needs_approval"] is True and "user's" in ask["summary"]
+    # The user's step is taken back in the window while the card is open.
+    assert _step(client, token, "undo").status_code == 200
+    r = _step(client, token, "undo", SESSION + "2", approved=f"undo:{ask['step']}")
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "undo_changed"
+    assert "agent's" in _names(client, token)
+    # Asked again, the session's own step needs no approval.
+    assert _next(client, token, "undo", SESSION + "3")["needs_approval"] is False
+    assert _step(client, token, "undo", SESSION + "3").status_code == 200
+    assert "agent's" not in _names(client, token)
+
+
+def test_a_redo_approval_covers_only_its_step(shared):
+    client, token = shared
+    _process(client, token, "user's")
+    _process(client, token, "agent's", SESSION + "1")
+    assert _step(client, token, "undo").status_code == 200  # the agent's, in the window
+    assert _step(client, token, "undo").status_code == 200  # the user's
+    ask = _next(client, token, "redo", SESSION + "2")
+    assert ask["needs_approval"] is True and "user's" in ask["summary"]
+    assert _step(client, token, "redo").status_code == 200  # the user redoes it in the window
+    r = _step(client, token, "redo", SESSION + "2", approved=f"redo:{ask['step']}")
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["code"] == "redo_changed"
+    assert "agent's" not in _names(client, token)
 
 
 def test_the_window_and_the_chat_are_not_affected(shared):

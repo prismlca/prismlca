@@ -50,12 +50,21 @@ def parse_approval(raw: str | None) -> Approval | None:
 
 
 def assert_may_take(command, caller_turn: str | None, approval: Approval | None, verb: str) -> None:  # noqa: ANN001
-    """Refuse an external session's undo/redo of a step it did not make, unless the user approved this step for this verb."""
+    """Refuse an external session's undo/redo of a step it did not make, unless the user approved this step for this verb.
+    An approval binds the call: it is refused when it names any other step, the session's own included."""
+    what = "take back" if verb == "undo" else "apply again"
+    if approval is not None and approval != (verb, step_id(command)):
+        raise PrismError(
+            f"The model changed while the approval card was open, so the {verb} did not run. "
+            f"It would now {what}: {command.summary()}.",
+            code=f"{verb}_changed",
+            status_code=409,
+            hint=f"Look at the model as it is now, then call history again only if this is still what you mean to {verb}.",
+        )
     if not needs_approval(getattr(command, "turn", None), caller_turn):
         return
-    if approval == (verb, step_id(command)):
-        return
-    what = "take back" if verb == "undo" else "apply again"
+    if approval is not None:
+        return  # matches the step about to be taken (checked above)
     raise PrismError(
         f"The change {verb.capitalize()} would {what} here was not made by this session: {command.summary()}.",
         code=f"{verb}_not_yours",
