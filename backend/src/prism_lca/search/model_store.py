@@ -12,6 +12,7 @@ for them and the shell never asks.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -55,20 +56,41 @@ def repo_cache_folder(repo: str) -> Path:
     return hub_cache_dir() / repo_folder_name(repo_id=repo, repo_type="model")
 
 
+def cached_snapshot(repo: str, revision: str | None) -> Path:
+    """The absolute folder of this revision in the local hub cache. Never goes to the network; raises
+    (``LocalEntryNotFoundError``) when the revision has not been downloaded."""
+    from huggingface_hub import snapshot_download
+
+    return Path(
+        snapshot_download(repo, revision=revision or None, cache_dir=hub_cache_dir(), local_files_only=True)
+    ).absolute()
+
+
 def is_cached(repo: str, revision: str | None) -> bool:
     """Are the model's files for this revision in the local hub cache? Never goes to the network."""
     try:
-        from huggingface_hub import snapshot_download
-
-        folder = Path(
-            snapshot_download(
-                repo, revision=revision or None, cache_dir=hub_cache_dir(), local_files_only=True
-            )
-        )
+        folder = cached_snapshot(repo, revision)
     except Exception as exc:  # noqa: BLE001 - LocalEntryNotFoundError, or no hub library at all
         logger.debug("search model %s@%s not cached: %s", repo, revision, exc)
         return False
     return (folder / "modules.json").is_file() and any((folder / f).is_file() for f in _WEIGHT_FILES)
+
+
+def refuse_custom_modules(folder: Path) -> None:
+    """Refuse a model folder whose ``modules.json`` names a class outside sentence-transformers.
+
+    The search model is built from the library's own modules only; no code ships with the model.
+    """
+    path = folder / "modules.json"
+    if not path.is_file():
+        return  # loaded as a plain transformers model, which needs trust_remote_code for any code
+    entries = json.loads(path.read_text(encoding="utf-8"))
+    for entry in entries if isinstance(entries, list) else [entries]:
+        kind = entry.get("type") if isinstance(entry, dict) else None
+        if not (isinstance(kind, str) and kind.startswith("sentence_transformers.")):
+            raise RuntimeError(
+                f"The search model in {folder} asks for a module of its own ({kind!r}); it is not loaded."
+            )
 
 
 def bytes_on_disk(repo: str, revision: str | None) -> int:
@@ -118,10 +140,16 @@ def _snapshot_folder(root: Path, revision: str | None) -> Path | None:
 
 
 def _default_loader(repo: str, revision: str | None) -> None:
-    # The very same constructor the provider uses, minus local_files_only: so exactly the files the
+    # sentence-transformers' own constructor, by id and allowed to download: so exactly the files the
     # later offline load needs are the ones that arrive — no separate file list to keep in step.
     from sentence_transformers import SentenceTransformer
 
+    # The id has to mean the hub repository, so no folder of that name may exist relative to here.
+    if os.path.exists(repo):
+        raise RuntimeError(
+            f"The search model cannot be downloaded while the folder {os.path.join(os.getcwd(), repo)} "
+            "exists. Start PrismLCA from another folder."
+        )
     SentenceTransformer(repo, revision=revision or None, cache_folder=str(hub_cache_dir()))
 
 
