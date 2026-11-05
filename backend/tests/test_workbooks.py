@@ -14,6 +14,7 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
 from prism_lca.engine import interop, scenarios, workbooks
+from prism_lca.engine.bootstrap import get_bd
 from prism_lca.errors import PrismError
 
 _NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -264,3 +265,32 @@ def test_reading_a_model_sheet_leaves_the_event_loop_free(client, token, project
 
     asyncio.run(drive())
 
+
+def test_a_sheet_import_writes_into_the_workspace_it_began_in(client, token, project, monkeypatch) -> None:
+    other = project + "-b"
+    target = "fg-" + uuid.uuid4().hex[:6]
+    assert client.post("/api/v1/databases/foreground", json={"name": target}, headers=token).status_code == 200
+
+    def read_while_switching(_content: bytes) -> dict:
+        get_bd().projects.set_current(other)
+        return {"activities": [{"code": "a1", "name": "steel", "unit": "kg"}], "exchanges": []}
+
+    monkeypatch.setattr(interop, "read_model_workbook", read_while_switching)
+    content = base64.b64encode(b"sheet").decode("ascii")
+    try:
+        r = client.post("/api/v1/interop/model/import", json={"name": "Sheet", "content": content}, headers=token)
+        assert r.status_code == 409, r.text
+        assert r.json()["error"]["code"] == "project_changed"
+        assert "Sheet" not in get_bd().databases
+        get_bd().projects.set_current(project)
+        r = client.post(
+            "/api/v1/interop/model",
+            data={"target_database": target},
+            files={"file": ("m.xlsx", b"sheet", "application/octet-stream")},
+            headers=token,
+        )
+        assert r.status_code == 409, r.text
+    finally:
+        get_bd().projects.set_current(project)
+    assert "Sheet" not in get_bd().databases
+    assert len(get_bd().Database(target)) == 0

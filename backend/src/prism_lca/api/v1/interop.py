@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import base64
 import binascii
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -69,6 +71,21 @@ def export_model(database: str) -> Response:
     )
 
 
+@contextmanager
+def _in_starting_workspace(request: Request) -> Iterator[None]:
+    """An import writes into the workspace that was active when it began; the writes check it under the
+    project lock (``commands.assert_expected_project``). A request that names its own workspace keeps it."""
+    if commands.CURRENT_PROJECT.get() is not None:
+        yield
+        return
+    info = request.app.state.repository.current_project()
+    token = commands.CURRENT_PROJECT.set(info.name if info is not None else None)
+    try:
+        yield
+    finally:
+        commands.CURRENT_PROJECT.reset(token)
+
+
 @router.post("/model", summary="Import a foreground model from XLSX (atomic; rejects unlinked)")
 async def import_model(
     request: Request,
@@ -77,10 +94,12 @@ async def import_model(
     file: UploadFile = File(...),
 ) -> dict:
     content = await file.read()
-    # In the threadpool: a large sheet takes a while to read, and the event loop serves every other request.
-    parsed = await run_in_threadpool(interop.read_model_workbook, content)
-    cmd = commands.ImportModelCommand(target_database, parsed["activities"], parsed["exchanges"])
-    return request.app.state.command_bus.execute(cmd, source=source)
+    with _in_starting_workspace(request):
+        # In the threadpool: a large sheet takes a while to read, and the event loop serves every other
+        # request meanwhile.
+        parsed = await run_in_threadpool(interop.read_model_workbook, content)
+        cmd = commands.ImportModelCommand(target_database, parsed["activities"], parsed["exchanges"])
+        return request.app.state.command_bus.execute(cmd, source=source)
 
 
 class ImportAsModelRequest(BaseModel):
@@ -102,8 +121,14 @@ async def import_as_model(request: Request, payload: ImportAsModelRequest) -> di
     name = (payload.name or "").strip()
     if not name:
         raise PrismError("Give the new model a name.", code="name_required")
+    with _in_starting_workspace(request):
+        return await _import_as_model(request, name, payload.content)
+
+
+async def _import_as_model(request: Request, name: str, encoded: str) -> dict:
+    """Read the sheet, then create the model and fill it."""
     try:
-        content = base64.b64decode(payload.content, validate=True)
+        content = base64.b64decode(encoded, validate=True)
         parsed = await run_in_threadpool(interop.read_model_workbook, content)
     except PrismError:
         raise  # a refusal that already says what is wrong with the sheet
