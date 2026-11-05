@@ -39,8 +39,8 @@ BUNDLE_MANIFEST = 1 * MB
 BUNDLE_SECTIONS = 64
 #: An openLCA JSON-LD package.
 JSON_LD = Limits(members=20_000, member=50 * MB, total=200 * MB)
-#: An ILCD package: one file per flow, so far more members than JSON-LD, and LCIA method files of tens of MB.
-ILCD = Limits(members=100_000, member=128 * MB, total=1024 * MB)
+#: An ILCD package as large as a reference package: one file per flow, LCIA method files of hundreds of MB.
+ILCD = Limits(members=300_000, member=512 * MB, total=4096 * MB)
 #: A Word or Excel file attached to a chat, by the sizes its zip declares.
 OFFICE = Limits(members=10_000, member=1024 * MB, total=1024 * MB)
 

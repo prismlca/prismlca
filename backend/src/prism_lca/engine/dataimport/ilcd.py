@@ -49,8 +49,9 @@ UNIT_PROCESS_TYPES = ("Unit process, single operation", "Unit process, black box
 
 #: ILCD files carry 50 to 100 bytes of markup per element; a file denser than this is not a dataset.
 MIN_BYTES_PER_ELEMENT = 16
-#: Elements the datasets kept from one package may hold together, several times what a large package needs.
-MAX_KEPT_ELEMENTS = 10_000_000
+#: Elements the datasets kept from one package may hold together, at about 430 bytes each in memory: past
+#: this the kept trees alone outgrow the memory of an ordinary desktop.
+MAX_KEPT_ELEMENTS = 20_000_000
 
 
 def _text(node: ElementTree.Element | None) -> str:
