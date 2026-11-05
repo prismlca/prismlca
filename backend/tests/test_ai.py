@@ -256,3 +256,19 @@ def test_restored_skills_are_held_whatever_shape_the_files_have(tmp_path):
     hold_restored(tmp_path)
     hold_restored(tmp_path / "missing")
     assert not (meta / "ai_skills.json").exists()
+
+
+def test_a_restored_skill_list_is_size_checked_before_it_is_read(tmp_path, monkeypatch):
+    import pytest
+
+    from prism_lca.engine import skills_store
+    from prism_lca.errors import PrismError
+
+    meta = tmp_path / "prism_meta"
+    meta.mkdir()
+    (meta / "ai_skills.json").write_text("[" + ", ".join(['{"id": "a"}'] * 100) + "]", encoding="utf-8")
+    monkeypatch.setattr(skills_store, "MAX_RESTORED_SKILLS", 1024)
+    monkeypatch.setattr(skills_store, "read_json", lambda *a, **k: pytest.fail("read before the size check"))
+    with pytest.raises(PrismError) as refused:
+        skills_store.hold_restored(tmp_path)
+    assert refused.value.code == "backup_unreadable"

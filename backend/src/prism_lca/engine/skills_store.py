@@ -16,12 +16,15 @@ from pathlib import Path
 
 from prism_lca.engine._store import JsonFileStore, read_json, write_json_atomic
 from prism_lca.engine.builtin_skills import BUILTIN_IDS, BUILTIN_SKILLS
+from prism_lca.errors import PrismError
 
 SKILLS_FILE = "ai_skills.json"
 OVERRIDES_FILE = "ai_skills_builtin.json"
 #: On a skill that came with a restored backup and has not been switched on since; the Skills panel
 #: says where it came from. Switching the skill on removes it.
 RESTORED = "restored"
+#: Far above any real skill list (a long skill is tens of kilobytes); a restore reads no more than this.
+MAX_RESTORED_SKILLS = 16 * 1024 * 1024
 
 
 class SkillStore(JsonFileStore):
@@ -128,6 +131,9 @@ def hold_restored(workspace: Path) -> None:
     if not path.is_file():
         _remove(path)
         return
+    if path.stat().st_size > MAX_RESTORED_SKILLS:
+        raise PrismError("This backup's skill list is larger than a workspace writes.", code="backup_unreadable",
+                         hint="Choose a .tar.gz written by Back up this workspace.")
     data = read_json(path, default=[], on_error="empty")
     skills = data if isinstance(data, list) else []
     write_json_atomic(path, [{**s, "enabled": False, RESTORED: True} for s in skills if isinstance(s, dict)])
