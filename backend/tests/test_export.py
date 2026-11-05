@@ -183,3 +183,38 @@ def test_export_elementary_flows_xlsx(client, token, project):
     body = r.json()
     assert body["filename"] == "prism-elementary-flows.xlsx"
     assert base64.b64decode(body["base64"])[:2] == b"PK"
+
+
+def test_text_in_every_results_sheet_stays_text():
+    import re
+    import zipfile
+
+    from prism_lca.engine import export
+
+    name = "=1+1"
+    sheets = {
+        "compare": export.compare_xlsx(
+            [{"key": "k", "family": name, "label": name, "unit": "kg"}],
+            [{"label": name, "group": name, "scores": {"k": 1.5}}],
+            group_header=name,
+        ),
+        "flows": export.flows_xlsx(
+            {"scope": name, "method": [name], "unit": "kg", "total": 1.5},
+            [{"flow": name, "categories": [name], "share": 0.5, "impact": 1.5}],
+        ),
+        "factors": export.lcia_factors_xlsx(
+            [{"method": ["family", name], "name": name, "unit": "kg"}],
+            [{"flow": name, "categories": [name], "unit": name, "factors": [1.5]}],
+        ),
+        "rows": export.rows_to_xlsx(["name", "score"], [[name, 1.5], ["#N/A", 2.5]]),
+    }
+    for kind, data in sheets.items():
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            xml = b"".join(z.read(n) for n in z.namelist() if n.startswith("xl/worksheets/"))
+        assert not re.search(rb"<f[ >]", xml), kind
+        ws = load_workbook(io.BytesIO(data)).active
+        texts = [c for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
+        assert any(c.value == name for c in texts), kind
+        assert all(c.data_type == "s" for c in texts), kind
+        numbers = [c for row in ws.iter_rows() for c in row if isinstance(c.value, float)]
+        assert numbers and all(c.data_type == "n" for c in numbers), kind

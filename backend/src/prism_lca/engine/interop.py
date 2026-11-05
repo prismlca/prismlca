@@ -22,6 +22,7 @@ import io
 
 from openpyxl import Workbook, load_workbook
 
+from prism_lca.engine import workbooks
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.model import _db_or_404
 
@@ -54,9 +55,9 @@ def model_to_workbook(database: str) -> bytes:
     wb = Workbook()
     aws = wb.active
     aws.title = "activities"
-    aws.append(_ACT_HEADERS)
+    workbooks.append(aws, _ACT_HEADERS)
     ews = wb.create_sheet("exchanges")
-    ews.append(_EXC_HEADERS)
+    workbooks.append(ews, _EXC_HEADERS)
 
     from prism_lca.engine.tags import TagStore
 
@@ -66,8 +67,8 @@ def model_to_workbook(database: str) -> bytes:
         tags = "; ".join(
             f"{t['dimension']}={t['value']}" for t in tag_store.list_for(database, act.key[1])
         )
-        aws.append([act.key[1], act.get("name"), act.get("unit"), act.get("location"),
-                    act.get("reference product"), act.get("comment"), tags])
+        workbooks.append(aws, [act.key[1], act.get("name"), act.get("unit"), act.get("location"),
+                               act.get("reference product"), act.get("comment"), tags])
         for ex in act.exchanges():
             if ex.get("type") == "production" and not _production_row_needed(ex):
                 continue
@@ -75,10 +76,10 @@ def model_to_workbook(database: str) -> bytes:
             # An input's own tags (keyed by its uid), in the same one-cell form as a process's.
             own = tag_store.list_for(database, TagStore.exchange_code(act.key[1], ex["prism_uid"])) if (
                 ex.get("prism_uid")) else []
-            ews.append([act.key[1], inp.key[0], inp.key[1], ex.get("amount"), ex.get("type"),
-                        ex.get("formula"), ex.get("comment"), ex.get("uncertainty type"),
-                        ex.get("loc"), ex.get("scale"), ex.get("minimum"), ex.get("maximum"),
-                        "; ".join(f"{t['dimension']}={t['value']}" for t in own)])
+            workbooks.append(ews, [act.key[1], inp.key[0], inp.key[1], ex.get("amount"), ex.get("type"),
+                                   ex.get("formula"), ex.get("comment"), ex.get("uncertainty type"),
+                                   ex.get("loc"), ex.get("scale"), ex.get("minimum"), ex.get("maximum"),
+                                   "; ".join(f"{t['dimension']}={t['value']}" for t in own)])
 
     buf = io.BytesIO()
     wb.save(buf)
