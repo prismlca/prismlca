@@ -71,9 +71,12 @@ export function approvalTarget(
       return m ? `method "${m}"` : null
     }
     case 'manage_method_family': {
-      // The same precedence as the implementation (`a.old ?? a.family`, impl.ts edit_method_family):
-      // a call carrying both must be named by the one the backend will act on.
-      const f = str(args.old) ?? str(args.family)
+      // The family the routed implementation acts on (impl.ts). Only rename reads `old`, with the
+      // same precedence (`a.old ?? a.family`); upsert and delete act on `family` alone, so an `old`
+      // beside them must not put another family's name on the card. The action is read the way
+      // `delegate` reads it.
+      const rename = String(args.action ?? '').trim() === 'rename'
+      const f = str(rename ? (args.old ?? args.family) : args.family)
       return f ? `family "${f}"` : null
     }
     default:
