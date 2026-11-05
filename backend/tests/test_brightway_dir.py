@@ -11,7 +11,7 @@ from pathlib import Path
 from backend_process import snapshot, spawn, stop, wait_for_start
 
 from prism_lca.config import Settings
-from prism_lca.engine.brightway_dir import OWNER_FILE, choose, claim, default_dir
+from prism_lca.engine.brightway_dir import OWNER_FILE, choose, claim, default_dir, take
 from prism_lca.engine.data_version import STAMP_FILE
 
 
@@ -174,3 +174,25 @@ def test_a_start_from_source_with_a_foreign_brightway_dir_is_refused_untouched(t
     assert proc.returncode == 5
     assert snapshot(other) == {"projects.db": b"their projects"}
     assert not (tmp_path / "data").exists()
+
+
+def test_a_folder_filled_by_another_program_during_the_start_is_not_taken(tmp_path):
+    # choose() saw it empty; before the claim, somebody's Brightway put its projects there.
+    folder = tmp_path / "chosen"
+    settings = _settings(tmp_path, folder)
+    assert choose(settings, {}, from_source=False).refusal is None
+    folder.mkdir()
+    (folder / "projects.db").write_bytes(b"their projects")
+    assert take(folder, settings) is not None
+    assert {p.name for p in folder.iterdir()} == {"projects.db"}
+
+
+def test_take_marks_an_empty_folder_and_accepts_the_data_directorys_own(tmp_path):
+    fresh = tmp_path / "fresh"
+    assert take(fresh, _settings(tmp_path, fresh)) is None and (fresh / OWNER_FILE).is_file()
+    data = tmp_path / "data"
+    (data / "brightway").mkdir(parents=True)
+    (data / "brightway" / "projects.db").write_bytes(b"from 0.9.9")
+    (data / STAMP_FILE).write_text('{"schema": 1}', encoding="utf-8")
+    assert take(data / "brightway", _settings(tmp_path)) is None
+    assert not (data / "brightway" / OWNER_FILE).exists()

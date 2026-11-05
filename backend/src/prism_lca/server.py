@@ -102,8 +102,10 @@ def main() -> None:
         raise SystemExit(5)
     if home.note:
         print(home.note, file=sys.stderr, flush=True)
-    brightway_dir.claim(home.path)  # an empty directory becomes PrismLCA's own, before anything goes in
-    home.path.mkdir(parents=True, exist_ok=True)
+    refusal = brightway_dir.take(home.path, settings)  # an empty folder becomes ours before anything goes in
+    if refusal is not None:
+        print(json.dumps({"event": "prism-backend-refused", "reason": refusal}), flush=True)
+        raise SystemExit(5)
     os.environ[brightway_dir.BRIGHTWAY_ENV] = str(home.path)
 
     # One backend per data directory, before anything opens a database. Two of them write to the

@@ -149,12 +149,6 @@ def copy_stable(
     for attempt in range(attempts):
         try:
             before = tree_state(root, only)
-        except Changing:  # a commit right now: wait for it like for any other change
-            if attempt + 1 < attempts:
-                time.sleep(pause)
-                continue
-            raise
-        try:
             for folder in before[0]:
                 (dst / folder).mkdir(parents=True, exist_ok=True)
             for name in before[1]:
@@ -168,6 +162,8 @@ def copy_stable(
                         on_bytes(len(chunk))
             if tree_state(root, only) == before:
                 return
+        except Changing:  # a commit before, during or after the copy: wait, and take it again
+            pass
         except BaseException:
             _remove(dst, single)
             raise

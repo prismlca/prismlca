@@ -143,3 +143,18 @@ def test_the_sqlite_change_counter_is_part_of_the_fingerprint(tmp_path):
     con.commit()
     con.close()
     assert foreign_read._fingerprint(db)[2] != before[2]
+
+
+def test_a_commit_that_starts_during_the_copy_is_waited_for_too(tmp_path, monkeypatch):
+    src = _tree(tmp_path / "src")
+    journal = src / "lci" / "databases.db-journal"
+    started = iter([True])
+
+    def begin_once(_n):
+        if next(started, False):
+            journal.write_bytes(b"x" * 512)  # the other program begins a write mid-copy
+
+    monkeypatch.setattr(foreign_read.time, "sleep", lambda _s: journal.unlink(missing_ok=True))
+    copy_stable(src, tmp_path / "dst", begin_once)
+    assert (tmp_path / "dst" / "lci" / "databases.db").is_file()
+    assert not (tmp_path / "dst" / "lci" / "databases.db-journal").exists()

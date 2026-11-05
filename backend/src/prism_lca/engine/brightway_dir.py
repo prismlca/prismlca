@@ -60,6 +60,23 @@ def claim(path: Path) -> None:
     (path / OWNER_FILE).write_text('{"created_by": "PrismLCA"}\n', encoding="utf-8")
 
 
+def take(path: Path, settings: Settings) -> str | None:
+    """Claim ``path`` and confirm it is ours now; None, or why the start must stop.
+
+    :func:`choose` looked a moment earlier. Had another program filled an empty folder since, the claim
+    would quietly pass it by — so the app goes on only with the mark in place, or with the ``brightway``
+    folder of its data directory, and writes nothing (no lock, no stamp) otherwise.
+    """
+    claim(path)
+    if (path / OWNER_FILE).is_file() or (not _empty(path) and _may_open(path, settings)):
+        return None
+    return (
+        f"Another program put files into {path} while PrismLCA was starting. PrismLCA has changed nothing "
+        "there and does not work in a folder it does not own. Start again, or choose an empty folder with "
+        "PRISM_BRIGHTWAY_DIR."
+    )
+
+
 def _may_open(path: Path, settings: Settings) -> bool:
     if _empty(path) or (path / OWNER_FILE).is_file():
         return True
