@@ -192,11 +192,37 @@ class TagStore(JsonFileStore):
             data = self._load()
             prefix = f"{old}/"
             moved = False
-            for key in [k for k in data if k.startswith(prefix)]:
+            for key in self._keys_under(data, old, besides=new):
                 data[f"{new}/{key[len(prefix):]}"] = data.pop(key)
                 moved = True
             if moved:
                 self._save(data)
+
+    def _keys_under(self, data: dict, database: str, besides: str | None = None) -> list[str]:
+        """The keys a deleted or renamed model leaves under ``database/``: every one, except those of
+        another existing model whose name plus a slash also starts the key ("A/B/x" of a model "A/B"
+        when "A" goes) — told apart by that model's process codes, since the model leaving has none
+        left to ask. ``besides``: the renamed model under its new name, which is the model leaving."""
+        from prism_lca.engine.bootstrap import get_bd
+
+        prefix = f"{database}/"
+        keys = [k for k in data if k.startswith(prefix)]
+        bd = get_bd()
+        existing = set(bd.databases) - {database, besides}
+        codes: dict[str, set[str]] = {}
+
+        def theirs(key: str) -> bool:
+            for i, ch in enumerate(key):
+                owner = key[:i]
+                if ch != "/" or owner not in existing:
+                    continue
+                if owner not in codes:
+                    codes[owner] = {a.key[1] for a in bd.Database(owner)}
+                if self.split_code(key[i + 1:])[0] in codes[owner]:
+                    return True
+            return False
+
+        return [k for k in keys if not theirs(k)]
 
     def _own_codes(self, data: dict, database: str) -> dict[str, str]:
         """Key → code part, for the keys of this model's processes and their inputs. By the model's own
@@ -232,8 +258,7 @@ class TagStore(JsonFileStore):
         """Drop all tags belonging to a deleted foreground model."""
         with self._lock:
             data = self._load()
-            prefix = f"{database}/"
-            keys = [k for k in data if k.startswith(prefix)]
+            keys = self._keys_under(data, database)
             if keys:
                 for k in keys:
                     data.pop(k, None)

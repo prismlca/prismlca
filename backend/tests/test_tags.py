@@ -651,3 +651,68 @@ def test_a_group_below_one_part_in_a_million_is_not_drawn(client, token, project
     det, st = _tag_groups(client, token)
     assert abs(det["(untagged)"] - 2e-5) < 1e-9
     assert "(untagged)" in st["keys"]["tag:Phase"]
+
+
+# ---- a model's tags and a neighbour whose name extends it with a slash ------------------------
+def _model_with_tag(name: str, code: str) -> None:
+    from prism_lca.engine.brightway_repository import BrightwayRepository
+    from prism_lca.engine.tags import TagStore
+
+    BrightwayRepository().create_foreground_database(name)
+    get_bd().Database(name).new_activity(code=code, name=code, unit="kilogram", type="process").save()
+    TagStore().add(name, code, "phase", f"tag of {name}")
+
+
+def _tag(name: str, code: str) -> list:
+    from prism_lca.engine.tags import TagStore
+
+    return TagStore().list_for(name, code)
+
+
+def test_deleting_a_model_leaves_the_tags_of_a_model_named_after_it_alone(project):
+    from prism_lca.engine.brightway_repository import BrightwayRepository
+
+    del project
+    _model_with_tag("A", "p1")
+    _model_with_tag("A/B", "x")
+    _model_with_tag("C", "B/y")  # the other way round: "C/B/y" is C's own code, not a model "C/B"
+    _model_with_tag("C/B", "z")
+    repo = BrightwayRepository()
+
+    repo.delete_foreground_database("A")
+    assert _tag("A", "p1") == []
+    assert _tag("A/B", "x"), "the neighbour's tag went with the deleted model"
+
+    repo.delete_foreground_database("C/B")
+    assert _tag("C/B", "z") == []
+    assert _tag("C", "B/y"), "a code with a slash was read as the deleted model's"
+
+
+def test_renaming_a_model_leaves_the_tags_of_a_model_named_after_it_alone(project):
+    from prism_lca.engine.brightway_repository import BrightwayRepository
+
+    del project
+    _model_with_tag("A", "p1")
+    _model_with_tag("A/B", "x")
+
+    BrightwayRepository().rename_foreground_database("A", "D")
+    assert _tag("D", "p1") and _tag("A", "p1") == []
+    assert _tag("A/B", "x"), "the neighbour's tag moved with the renamed model"
+    assert _tag("D/B", "x") == []
+
+
+def test_an_ordinary_delete_and_rename_take_every_tag_under_the_name(project):
+    """No neighbour: every key under the name goes along, a tag of a process no longer there included."""
+    from prism_lca.engine.brightway_repository import BrightwayRepository
+    from prism_lca.engine.tags import TagStore
+
+    del project
+    _model_with_tag("Bottle", "p1")
+    TagStore().add("Bottle", "gone", "phase", "stale")
+    repo = BrightwayRepository()
+
+    repo.rename_foreground_database("Bottle", "Flask")
+    assert _tag("Flask", "p1") and _tag("Flask", "gone")
+    assert _tag("Bottle", "p1") == [] and _tag("Bottle", "gone") == []
+    repo.delete_foreground_database("Flask")
+    assert TagStore().load_map() == {}
