@@ -6,7 +6,9 @@
  * Security posture: loopback only; every route authenticated, the
  * health probe included; the token compared in constant time; the SDK's DNS-rebinding protection on
  * with the exact hosts this server answers as; no CORS, no remote bind, no OAuth. The endpoint file
- * that publishes port + token is written by `start` and removed by `stop`.
+ * that publishes port + token is written by `start` and removed by `stop`. Switching off and a new
+ * token take effect at once: nothing that arrived on a stopped server is served, and its connections
+ * are cut rather than waited for.
  *
  * Electron-free — the window, the keys, the settings store and the user-data path come in through
  * `McpHostDeps`, so server.test.ts runs it under plain Node with a fake backend.
@@ -62,6 +64,8 @@ interface Entry {
   transport: StreamableHTTPServerTransport
   server: Server
   session: McpSession
+  /** The listener the session was opened on — stopping that one ends it. */
+  http: HttpServer
 }
 
 export class McpHost {
@@ -96,8 +100,8 @@ export class McpHost {
   async start(): Promise<string> {
     if (this.http) return this.url!
     this.token = this.token || randomBytes(32).toString('base64url')
-    const http = createServer((req, res) => {
-      void this.handle(req, res).catch((e) => {
+    const http: HttpServer = createServer((req, res) => {
+      void this.handle(http, req, res).catch((e) => {
         console.error('[prism-mcp] request failed:', e instanceof Error ? e.message : e)
         if (!res.headersSent) this.json(res, 500, { error: 'Internal error.' })
         else res.end()
@@ -125,10 +129,18 @@ export class McpHost {
   async stop(): Promise<void> {
     const http = this.http
     if (!http) return
+    // From here on handle() refuses whatever arrives on this server, on a kept-alive connection too.
     this.http = null
-    for (const id of [...this.entries.keys()]) await this.closeSession(id, 'PrismLCA stopped its MCP server.')
-    await new Promise<void>((resolve) => http.close(() => resolve()))
     removeEndpoint(this.deps.userData())
+    const closed = new Promise<void>((resolve) => http.close(() => resolve()))
+    // Sessions of this listener opened while closing go too; those of a listener started meanwhile stay.
+    const opened = (): string[] => [...this.entries].filter(([, e]) => e.http === http).map(([id]) => id)
+    for (let ids = opened(); ids.length > 0; ids = opened()) {
+      for (const id of ids) await this.closeSession(id, 'PrismLCA stopped its MCP server.')
+    }
+    // Open connections are cut, not waited for: switching off takes effect at once.
+    http.closeAllConnections()
+    await closed
     console.log('[prism-mcp] stopped')
     this.emitStatus()
   }
@@ -141,14 +153,16 @@ export class McpHost {
     for (const e of this.entries.values()) e.session.end()
     this.entries.clear()
     http.close()
+    http.closeAllConnections()
     removeEndpoint(this.deps.userData())
   }
 
   /** A new token: every session is ended (its client no longer holds a valid credential). */
   async regenerateToken(): Promise<void> {
     const wasRunning = this.running
-    await this.stop()
+    // First: from this instant the old token opens nothing, however long stopping takes.
     this.token = randomBytes(32).toString('base64url')
+    await this.stop()
     if (wasRunning) await this.start()
   }
 
@@ -181,13 +195,19 @@ export class McpHost {
     res.end(JSON.stringify(body))
   }
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private unauthorised(res: ServerResponse): void {
+    this.json(res, 401, { error: 'Unauthorized.' })
+  }
+
+  private async handle(srv: HttpServer, req: IncomingMessage, res: ServerResponse): Promise<void> {
+    // Nothing that arrives on a stopped listener is served.
+    if (srv !== this.http) return this.unauthorised(res)
+    const path = (req.url ?? '/').split('?')[0]
     if (!this.authorised(req)) {
       // No hint about which part was wrong: a missing header and a stale token read the same.
-      this.json(res, 401, { error: 'Unauthorized.' })
+      this.unauthorised(res)
       return
     }
-    const path = (req.url ?? '/').split('?')[0]
     if (path === '/health') {
       this.json(res, 200, { ok: true, version: this.deps.version, sessions: this.entries.size })
       return
@@ -200,11 +220,14 @@ export class McpHost {
     const sid = typeof sessionId === 'string' ? sessionId : undefined
     if (sid) {
       const entry = this.entries.get(sid)
-      if (!entry) {
+      // A session is reachable only through the listener it was opened on.
+      if (!entry || entry.http !== srv) {
         this.json(res, 404, { error: 'Unknown session — initialize again.' })
         return
       }
       const body = req.method === 'POST' ? await this.readJson(req) : undefined
+      // Reading the body can outlast a switch-off.
+      if (srv !== this.http) return this.unauthorised(res)
       if (body === INVALID) {
         this.json(res, 400, { error: 'Body is not JSON.' })
         return
@@ -218,13 +241,14 @@ export class McpHost {
       return
     }
     const body = await this.readJson(req)
+    if (srv !== this.http) return this.unauthorised(res)
     if (body === INVALID || !isInitializeRequest(body)) {
       this.json(res, 400, { error: 'Expected an initialize request.' })
       return
     }
     let entry: Entry
     try {
-      entry = await this.openSession()
+      entry = await this.openSession(srv)
     } catch (e) {
       if (e instanceof NoProjectError) {
         this.json(res, 503, {
@@ -233,6 +257,11 @@ export class McpHost {
         return
       }
       throw e
+    }
+    // Opening asks the backend and can outlast a switch-off; stop() may not have seen this session.
+    if (srv !== this.http) {
+      await this.closeSession(entry.session.id, 'PrismLCA stopped its MCP server.')
+      return this.unauthorised(res)
     }
     await entry.transport.handleRequest(req, res, body)
     // The transport only takes the session id when the initialize went through; a request it
@@ -259,7 +288,7 @@ export class McpHost {
 
   // --- Sessions ---------------------------------------------------------------------------------
 
-  private async openSession(): Promise<Entry> {
+  private async openSession(http: HttpServer): Promise<Entry> {
     const id = randomUUID()
     // No project, no session: a session without a project binding would follow whatever project
     // the app switches to. The client sees a 503 and tries again.
@@ -350,7 +379,7 @@ export class McpHost {
         this.deps.onActivity?.()
       }
     })
-    const entry: Entry = { transport, server, session }
+    const entry: Entry = { transport, server, session, http }
     this.deps.onActivity?.()
     this.entries.set(id, entry)
     // BEFORE connect: the SDK chains an existing onclose in front of its own (which aborts the

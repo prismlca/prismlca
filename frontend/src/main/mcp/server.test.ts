@@ -3,6 +3,7 @@
  * it, a fake backend behind it. No Electron, no window — UI tools answer with the bridge's error.
  */
 import { request as httpRequest } from 'node:http'
+import { connect, type Socket } from 'node:net'
 import { mkdtempSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -464,5 +465,101 @@ describe('McpHost', () => {
     await c.close().catch(() => undefined)
     url = await host.start() // for afterAll's stop, and to prove a restart works
     expect(readEndpoint(userData)!.url).toBe(url)
+  })
+})
+
+describe('McpHost: switching off and a new token', () => {
+  let dir: string
+  let h: McpHost
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'prism-mcp-off-'))
+    h = new McpHost({
+      version: '0.0.0-test',
+      userData: () => dir,
+      apiRaw,
+      emit: () => {},
+      currentModel: async () => 'Shampoo',
+      session: {
+        ui: () => uiImpl('', {}),
+        settings: () => ({ disabledTools: [], preferredBackground: '', eurostatEnabled: true })
+      }
+    })
+  })
+
+  afterAll(async () => {
+    await h.stop()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  const initBody = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'raw', version: '1' } }
+  })
+
+  /** One raw keep-alive connection: what it received, and whether the server closed it. */
+  function open(port: number): Promise<{ sock: Socket; received: () => string; closed: Promise<void> }> {
+    return new Promise((resolve, reject) => {
+      let data = ''
+      const sock = connect(port, '127.0.0.1')
+      const closed = new Promise<void>((r) => sock.once('close', () => r()))
+      sock.on('data', (c) => (data += c.toString()))
+      sock.on('error', () => undefined)
+      sock.once('connect', () => resolve({ sock, received: () => data, closed }))
+      sock.once('error', reject)
+    })
+  }
+
+  const head = (port: number, token: string, length: number): string =>
+    `POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nAuthorization: Bearer ${token}\r\n` +
+    `Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\n` +
+    `Content-Length: ${length}\r\nConnection: keep-alive\r\n\r\n`
+
+  const within = <T>(p: Promise<T>, ms: number): Promise<T | 'timeout'> =>
+    Promise.race([p, new Promise<'timeout'>((r) => setTimeout(() => r('timeout'), ms))])
+
+  it('a request in flight when the server is switched off is not served, and stopping does not wait', async () => {
+    await h.start()
+    const { url: u, token } = readEndpoint(dir)!
+    const port = Number(new URL(u).port)
+    const c = await open(port)
+    c.sock.write(head(port, token, Buffer.byteLength(initBody)) + initBody.slice(0, 20))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(await within(h.stop(), 1000)).not.toBe('timeout')
+    expect(existsSync(endpointPath(dir))).toBe(false)
+    c.sock.write(initBody.slice(20))
+    expect(await within(c.closed, 1000)).not.toBe('timeout')
+    expect(c.received()).not.toMatch(/HTTP\/1\.1 200/)
+    expect(h.sessions()).toEqual([])
+  })
+
+  it('a new token ends a kept-alive connection of the old one at once', async () => {
+    await h.start()
+    const { url: u, token } = readEndpoint(dir)!
+    const port = Number(new URL(u).port)
+    const c = await open(port)
+    c.sock.write(head(port, token, Buffer.byteLength(initBody)) + initBody)
+    for (let i = 0; i < 100 && !/\r\n\r\n/.test(c.received()); i++)
+      await new Promise((r) => setTimeout(r, 10))
+    expect(c.received()).toMatch(/HTTP\/1\.1 200/)
+    expect(h.sessions()).toHaveLength(1)
+    // A second request of the old token is already on its way when the new token is asked for.
+    c.sock.write(head(port, token, Buffer.byteLength(initBody)) + initBody.slice(0, 20))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(await within(h.regenerateToken(), 1000)).not.toBe('timeout')
+    expect(await within(c.closed, 1000)).not.toBe('timeout')
+    expect(h.sessions()).toEqual([])
+    const fresh = readEndpoint(dir)!
+    expect(fresh.token).not.toBe(token)
+    // The old token opens nothing on the new listener either.
+    const p2 = Number(new URL(fresh.url).port)
+    const c2 = await open(p2)
+    c2.sock.write(head(p2, token, Buffer.byteLength(initBody)) + initBody)
+    for (let i = 0; i < 100 && !/\r\n\r\n/.test(c2.received()); i++)
+      await new Promise((r) => setTimeout(r, 10))
+    expect(c2.received()).toMatch(/HTTP\/1\.1 401/)
+    c2.sock.destroy()
   })
 })
