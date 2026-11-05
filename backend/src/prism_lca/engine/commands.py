@@ -390,6 +390,11 @@ def _copy_exchanges(src, new, uids: dict[str, str] | None = None) -> list[tuple[
     return pairs
 
 
+def _copied_inputs(sources) -> list[str]:
+    """The databases copies of ``sources`` draw on: every input but the production edge, read from the stored key."""
+    return [ex["input"][0] for src in sources for ex in src.exchanges() if ex.get("type") != "production"]
+
+
 class CreateActivityCommand(Command):
     action = "create_activity"
     audit_attr = "database"
@@ -793,6 +798,19 @@ class CopyToForegroundCommand(Command):
             detail["suppliers"] = [dict(s) for s in self._suppliers]
         return detail
 
+    def scope_suppliers(self) -> list[str]:
+        """The source's database and every input the copies keep (at depth 2 the supplier copies' too)."""
+        try:
+            src = model.get_activity(self.source_database, self.source_code)
+        except PrismError:  # execute() answers "not found" itself
+            return [self.source_database]
+        copied = [src]
+        if self.depth == 2:
+            suppliers = self._direct_suppliers(src)
+            if len(suppliers) <= LOCALIZE_SUPPLIER_LIMIT:  # above it, execute() refuses before copying
+                copied += [model.get_activity(db, code) for db, code in suppliers]
+        return [self.source_database, *_copied_inputs(copied)]
+
     def _direct_suppliers(self, src) -> list[tuple[str, str]]:
         """The datasets ``src`` draws on from outside the target model, once each and in exchange order.
         Itself excluded: its input on itself becomes the copy's input on itself, not another copy."""
@@ -1033,6 +1051,11 @@ class LocalizePathCommand(Command):
                 for k in self.path
             ],
         }
+
+    def scope_suppliers(self) -> list[str]:
+        """Every node's database and every input the node copies keep, as for CopyToForegroundCommand."""
+        nodes = [model.get_activity(key[0], key[1]) for key in self.path]
+        return [*(key[0] for key in self.path), *_copied_inputs(nodes)]
 
     def undo(self) -> None:
         for new_code in self._codes:
