@@ -3,11 +3,12 @@ master even when it comes later").
 
 A project that started with BAFU holds bw2io's bundled ecoinvent-3.9 flow list as ``biosphere3``
 and its 762 bundled methods; BAFU's exchanges point at those flows, and at new flows the ladder
-created. When the user then imports ecoinvent 3.12, this module runs inside that import:
+created. When the user then imports ecoinvent (3.12, 3.13 …), this module runs inside that import:
 
-1. **lift** — flows that kept their UUID get the 3.12 name, categories, unit, CAS and synonyms
+1. **lift** — flows that kept their UUID get the release's name, categories, unit, CAS and synonyms
    (422 renamings between 3.9 and 3.12: "Calcium" → "Calcium II"); the ``prism_origin`` marker
-   comes off, they are ecoinvent's now;
+   comes off, they are ecoinvent's now. The import runs this step before it writes the methods,
+   which link by name;
 2. **re-map the BAFU database** — every biosphere exchange carries its source (name, compartment,
    unit, original amount), so the ladder runs again against the 3.12 list and the exchange is
    re-pointed with the new factor; unresolved ones keep or get a new flow;
@@ -297,9 +298,14 @@ def ecoinvent_master(
     progress: Callable[[str], None] | None = None,
     replace_methods: bool = True,
     reprocess: bool = False,
+    lifted_before: int = 0,
 ) -> dict:
     """Run after ecoinvent's flow list has been merged into ``biosphere3`` and its methods are
-    written. Returns the numbers for the import report."""
+    written. Returns the numbers for the import report.
+
+    The import lifts the flow names itself before it writes the methods — the workbook links its
+    factors by name — and passes the count as ``lifted_before``; the lift here then finds nothing left
+    to change, and still catches every flow when a caller did not lift first."""
     bd = get_bd()
 
     def say(text: str) -> None:
@@ -307,7 +313,7 @@ def ecoinvent_master(
             progress(text)
 
     say("Lifting the biosphere to the release's flow list…")
-    lifted = lift_biosphere(release_flows)
+    lifted = lifted_before + lift_biosphere(release_flows)
     # The target is the RELEASE's list, never the whole biosphere: the 3.9-only flows are still in
     # there at this point and would be hit again by their own names ("TiO2, 54% in ilmenite …").
     target = TargetBiosphere.from_records(release_flows, "ecoinvent release flow list")

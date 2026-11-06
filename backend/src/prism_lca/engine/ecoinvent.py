@@ -272,6 +272,10 @@ def _biosphere_lookup() -> dict[tuple, int]:
     return {
         (flow.get("name"), tuple(flow.get("categories") or ())): flow.id
         for flow in bd.Database(BIOSPHERE_DB)
+        # Flows PrismLCA added are not the release's: BAFU's new flows, bw2io's 3.9-only ones. One of
+        # the same name — "Vinyl acetate" is new in 3.13 and a new BAFU flow in a workspace that began
+        # with BAFU — took the factor, and the rewrite onto ecoinvent then deleted it, factor and all.
+        if not flow.get("prism_origin")
     }
 
 
@@ -522,6 +526,11 @@ def _run_import(
         flows_before = len(bd.Database(BIOSPHERE_DB)) if BIOSPHERE_DB in bd.databases else 0
         biosphere_note, release_flows = _ensure_biosphere(elementary)
         flows_after = len(bd.Database(BIOSPHERE_DB))
+        # The patch above only adds what is missing: a flow the release renamed keeps bw2io's 3.9 name
+        # under its unchanged UUID ("Ethane, 1,1,1,2-tetrafluoro-, HFC-134a"), and the workbook links its
+        # factors BY NAME. Lifted after the methods, hundreds of factors found no flow and the import
+        # refused to write any method — so the names come first.
+        lifted = background_sync.lift_biosphere(release_flows) if bundled else 0
 
         if database in bd.databases:
             # Nothing left to read: what follows writes (methods, the rewrite), so no cancel any more.
@@ -570,6 +579,7 @@ def _run_import(
                 progress=lambda text: _update(step="sync", detail=text, progress=0.95),
                 replace_methods=lcia_xlsx is not None,
                 reprocess=retry_sync,
+                lifted_before=lifted,
             )
             _mark_sync_pending(False)
             moved = sum(r.get("moved", 0) for r in report["remapped"])

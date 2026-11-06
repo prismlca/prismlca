@@ -294,3 +294,49 @@ def test_a_retried_remap_processes_even_when_nothing_moves(client, token, projec
     assert processed == []
     sync.remap_database("fg", target, origin="test", reprocess=True)
     assert processed == ["fg"]
+
+
+def test_ecoinvent_after_bafu_links_every_factor_to_the_release_flow(client, token, project, tmp_path, monkeypatch):
+    """A workspace that began with BAFU holds bw2io's 3.9 flow list, and a flow the release renamed keeps
+    its 3.9 name under the same UUID until the lift. The workbook links by name, so the lift has to come
+    before the methods, or hundreds of factors find no flow and the import writes no method at all.
+    And a flow BAFU created under the name of a release flow must not take that flow's factor — the
+    rewrite deletes it afterwards, factor and all."""
+    from test_setup import write_lcia_workbook
+
+    from prism_lca.engine import ecoinvent, ecoinvent_inventory
+    from prism_lca.engine.bootstrap import get_bd
+
+    renamed, dibromo, _co2 = FLOWS[0][0], FLOWS[1][0], FLOWS[2][0]
+    bd = get_bd()
+    bd.Database("biosphere3").write({
+        ("biosphere3", renamed): {"name": "Flurochloridone, 3.9 spelling", "type": "emission", "unit": "kg",
+                                  "categories": ("air", "non-urban air or from high stacks"), "prism_origin": "bw2io"},
+        ("biosphere3", dibromo): {"name": "1,2-Dibromoethane", "type": "emission", "unit": "kg",
+                                  "categories": ("water",), "prism_origin": "bw2io"},
+        ("biosphere3", "bafu-new"): {"name": "1,2-Dibromoethane", "type": "emission", "unit": "kg",
+                                     "categories": ("water",), "prism_origin": "bafu-2026-v1"},
+    })
+    bd.databases["biosphere3"][ecoinvent.BIO_SOURCE_KEY] = "bw2io ecoinvent 3.9 flow list"
+    bd.databases.flush()
+    workbook = write_lcia_workbook(
+        tmp_path / "methods.xlsx",
+        [("m", "c", "i", "Flurochloridone", "air", "non-urban air or from high stacks", 2.0),
+         ("m", "c", "i", "1,2-Dibromoethane", "water", "unspecified", 3.0)],
+        [("m", "c", "i", "kg")],
+    )
+
+    def written(ecospold2_dir, database, **kwargs):
+        kwargs["begin_writing"](step="writing")
+        bd.Database(database).write(
+            {(database, "a"): {"name": "a", "unit": "kg", "location": "GLO", "reference product": "a", "exchanges": []}}
+        )
+        return 1
+
+    monkeypatch.setattr(ecoinvent_inventory, "import_inventory", written)
+    ecoinvent.start_import(str(_release(tmp_path)), project, "ei-after-bafu", str(workbook), run_in_thread=False)
+    assert ecoinvent.status().state is ecoinvent.JobState.done, ecoinvent.status().detail
+
+    code_of = {n.id: n["code"] for n in bd.Database("biosphere3")}
+    assert sorted((code_of[k], v) for k, v in bd.Method(("m", "c", "i")).load()) == sorted([(renamed, 2.0), (dibromo, 3.0)])
+    assert "bafu-new" not in code_of.values()  # orphaned and removed by the rewrite

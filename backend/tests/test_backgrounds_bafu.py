@@ -372,6 +372,8 @@ def test_ecoinvent_after_bafu_rewrites_everything_onto_ecoinvent(
     ]
     elementary = write_flow_list(tmp_path / "ElementaryExchanges.xml", flows)
     _note, release_flows = ecoinvent._ensure_biosphere(elementary)
+    # The import's own order: the names are lifted before the workbook links its factors by name.
+    lifted = sync.lift_biosphere(release_flows)
     # The workbook's method of the SAME name overwrites the bundled one in place (D7).
     ecoinvent._import_lcia(
         write_lcia_workbook(
@@ -390,7 +392,7 @@ def test_ecoinvent_after_bafu_rewrites_everything_onto_ecoinvent(
             [("Fam", "cat", "ind", "kg")],
         )
     )
-    report = sync.ecoinvent_master(release_flows, replace_methods=True)
+    report = sync.ecoinvent_master(release_flows, replace_methods=True, lifted_before=lifted)
 
     assert report["lifted_flows"] >= 2  # c1/c2 lost their marker, c2 renamed
     assert bd.Database("biosphere3").get("c2")["name"] == "Propylene"
