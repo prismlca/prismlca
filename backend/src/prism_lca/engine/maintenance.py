@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from prism_lca.engine import backup_archive, workspace_pickles
+from prism_lca.engine import backup_archive, skills_store, workspace_pickles
 from prism_lca.engine.bootstrap import get_bd, get_bi
 from prism_lca.engine.guardrails import is_read_only
 from prism_lca.engine.model import _db_or_404
@@ -117,7 +117,7 @@ def _read_metadata(folder: Path) -> dict:
 def staged_backup(
     fp: str, project_name: str | None = None, overwrite: bool = False
 ) -> Iterator[StagedBackup]:
-    """Unpack and check a backup in a temp folder that is removed on exit.
+    """Unpack and check a backup in a temp folder that is removed on exit; the skills in it are switched off.
 
     Touches nothing but the file and that folder, so callers run it outside the project locks; the name is
     checked here to refuse early and again by :func:`restore_project`, which runs inside them.
@@ -132,6 +132,7 @@ def staged_backup(
     try:
         unpacked = backup_archive.unpack(path, td)
         workspace_pickles.assert_plain(unpacked.folder)
+        skills_store.hold_restored(unpacked.folder)
         yield StagedBackup(fp, name, unpacked.folder, unpacked.size, _read_metadata(unpacked.folder))
     finally:
         shutil.rmtree(td, ignore_errors=True)

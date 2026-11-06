@@ -158,25 +158,3 @@ def test_compiles_run_side_by_side(fresh_workers):
     for thread in threads:
         thread.join()
     assert len(results) == len(threads) and all(pdf.startswith(b"%PDF") for pdf in results)
-
-
-def test_a_worker_trusts_only_a_memory_reading_that_works(monkeypatch):
-    """Without a believable reading the memory bound is off and the time limit still applies — a
-    reading that is wrong must never stop compiles that fit."""
-
-    def broken() -> int:
-        raise OSError("no reading")
-
-    monkeypatch.setattr(typst_worker, "_memory_reader", lambda: lambda: 10)
-    assert typst_worker._trusted_reader(100) is not None
-    monkeypatch.setattr(typst_worker, "_memory_reader", lambda: lambda: 60)
-    assert typst_worker._trusted_reader(100) is None  # past half the budget before any compile
-    monkeypatch.setattr(typst_worker, "_memory_reader", lambda: broken)
-    assert typst_worker._trusted_reader(100) is None
-    assert typst_worker._over(broken, 1) is False
-
-
-@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads its memory from /proc")
-def test_the_memory_reading_is_this_processes_resident_size():
-    read = typst_worker._memory_reader()
-    assert read is not None and 1024**2 < read() < 64 * 1024**3

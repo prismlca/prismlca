@@ -13,8 +13,9 @@ tiny HTML, XLSX and DOCX file the way chat attachments are converted: markitdown
 starts two worker processes the way Windows always starts them (``spawn``: a fresh copy of the executable)
 and waits for their answers — the ecoinvent import reads its datasets in such workers, and a frozen worker
 that runs the normal start-up instead of its task never answers. Then it typesets one tiny document offline,
-through the worker process every preview and PDF is compiled in. It prints each failure with its original
-cause. ``tests/test_bundle_check.py`` keeps the list complete: a function-level import
+through the worker process every preview and PDF is compiled in, and counts and reads one tiny PDF through the
+worker process every PDF attachment is read in (markitdown loads its PDF libraries only there). It prints each
+failure with its original cause. ``tests/test_bundle_check.py`` keeps the list complete: a function-level import
 of a third-party module that is not on it fails the suite.
 """
 
@@ -172,6 +173,45 @@ def _typesetting_failures() -> list[str]:
     return [] if pdf.startswith(b"%PDF") else ["typesetting: the worker returned something that is not a PDF"]
 
 
+def _probe_pdf() -> bytes:
+    """A one-page PDF that says "probe-pdf" in a standard font, with a cross-reference table."""
+    content = b"BT /F1 12 Tf 72 720 Td (probe-pdf) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length %d >>\nstream\n" % len(content) + content + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, body in enumerate(objects, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
+    table = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    out += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, table)
+    return bytes(out)
+
+
+def _pdf_failures() -> list[str]:
+    """One tiny PDF read and counted through the worker process every PDF attachment is read in."""
+    from prism_lca.engine import attachment_pdf
+
+    with tempfile.TemporaryDirectory(prefix="prism-bundle-check-", ignore_cleanup_errors=True) as tmp:
+        path = Path(tmp) / "probe.pdf"
+        path.write_bytes(_probe_pdf())
+        try:
+            text, _ = attachment_pdf.text(path, None, 10_000)  # raises with the reason when it fails
+            pages = attachment_pdf.page_count(path)
+        finally:
+            attachment_pdf.shutdown()
+    failures = [] if "probe-pdf" in text else ["pdf: the marker is missing from the text"]
+    return failures + ([] if pages == 1 else [f"pdf: counted {pages} pages, expected 1"])
+
+
 def run() -> int:
     """Import everything; print one line per failure. 0 when all imports work, 1 otherwise.
 
@@ -211,10 +251,15 @@ def _check_everything() -> int:
         failures += _typesetting_failures()
     except Exception as exc:  # noqa: BLE001 — reported with its cause
         failures.append(f"typesetting: {_cause(exc)}")
+    try:
+        failures += _pdf_failures()
+    except Exception as exc:  # noqa: BLE001 — reported with its cause
+        failures.append(f"pdf: {_cause(exc)}")
     for line in failures:
         print(f"bundle: FAIL {line}")
     print(
         f"bundle: {len(names)} package modules and {len(LAZY_IMPORTS)} libraries imported, "
-        f"3 attachment formats converted, 2 worker processes asked, 1 document typeset, {len(failures)} failed"
+        f"3 attachment formats converted, 2 worker processes asked, 1 document typeset, 1 PDF read, "
+        f"{len(failures)} failed"
     )
     return 1 if failures else 0

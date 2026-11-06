@@ -953,3 +953,14 @@ class ReportStore(JsonFileStore):
             if database in data:
                 del data[database]
                 self._save(data)
+
+    def snapshot_database(self, database: str) -> list[dict[str, Any]] | None:
+        return self._load().get(database)
+
+    def restore_database(self, database: str, reports: list[dict[str, Any]] | None) -> None:
+        with self._lock:
+            data = self._load()
+            data.pop(database, None)
+            if reports:
+                data[_check_db(database)] = reports
+            self._save(data)

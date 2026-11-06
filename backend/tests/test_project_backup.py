@@ -245,3 +245,42 @@ def test_a_realistic_workspace_survives_the_restore_checks(client, token, projec
     assert abs(client.post("/api/v1/calc/lcia", json=calc, headers=token).json()["score"] - score) < 1e-9
     assert [s["name"] for s in client.get("/api/v1/scenarios", params={"database": "fg"},
                                           headers=token).json()] == ["efficient"]
+
+
+def test_skills_from_a_restored_backup_stay_off_until_the_user_switches_them_on(client, token, project, tmp_path):
+    """A backup's own skills arrive switched off and marked; its switches for the built-ins do not arrive,
+    so the built-ins run as shipped. One switch in the Skills panel turns a skill on, and the mark goes."""
+    import json
+
+    from prism_lca.engine._store import prism_meta_dir
+
+    del project
+    sid = client.post("/api/v1/ai/skills", json={"name": "House style", "description": "Our wording",
+                                                 "content": "# Rules"}, headers=token).json()["id"]
+    assert client.post("/api/v1/ai/skills/builtin-review", json={"enabled": False},
+                       headers=token).status_code == 200
+    # A skill written without a switch counts as on in the workspace it was written in.
+    skills_file = prism_meta_dir() / "ai_skills.json"
+    stored = json.loads(skills_file.read_text(encoding="utf-8"))
+    stored.append({"id": "noflag", "name": "No flag", "description": "d", "content": "c"})
+    skills_file.write_text(json.dumps(stored), encoding="utf-8")
+    on_before = {s["id"] for s in client.get("/api/v1/ai/skills?enabled=true", headers=token).json()["skills"]}
+    assert {sid, "noflag"} <= on_before and "builtin-review" not in on_before
+
+    path = client.post("/api/v1/system/backup", json={"directory": str(tmp_path)}, headers=token).json()["path"]
+    r = client.post("/api/v1/projects/restore", json={"path": path, "project_name": "restored-skills"},
+                    headers=token)
+    assert r.status_code == 200, r.text
+    assert client.post("/api/v1/projects/restored-skills/activate", headers=token).status_code == 200
+
+    listed = {s["id"]: s for s in client.get("/api/v1/ai/skills", headers=token).json()["skills"]}
+    for own in (sid, "noflag"):
+        assert listed[own]["enabled"] is False and listed[own]["restored"] is True
+    assert listed["builtin-review"]["enabled"] is True and "restored" not in listed["builtin-review"]
+    on = {s["id"] for s in client.get("/api/v1/ai/skills?enabled=true", headers=token).json()["skills"]}
+    assert sid not in on and "noflag" not in on and "builtin-review" in on
+
+    switched = client.post(f"/api/v1/ai/skills/{sid}", json={"enabled": True}, headers=token).json()
+    assert switched["enabled"] is True and "restored" not in switched
+    on = {s["id"] for s in client.get("/api/v1/ai/skills?enabled=true", headers=token).json()["skills"]}
+    assert sid in on and "noflag" not in on

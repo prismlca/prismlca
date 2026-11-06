@@ -25,10 +25,11 @@ import { ensureSearchModel } from './searchModel'
 import { createSplash, type Splash } from './splash'
 import { guardWindow } from './windowGuard'
 import { adoptLegacyUserData } from './userDataMigration'
-import { runProxyMain } from './mcp/proxyMain'
+import { appLaunchCommand, runProxyMain } from './mcp/proxyMain'
 import { BRIDGE_IDLE_MS, BRIDGE_LAUNCH_FLAG, createIdleQuit, type IdleQuit } from './mcp/idleQuit'
 import { createKeepAwake } from './keepAwake'
 import { startupReader, waitForHealth, type BackendInfo } from './backendStartup'
+import { endProcess, exitedWithin, holdQuitForBackend } from './backendExit'
 import { onMainsPower } from './powerSource'
 import type { McpControl } from './ipc/mcp'
 import type { PrepareInstallResult } from '../shared/updates'
@@ -259,44 +260,6 @@ function sendBridgeState(): void {
 }
 
 /**
- * Leave in order: no new MCP sessions, the backend asked to exit and WAITED for (bounded), then the
- * app. `app.quit()` alone killed the child without waiting, and the data-directory lock stayed
- * held until Python actually exited — a relaunch right after could still fail.
- */
-async function quitGracefully(mcp: McpControl): Promise<void> {
-  mcp.shutdownNow()
-  const child = backend
-  if (child && child.exitCode === null && !child.killed) {
-    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
-    child.kill()
-    await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 8000))])
-  }
-  app.quit()
-}
-
-/** End `child` for good: SIGTERM, and if it is still there after 5 s, SIGKILL (on Linux SIGTERM only
- *  sets uvicorn's exit flag again and waits for the drain; on Windows kill() is final anyway).
- *  Resolves whether the process is confirmed gone. */
-async function endProcess(child: ChildProcess): Promise<boolean> {
-  child.kill()
-  if (await exitedWithin(child, 5_000)) return true
-  child.kill('SIGKILL')
-  return exitedWithin(child, 5_000)
-}
-
-/** Resolves true when `child` has exited within `ms`. */
-function exitedWithin(child: ChildProcess, ms: number): Promise<boolean> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve(true)
-    })
-  })
-}
-
-/**
  * Before an update replaces the program files, the backend has to be gone (V-2):
  * on Windows a running `prism-lca-backend.exe` locks its files and the installer fails,
  * and `child.kill()` there is TerminateProcess — a write into the Brightway SQLite files cut off
@@ -509,6 +472,11 @@ function startApp(): void {
     // Only a PERSON's second start means anything here: another bridge losing the lock is just the
     // handoff (proxyMain.ts polls for the endpoint), a screenshot run must not claim the service.
     if (by !== 'human') return
+    // Quitting, with the backend still being ended: start afresh once it is gone (backendExit.ts).
+    if (quitHold.holding()) {
+      quitHold.reopenAfterEnd()
+      return
+    }
     idle.claim()
     const win = mainWindow
     if (!win) {
@@ -524,7 +492,8 @@ function startApp(): void {
 
   idle = createIdleQuit({
     idleMs: BRIDGE_IDLE_MS,
-    quit: () => void quitGracefully(mcp),
+    // An ordinary quit: the `will-quit` hold below ends the backend before the app leaves.
+    quit: () => app.quit(),
     canQuit: nothingRunning,
     onChange: () => sendBridgeState(),
     log: (m) => console.log(`[prism] ${m}`)
@@ -654,13 +623,30 @@ function startApp(): void {
     runShotHarness()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0 && !quitHold.holding()) createWindow()
     })
   })
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
   })
+  // The windows are closed (their departure saves sent); the backend is ended — in order if it can,
+  // killed if it does not leave — before the app goes (backendExit.ts).
+  const quitHold = holdQuitForBackend({
+    backend: () => backend,
+    beforeEnd: () => {
+      keepAwake.stop()
+      mcp.shutdownNow()
+    },
+    quit: () => app.quit(),
+    // As a person's start: the command a bridge would use, without the bridge's flag.
+    relaunch: () => {
+      const { command, args } = appLaunchCommand()
+      app.relaunch({ execPath: command, args })
+    }
+  })
+  app.on('will-quit', quitHold.onWillQuit)
+  // The last net, also for `app.exit()`, which skips `will-quit`.
   app.on('quit', () => {
     keepAwake.stop()
     mcp.shutdownNow()

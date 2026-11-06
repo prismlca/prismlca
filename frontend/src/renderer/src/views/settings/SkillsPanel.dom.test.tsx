@@ -26,6 +26,7 @@ vi.mock('../../lib/ai', async (actual) => ({
 }))
 
 const { SkillsPanel } = await import('./SkillsPanel')
+const ai = await import('../../lib/ai')
 
 describe('the skill viewer', () => {
   it('drops a host without a scheme from images and links, and keeps local images and web links', async () => {
@@ -39,5 +40,20 @@ describe('the skill viewer', () => {
     expect(view.innerHTML).not.toContain('host.example')
     expect(view.querySelector('img[alt="local"]')?.getAttribute('src')).toBe('images/flow.png')
     expect(screen.getByRole('link', { name: 'web' })).toHaveAttribute('href', 'https://example.org/guide')
+  })
+})
+
+describe('the skill list', () => {
+  it('says which skills came with a restored backup and are still off', async () => {
+    vi.mocked(ai.listSkills).mockResolvedValueOnce({
+      skills: [
+        { ...SKILL, id: 'r', name: 'Restored skill', enabled: false, restored: true } as never,
+        { ...SKILL, id: 'o', name: 'Own skill', enabled: false }
+      ]
+    })
+    render(<SkillsPanel />)
+    const restored = await screen.findByRole('button', { name: /Restored skill/ })
+    expect(restored).toHaveTextContent('from backup')
+    expect(screen.getByRole('button', { name: /Own skill/ })).not.toHaveTextContent('from backup')
   })
 })

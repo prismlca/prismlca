@@ -26,6 +26,7 @@ The single exception is a **page range**. Asking for pages 12-14 of an 80-page P
 re-reading after a compaction cheap, and a whole-file converter cannot express it. That path — and
 the page count — goes through ``pdfminer``, which is the library markitdown itself reads PDFs with:
 one PDF engine in the stack, and a page range whose text matches what the whole document produced.
+Every reading of a PDF runs in a worker process within a time and memory budget (``attachment_pdf``).
 
 No OCR anywhere, deliberately: a scanned PDF is answered by the native route, where the model reads
 the page images itself. What has no text layer says so instead of being guessed at.
@@ -41,7 +42,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any, ClassVar
 
-from prism_lca.engine import archive_limits
+from prism_lca.engine import archive_limits, attachment_pdf
 from prism_lca.engine._store import JsonFileStore, LoadPolicy, now_iso, prism_meta_dir
 
 #: Hard cap on extracted text per file. ~25k tokens; beyond this the model is reading noise, and the
@@ -250,16 +251,13 @@ def measure(path: Path, kind: str) -> dict:
     out: dict[str, Any] = {}
     if kind == "pdf":
         try:
-            from pdfminer.pdfpage import PDFPage
-
-            # Counting only walks the page tree — no text extraction, single-digit milliseconds even
-            # for long documents. It has to be that cheap: it happens while the user is still typing.
-            with path.open("rb") as fh:
-                out["pages"] = sum(1 for _ in PDFPage.get_pages(fh))
-        except Exception:
-            # A page count we could not take is not a reason to refuse the file — the model still
-            # gets it, only the warning cannot say how long it is.
-            pass
+            pages = attachment_pdf.page_count(path)
+        except Exception:  # a worker process that cannot even start
+            pages = None
+        # A page count we could not take is not a reason to refuse the file — the model still gets it,
+        # only the warning cannot say how long it is.
+        if pages is not None:
+            out["pages"] = pages
     elif kind == "sheet":
         try:
             from openpyxl import load_workbook
@@ -290,7 +288,8 @@ def _read_text_file(path: Path, limit: int) -> tuple[str, bool]:
 
 
 def _convert(path: Path, limit: int) -> tuple[str, bool]:
-    """markitdown's Markdown for anything that is not plain text, capped at ``limit`` characters."""
+    """markitdown's Markdown for a document or a workbook, capped at ``limit`` characters (a PDF's is
+    read in ``attachment_pdf``)."""
     from markitdown import MarkItDown
 
     # Plugins off: third-party converters would decide what our attachments mean, and an install on
@@ -316,61 +315,6 @@ def _sheet_header(meta_sheets: Any) -> str:
     return "# Workbook contents\n\n" + "\n".join(lines) + "\n\n" if lines else ""
 
 
-def _pdf_pages(path: Path, pages: str, limit: int) -> tuple[str, bool]:
-    """Only the pages asked for, with their numbers kept — the cheap way back into a long PDF.
-
-    The one thing markitdown cannot express, and the reason a compacted attachment does not have to
-    be re-sent whole.
-    """
-    from pdfminer.high_level import extract_pages
-    from pdfminer.layout import LTTextContainer
-
-    wanted = _parse_pages(pages)
-    if not wanted:
-        return _convert(path, limit)
-    # pdfminer numbers pages from zero and yields only the selected ones, in document order — so the
-    # sorted request is what maps a yielded page back to the number the user asked for.
-    order = sorted(wanted)
-    out: list[str] = []
-    truncated = False
-    for index, layout in enumerate(extract_pages(str(path), page_numbers={n - 1 for n in order})):
-        number = order[index] if index < len(order) else index + 1
-        body = "".join(e.get_text() for e in layout if isinstance(e, LTTextContainer)).strip()
-        out.append(f"## Page {number}\n\n{body}" if body else f"## Page {number}\n\n(no text layer on this page)")
-        if sum(len(c) for c in out) > limit:
-            truncated = True
-            break
-    text = "\n\n".join(out)
-    if len(text) > limit:
-        return text[:limit], True
-    return text, truncated
-
-
-def _parse_pages(spec: str | None) -> set[int] | None:
-    """``"3"``, ``"12-14"``, ``"1,4,9-11"`` → the set of page numbers; ``None`` = all of them."""
-    if not spec or not spec.strip():
-        return None
-    wanted: set[int] = set()
-    for part in spec.split(","):
-        chunk = part.strip()
-        if not chunk:
-            continue
-        if "-" in chunk:
-            lo, _, hi = chunk.partition("-")
-            try:
-                start, end = int(lo), int(hi)
-            except ValueError:
-                continue
-            if start <= end:
-                wanted.update(range(start, min(end, start + 200) + 1))
-        else:
-            try:
-                wanted.add(int(chunk))
-            except ValueError:
-                continue
-    return wanted or None
-
-
 def extract(
     attachment_id: str,
     *,
@@ -392,8 +336,8 @@ def extract(
         return {**meta, "text": "", "truncated": False, "note": "Images are shown to the model directly, not as text."}
     if kind == "text":
         text, truncated = _read_text_file(path, limit)
-    elif kind == "pdf" and pages:
-        text, truncated = _pdf_pages(path, pages, limit)
+    elif kind == "pdf":
+        text, truncated = attachment_pdf.text(path, pages, limit)
     elif kind == "sheet":
         # pandas and markitdown's converters load with the first workbook, not with the backend
         from prism_lca.engine.attachment_sheets import workbook_markdown

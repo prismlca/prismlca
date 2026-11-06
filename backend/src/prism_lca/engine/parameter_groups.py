@@ -161,6 +161,47 @@ def remove_database(database: str) -> None:
             _save(kept)
 
 
+def snapshot_database(database: str) -> list[dict]:
+    """The model's groups as stored, ids included."""
+    return [g for g in _load() if g.get("database") == database]
+
+
+def restore_database(database: str, groups: list[dict]) -> None:
+    """Make ``groups`` (a :func:`snapshot_database`) the model's groups again, under their own ids.
+
+    The model's parameters may have been filed meanwhile into groups of the same names under other ids
+    (a redo re-creating them from a bundle): they move to the restored group of that name. A current
+    group no restored one is named like stays, so no parameter loses its group.
+    """
+    from prism_lca.engine import params as _params
+
+    def folded(g: dict) -> str:
+        return str(g.get("name") or "").casefold()
+
+    with _LOCK:
+        data = _load()
+        others = [g for g in data if g.get("database") != database]
+        current = [g for g in data if g.get("database") == database]
+        taken = {g.get("id") for g in others}
+        back = [
+            {**g, "database": database, "id": g["id"] if g["id"] not in taken else new_uid()}
+            for g in groups or []
+            if g.get("id")
+        ]
+        by_name = {folded(g): g["id"] for g in back}
+        moved = {
+            g.get("id"): by_name[folded(g)]
+            for g in current
+            if folded(g) in by_name and g.get("id") != by_name[folded(g)]
+        }
+        _save(others + back + [g for g in current if folded(g) not in by_name])
+    if moved:
+        for p in _params.dump_params(database):
+            group_id = p["data"].get("group_id")
+            if group_id in moved:
+                _params.set_group(database, p["name"], moved[group_id])
+
+
 # --------------------------------------------------------------------------- #
 # Legacy (project-global) migration helpers — used once by params.migrate_project_to_models()
 # --------------------------------------------------------------------------- #

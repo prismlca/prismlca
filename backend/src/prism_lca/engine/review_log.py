@@ -171,3 +171,15 @@ class ReviewLogStore(JsonFileStore):
             if database in data:
                 del data[database]
                 self._save(data)
+
+    def snapshot_database(self, database: str) -> list[dict]:
+        return self.list(database)
+
+    def restore_database(self, database: str, reviews: list[dict]) -> None:
+        """As stored, not through `replace`: that re-cleans what came from a bundle."""
+        with self._lock:
+            data = self._load()
+            data.pop(database, None)
+            if reviews:
+                data[database] = reviews
+            self._save(data)

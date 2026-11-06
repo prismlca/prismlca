@@ -50,11 +50,14 @@ function SkillViewer({ skill, onClose }: { skill: Skill; onClose: () => void }):
   )
 }
 
+/** `restored`: the skill came with a restored workspace backup and has not been switched on since. */
+type ListedSkill = Skill & { restored?: boolean }
+
 /** AI-Skills: the user's markdown skills offered to the assistant.
  * `focusAdd`: land on the add-a-skill form (the chat's "Add skill" opens this page for exactly that,
  * and the form sits under the list, off-screen once a handful of skills exist). */
 export function SkillsPanel({ focusAdd = false }: { focusAdd?: boolean }): JSX.Element {
-  const [skills, setSkills] = useState<Skill[]>([])
+  const [skills, setSkills] = useState<ListedSkill[]>([])
   const [loaded, setLoaded] = useState(false)
   const addRef = useRef<HTMLDivElement | null>(null)
   const [name, setName] = useState('')
@@ -127,6 +130,14 @@ export function SkillsPanel({ focusAdd = false }: { focusAdd?: boolean }): JSX.E
                     title="Ships with PrismLCA — can be disabled, but not edited or deleted."
                   >
                     built-in
+                  </span>
+                ) : null}
+                {s.restored ? (
+                  <span
+                    className="ai-skill-badge"
+                    title="Came with a restored workspace backup. Switch it on to offer it to the assistant."
+                  >
+                    from backup
                   </span>
                 ) : null}
               </div>

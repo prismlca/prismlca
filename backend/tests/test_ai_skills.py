@@ -134,3 +134,25 @@ def test_the_review_skill_says_to_bring_the_prose_along_after_a_review():
     assert "Re-read what you wrote before the fix" in body
     assert "process comment" in body
     assert "cut-off" in body
+
+
+def test_every_builtin_skill_is_listed_as_written():
+    """The system prompt puts each skill's name and description on one line of bounded length
+    (`skillListing.ts`). A built-in must never be the skill that line changes."""
+    import pathlib
+    import re
+
+    from prism_lca.engine.builtin_skills import BUILTIN_SKILLS
+
+    listing = pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "main" / "ai" / "skillListing.ts"
+    if not listing.is_file():
+        import pytest
+
+        pytest.skip("frontend not in this checkout")
+    caps = dict(re.findall(r"export const SKILL_(NAME|DESCRIPTION)_MAX = (\d+)", listing.read_text(encoding="utf-8")))
+    assert set(caps) == {"NAME", "DESCRIPTION"}
+    for skill in BUILTIN_SKILLS:
+        for field in ("name", "description"):
+            value = skill[field]
+            assert value == value.strip() and not re.search("[\n\r\v\f\x85  ]", value), (skill["id"], field)
+            assert len(value) <= int(caps[field.upper()]), (skill["id"], field)

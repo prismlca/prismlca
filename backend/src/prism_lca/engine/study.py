@@ -386,6 +386,27 @@ class StudyMetaStore(JsonFileStore):
                 path.unlink()
             self._retarget_links(database, None)
 
+    def snapshot_database(self, database: str) -> dict:
+        return self.snapshot(database)
+
+    def restore_database(self, database: str, data: dict) -> None:
+        """Make ``data`` the model's study again. Its comparison models come back on both sides — the
+        delete took it off theirs — as far as they are still models of this workspace."""
+        from prism_lca.engine.bootstrap import get_bd
+
+        study = {k: v for k, v in (data or {}).items() if k != COMPARED_WITH}
+        others = [n for n in (data or {}).get(COMPARED_WITH) or [] if isinstance(n, str)]
+        with self._lock:
+            path = self._path(database)
+            if study:
+                self._save(database, study)
+            elif path.exists():
+                path.unlink()
+            existing = set(get_bd().databases)
+            for other in others:
+                if other != database and other in existing:
+                    self.link(database, other)
+
 
 # --- file names ---------------------------------------------------------------------------------
 # The file used to be `<safe>.json`, where `safe` turns every character but `A-Za-z0-9._-` into
