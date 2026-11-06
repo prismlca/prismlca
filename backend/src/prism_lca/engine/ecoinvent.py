@@ -270,14 +270,12 @@ def _biosphere_lookup() -> dict[tuple, int]:
     ``Method.write`` resolves every key with a full node load — half the time of writing a release's
     ~480 000 factors."""
     bd = get_bd()
-    return {
-        (flow.get("name"), tuple(flow.get("categories") or ())): flow.id
-        for flow in bd.Database(BIOSPHERE_DB)
-        # Flows PrismLCA added are not the release's: BAFU's new flows, bw2io's 3.9-only ones. One of
-        # the same name — "Vinyl acetate" is new in 3.13 and a new BAFU flow in a workspace that began
-        # with BAFU — took the factor, and the rewrite onto ecoinvent then deleted it, factor and all.
-        if not flow.get("prism_origin")
-    }
+    # Flows PrismLCA added (BAFU's new flows, bw2io's 3.9 list) first, the release's own after them, so that
+    # where both carry a name the release's flow takes the factor: "Vinyl acetate" is new in 3.13 and a new
+    # BAFU flow in a workspace that began with BAFU, and the rewrite onto ecoinvent deletes the BAFU one,
+    # factor and all. Not left out altogether — a workspace with BAFU only has no other flows to link.
+    flows = sorted(bd.Database(BIOSPHERE_DB), key=lambda flow: not flow.get("prism_origin"))
+    return {(flow.get("name"), tuple(flow.get("categories") or ())): flow.id for flow in flows}
 
 
 def _categories(compartment, subcompartment) -> tuple:

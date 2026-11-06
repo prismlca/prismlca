@@ -34,7 +34,8 @@ export interface EcoinventRelease {
   setTyped: (value: string) => void
   /** The version to send with the import: the typed one where the files name none, else nothing. */
   versionToSend: string | null
-  /** Whether the import can start as far as the release is concerned. */
+  /** Whether the import can start as far as the release is concerned: not while the files are still being
+   *  read — a click then sent no version and, on first setup, created the workspace before failing. */
   ready: boolean
 }
 
@@ -42,11 +43,13 @@ export interface EcoinventRelease {
 export function useEcoinventRelease(dir: string | null, lcia: string | null): EcoinventRelease {
   const [info, setInfo] = useState<ReleaseInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reading, setReading] = useState(false)
   const [typed, setTyped] = useState('')
 
   useEffect(() => {
     setInfo(null)
     setError(null)
+    setReading(!!dir)
     if (!dir) return
     let live = true
     const query = new URLSearchParams({ path: dir })
@@ -54,6 +57,7 @@ export function useEcoinventRelease(dir: string | null, lcia: string | null): Ec
     api<ReleaseInfo>('GET', `/api/v1/setup/ecoinvent-release?${query.toString()}`)
       .then((r) => live && setInfo(r))
       .catch((e) => live && setError(errMsg(e)))
+      .finally(() => live && setReading(false))
     return () => {
       live = false
     }
@@ -66,7 +70,7 @@ export function useEcoinventRelease(dir: string | null, lcia: string | null): Ec
     typed,
     setTyped,
     versionToSend: asks && typed.trim() ? typed.trim() : null,
-    ready: !error && (!asks || !!typed.trim())
+    ready: !reading && !error && (!asks || !!typed.trim())
   }
 }
 

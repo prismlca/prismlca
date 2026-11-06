@@ -167,6 +167,22 @@ describe('Setup wizard: the ecoinvent release', () => {
     expect(screen.queryByRole('textbox', { name: 'ecoinvent version' })).toBeNull()
   })
 
+  it('keeps Start disabled while the release is still being read', async () => {
+    let answer: (value: unknown) => void = () => {}
+    renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
+      routes: {
+        'POST /api/v1/setup/background': RUNNING,
+        'GET /api/v1/setup/status': RUNNING,
+        'GET /api/v1/setup/ecoinvent-release': () => new Promise((resolve) => (answer = resolve))
+      },
+      overrides: { bridge: { pickDirectory: async () => '/data/renamed' } }
+    })
+    await userEvent.click(screen.getByRole('button', { name: /choose folder/i }))
+    expect(screen.getByRole('button', { name: /start import/i })).toBeDisabled()
+    answer(RELEASE)
+    await waitFor(() => expect(screen.getByRole('button', { name: /start import/i })).toBeEnabled())
+  })
+
   it('asks for the version where the files name none, and sends what was typed', async () => {
     const { prism } = renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
       routes: {

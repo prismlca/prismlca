@@ -192,6 +192,23 @@ def test_lcia_import_refuses_unlinked_cfs_and_names_candidates(client, token, pr
     assert method not in get_bd().methods
 
 
+def test_lcia_import_links_to_the_bundled_flows_of_a_bafu_only_workspace(client, token, project, tmp_path):
+    """A workspace with BAFU only holds nothing but flows PrismLCA added (bw2io's list, marked with their
+    origin). "Add impact methods" must still link to them — the release's own flows only win a tie."""
+    from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.engine.ecoinvent import _import_lcia
+
+    bd = get_bd()
+    bd.Database("biosphere3").write({
+        ("biosphere3", "co2"): {"name": "Carbon dioxide", "type": "emission", "unit": "kg",
+                                "categories": ("air",), "prism_origin": "bw2io"},
+    })
+    xlsx = write_lcia_workbook(tmp_path / "m.xlsx", [("M", "c", "i", "Carbon dioxide", "air", "unspecified", 1.0)],
+                               [("M", "c", "i", "kg")])
+    assert "Wrote 1 LCIA methods" in _import_lcia(xlsx)
+    assert len(bd.Method(("M", "c", "i")).load()) == 1
+
+
 def test_lcia_import_needs_a_biosphere(client, token, project, tmp_path):
     from prism_lca.engine.ecoinvent import _import_lcia
 
