@@ -19,8 +19,10 @@ router = APIRouter(prefix="/setup", tags=["setup"], dependencies=[Depends(requir
 
 class EcoinventImportRequest(BaseModel):
     ecospold2_dir: str
-    project: str = "ecoinvent-3.12-cutoff"
-    database: str = "ecoinvent-3.12-cutoff"
+    #: Default: the active workspace.
+    project: str | None = None
+    #: Default: named after the release read from the folder and workbook (``ecoinvent-3.13-cutoff``).
+    database: str | None = None
     #: Path to the release's 'LCIA Implementation <version>.xlsx'. Optional, but without it the
     #: project has no impact methods and nothing can be calculated.
     lcia_xlsx: str | None = None
@@ -28,7 +30,8 @@ class EcoinventImportRequest(BaseModel):
 
 class LciaImportRequest(BaseModel):
     lcia_xlsx: str
-    project: str = "ecoinvent-3.12-cutoff"
+    #: Default: the active workspace.
+    project: str | None = None
 
 
 class ImportStatusResponse(BaseModel):
@@ -65,8 +68,9 @@ class BackgroundImportRequest(BaseModel):
     source: Literal["ecoinvent", "bafu"]
     path: str
     lcia_xlsx: str | None = None
-    #: Only honoured for ecoinvent (name pattern ``ecoinvent-3.12-cutoff``); BAFU derives its
-    #: name from the download folder (``bafu-2026-v1``).
+    #: Only honoured for ecoinvent, and only when it names the release the folder holds; left out,
+    #: the name is derived from the release (``ecoinvent-3.13-cutoff``). BAFU derives its name from the
+    #: download folder (``bafu-2026-v1``).
     database: str | None = None
 
 
@@ -130,7 +134,7 @@ async def start_background_import(
         st = ecoinvent.start_import(
             body.path,
             ecoinvent.get_bd().projects.current,
-            body.database or "ecoinvent-3.12-cutoff",
+            body.database,
             body.lcia_xlsx,
             on_done=_index_after(request),
         )

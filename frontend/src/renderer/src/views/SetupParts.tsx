@@ -59,8 +59,8 @@ export function SetupHelp({ source }: { source: BackgroundSource }): JSX.Element
         <summary>Where do I get these files?</summary>
         <p>
           With an ecoinvent licence, on ecoQuery under <b>Files</b>. Download{' '}
-          <code>ecoinvent 3.12_cutoff_ecoSpold02.7z</code> and, under <b>Supporting documents</b> on the same
-          page, <code>ecoinvent 3.12_LCIA_implementation.7z</code>; extract both. They must come from the same
+          <code>ecoinvent 3.13_cutoff_ecoSpold02.7z</code> and, under <b>Supporting documents</b> on the same
+          page, <code>ecoinvent 3.13_LCIA_implementation.7z</code>; extract both. They must come from the same
           release: that is what lets every characterisation factor link to a flow.{' '}
           <button className="link-btn" onClick={() => openLink(ECOINVENT_FILES_URL)}>
             Open ecoQuery files

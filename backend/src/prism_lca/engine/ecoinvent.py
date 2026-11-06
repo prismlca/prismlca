@@ -34,6 +34,7 @@ from typing import Any
 from prism_lca import _log
 from prism_lca.engine import geography_names
 from prism_lca.engine.backgrounds import common as backgrounds
+from prism_lca.engine.backgrounds import ecoinvent_release
 from prism_lca.engine.backgrounds import sync as background_sync
 from prism_lca.engine.bootstrap import get_bd, get_bi
 from prism_lca.engine.guardrails import set_read_only
@@ -743,8 +744,8 @@ def _existing_file(path: str, *, code: str, hint: str) -> Path:
 @_claims_workspace
 def start_import(
     ecospold2_dir: str,
-    project: str = "ecoinvent-3.12-cutoff",
-    database: str = "ecoinvent-3.12-cutoff",
+    project: str | None = None,
+    database: str | None = None,
     lcia_xlsx: str | None = None,
     *,
     run_in_thread: bool = True,
@@ -784,6 +785,10 @@ def start_import(
             hint=(f"Extract {archive} first, then choose" if archive else "Choose")
             + " the extracted folder — the one that holds 'datasets' and 'MasterData'.",
         )
+    # Named after the release it holds: version and system model come from the release, not from a
+    # default — the registry, the citation and every bundle take the version from this name.
+    database = ecoinvent_release.identify(path, workbook).database_name(database)
+    project = project or get_bd().projects.current
 
     _CANCEL.clear()
     _update(
@@ -807,7 +812,7 @@ def start_import(
 @_claims_workspace
 def start_lcia_import(
     lcia_xlsx: str,
-    project: str = "ecoinvent-3.12-cutoff",
+    project: str | None = None,
     *,
     run_in_thread: bool = True,
 ) -> ImportStatus:
@@ -819,6 +824,7 @@ def start_lcia_import(
         hint="Point at the 'LCIA Implementation <version>.xlsx' extracted from your licensed "
         "LCIA-implementation archive.",
     )
+    project = project or get_bd().projects.current
 
     _update(
         state=JobState.running,

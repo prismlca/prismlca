@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-06",
+    "title": "ecoinvent 3.13",
+    "details": "PrismLCA imports ecoinvent 3.13: choose the extracted release and its LCIA workbook as before. The database is now named after the release it holds, with version and system model read from the files, and a workbook from another release is refused before anything is written. The new IPCC 2021 (GHG Protocol mandatory) indicators are listed but not recommended; the IPCC 2021 total stays the carbon footprint."
+  },
+  {
     "date": "2026-11-02",
     "title": "Parameter tornado in reports",
     "details": "Short and full reports can print a parameter tornado under the sensitivity check in Interpretation checks: tick Parameter sensitivity (tornado), pick indicators from the report's own and a range. It always runs on the baseline of the reference process, and the AI writer can quote its numbers. Sensitivity runs now take seconds and no longer hold up other calculations."

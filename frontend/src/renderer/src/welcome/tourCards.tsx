@@ -78,7 +78,7 @@ export const TOUR_CARDS: TourCard[] = [
           result can be calculated. This is the one step you cannot skip.
         </p>
         <p>
-          <b>ecoinvent</b> — some <b>26 500 datasets</b> in 3.12 cut-off, and a{' '}
+          <b>ecoinvent</b> — some <b>27 400 datasets</b> in 3.13 cut-off, and a{' '}
           <b>commercial licence you bring yourself</b>: PrismLCA reads your own ecoSpold2 folder plus the LCIA
           workbook of the same release. No login, no download from inside PrismLCA.
         </p>
@@ -102,7 +102,7 @@ export const TOUR_CARDS: TourCard[] = [
             ecoinvent 3.x <span className="wt-db-tag paid">commercial</span>
           </div>
           <div className="wt-db-b">
-            <b>26 500</b> datasets · your own licence
+            <b>27 400</b> datasets · your own licence
           </div>
           <div className="wt-db-f">Recommended — its flow list becomes the reference</div>
         </div>

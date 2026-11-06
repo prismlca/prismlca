@@ -5,7 +5,7 @@ PrismLCA knows two providers — ``ecoinvent`` (ecoSpold 2 + the release's LCIA 
 database per provider. The registry is not a table of its own: it is
 the ``prism_background`` entry in Brightway's database metadata, next to ``prism_read_only`` and
 ``prism_import_complete``. A database imported before the registry existed gets its entry derived
-from its name the first time anyone asks (``ecoinvent-3.12-cutoff`` → ecoinvent, 3.12, cut-off).
+from its name the first time anyone asks (``ecoinvent-3.13-cutoff`` → ecoinvent, 3.13, cut-off).
 
 ecoinvent is the master: whenever it is present its flow list and its LCIA workbook are the
 reference, and a BAFU import (or an earlier BAFU import, once ecoinvent arrives) is mapped onto
@@ -68,6 +68,7 @@ def infer_from_name(name: str) -> BackgroundInfo | None:
             "cut-off": "cut-off",
             "apos": "APOS",
             "consequential": "consequential",
+            "en15804": "cut-off, EN15804",
         }.get((m.group(2) or "cutoff").lower(), m.group(2) or "cut-off")
         return BackgroundInfo(
             provider=PROVIDER_ECOINVENT,

@@ -43,7 +43,7 @@ export function openLink(url: string): void {
  *  downloads it itself; the import sheet only hands this page to the browser. */
 export const BAFU_DOWNLOAD_URL = 'https://nexus.openlca.org/database/BAFU'
 
-/** ecoQuery's file page for the release PrismLCA is built on (3.12 cut-off). Licence holders find both
+/** ecoQuery's file page for the release PrismLCA is built on (3.13 cut-off). Licence holders find both
  *  archives the ecoinvent import needs there: the ecoSpold02 datasets and, under "Supporting documents",
  *  the LCIA implementation. */
-export const ECOINVENT_FILES_URL = 'https://ecoquery.ecoinvent.org/3.12/cutoff/files'
+export const ECOINVENT_FILES_URL = 'https://ecoquery.ecoinvent.org/3.13/cutoff/files'
