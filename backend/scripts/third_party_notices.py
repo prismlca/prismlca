@@ -44,6 +44,7 @@ FRONTEND = REPO / "frontend"
 TEXTS = SCRIPTS / "third_party_texts"
 FONTS_DIR = BACKEND / "src" / "prism_lca" / "assets" / "fonts"
 TRANSPORT_NOTICE = BACKEND / "src" / "prism_lca" / "assets" / "transport" / "NOTICE.md"
+GEO_NOTICE = BACKEND / "src" / "prism_lca" / "assets" / "geo" / "NOTICE.md"
 DICTIONARIES_NOTICE = FRONTEND / "resources" / "dictionaries" / "LICENSES.md"
 OUTPUTS = (REPO / "THIRD-PARTY-NOTICES.md", FRONTEND / "resources" / "THIRD-PARTY-NOTICES.md")
 
@@ -645,6 +646,7 @@ def _data_section() -> list[str]:
         [_hand_text("EUPL-1.2.txt")],
     )
     out += _text_block("Transport catalogue", [], [_repo_text(TRANSPORT_NOTICE)])
+    out += _text_block("Geography table", [], [_repo_text(GEO_NOTICE)])
     return out
 
 

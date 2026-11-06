@@ -12,7 +12,7 @@ import re
 
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.model import _db_or_404
-from prism_lca.search.ranking import geo_chain, geo_rank
+from prism_lca.search.geography import geo_chain, geo_rank
 
 _TOKEN = re.compile(r"[a-z0-9]+")
 

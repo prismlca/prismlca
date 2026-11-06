@@ -220,16 +220,31 @@ def test_provider_mismatch_rejected(client, token, project):
 
 
 def test_geo_chain_not_eurocentric():
-    from prism_lca.search.ranking import geo_chain
+    from prism_lca.search.geography import geo_chain
 
     assert geo_chain("DE") == ["DE", "RER", "Europe without Switzerland", "GLO", "RoW"]
-    assert geo_chain("CN") == ["CN", "GLO", "RoW"]  # no European proxies for non-European targets
+    assert geo_chain("CN") == ["CN", "RAS", "GLO", "RoW"]  # its own continent, no European proxies
+
+
+def test_a_target_reaches_its_continent_and_its_country_before_the_global_proxies():
+    """ecoinvent 3.13 has 294 activities with a North American (RNA) dataset and none for the US, 211 with
+    an Asian (RAS) one and none for China; without the continent in the chain, RoW won all of them."""
+    from prism_lca.search.geography import geo_chain, geo_rank
+
+    assert geo_chain("US") == ["US", "RNA", "GLO", "RoW"]
+    assert geo_chain("MX") == ["MX", "RLA", "GLO", "RoW"]  # Latin America, as in the M49 regions
+    assert geo_chain("ZA") == ["ZA", "RAF", "GLO", "RoW"]
+    assert geo_chain("CA-QC") == ["CA-QC", "CA", "RNA", "GLO", "RoW"]
+    assert geo_chain("ES-PM") == ["ES-PM", "ES", "RER", "Europe without Switzerland", "GLO", "RoW"]
+    assert geo_chain("UN-SAMERICA") == ["UN-SAMERICA", "GLO", "RoW"]  # "UN" is no country
+    assert geo_chain("XX") == ["XX", "GLO", "RoW"]
+    assert geo_rank("RNA", "US") < geo_rank("GLO", "US") < geo_rank("RAS", "US")
 
 
 def test_europe_minus_a_country_stands_in_for_rer_unless_it_leaves_the_target_out():
     """ecoinvent 3.13's formaldehyde market is "RER w/o RU", no longer RER: for a German target it
     must rank with RER, not behind RoW — but "RER w/o CH+DE" is no proxy for Germany."""
-    from prism_lca.search.ranking import geo_rank
+    from prism_lca.search.geography import geo_rank
 
     assert geo_rank("RER w/o RU", "DE") == geo_rank("RER", "DE") < geo_rank("RoW", "DE")
     assert geo_rank("RER w/o CH+DE", "DE") > geo_rank("RoW", "DE")

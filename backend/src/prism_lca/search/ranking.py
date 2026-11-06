@@ -23,6 +23,7 @@ import re
 import unicodedata
 
 from prism_lca.search import transport_modes, vocabulary
+from prism_lca.search.geography import geo_chain, geo_rank
 
 TYPE_BOOST = {"P": 1.0, "M": 1.20, "G": 1.25}
 SLOT_CUTOFF = 0.40
@@ -264,59 +265,6 @@ def unanchored_terms(query: str, hit_texts: list[str]) -> list[str]:
         if long_enough and term not in hay:
             out.add(term)
     return sorted(out)
-
-
-# European geographies (ISO codes as used by ecoinvent, plus the European aggregates):
-# only these get the RER / "Europe without Switzerland" proxies inserted into their chain —
-# a Chinese or Brazilian target must fall back to GLO/RoW, not to European datasets.
-_EUROPEAN = frozenset({
-    "AL", "AT", "BA", "BE", "BG", "BY", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI",
-    "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LI", "LT", "LU", "LV", "MD", "ME",
-    "MK", "MT", "NL", "NO", "PL", "PT", "RO", "RS", "SE", "SI", "SK", "UA", "XK",
-    "RER", "Europe without Switzerland", "Europe without Austria", "UCTE", "ENTSO-E",
-})
-
-
-def geo_chain(target: str | None) -> list[str]:
-    """Proxy chain for a target region: exact match, then regional aggregates (European
-    targets only), then the global proxies. Non-European targets skip RER — previously the
-    chain was hardcoded Euro-centric for every target."""
-    if not target:
-        return []
-    chain = [target]
-    if target in _EUROPEAN:
-        chain += ["RER", "Europe without Switzerland"]
-    chain += ["GLO", "RoW"]
-    seen: list[str] = []
-    for g in chain:
-        if g not in seen:
-            seen.append(g)
-    return seen
-
-
-#: ecoinvent's "Europe minus a few countries": "RER w/o RU", "RER w/o CH+DE", "RER w/o DE+NL+RU". Read
-#: from the code itself, so a new combination needs no list entry.
-_RER_WITHOUT = re.compile(r"^RER w/o ([A-Z]{2}(?:\+[A-Z]{2})*)$")
-
-
-def _europe_proxy_rank(loc: str | None, target: str, chain: list[str]) -> int | None:
-    """Where a "RER w/o …" region stands for a European target: beside RER, unless it leaves the target
-    out. Without this it ranked as a distant region — behind RoW — and ecoinvent 3.13 moved the
-    formaldehyde market from RER to "RER w/o RU", so a German search put the rest-of-world market
-    first."""
-    found = _RER_WITHOUT.match(loc or "")
-    if not found or target not in _EUROPEAN or target in found.group(1).split("+"):
-        return None
-    # Beside RER — but never level with the target itself when the target IS RER.
-    return chain.index("Europe without Switzerland") if target == "RER" else chain.index("RER")
-
-
-def geo_rank(loc: str | None, target: str | None) -> int:
-    chain = geo_chain(target)
-    if loc in chain:
-        return chain.index(loc)
-    proxy = _europe_proxy_rank(loc, target, chain) if target else None
-    return proxy if proxy is not None else len(chain) + 1
 
 
 def _geo_bonus(loc: str | None, target: str | None) -> float:

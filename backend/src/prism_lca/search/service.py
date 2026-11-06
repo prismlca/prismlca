@@ -16,6 +16,7 @@ from prism_lca.search import abbrev
 from prism_lca.search.builds import IndexBuilds
 from prism_lca.search.embeddings import EmbeddingProvider, get_embedding_provider
 from prism_lca.search.fusion import RRF_K, reciprocal_rank_fusion
+from prism_lca.search.geography import geo_rank
 from prism_lca.search.identifiers import Identifiers
 from prism_lca.search.index import VectorIndex
 from prism_lca.search.index_location import index_base
@@ -26,7 +27,6 @@ from prism_lca.search.ranking import (
     WEAK_TRIGGER,
     best_hit_coverage,
     finalize_hybrid,
-    geo_rank,
     looks_like_a_research_question,
     query_signature,
     rank,

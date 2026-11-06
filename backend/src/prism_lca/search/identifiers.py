@@ -30,7 +30,7 @@ from pathlib import Path
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.search.abbrev import _WASTE_INTENT
-from prism_lca.search.ranking import geo_rank
+from prism_lca.search.geography import geo_rank
 
 #: How many collapsed rows the block may take; the ranked list fills the rest of the limit.
 PINNED = 10
