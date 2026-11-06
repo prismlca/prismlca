@@ -72,6 +72,8 @@ class BackgroundImportRequest(BaseModel):
     #: the name is derived from the release (``ecoinvent-3.13-cutoff``). BAFU derives its name from the
     #: download folder (``bafu-2026-v1``).
     database: str | None = None
+    #: ecoinvent only: the version typed in the wizard where the release's files name none ("3.13").
+    version: str | None = None
 
 
 def _index_after(request: Request):
@@ -137,8 +139,20 @@ async def start_background_import(
             body.database,
             body.lcia_xlsx,
             on_done=_index_after(request),
+            version=body.version,
         )
     return _to_response(st)
+
+
+@router.get("/ecoinvent-release", summary="Which ecoinvent release a folder holds")
+def ecoinvent_release_info(path: str, lcia_xlsx: str | None = None) -> dict:
+    """Version and system model read from the chosen folder and workbook, before anything is imported —
+    the wizard shows them, and asks for the version only where the files name none."""
+    from pathlib import Path
+
+    from prism_lca.engine.backgrounds import ecoinvent_release
+
+    return ecoinvent_release.describe(Path(path), Path(lcia_xlsx) if lcia_xlsx else None)
 
 
 @router.post("/ecoinvent", response_model=ImportStatusResponse, summary="Start ecoinvent import")

@@ -246,7 +246,6 @@ _VARIANT_MARKERS = (
     "biogenic emissions",
     "biogenic removals",
     "(incl. biogenic",             # the 'IPCC 2021 (incl. biogenic CO2)' family
-    "(ghg protocol",               # 'IPCC 2021 (GHG Protocol mandatory)': Kyoto gases only, a reporting split
     "slcf",                        # short-lived climate forcers
     "gwp20", "gwp500", "gtp",      # non-standard horizons / metrics
     "obsolete",
@@ -400,7 +399,7 @@ def resolve_method(method) -> tuple:
 #: answers to a different question and appear only when named. Its own name on purpose: the module
 #: already has `_VARIANT_MARKERS` for the per-INDICATOR recommendation flag, and a second definition
 #: under that name silently replaced it — GTP100 came out "recommended".
-_FAMILY_VARIANT_MARKERS = ("no lt", "no-lt", "incl. biogenic", "including biogenic", "ghg protocol")
+_FAMILY_VARIANT_MARKERS = ("no lt", "no-lt", "incl. biogenic", "including biogenic")
 
 
 def methods_in_family(family: str, include_variants: bool = False) -> list[list[str]]:

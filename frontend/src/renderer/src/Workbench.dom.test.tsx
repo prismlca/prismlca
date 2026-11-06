@@ -158,6 +158,13 @@ describe('Workbench import wizard', () => {
           background: [
             { name: 'ecoinvent-3.12-cutoff', provider: 'ecoinvent', activities: 1, label: '', version: '' }
           ]
+        },
+        'GET /api/v1/setup/ecoinvent-release': {
+          release: true,
+          version: '3.12',
+          system_model: 'cutoff',
+          database: 'ecoinvent-3.12-cutoff',
+          source: 'folder'
         }
       },
       overrides: { bridge: { pickDirectory: async () => '/data/release' } }

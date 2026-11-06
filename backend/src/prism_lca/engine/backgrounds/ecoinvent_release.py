@@ -48,6 +48,38 @@ class Release:
     #: Where each value came from, for the error message and the log.
     evidence: dict[str, str]
 
+    def with_version(self, typed: str | None) -> Release:
+        """The release with the version the user typed in the wizard — used only where the files named
+        none; a typed version that contradicts them is refused."""
+        if not typed or not typed.strip():
+            return self
+        found = re.fullmatch(r"\s*v?" + _VERSION + r"\s*", typed)
+        if not found:
+            raise PrismError(
+                f"'{typed}' is not an ecoinvent version.",
+                code="release_version_invalid",
+                status_code=400,
+                hint="Type it as on the archive, e.g. 3.13.",
+            )
+        if self.version and self.version != found.group(1):
+            raise PrismError(
+                f"The release's files say ecoinvent {self.version}, not {found.group(1)}.",
+                code="release_mismatch",
+                status_code=400,
+                hint="Leave the version field empty — PrismLCA read the version from the files.",
+            )
+        return Release(found.group(1), self.system_model, {**self.evidence, "typed": found.group(1)})
+
+    def as_dict(self) -> dict:
+        """What the import wizard shows before the import starts."""
+        source = next((k for k in ("workbook", "folder", "typed") if k in self.evidence), None)
+        return {
+            "version": self.version,
+            "system_model": self.system_model,
+            "database": self.database_name() if self.version else None,
+            "source": source,
+        }
+
     def database_name(self, requested: str | None = None) -> str:
         """The name to import under: the caller's, when it does not contradict the release, else
         ``ecoinvent-<version>-<system model>``. A requested name that carries another version is refused —
@@ -69,9 +101,8 @@ class Release:
                 "Could not tell which ecoinvent release this folder holds.",
                 code="release_unknown",
                 status_code=400,
-                hint="Choose the release's LCIA workbook as well — its 'Read me' sheet names the "
-                "version — or keep the folder name the archive extracts to, e.g. "
-                "'ecoinvent 3.13_cutoff_ecoSpold02'.",
+                hint="Type the version in the import wizard, or choose the release's LCIA workbook as "
+                "well — its 'Read me' sheet names the version.",
             )
         return f"ecoinvent-{self.version}-{self.system_model or 'cutoff'}"
 
@@ -143,3 +174,15 @@ def identify(datasets: Path, lcia_xlsx: Path | None) -> Release:
     if model:
         evidence["system_model"] = model
     return Release(version=from_workbook or from_folder, system_model=model, evidence=evidence)
+
+
+def describe(chosen: Path, lcia_xlsx: Path | None) -> dict:
+    """What the import wizard shows once a folder (and a workbook) is chosen: the release it will import,
+    or ``release: False`` for a folder that is not an extracted release — the import itself says why."""
+    from prism_lca.engine.ecoinvent import datasets_folder, flow_list_path
+
+    datasets = datasets_folder(chosen)
+    if not flow_list_path(datasets).is_file():
+        return {"release": False, "version": None, "system_model": None, "database": None, "source": None}
+    workbook = lcia_xlsx if lcia_xlsx is not None and lcia_xlsx.is_file() else None
+    return {"release": True, **identify(datasets, workbook).as_dict()}

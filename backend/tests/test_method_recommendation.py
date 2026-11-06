@@ -31,13 +31,13 @@ def test_specialist_variants_are_not_recommended():
     assert not _is_recommended("IPCC 2021 · climate change: removals from direct land use change · global warming potential (GWP100)")
 
 
-def test_the_ghg_protocol_family_is_not_a_second_recommended_total():
-    """ecoinvent 3.13 adds 'IPCC 2021 (GHG Protocol mandatory)': the seven Kyoto gases split for GHG
-    Protocol reporting. Its 'total mandatory GHGs' passes the shape rule (it starts with "total") but
-    leaves out every other greenhouse gas, so it is not the carbon footprint the flag steers to — two
-    recommended IPCC totals with different numbers is exactly the ambiguity the flag exists to remove."""
+
+def test_the_ghg_protocol_total_is_recommended_its_splits_are_not():
+    """ecoinvent 3.13 adds 'IPCC 2021 (GHG Protocol mandatory)': the seven Kyoto gases, split the way GHG
+    Protocol reporting asks for. Its total is a reporting indicator in its own right and recommended beside
+    the IPCC 2021 total; the per-gas splits and the "no LT" twin are not."""
     ghg = "IPCC 2021 (GHG Protocol mandatory)"
-    assert not _is_recommended(f"{ghg} · climate change: total mandatory GHGs (excl. biogenic CO2) · global warming potential (GWP100)")
+    assert _is_recommended(f"{ghg} · climate change: total mandatory GHGs (excl. biogenic CO2) · global warming potential (GWP100)")
     assert not _is_recommended(f"{ghg} · climate change: CH4 · global warming potential (GWP100)")
-    assert not _is_recommended(f"{ghg} no LT · climate change: CO2, fossil no LT · global warming potential (GWP100) no LT")
-    assert _is_recommended("IPCC 2021 · climate change: total (excl. biogenic CO2) · global warming potential (GWP100)")
+    assert not _is_recommended(f"{ghg} · climate change: CO2, LULUCF · global warming potential (GWP100)")
+    assert not _is_recommended(f"{ghg} no LT · climate change: total mandatory GHGs (excl. biogenic CO2) no LT · global warming potential (GWP100) no LT")

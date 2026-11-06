@@ -2,7 +2,7 @@
   {
     "date": "2026-11-06",
     "title": "ecoinvent 3.13",
-    "details": "PrismLCA imports ecoinvent 3.13: choose the extracted release and its LCIA workbook as before. The database is now named after the release it holds, with version and system model read from the files, and a workbook from another release is refused before anything is written. The new IPCC 2021 (GHG Protocol mandatory) indicators are listed but not recommended; the IPCC 2021 total stays the carbon footprint."
+    "details": "PrismLCA imports ecoinvent 3.13 into a new workspace: choose the extracted release and its LCIA workbook as before. The wizard now shows the release it read from the files, asks for the version only where they name none, and refuses a workbook from another release. The new IPCC 2021 (GHG Protocol mandatory) total is recommended beside the IPCC 2021 total."
   },
   {
     "date": "2026-11-02",

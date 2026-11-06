@@ -4,6 +4,7 @@ import { errMsg } from '../lib/errors'
 import ImportProgress, { type ImportStatus } from '../components/ImportProgress'
 import { fmtInt } from '../lib/format'
 import { SetupHelp, SetupStep } from './SetupParts'
+import { ReleaseStep, useEcoinventRelease } from './ReleaseStep'
 
 /** The registry entry the backend keeps per imported background (subset the result panel shows). */
 interface ImportedEntry {
@@ -68,6 +69,7 @@ export default function Setup({
   // would otherwise create a second one and send the import to whichever is active by then.
   const [starting, setStarting] = useState(false)
   const [lcia, setLcia] = useState<string | null>(null)
+  const release = useEcoinventRelease(source === 'ecoinvent' ? dir : null, lcia)
   const [status, setStatus] = useState<ImportStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   // What was imported, read from the registry once the job is done — the wizard stays open and
@@ -116,7 +118,8 @@ export default function Setup({
       await api('POST', '/api/v1/setup/background', {
         source,
         path: dir,
-        lcia_xlsx: source === 'ecoinvent' ? lcia : null
+        lcia_xlsx: source === 'ecoinvent' ? lcia : null,
+        version: source === 'ecoinvent' ? release.versionToSend : null
       })
       void poll()
     } catch (e) {
@@ -124,7 +127,7 @@ export default function Setup({
     } finally {
       setStarting(false)
     }
-  }, [dir, lcia, poll, source, workspace, askWorkspace, onCreateWorkspace, starting])
+  }, [dir, lcia, poll, source, workspace, askWorkspace, onCreateWorkspace, starting, release.versionToSend])
 
   const cancel = useCallback(async () => {
     await api('POST', '/api/v1/setup/cancel')
@@ -210,6 +213,7 @@ export default function Setup({
               <span className="setup-path">{lcia ?? 'No workbook selected'}</span>
             </SetupStep>
           )}
+          {bafu ? null : <ReleaseStep release={release} disabled={running || done} />}
         </ol>
         {!running && !done ? <SetupHelp source={source} /> : null}
 
@@ -282,7 +286,7 @@ export default function Setup({
               </button>
             </>
           ) : (
-            <button className="btn primary" onClick={start} disabled={!dir || running}>
+            <button className="btn primary" onClick={start} disabled={!dir || running || !release.ready}>
               {running ? 'Importing…' : 'Start import'}
             </button>
           )}

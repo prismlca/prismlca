@@ -751,7 +751,9 @@ def start_import(
     run_in_thread: bool = True,
     use_mp: bool = True,
     on_done: Callable[[str, dict], None] | None = None,
+    version: str | None = None,
 ) -> ImportStatus:
+    """``version`` is what the user typed in the wizard, used only where the release's files name none."""
     _assert_idle()
 
     path = Path(ecospold2_dir)
@@ -787,7 +789,7 @@ def start_import(
         )
     # Named after the release it holds: version and system model come from the release, not from a
     # default — the registry, the citation and every bundle take the version from this name.
-    database = ecoinvent_release.identify(path, workbook).database_name(database)
+    database = ecoinvent_release.identify(path, workbook).with_version(version).database_name(database)
     project = project or get_bd().projects.current
 
     _CANCEL.clear()

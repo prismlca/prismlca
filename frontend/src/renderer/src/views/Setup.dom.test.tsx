@@ -11,11 +11,23 @@ import { renderWithPrism } from '../test/render'
 import type { ReactElement } from 'react'
 
 const RUNNING = { state: 'running', step: 'starting', detail: '', progress: 0 }
+/** The release the backend reads from the chosen folder: named by its folder, as most are. */
+const RELEASE = {
+  release: true,
+  version: '3.13',
+  system_model: 'cutoff',
+  database: 'ecoinvent-3.13-cutoff',
+  source: 'folder'
+}
 
 /** The wizard with a backend that accepts the import and a folder picker that answers at once. */
 const mount = (ui: ReactElement) =>
   renderWithPrism(ui, {
-    routes: { 'POST /api/v1/setup/background': RUNNING, 'GET /api/v1/setup/status': RUNNING },
+    routes: {
+      'POST /api/v1/setup/background': RUNNING,
+      'GET /api/v1/setup/status': RUNNING,
+      'GET /api/v1/setup/ecoinvent-release': RELEASE
+    },
     overrides: { bridge: { pickDirectory: async () => '/data/datasets' } }
   })
 
@@ -106,7 +118,8 @@ const finished = (background: { name: string; provider: string }[]) =>
       },
       'GET /api/v1/setup/background': {
         background: background.map((b) => ({ ...b, activities: 1, label: b.name, version: '' }))
-      }
+      },
+      'GET /api/v1/setup/ecoinvent-release': RELEASE
     },
     overrides: { bridge: { pickDirectory: async () => '/data/release' } }
   })
@@ -143,5 +156,33 @@ describe('Setup wizard: after the import', () => {
     await userEvent.click(screen.getByRole('button', { name: /start import/i }))
     await screen.findByRole('button', { name: 'Start' })
     expect(screen.queryByRole('button', { name: /also import/i })).toBeNull()
+  })
+})
+
+describe('Setup wizard: the ecoinvent release', () => {
+  it('shows the release it read from the files', async () => {
+    mount(<Setup project="Main" onDone={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: /choose folder/i }))
+    expect(await screen.findByText('ecoinvent 3.13 cut-off')).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: 'ecoinvent version' })).toBeNull()
+  })
+
+  it('asks for the version where the files name none, and sends what was typed', async () => {
+    const { prism } = renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
+      routes: {
+        'POST /api/v1/setup/background': RUNNING,
+        'GET /api/v1/setup/status': RUNNING,
+        'GET /api/v1/setup/ecoinvent-release': { ...RELEASE, version: null, database: null, source: null }
+      },
+      overrides: { bridge: { pickDirectory: async () => '/data/renamed' } }
+    })
+    await userEvent.click(screen.getByRole('button', { name: /choose folder/i }))
+    const field = await screen.findByRole('textbox', { name: 'ecoinvent version' })
+    expect(screen.getByRole('button', { name: /start import/i })).toBeDisabled()
+    await userEvent.type(field, '3.13')
+    await userEvent.click(screen.getByRole('button', { name: /start import/i }))
+    await waitFor(() => expect(prism.calls.some((c) => c.path === '/api/v1/setup/background')).toBe(true))
+    const sent = prism.calls.find((c) => c.path === '/api/v1/setup/background')?.body as { version?: string }
+    expect(sent.version).toBe('3.13')
   })
 })

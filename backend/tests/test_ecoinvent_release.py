@@ -92,3 +92,48 @@ def test_every_system_model_ecoinvent_ships_reads_back_from_the_name():
               for slug in ecoinvent_release.SYSTEM_MODELS.values()}
     assert labels == {"cutoff": "cut-off", "apos": "APOS", "consequential": "consequential",
                       "en15804": "cut-off, EN15804"}
+
+
+def test_a_typed_version_fills_in_only_where_the_files_name_none(tmp_path):
+    unnamed = ecoinvent_release.identify(_release(tmp_path / "eco"), None)
+    assert unnamed.with_version("3.13").database_name() == "ecoinvent-3.13-cutoff"
+    assert unnamed.with_version(" v3.13 ").version == "3.13"
+    with pytest.raises(PrismError) as excinfo:
+        unnamed.with_version("thirteen")
+    assert excinfo.value.code == "release_version_invalid"
+
+    named = ecoinvent_release.identify(_release(tmp_path / "ecoinvent 3.13_cutoff_ecoSpold02"), None)
+    assert named.with_version("3.13").database_name() == "ecoinvent-3.13-cutoff"
+    with pytest.raises(PrismError) as excinfo:
+        named.with_version("3.12")
+    assert excinfo.value.code == "release_mismatch"
+
+
+def test_the_wizard_sees_the_release_before_importing(client, token, tmp_path):
+    root = tmp_path / "ecoinvent 3.13_cutoff_ecoSpold02"
+    _release(root)
+    r = client.get("/api/v1/setup/ecoinvent-release", params={"path": str(root)}, headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"release": True, "version": "3.13", "system_model": "cutoff",
+                        "database": "ecoinvent-3.13-cutoff", "source": "folder"}
+
+    unnamed = tmp_path / "eco"
+    _release(unnamed)
+    workbook = _workbook(tmp_path / "methods.xlsx")
+    r = client.get("/api/v1/setup/ecoinvent-release", params={"path": str(unnamed)}, headers=token)
+    assert r.json()["version"] is None and r.json()["release"] is True
+    r = client.get("/api/v1/setup/ecoinvent-release",
+                   params={"path": str(unnamed), "lcia_xlsx": str(workbook)}, headers=token)
+    assert (r.json()["version"], r.json()["source"]) == ("3.13", "workbook")
+
+    r = client.get("/api/v1/setup/ecoinvent-release", params={"path": str(tmp_path / "nothing")}, headers=token)
+    assert r.json()["release"] is False
+
+
+def test_the_typed_version_reaches_the_import(client, token, project, tmp_path):
+    from prism_lca.engine import ecoinvent
+
+    root = tmp_path / "eco"
+    _release(root)
+    st = ecoinvent.start_import(str(root), run_in_thread=False, version="3.13")
+    assert st.database == "ecoinvent-3.13-cutoff"
