@@ -3,6 +3,43 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.10 — 2026-11-06
+
+### New
+
+- **ecoinvent 3.13.** PrismLCA imports ecoinvent 3.13 into a new workspace, from the extracted release and its LCIA
+  workbook as before. The import wizard shows the release it read from the files, asks for the version only where
+  they name none, and refuses a workbook from another release. The new *IPCC 2021 (GHG Protocol mandatory)* total is
+  recommended beside the IPCC 2021 total.
+- **Closer regional matches in search.** For a target outside Europe, a continent's dataset (North America, Latin
+  America, Asia, Africa, Oceania) now ranks before the global ones, and a province or state falls back to its
+  country first. European regions that leave out a country, such as "RER w/o RU", stand in for Europe unless they
+  leave out the target itself.
+- **Side by side with Brightway.** PrismLCA keeps its workspaces in its own data folder and no longer opens a
+  Brightway directory set in `BRIGHTWAY2_DIR`, so an existing Brightway or Activity Browser installation stays
+  untouched. Workspaces an earlier version kept there are copied into PrismLCA's folder on the first start; the
+  originals are not changed. A large workspace can take a while, and the splash screen shows the progress.
+
+### Fixes
+
+- Adding ecoinvent to a workspace that began with BAFU writes its impact methods again; before, no method was
+  written and the workspace kept a pending step.
+- Quitting PrismLCA ends its calculation engine for good, so the next start no longer finds the data folder locked.
+  Opening PrismLCA while it is still quitting starts it afresh.
+- Undo and redo of a bundle import keep the chats, reports, logs and canvas the model gathered since.
+- Deleting or renaming a model no longer changes the tags of another model whose name begins with the same name and
+  a slash.
+- A double slash in report text prints as written instead of hiding the rest of the line.
+- Some minor security fixes and hardening.
+
+**Installing.** The Windows installer is signed by *Open Source Developer Jonas Harth*. While the certificate is
+new, Windows SmartScreen may still warn: check that *More info* names this publisher, compare the installer with
+`SHA256SUMS` below, then choose *Run anyway*. On Linux the AppImage needs FUSE 2 (`sudo apt install libfuse2t64` on
+Ubuntu 24.04); the deb and the rpm need nothing extra. PrismLCA 0.9.3 and later find this release under *Check for
+updates*.
+
+Changes since v0.9.9: https://github.com/prismlca/prismlca/compare/v0.9.9...v0.9.10
+
 ## 0.9.9 — 2026-11-03
 
 ### New
