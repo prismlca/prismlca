@@ -174,6 +174,12 @@ def make_service(spec: str | None, index_dir: Path, provider: CachedProvider, ov
             return index_dir / db_name
 
         def _require_index(self, db_name):
+            # The product also asks Brightway whether the database exists; the eval never opens it.
+            from prism_lca.search.index import VectorIndex
+
+            key = self._cache_key(db_name)
+            if key not in self._cache and VectorIndex.exists(self._index_base(db_name)):
+                self._cache[key] = VectorIndex.load(self._index_base(db_name))
             index = super()._require_index(db_name)
             if overlays and db_name == ECOINVENT and db_name not in applied:
                 applied.add(db_name)
@@ -208,12 +214,23 @@ def make_service(spec: str | None, index_dir: Path, provider: CachedProvider, ov
     return service
 
 
+def _use_ecoinvent(name: str) -> None:
+    """Evaluate against another ecoinvent release than the one the cases were written for."""
+    global ECOINVENT
+    ECOINVENT = name
+    SCOPES.update({"ecoinvent": [name], "both": [name, BAFU]})
+
+
 def load_cases(holdout: bool) -> list[dict]:
     cases = []
     for path in sorted(LOCAL.glob("cases*.jsonl")):
         for line in path.read_text("utf-8").splitlines():
             if line.strip():
                 case = json.loads(line)
+                # The cases name their ecoinvent gold under the release they were written for; the
+                # patterns are dataset names, so they apply to the release under test (--ecoinvent).
+                for key in [k for k in case.get("gold", {}) if k.startswith("ecoinvent-") and k != ECOINVENT]:
+                    case["gold"][ECOINVENT] = case["gold"].pop(key)
                 if (case.get("split", "dev") == "holdout") == holdout:
                     cases.append(case)
     if not cases:
@@ -410,7 +427,10 @@ def main() -> None:
                          "The product blends market rows on top (search_market_blend): an overlay that is "
                          "itself a blend needs PRISM_SEARCH_MARKET_BLEND=0")
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"), help="two saved run labels or files")
+    ap.add_argument("--ecoinvent", default=ECOINVENT,
+                    help="name of the ecoinvent database under test, e.g. ecoinvent-3.13-cutoff")
     args = ap.parse_args()
+    _use_ecoinvent(args.ecoinvent)
 
     runs = LOCAL / "runs"
     if args.compare:
