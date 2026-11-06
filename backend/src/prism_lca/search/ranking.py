@@ -294,11 +294,29 @@ def geo_chain(target: str | None) -> list[str]:
     return seen
 
 
+#: ecoinvent's "Europe minus a few countries": "RER w/o RU", "RER w/o CH+DE", "RER w/o DE+NL+RU". Read
+#: from the code itself, so a new combination needs no list entry.
+_RER_WITHOUT = re.compile(r"^RER w/o ([A-Z]{2}(?:\+[A-Z]{2})*)$")
+
+
+def _europe_proxy_rank(loc: str | None, target: str, chain: list[str]) -> int | None:
+    """Where a "RER w/o …" region stands for a European target: beside RER, unless it leaves the target
+    out. Without this it ranked as a distant region — behind RoW — and ecoinvent 3.13 moved the
+    formaldehyde market from RER to "RER w/o RU", so a German search put the rest-of-world market
+    first."""
+    found = _RER_WITHOUT.match(loc or "")
+    if not found or target not in _EUROPEAN or target in found.group(1).split("+"):
+        return None
+    # Beside RER — but never level with the target itself when the target IS RER.
+    return chain.index("Europe without Switzerland") if target == "RER" else chain.index("RER")
+
+
 def geo_rank(loc: str | None, target: str | None) -> int:
     chain = geo_chain(target)
     if loc in chain:
         return chain.index(loc)
-    return len(chain) + 1
+    proxy = _europe_proxy_rank(loc, target, chain) if target else None
+    return proxy if proxy is not None else len(chain) + 1
 
 
 def _geo_bonus(loc: str | None, target: str | None) -> float:

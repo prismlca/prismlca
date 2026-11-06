@@ -17,12 +17,13 @@ _VALID_TYPES = {"P", "M", "G"}
 
 
 class IndexRequest(BaseModel):
-    database: str = "ecoinvent-3.12-cutoff"
+    database: str
 
 
 class SearchRequest(BaseModel):
     query: str
-    database: str = "ecoinvent-3.12-cutoff"
+    #: One database by name; with neither this nor `databases`, every background of the workspace.
+    database: str | None = None
     #: Several at once — the search panel offers ecoinvent and the project's library as checkboxes.
     #: Empty falls back to `database`, so every existing caller keeps working unchanged.
     databases: list[str] | None = None
@@ -267,6 +268,22 @@ def list_datasets(request: Request, database: str, limit: int = 500) -> dict:
     return out
 
 
+def _workspace_backgrounds() -> list[str]:
+    """What a search that names no database covers: the workspace's background databases. A fixed
+    default name broke with the next release — `ecoinvent-3.12-cutoff` is not in a 3.13 workspace."""
+    from prism_lca.engine.backgrounds.common import backgrounds
+
+    names = [name for name, _info in backgrounds()]
+    if not names:
+        raise PrismError(
+            "This workspace has no background database to search.",
+            code="no_background",
+            status_code=409,
+            hint="Import ecoinvent or BAFU:20XY first (Overview → Background), or name a database.",
+        )
+    return names
+
+
 @router.post("/activities", summary="Semantic + facet search over a database")
 def search_activities(request: Request, body: SearchRequest) -> dict:
     bad = [t for t in (body.activity_types or []) if t not in _VALID_TYPES]
@@ -279,7 +296,7 @@ def search_activities(request: Request, body: SearchRequest) -> dict:
     limit = max(1, min(body.limit, 150))
     result = request.app.state.search.search_many(
         body.query,
-        body.databases or [body.database],
+        body.databases or ([body.database] if body.database else _workspace_backgrounds()),
         activity_types=body.activity_types,
         geographies=body.geographies,
         collapse_geo=body.collapse_geo,

@@ -226,6 +226,18 @@ def test_geo_chain_not_eurocentric():
     assert geo_chain("CN") == ["CN", "GLO", "RoW"]  # no European proxies for non-European targets
 
 
+def test_europe_minus_a_country_stands_in_for_rer_unless_it_leaves_the_target_out():
+    """ecoinvent 3.13's formaldehyde market is "RER w/o RU", no longer RER: for a German target it
+    must rank with RER, not behind RoW — but "RER w/o CH+DE" is no proxy for Germany."""
+    from prism_lca.search.ranking import geo_rank
+
+    assert geo_rank("RER w/o RU", "DE") == geo_rank("RER", "DE") < geo_rank("RoW", "DE")
+    assert geo_rank("RER w/o CH+DE", "DE") > geo_rank("RoW", "DE")
+    assert geo_rank("RER w/o CH+DE", "FR") == geo_rank("RER", "FR")
+    assert geo_rank("RER w/o RU", "CN") > geo_rank("RoW", "CN")  # not a proxy outside Europe
+    assert 0 < geo_rank("RER w/o RU", "RER") < geo_rank("GLO", "RER")  # near RER, not RER itself
+
+
 # --- V235: the geo-variant list is capped when nothing narrowed the request ---------------------
 
 
