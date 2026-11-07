@@ -564,6 +564,23 @@ describe('error translation', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('does not retry a used-up daily quota, and says when it comes back', async () => {
+    const body = JSON.stringify({
+      error: {
+        message:
+          'Quota exceeded for metric: generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash, description: Generate content requests per day limit exceeded on Free Tier.',
+        code: 'too_many_requests'
+      }
+    })
+    const fetchMock = vi.fn(async () => fail(429, body))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(run()).rejects.toMatchObject({
+      code: 'rate_limit',
+      message: expect.stringContaining('midnight')
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('retries an ordinary 429 and a 503, not a 400', () => {
     expect(googleTransport.retryable(429, '{"error":{"message":"Resource exhausted"}}')).toBe(true)
     expect(googleTransport.retryable(503, '')).toBe(true)

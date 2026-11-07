@@ -102,6 +102,11 @@ function errorOf(body: string): { message: string; reason?: string } {
  *  not change a zero, so this 429 is billing, not traffic. */
 const notInTier = (body: string): boolean => /\blimit: 0\b/.test(body)
 
+/** The key's DAILY quota for the model is used up ("requests per day limit exceeded", quota id
+ *  `…PerDay…`, measured on a free-tier key). It resets at midnight Pacific time; retrying within the
+ *  minute only repeats the refusal. */
+const dailyQuota = (body: string): boolean => /per ?day/i.test(body)
+
 function translateStatus(status: number, body: string): AiProviderError {
   const { message, reason } = errorOf(body)
   const detail = message.trim()
@@ -117,6 +122,12 @@ function translateStatus(status: number, body: string): AiProviderError {
       `${detail || 'Not available on this key.'} The key's Google tier does not include this model or ` +
         'tool — use a key from a Google Cloud project with billing, or pick Gemini 3.8 Flash.',
       'credits'
+    )
+  if (status === 429 && dailyQuota(body))
+    return new AiProviderError(
+      'Google’s daily request quota for this model is used up — it resets at midnight Pacific time. ' +
+        'The key’s limits are listed at aistudio.google.com/rate-limit; another model has its own quota.',
+      'rate_limit'
     )
   if (status === 429)
     return new AiProviderError(
@@ -405,7 +416,8 @@ export const googleTransport: ChatTransport<GoogleState> = {
   name: 'google',
   unreachable: 'Google unreachable — check your internet connection.',
   translateStatus,
-  retryable: (status, body) => RETRYABLE.has(status) && !(status === 429 && notInTier(body)),
+  retryable: (status, body) =>
+    RETRYABLE.has(status) && !(status === 429 && (notInTier(body) || dailyQuota(body))),
 
   buildRequest(opts: StreamChatOpts, key: string) {
     const { system, input } = toInteractionsInput(opts.messages)
