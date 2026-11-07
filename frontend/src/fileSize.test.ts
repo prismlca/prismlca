@@ -37,7 +37,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/views/ReportSections.tsx': 1403, // 1378, after the correction path and the remark lists went (one state per chapter)
   'renderer/src/CanvasChat.tsx': 1277, // 1252
   'renderer/src/views/report/useChapterWriter.ts': 900, // 875, after the correction path went (Update report replaces it)
-  'main/ai/subagent.ts': 1279, // 1254
+  'main/ai/subagent.ts': 1235, // 1210 — the evidence book moved to citationBook.ts
   'renderer/src/workbench/useCanvasModel.ts': 1141, // 1116
   'renderer/src/views/DetailedResults.tsx': 1237, // 1212
   'renderer/src/views/Report.tsx': 1202, // 1177

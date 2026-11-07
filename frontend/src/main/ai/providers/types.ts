@@ -90,6 +90,9 @@ export interface Citation {
   url: string
   title?: string
   excerpt?: string
+  /** The provider's own links to this page, when it cites through redirects (Google): what the model
+   *  was shown, and so what it may quote as its source. `url` is the page they lead to. */
+  via?: string[]
 }
 
 export type StreamEvent =

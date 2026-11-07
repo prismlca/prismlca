@@ -13,6 +13,7 @@
  *   - the answer is verifiable (mass balance + mandatory sources).
  */
 import { streamChat } from './client'
+import { CitationBook, isProviderLink, type Evidence } from './citationBook'
 import { AiProviderError, type ChatMessage, type Citation } from './providers/types'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
@@ -182,72 +183,6 @@ export interface UnresolvedComponent {
   /** `no_mass`: the leg found the part but no figure; `zero_mass`: it wrote 0, which is a ghost. */
   reason: 'no_mass' | 'zero_mass'
   note?: string
-}
-
-/** A cited page as the result hands it on: the engine's URL, and the excerpt the model read when
- *  the engine supplied one (Exa highlights; a direct OpenAI search carries none). */
-export interface Evidence {
-  url: string
-  title?: string
-  excerpt?: string
-}
-
-/** Longest excerpt kept per evidence entry — enough to show the table row a figure came from. */
-const EXCERPT_CHARS = 400
-/** Evidence entries per result; the legs cite a handful, the cap only stops a runaway listing. */
-const MAX_EVIDENCE = 12
-
-/** One comparable key per URL: scheme, `www.`, trailing slash and fragment do not make a different page. */
-export function urlKey(url: string): string {
-  return url
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, '')
-    .replace(/^www\./, '')
-    .replace(/#.*$/, '')
-    .replace(/[.,;)]+$/, '')
-    .replace(/\/+$/, '')
-}
-
-/** Collect citations across a leg's passes, one entry per page, first excerpt wins. */
-export class CitationBook {
-  private readonly byKey = new Map<string, Evidence>()
-  add(citations: Citation[]): void {
-    for (const c of citations) {
-      const key = urlKey(c.url)
-      if (!key) continue
-      const cur = this.byKey.get(key)
-      const excerpt = c.excerpt?.replace(/\s+/g, ' ').trim().slice(0, EXCERPT_CHARS)
-      if (!cur) {
-        this.byKey.set(key, {
-          url: c.url,
-          ...(c.title ? { title: c.title } : {}),
-          ...(excerpt ? { excerpt } : {})
-        })
-      } else if (!cur.excerpt && excerpt) cur.excerpt = excerpt
-    }
-  }
-  get size(): number {
-    return this.byKey.size
-  }
-  has(url: string): boolean {
-    return this.byKey.has(urlKey(url))
-  }
-  /** The cited pages behind these URLs, in the order the URLs are given, each page once. */
-  evidenceFor(urls: string[]): Evidence[] {
-    const out: Evidence[] = []
-    const seen = new Set<string>()
-    for (const u of urls) {
-      const key = urlKey(u)
-      const e = this.byKey.get(key)
-      if (e && !seen.has(key)) {
-        seen.add(key)
-        out.push(e)
-      }
-      if (out.length >= MAX_EVIDENCE) break
-    }
-    return out
-  }
 }
 
 /**
@@ -713,6 +648,17 @@ export async function researchBom(opts: {
     undefined,
     { lost, unresolved: unresolved.map((u) => u.component) }
   )
+  // A leg may quote the provider's link to a page instead of the page (Google): stored as the page —
+  // and a link that leads to no page is no source at all, so the figure stays and loses it.
+  let deadLinks = 0
+  for (const i of items) {
+    if (!i.source_url) continue
+    i.source_url = book.canonical(i.source_url)
+    if (isProviderLink(i.source_url) && !book.has(i.source_url)) {
+      i.source_url = undefined
+      deadLinks++
+    }
+  }
   const sources = [...new Set(items.map((i) => i.source_url).filter((u): u is string => !!u))]
   // The engine's record against the model's: an item whose URL the search never returned is marked,
   // not dropped — the leg may have opened the page directly or written it from memory, and the
@@ -727,6 +673,9 @@ export async function researchBom(opts: {
     : ''
   const uncitedNote = uncited
     ? `${uncited} item${uncited === 1 ? "'s" : "s'"} source_url was NOT among the pages the search engine returned (cited_by_search: false) — the leg opened it directly or wrote it from memory; verify before relying on it.`
+    : ''
+  const deadNote = deadLinks
+    ? `${deadLinks} item${deadLinks === 1 ? '' : 's'} named a search-result link that leads to no page — the figure is kept without a source_url; verify it before relying on it.`
     : ''
   return {
     product: opts.product,
@@ -748,7 +697,8 @@ export async function researchBom(opts: {
         items.length === 0 && !unresolved.length
           ? 'The research returned no usable figures — ask the user for the composition, or try a more specific product description.'
           : note,
-        uncitedNote
+        uncitedNote,
+        deadNote
       ]
         .filter(Boolean)
         .join(' ') || undefined
@@ -1072,6 +1022,9 @@ export async function researchWeb(opts: {
       ? `${leg}${label}: ${findings.length} finding${findings.length === 1 ? '' : 's'}`
       : `${leg}${label}: nothing sourced`
   )
+  // As for the BOM items: a provider's link becomes its page, and one that leads nowhere is no source.
+  for (const f of findings)
+    f.sources = f.sources.map((u) => book.canonical(u)).filter((u) => !(isProviderLink(u) && !book.has(u)))
   const sources = [...new Set(findings.flatMap((f) => f.sources))]
   // The engine's record against the model's (see BomItem.cited_by_search): marked, never dropped.
   if (book.size)

@@ -426,7 +426,8 @@ describe('the event stream', () => {
     const events = await run({ webSearch: true })
     expect(events.find((e) => e.type === 'citations')).toEqual({
       type: 'citations',
-      citations: [{ url: 'https://example.org/pet.pdf', title: 'example.org' }]
+      // The link stays on the page as `via`: the model quotes it as its source.
+      citations: [{ url: 'https://example.org/pet.pdf', title: 'example.org', via: [redirect] }]
     })
   })
 
@@ -484,6 +485,35 @@ describe('the event stream', () => {
     stopNow.abort()
     const events = await run({ signal: stopNow.signal })
     expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
+  })
+
+  it('resolves a Google link the model wrote without an annotation, and drops one that leads nowhere', async () => {
+    const good = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/GOOD_1'
+    const dead = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/DEAD_2'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === good)
+          return {
+            status: 302,
+            headers: new Headers({ location: 'https://pubs.acs.org/x' }),
+            body: null
+          } as unknown as Response
+        if (url === dead) return { status: 404, headers: new Headers(), body: null } as unknown as Response
+        return sse([
+          created,
+          start(0, { type: 'model_output' }),
+          delta(0, { type: 'text', text: `[{"source_url": "${good}"}, {"source_url": "${dead}"}]` }),
+          stop(0),
+          completed('completed')
+        ])
+      })
+    )
+    const events = await run({ webSearch: true })
+    expect(events.find((e) => e.type === 'citations')).toEqual({
+      type: 'citations',
+      citations: [{ url: 'https://pubs.acs.org/x', via: [good] }]
+    })
   })
 
   it('maps an output-limit stop to finish "length"', async () => {

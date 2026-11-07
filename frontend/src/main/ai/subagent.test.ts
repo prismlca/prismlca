@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CitationBook,
   extractJson,
   massBalance,
   needsUpgradePass,
@@ -10,7 +9,6 @@ import {
   parseBomItems,
   parseFindings,
   splitAuthoritativeDomains,
-  urlKey,
   type BomItem,
   type WebFinding
 } from './subagent'
@@ -404,33 +402,5 @@ describe('domains the model names', () => {
       domains: [],
       text: 'plain finding (https://x.y)'
     })
-  })
-})
-
-describe('evidence from the engine', () => {
-  it('keys URLs so scheme, www, fragment and trailing punctuation do not make a different page', () => {
-    expect(urlKey('https://www.Example.org/a/b/#top')).toBe('example.org/a/b')
-    expect(urlKey('http://example.org/a/b).')).toBe('example.org/a/b')
-    expect(urlKey('example.org/a/b')).toBe('example.org/a/b')
-  })
-
-  it('collects citations once per page, keeps the first excerpt and finds the pages behind sources', () => {
-    const book = new CitationBook()
-    book.add([{ url: 'https://a.de/p', title: 'A', excerpt: '  mass:   2 kg  ' }])
-    book.add([{ url: 'http://www.a.de/p/', excerpt: 'later' }, { url: 'https://b.de/q' }])
-    book.add([{ url: 'https://b.de/q', excerpt: 'B says 3 kg' }])
-    expect(book.size).toBe(2)
-    expect(book.has('https://A.de/p#x')).toBe(true)
-    expect(book.has('https://c.de')).toBe(false)
-    expect(book.evidenceFor(['https://b.de/q', 'https://a.de/p', 'https://c.de', 'https://b.de/q'])).toEqual([
-      { url: 'https://b.de/q', excerpt: 'B says 3 kg' },
-      { url: 'https://a.de/p', title: 'A', excerpt: 'mass: 2 kg' }
-    ])
-  })
-
-  it('caps an excerpt so a whole page never rides along', () => {
-    const book = new CitationBook()
-    book.add([{ url: 'https://a.de', excerpt: 'x'.repeat(5000) }])
-    expect(book.evidenceFor(['https://a.de'])[0].excerpt).toHaveLength(400)
   })
 })

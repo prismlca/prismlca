@@ -353,6 +353,9 @@ function finishReason(status: unknown): string {
 }
 
 const REDIRECT_HOST = 'vertexaisearch.cloud.google.com'
+/** A Google citation link written out in the answer text. */
+const REDIRECT_IN_TEXT =
+  /https:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\/[A-Za-z0-9_\-=]+/g
 const RESOLVE_TIMEOUT_MS = 5_000
 const MAX_RESOLVED = 40
 
@@ -380,12 +383,22 @@ async function resolveCitationUrl(url: string): Promise<string> {
   }
 }
 
+/** Every citation link resolved to its page, one entry per page. The links stay on it as `via`: the
+ *  model was shown the links, not the pages, and quotes them as its sources (measured on a research_bom
+ *  run) — the research tools need them to match a quoted link to the page (citationBook.ts). Each
+ *  annotation carries its own link token, so one page can have several. */
 export async function resolveCitations(cites: Citation[]): Promise<Citation[]> {
   const unique = [...new Map(cites.map((c) => [c.url, c])).values()].slice(0, MAX_RESOLVED)
   const resolved = await Promise.all(
-    unique.map(async (c) => ({ ...c, url: await resolveCitationUrl(c.url) }))
+    unique.map(async (c) => ({ ...c, url: await resolveCitationUrl(c.url), link: c.url }))
   )
-  return [...new Map(resolved.map((c) => [c.url, c])).values()]
+  const pages = new Map<string, Citation>()
+  for (const { link, ...c } of resolved) {
+    const page = pages.get(c.url) ?? { ...c }
+    if (link !== c.url) page.via = [...(page.via ?? []), link]
+    pages.set(c.url, page)
+  }
+  return [...pages.values()]
 }
 
 export const googleTransport: ChatTransport<GoogleState> = {
@@ -456,7 +469,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
         break
       case 'step.start': {
         if (!isObj(parsed.step)) break
-        const step = { ...parsed.step }
+        const step: Record<string, unknown> = { ...parsed.step }
         state.steps.set(index, step)
         // A step may open with content already in it — the first words of the answer, the first line of a
         // thought summary (Google's own stream examples show both). Dropped here, an answer would lose
@@ -567,8 +580,18 @@ export const googleTransport: ChatTransport<GoogleState> = {
       )
     }
     const events: StreamEvent[] = []
-    if (state.annotations.length) {
-      const citations = await resolveCitations(state.annotations)
+    // The model also quotes search results Google did not annotate as citations (measured: a research_bom
+    // leg wrote one as its source_url). Only Google's search mints such a link, so one that leads to a page
+    // is that search's record too; one that leads nowhere is dropped rather than vouched for.
+    const annotated = new Set(state.annotations.map((a) => a.url))
+    const written = [...new Set([...state.text.values()].join('\n').match(REDIRECT_IN_TEXT) ?? [])].filter(
+      (link) => !annotated.has(link)
+    )
+    if (state.annotations.length || written.length) {
+      const unresolvedWritten = new Set(written)
+      const citations = (
+        await resolveCitations([...state.annotations, ...written.map((url) => ({ url }))])
+      ).filter((c) => !unresolvedWritten.has(c.url))
       if (citations.length) events.push({ type: 'citations', citations })
     }
     const order = [...state.steps.keys()].sort((a, b) => a - b)
