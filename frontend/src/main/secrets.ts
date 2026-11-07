@@ -21,19 +21,21 @@ import { app, safeStorage } from 'electron'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-/** The providers a key can be stored for. The file format was a map from the start, so OpenAI's
- *  arrival was exactly what the original note promised: a new key, not a migration. Both keys may
- *  be stored at once — switching the active provider in Settings must never forget the other one. */
-export type Provider = 'openrouter' | 'openai' | 'ors' | 'mapbox'
+/** The providers a key can be stored for. The file format was a map from the start, so each new
+ *  provider was exactly what the original note promised: a new key, not a migration. All keys may
+ *  be stored at once — switching the active provider in Settings must never forget another one. */
+export type Provider = 'openrouter' | 'openai' | 'google' | 'ors' | 'mapbox'
 
-/** The two AI providers; the other two slots hold the transport-distance keys (openrouteservice
+/** The three AI providers; the other two slots hold the transport-distance keys (openrouteservice
  *  and Mapbox), which never reach the chat client or the backend — see main/distance. */
-export type AiProvider = 'openrouter' | 'openai'
+export type AiProvider = 'openrouter' | 'openai' | 'google'
 
 /** The environment variable that can pin each provider's key for one run. */
 const ENV_VAR: Record<Provider, string> = {
   openrouter: 'OPENROUTER_API_KEY',
   openai: 'OPENAI_API_KEY',
+  // Google's own SDKs and docs read this name, so a developer who already has it set is covered.
+  google: 'GEMINI_API_KEY',
   ors: 'ORS_API_KEY',
   mapbox: 'MAPBOX_API_KEY'
 }

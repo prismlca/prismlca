@@ -1,13 +1,13 @@
 /**
  * The provider-neutral chat contract: message/tool shapes, the stream-event vocabulary, and the
  * error class every caller branches on. Everything here is what the agent loop, the report writers
- * and the sub-agents are written against — a transport (OpenRouter, OpenAI) translates its own wire
- * format into these and nothing else, so the callers never learn which provider served them.
+ * and the sub-agents are written against — a transport (OpenRouter, OpenAI, Google) translates its own
+ * wire format into these and nothing else, so the callers never learn which provider served them.
  */
 
-import type { ReasoningEffort } from '../../../shared/aiDefaults'
+import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
 
-export type ProviderId = 'openrouter' | 'openai'
+export type ProviderId = AiProviderId
 
 /**
  * One error class for every provider, told apart by `.code` — the codes are the contract
@@ -32,6 +32,41 @@ export interface ChatMessage {
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
   tool_call_id?: string
   name?: string
+  /** On an assistant tool-call turn: what its provider needs back verbatim (see ProviderReplay). */
+  replay?: ProviderReplay
+}
+
+/**
+ * The part of an assistant turn that only its provider can read, kept so it can be sent back
+ * unchanged. Google's stateless Interactions API requires the model's `thought` steps — opaque,
+ * signed — to be resent with the function calls they led to; without them the next round is
+ * rejected (measured: HTTP 400 "invalid argument"). It is DATA, not prose: it rides on the message
+ * through the transcript on disk and through compaction untouched, every other transport ignores it,
+ * and nothing displays it.
+ */
+export interface ProviderReplay {
+  provider: ProviderId
+  /** The provider's own steps for this turn, in the order it sent them. */
+  steps: unknown[]
+}
+
+/** The assistant message of a tool-call round — one shape for the agent loop and both writers, so the
+ *  replay a provider attached cannot be dropped by one of three hand-written copies. */
+export function assistantToolTurn(
+  text: string | null,
+  calls: AccumTool[],
+  replay?: ProviderReplay
+): ChatMessage {
+  return {
+    role: 'assistant',
+    content: text,
+    tool_calls: calls.map((c) => ({
+      id: c.id,
+      type: 'function' as const,
+      function: { name: c.name, arguments: c.arguments }
+    })),
+    ...(replay ? { replay } : {})
+  }
 }
 
 export interface ToolSpec {
@@ -83,7 +118,9 @@ export type StreamEvent =
    *  price and cache behaviour change between two otherwise identical runs, and this is the only
    *  thing that says which one you got. A direct provider names itself once. */
   | { type: 'provider'; name: string }
-  | { type: 'tool_calls'; calls: AccumTool[] }
+  /** The round's function calls, assembled. `replay` is what the provider needs back with them (see
+   *  ProviderReplay) — the caller stores it on the assistant message via `assistantToolTurn`. */
+  | { type: 'tool_calls'; calls: AccumTool[]; replay?: ProviderReplay }
   | {
       type: 'usage'
       usage: {
@@ -123,7 +160,7 @@ export interface StreamChatOpts {
   /** Hard ceiling on this reply's length; see DEFAULT_MAX_TOKENS for why it is always sent. */
   maxTokens?: number
   /** Attach the provider's server-side web search to this request (OpenRouter: web_search +
-   *  web_fetch server tools; OpenAI: the Responses API web_search tool). */
+   *  web_fetch server tools; OpenAI: the Responses API web_search tool; Google: google_search). */
   webSearch?: boolean
   /** Ceiling on the provider-side web lookups per reply (`parameters.max_uses` on each OpenRouter server tool);
    *  undefined/0 = the provider's own default. Every lookup re-runs the whole conversation through the
@@ -131,7 +168,8 @@ export interface StreamChatOpts {
   webLookupsCap?: number
   /** Restrict the provider-side web search (and fetch) to these domains — bare hosts, no scheme.
    *  OpenRouter: `parameters.allowed_domains` on both server tools (Exa and most native engines;
-   *  Google-native has no filter and falls back to Exa); OpenAI: `filters.allowed_domains`.
+   *  Google-native has no filter and falls back to Exa); OpenAI: `filters.allowed_domains`; Google
+   *  direct has no filter either, so its transport names the hosts in the instructions instead.
    *  Undefined/empty = unrestricted. Set by the research legs only: the model that saw the first
    *  pass names where the authoritative confirmation lives, and the upgrade pass searches there. */
   webDomains?: string[]
@@ -176,8 +214,9 @@ export interface ChatTransport<S> {
   /** Map an HTTP failure onto the shared error vocabulary (see AiProviderError). */
   translateStatus(status: number, body: string): AiProviderError
   /** Is this failure worth a second attempt? Takes the body because the status alone can lie:
-   *  OpenAI sends "out of credits" as a 429 (`insufficient_quota`), and retrying THAT is a
-   *  ten-second hang ending in the same error. */
+   *  OpenAI sends "out of credits" as a 429 (`insufficient_quota`), Google a model the key's tier
+   *  does not include as a 429 with "limit: 0", and retrying either is a hang ending in the same
+   *  error. */
   retryable(status: number, body: string): boolean
   /** Fresh per-request scratch (accumulating tool-call fragments, once-only flags, …). Gets the
    *  request opts because some transports need them at stream end — OpenAI's cost synthesis prices
@@ -185,8 +224,9 @@ export interface ChatTransport<S> {
   createState(opts: StreamChatOpts): S
   /** Translate one parsed SSE data object into zero or more StreamEvents, in order. */
   interpret(parsed: unknown, state: S): StreamEvent[]
-  /** End-of-stream events: assembled tool calls, a synthesized usage, … */
-  finish(state: S): StreamEvent[]
+  /** End-of-stream events: assembled tool calls, a synthesized usage, … May be async: Google's
+   *  citation links are redirects that are resolved here, once the stream has ended. */
+  finish(state: S): StreamEvent[] | Promise<StreamEvent[]>
   /** Error text for a fetch that never reached the service at all. */
   unreachable: string
 }

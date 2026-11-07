@@ -48,8 +48,12 @@ export function AiChatPanel(): JSX.Element {
       </label>
       <p className="settings-hint">
         On = the chat shows a microphone button; the recording is sent to{' '}
-        {provider === 'openai' ? 'OpenAI (gpt-transcribe)' : 'OpenRouter (Whisper)'} for transcription and the
-        transcript is sent as your message. Off = the button disappears entirely.
+        {provider === 'openai'
+          ? 'OpenAI (gpt-transcribe)'
+          : provider === 'google'
+            ? 'Google (Gemini 3.5 Transcribe)'
+            : 'OpenRouter (Whisper)'}{' '}
+        for transcription and the transcript is sent as your message. Off = the button disappears entirely.
       </p>
       {voiceEnabled ? (
         <>
@@ -85,6 +89,13 @@ export function AiChatPanel(): JSX.Element {
         for one conversation. The search runs on the provider’s side, so it sees the query the assistant
         writes from your workspace. Off = the toggle disappears entirely and the assistant, its research
         helpers included, can never reach the web.
+        {provider === 'google' ? (
+          <>
+            {' '}
+            Under Google the assistant reaches the web through its research helpers only: Google offers its
+            search alongside PrismLCA’s own tools only as a preview so far.
+          </>
+        ) : null}
       </p>
       {webEnabled ? (
         <>

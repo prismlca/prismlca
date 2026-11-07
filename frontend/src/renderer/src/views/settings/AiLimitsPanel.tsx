@@ -89,17 +89,17 @@ export function AiLimitsPanel(): JSX.Element {
           max={MAX_MIN_THROUGHPUT}
           step={5}
           value={minTput}
-          disabled={provider === 'openai'}
+          disabled={provider !== 'openrouter'}
           onValue={setThroughput}
         />
       </label>
       {/* Disabled rather than hidden under OpenAI: the user set this value, and hiding it would read
           as losing it. The hint says WHY it does nothing there. */}
       <p className="settings-hint">
-        {provider === 'openai' ? (
+        {provider !== 'openrouter' ? (
           <>
-            An OpenRouter routing preference — the OpenAI API is one provider with no routes to choose from.
-            Your value stays stored for when you switch back.
+            An OpenRouter routing preference — the {provider === 'google' ? 'Gemini' : 'OpenAI'} API is one
+            provider with no routes to choose from. Your value stays stored for when you switch back.
           </>
         ) : (
           <>
@@ -201,7 +201,7 @@ export function AiLimitsPanel(): JSX.Element {
         <input
           type="checkbox"
           checked={zdr}
-          disabled={provider === 'openai'}
+          disabled={provider !== 'openrouter'}
           onChange={(e) => {
             // Main holds an in-memory copy for the call sites deep inside a turn and mirrors it
             // (with provider, throughput, spellcheck) on every settings write.
@@ -228,7 +228,7 @@ export function AiLimitsPanel(): JSX.Element {
               <input
                 type="checkbox"
                 checked={value}
-                disabled={provider === 'openai'}
+                disabled={provider !== 'openrouter'}
                 onChange={(e) => setAS({ [key]: e.target.checked })}
               />
               <span>Except {name}</span>
@@ -237,7 +237,17 @@ export function AiLimitsPanel(): JSX.Element {
         </div>
       ) : null}
       <p className="settings-hint">
-        {provider === 'openai' ? (
+        {provider === 'google' ? (
+          <>
+            An OpenRouter routing rule — Google’s Gemini API has no per-request equivalent, so this switch has
+            no effect there and PrismLCA says so rather than pretending. What holds instead, with a key from a
+            Google Cloud project with billing: Google does not use the prompts to improve its products,
+            requests are sent without storage on Google’s side (Google would otherwise keep them for later
+            turns), prompts are logged for a limited time to detect abuse, and prompts that used Google Search
+            are kept for 30 days. If the per-request zero-retention guarantee matters to your data, use the
+            OpenRouter provider.
+          </>
+        ) : provider === 'openai' ? (
           <>
             An OpenRouter routing rule — the OpenAI API has no per-request equivalent, so this switch has no
             effect there and PrismLCA says so rather than pretending. What holds instead: OpenAI states it

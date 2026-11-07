@@ -23,6 +23,7 @@ import { app } from 'electron'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  asAiProvider,
   clampMaxTokens,
   clampWebLookups,
   DEFAULT_MAX_COST_USD,
@@ -242,7 +243,7 @@ export function getSettings(): AppSettings {
     if (v !== undefined && v !== null) (out as Record<string, unknown>)[key] = v
   }
   // The value crosses IPC and may come from a hand-edited file: anything unknown means the default.
-  if (out.provider !== 'openai') out.provider = 'openrouter'
+  out.provider = asAiProvider(out.provider)
   out.maxTokens = clampMaxTokens(out.maxTokens)
   out.writerMaxTokens = clampMaxTokens(out.writerMaxTokens, DEFAULT_WRITER_MAX_TOKENS)
   out.webLookupsPerAnswer = clampWebLookups(out.webLookupsPerAnswer)

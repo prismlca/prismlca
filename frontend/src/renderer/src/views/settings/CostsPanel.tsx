@@ -3,11 +3,19 @@ import { aiModels, aiUsage, type AiModelInfo, type UsageEntry } from '../../lib/
 import { getAS } from '../../lib/appSettings'
 import { fmtTokens, fmtUsd, monthLabel } from '../../lib/money'
 import { LAB_LOGOS, labKey } from '../../lib/labLogos'
+import { billedBy } from '../../../../shared/labKey'
+import { asAiProvider } from '../../../../shared/aiDefaults'
 import type { ProviderChoice } from './ProviderKeyBlock'
 
-/** Which provider a LEDGER row belongs to: bare ids are direct-OpenAI by construction (see labKey);
- *  everything with a vendor prefix — `openai/whisper-large-v3` included — was billed via OpenRouter. */
-const rowProvider = (id: string): ProviderChoice => (id.includes('/') ? 'openrouter' : 'openai')
+/** Which provider a LEDGER row belongs to (shared/labKey.ts, `billedBy`): a vendor prefix means
+ *  OpenRouter — `openai/whisper-large-v3` included — and a bare id the direct vendor it names. */
+const rowProvider = (id: string): ProviderChoice => billedBy(id)
+
+const TABS: Array<[ProviderChoice, string]> = [
+  ['openrouter', 'OpenRouter'],
+  ['openai', 'OpenAI'],
+  ['google', 'Google']
+]
 
 /** API-cost ledger: models as rows (with lab logo), months as columns, real OpenRouter USD. */
 export function CostsPanel(): JSX.Element {
@@ -15,9 +23,7 @@ export function CostsPanel(): JSX.Element {
   const [models, setModels] = useState<AiModelInfo[]>([])
   // Tabs over the TABLE only — the tiles and the category line above stay whole-app totals. Starts
   // on the active provider, because "what did my current setup cost" is the question walked in with.
-  const [tab, setTab] = useState<ProviderChoice>(() =>
-    getAS().provider === 'openai' ? 'openai' : 'openrouter'
-  )
+  const [tab, setTab] = useState<ProviderChoice>(() => asAiProvider(getAS().provider))
   useEffect(() => {
     void aiUsage()
       .then(setUsage)
@@ -137,20 +143,16 @@ export function CostsPanel(): JSX.Element {
             </p>
           ) : null}
           <div className="seg" role="tablist" aria-label="Provider" style={{ marginBottom: 8 }}>
-            <button
-              type="button"
-              className={`seg-btn${tab === 'openrouter' ? ' on' : ''}`}
-              onClick={() => setTab('openrouter')}
-            >
-              OpenRouter
-            </button>
-            <button
-              type="button"
-              className={`seg-btn${tab === 'openai' ? ' on' : ''}`}
-              onClick={() => setTab('openai')}
-            >
-              OpenAI
-            </button>
+            {TABS.map(([id, name]) => (
+              <button
+                key={id}
+                type="button"
+                className={`seg-btn${tab === id ? ' on' : ''}`}
+                onClick={() => setTab(id)}
+              >
+                {name}
+              </button>
+            ))}
           </div>
           {tabIds.length === 0 ? (
             <p className="empty" style={{ padding: 0 }}>

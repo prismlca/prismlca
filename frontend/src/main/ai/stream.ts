@@ -9,7 +9,7 @@
  * case, forgetting is no longer a thing a call site can do.
  */
 import { streamChat } from './client'
-import type { ChatMessage, Citation, StreamChatOpts } from './providers/types'
+import type { ChatMessage, Citation, ProviderReplay, StreamChatOpts } from './providers/types'
 
 /** The usage payload of a stream's `usage` event — see providers/types.ts. */
 type StreamUsage = {
@@ -56,7 +56,11 @@ export async function collectText(opts: {
   /** Each piece of text as it arrives, for a caller that shows progress. */
   onDelta?: (text: string) => void
   /** Tool calls the model asked for instead of (or beside) text. Reported, never executed. */
-  onToolCalls?: (calls: Array<{ id: string; name: string; arguments: string }>) => void
+  /** The round's calls, and what the provider needs back with them (store both via assistantToolTurn). */
+  onToolCalls?: (
+    calls: Array<{ id: string; name: string; arguments: string }>,
+    replay?: ProviderReplay
+  ) => void
   signal?: AbortSignal
   onCost?: (model: string, sample: CostSample) => void
   webSearch?: boolean
@@ -94,7 +98,7 @@ export async function collectText(opts: {
     } else if (ev.type === 'citations') opts.onCitations?.(ev.citations)
     else if (ev.type === 'usage') opts.onCost?.(opts.model, costOf(ev.usage))
     else if (ev.type === 'finish') opts.onFinish?.(ev.reason)
-    else if (ev.type === 'tool_calls') opts.onToolCalls?.(ev.calls)
+    else if (ev.type === 'tool_calls') opts.onToolCalls?.(ev.calls, ev.replay)
   }
   return text
 }

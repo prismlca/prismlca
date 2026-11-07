@@ -420,7 +420,7 @@ export function registerChatIpc(
         format: payload.format,
         language: payload.language
       })
-      // Booked under the model the transport actually used — the two providers transcribe with
+      // Booked under the model the transport actually used — the providers transcribe with
       // different models, and a ledger row naming the wrong one is worse than none.
       if (typeof cost === 'number') recordCost(model, cost)
       return { text }

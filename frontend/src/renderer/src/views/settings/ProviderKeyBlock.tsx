@@ -10,7 +10,9 @@ const KEY_COPY = {
     company: 'OpenRouter',
     createAt: 'openrouter.ai under Keys',
     devfile: '.secrets/openrouter-key',
-    flow: 'straight to OpenRouter’s servers, and on to whichever model you pick'
+    sends: 'your search queries and the contents of the documents you index',
+    flow: 'straight to OpenRouter’s servers, and on to whichever model you pick',
+    terms: ''
   },
   openai: {
     label: 'OpenAI API key',
@@ -19,7 +21,22 @@ const KEY_COPY = {
     company: 'OpenAI',
     createAt: 'platform.openai.com under API keys',
     devfile: '.secrets/openai-key',
-    flow: 'straight to OpenAI’s servers'
+    sends: 'your search queries and the contents of the documents you index',
+    flow: 'straight to OpenAI’s servers',
+    terms: ''
+  },
+  google: {
+    label: 'Google API key',
+    placeholder: 'AIza…',
+    envVar: 'GEMINI_API_KEY',
+    company: 'Google',
+    createAt: 'aistudio.google.com under API keys, in a project with billing',
+    devfile: '.secrets/google-key',
+    sends: 'your chats with the assistant, the model data it reads and the documents you attach',
+    flow: 'straight to Google’s Gemini API',
+    // Google's terms split on billing; what PrismLCA describes is the paid contract, so it says so.
+    terms:
+      'Use a key from a Google Cloud project with billing: under Google’s terms for paid use, your prompts are not used to improve its products.'
   }
 } as const
 
@@ -42,9 +59,9 @@ export type ProviderChoice = keyof typeof KEY_COPY
  */
 export function ProviderKeyBlock({ provider }: { provider: ProviderChoice }): JSX.Element {
   const copy = KEY_COPY[provider]
-  const other: ProviderChoice = provider === 'openrouter' ? 'openai' : 'openrouter'
+  const others = (Object.keys(KEY_COPY) as ProviderChoice[]).filter((p) => p !== provider)
   const [status, setStatus] = useState<KeyStatus | null>(null)
-  const [otherStored, setOtherStored] = useState(false)
+  const [othersStored, setOthersStored] = useState<ProviderChoice[]>([])
   const [draft, setDraft] = useState('')
   const abandoned = useRef(false) // Escape beats the blur it triggers; see `commit`
   const [busy, setBusy] = useState(false)
@@ -55,9 +72,9 @@ export function ProviderKeyBlock({ provider }: { provider: ProviderChoice }): JS
     void aiKeyStatus(provider)
       .then(setStatus)
       .catch(() => setStatus(null))
-    void aiKeyStatus(other)
-      .then((s) => setOtherStored(s.present))
-      .catch(() => setOtherStored(false))
+    void Promise.all(others.map((p) => aiKeyStatus(p)))
+      .then((all) => setOthersStored(others.filter((_, i) => all[i].present)))
+      .catch(() => setOthersStored([]))
   }
   // Re-bound on every provider switch: the mask, the source and the copy all belong to that key.
   useEffect(() => {
@@ -119,9 +136,10 @@ export function ProviderKeyBlock({ provider }: { provider: ProviderChoice }): JS
       <h4>Provider key</h4>
       {/* The whole point of this block, above the field rather than below it. */}
       <p className="settings-notice">
-        Entering an {copy.company} API key sends your search queries and the contents of the documents you
-        index {copy.flow}. What happens to that data there is governed by your own agreement and terms of use
-        with {copy.company}, not by anything PrismLCA can promise.{' '}
+        Entering {copy.company === 'OpenAI' || copy.company === 'OpenRouter' ? 'an' : 'a'} {copy.company} API
+        key sends {copy.sends} {copy.flow}. What happens to that data there is governed by your own agreement
+        and terms of use with {copy.company}, not by anything PrismLCA can promise.{' '}
+        {copy.terms ? <>{copy.terms} </> : null}
         <strong>Set a spending limit on the key.</strong> PrismLCA has brakes of its own — a cost ceiling per
         run, a tool-round budget, and the running total under Usage &amp; costs — but the account is yours and
         so is the bill, including what a run costs when a brake is switched off or fails.
@@ -166,10 +184,11 @@ export function ProviderKeyBlock({ provider }: { provider: ProviderChoice }): JS
           </>
         )}
       </p>
-      {otherStored ? (
+      {othersStored.length ? (
         <p className="settings-hint">
-          Your {KEY_COPY[other].company} key stays stored — switch the provider back any time and it applies
-          again.
+          Your {othersStored.map((p) => KEY_COPY[p].company).join(' and ')}{' '}
+          {othersStored.length === 1 ? 'key stays' : 'keys stay'} stored — switch the provider back any time
+          and it applies again.
         </p>
       ) : null}
       {saved ? <p className="settings-hint ok">Stored.</p> : null}

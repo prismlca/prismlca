@@ -5,6 +5,7 @@
  */
 import { ipcMain } from 'electron'
 
+import { asAiProvider } from '../../shared/aiDefaults'
 import { getApiKey, resetApiKey } from '../ai/client'
 import {
   clearSecret,
@@ -22,7 +23,7 @@ export function registerKeyIpc(deps: AiIpcDeps): void {
   // Everything below takes a provider argument, defaulting to OpenRouter for older callers. The
   // guard matters because the value crosses the IPC boundary: anything unknown becomes the default
   // rather than a new file entry in secrets.json.
-  const asProvider = (p: unknown): Provider => (p === 'openai' ? 'openai' : 'openrouter')
+  const asProvider = (p: unknown): Provider => asAiProvider(p)
 
   // Renderer → main: everything Settings may know about the stored key — that there is one, a masked
   // hint, whether the environment is overriding it, and which OS store holds it. Never the key.
@@ -40,6 +41,9 @@ export function registerKeyIpc(deps: AiIpcDeps): void {
    *  store (secrets.resolve). Pushing the typed value instead sent the backend a key the chat did not
    *  use, and clearing pushed '' while the environment still held one. */
   const pushEffective = async (provider: Provider): Promise<void> => {
+    // The Google key serves the chat only: the backend has no Google embedding backend, so it never
+    // receives that key — a credential goes where it is used and nowhere else.
+    if (provider === 'google') return
     const key = resolveKey(provider).key ?? ''
     // Best-effort: the backend may still be starting. It also reads the keys from its environment at
     // spawn, so a failure here only costs the no-restart convenience.

@@ -1,7 +1,7 @@
 /**
  * The transport-agnostic half of a streamed chat request: send with retry-and-backoff, abandon a
  * stalled stream, split SSE lines, and let the transport translate each parsed event. Extracted
- * verbatim from the original OpenRouter client — both supported providers speak SSE over one POST,
+ * verbatim from the original OpenRouter client — every supported provider speaks SSE over one POST,
  * so the resilience mechanics are genuinely shared while the wire formats are not.
  */
 import { AiProviderError, type ChatTransport, type StreamChatOpts, type StreamEvent } from './types'
@@ -187,7 +187,7 @@ export async function* runChatStream<S>(
     if (!finished) await reader.cancel().catch(() => {})
   }
 
-  const rest = transport.finish(state)
+  const rest = await transport.finish(state)
   if (rest.some((ev) => ev.type === 'usage')) sentUsage = true
   // See the doc block: exactly one usage per request, empty when the provider stayed silent.
   if (!sentUsage) yield { type: 'usage', usage: {} }

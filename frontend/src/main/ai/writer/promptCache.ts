@@ -16,7 +16,13 @@
  */
 import { findModel } from '../models'
 import { getActiveProvider } from '../providers/state'
-import type { ChatMessage, StreamChatOpts, ToolSpec } from '../providers/types'
+import {
+  assistantToolTurn,
+  type ChatMessage,
+  type ProviderReplay,
+  type StreamChatOpts,
+  type ToolSpec
+} from '../providers/types'
 import { routingSession } from '../routingSession'
 import { collectText, type CostSample } from '../stream'
 import type { CostSink } from '../subagent'
@@ -96,10 +102,11 @@ export async function askInShape(opts: {
   onFinish?: (reason: string) => void
 }): Promise<string> {
   for (let attempt = 0; ; attempt++) {
-    const seen: { calls: Array<{ id: string; name: string; arguments: string }>; finish: string | null } = {
-      calls: [],
-      finish: null
-    }
+    const seen: {
+      calls: Array<{ id: string; name: string; arguments: string }>
+      replay?: ProviderReplay
+      finish: string | null
+    } = { calls: [], finish: null }
     const text = await collectText({
       model: opts.model,
       messages: opts.messages,
@@ -110,8 +117,9 @@ export async function askInShape(opts: {
       onFinish: (reason) => {
         seen.finish = reason
       },
-      onToolCalls: (calls) => {
+      onToolCalls: (calls, replay) => {
         seen.calls = calls
+        seen.replay = replay
       },
       onCost: (model, sample) => {
         logCache(opts.label, model, sample)
@@ -126,15 +134,7 @@ export async function askInShape(opts: {
       opts.onFinish?.(LOOKUP_INSTEAD_OF_ANSWER)
       return text
     }
-    opts.messages.push({
-      role: 'assistant',
-      content: text.trim() ? text : null,
-      tool_calls: seen.calls.map((c) => ({
-        id: c.id,
-        type: 'function',
-        function: { name: c.name, arguments: c.arguments }
-      }))
-    })
+    opts.messages.push(assistantToolTurn(text.trim() ? text : null, seen.calls, seen.replay))
     for (const c of seen.calls)
       opts.messages.push({ role: 'tool', tool_call_id: c.id, content: NO_LOOKUP_NOW })
   }

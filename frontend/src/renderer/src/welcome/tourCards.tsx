@@ -22,6 +22,7 @@ import ChatPreview from './ChatPreview'
 import RailPreview from './RailPreview'
 import TourLink from './TourLink'
 import githubLogo from '../assets/logos/github.svg'
+import googleLogo from '../assets/logos/google.svg'
 import openaiLogo from '../assets/logos/openai.svg'
 import openrouterLogo from '../assets/logos/openrouter.svg'
 
@@ -237,7 +238,7 @@ export const TOUR_CARDS: TourCard[] = [
     body: (
       <>
         <p>
-          The AI assistant runs on a key of your own — PrismLCA sells no tokens and adds no margin. Two
+          The AI assistant runs on a key of your own — PrismLCA sells no tokens and adds no margin. Three
           providers are implemented:
         </p>
         <p>
@@ -250,6 +251,11 @@ export const TOUR_CARDS: TourCard[] = [
           <b>OpenAI</b> — a key straight from the source, if you would rather have one vendor and one invoice.
           <br />
           <TourLink href="platform.openai.com/api-keys" />
+        </p>
+        <p>
+          <b>Google</b> — the same for Gemini: a Google AI Studio key from a project with billing.
+          <br />
+          <TourLink href="aistudio.google.com/apikey" />
         </p>
         <p className="wt-muted">
           The key is stored encrypted on this machine and never reaches us. What does leave your machine is
@@ -273,6 +279,13 @@ export const TOUR_CARDS: TourCard[] = [
           <div>
             <div className="wt-prov-name">OpenAI</div>
             <div className="wt-prov-sub">Direct · one vendor, one invoice</div>
+          </div>
+        </div>
+        <div className="wt-prov">
+          <img src={googleLogo} alt="" className="wt-prov-logo" />
+          <div>
+            <div className="wt-prov-name">Google</div>
+            <div className="wt-prov-sub">Direct · Gemini models</div>
           </div>
         </div>
         <div className="wt-note">Keys are stored encrypted, locally. PrismLCA never sees them.</div>
@@ -362,11 +375,12 @@ export const TOUR_CARDS: TourCard[] = [
     visual: (
       <div className="wt-doors">
         <div className="wt-doors-row">
-          <b>AI assistant, web search, report writer, import matching</b> → OpenRouter or OpenAI; a PDF for a
-          model that cannot read PDFs is turned into text at Cloudflare
+          <b>AI assistant, web search, report writer, import matching</b> → OpenRouter, OpenAI or Google; a
+          PDF for a model that cannot read PDFs is turned into text at Cloudflare
         </div>
         <div className="wt-doors-row">
-          <b>Voice input</b> → your recording to Whisper, via the same provider
+          <b>Voice input</b> → your recording to the same provider’s speech model (Whisper, gpt-transcribe or
+          Gemini 3.5 Transcribe)
         </div>
         <div className="wt-doors-row">
           <b>Transport distances</b> → place names to OpenRouteService / Mapbox

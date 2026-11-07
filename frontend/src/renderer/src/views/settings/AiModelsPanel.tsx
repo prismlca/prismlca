@@ -11,8 +11,8 @@ import { useSortState } from '../../lib/useSortState'
 import {
   AA_INDEX_VERSION,
   AA_RATINGS_PULLED,
-  DEFAULT_MODEL_ID,
-  DEFAULT_OPENAI_MODEL_ID,
+  defaultChatModelFor,
+  GOOGLE_PRICES_CHECKED,
   OPENAI_PRICES_CHECKED
 } from '../../../../shared/aiDefaults'
 import type { ProviderChoice } from './ProviderKeyBlock'
@@ -135,7 +135,7 @@ export function AiModelsPanel(): JSX.Element {
   const inCatalogue = (id: string): boolean => providerModels.some((m) => m.id === id)
   const foreign = (id: string): boolean => models.length > 0 && !!id && !inCatalogue(id)
   const shownValue = (id: string): string => (id && inCatalogue(id) ? id : '')
-  const defaultChatId = provider === 'openai' ? DEFAULT_OPENAI_MODEL_ID : DEFAULT_MODEL_ID
+  const defaultChatId = defaultChatModelFor(provider)
   const sortVal = (m: AiModelInfo, key: ModelSortKey): string | number | null => {
     if (key === 'lab') return labKey(m.id)
     if (key === 'label') return m.label
@@ -258,7 +258,8 @@ export function AiModelsPanel(): JSX.Element {
             Runs <code>research_web</code> and <code>research_bom</code> in isolation: no access to your
             model, web search only, one parallel leg per question. Wants a cheap model that searches well
             rather than a clever one — each leg is a separate paid request, and web search costs about{' '}
-            {provider === 'openai' ? '$0.01' : '$0.005'} per search.
+            {provider === 'openai' ? '$0.01' : provider === 'google' ? '$0.014' : '$0.005'} per search
+            {provider === 'google' ? ' query, after 5,000 free a month' : ''}.
           </>
         }
         value={shownValue(researchModel)}
@@ -415,6 +416,12 @@ export function AiModelsPanel(): JSX.Element {
         <p className="settings-hint">
           <b>*</b> Kept by hand — OpenAI has no pricing API. As of <b>{priceDate(OPENAI_PRICES_CHECKED)}</b>;
           its costs are estimates.
+        </p>
+      ) : provider === 'google' ? (
+        <p className="settings-hint">
+          <b>*</b> Kept by hand — Google has no pricing API. Paid-tier prices as of{' '}
+          <b>{priceDate(GOOGLE_PRICES_CHECKED)}</b>, including the increases Google has announced; its costs
+          are estimates.
         </p>
       ) : (
         <p className="settings-hint">

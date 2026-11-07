@@ -166,6 +166,7 @@ describe('welcome tour', () => {
     for (const service of [
       'OpenRouter',
       'OpenAI',
+      'Google',
       'OpenRouteService',
       'Eurostat',
       'Whisper',

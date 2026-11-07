@@ -16,7 +16,7 @@ import { trackWriteAll } from './report/writeAllRuns'
 export interface AiModelInfo {
   id: string
   /** Which API serves this model; absent = 'openrouter'. Pickers show only the active provider's. */
-  provider?: 'openrouter' | 'openai'
+  provider?: AiProviderId
   label: string
   descriptor: string
   temperature: number | null // null = vendor default (parameter not sent)
@@ -70,7 +70,7 @@ export interface ChatSummary {
 // existed.
 export type { AttachmentMeta, ToolTrace } from '../../../shared/ipc'
 import type { PendingAsk } from '../../../shared/ipc'
-import type { ReasoningEffort } from '../../../shared/aiDefaults'
+import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -123,18 +123,16 @@ export const aiHasKey = (): Promise<boolean> => window.prism.ai.hasKey()
 
 export type { KeyStatus } from '../../../shared/ipc'
 
-// `provider` picks whose key ('openrouter' | 'openai'); omitted = OpenRouter (the older callers).
-export const aiKeyStatus = (provider?: 'openrouter' | 'openai'): Promise<KeyStatus> =>
+// `provider` picks whose key; omitted = OpenRouter (the older callers).
+export const aiKeyStatus = (provider?: AiProviderId): Promise<KeyStatus> =>
   window.prism.ai.keyStatus(provider)
 /** Fired on `window` once a key was stored or cleared, so an open chat re-asks whether it may send. */
 export const KEY_CHANGED_EVENT = 'prism:ai-key-changed'
 const announceKeys = <T>(p: Promise<T>): Promise<T> =>
   p.finally(() => window.dispatchEvent(new Event(KEY_CHANGED_EVENT)))
-export const aiSetKey = (
-  key: string,
-  provider?: 'openrouter' | 'openai'
-): Promise<{ ok: boolean; error?: string }> => announceKeys(window.prism.ai.setKey(key, provider))
-export const aiClearKey = (provider?: 'openrouter' | 'openai'): Promise<{ ok: boolean }> =>
+export const aiSetKey = (key: string, provider?: AiProviderId): Promise<{ ok: boolean; error?: string }> =>
+  announceKeys(window.prism.ai.setKey(key, provider))
+export const aiClearKey = (provider?: AiProviderId): Promise<{ ok: boolean }> =>
   announceKeys(window.prism.ai.clearKey(provider))
 
 /** One model's usage in one month, as the main process books it (see main/ai/usage.ts). `cost` is

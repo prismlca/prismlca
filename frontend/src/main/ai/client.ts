@@ -2,14 +2,15 @@
  * The provider dispatcher: one `streamChat` for every caller, routed to the active provider's
  * transport (Settings → AI → Provider; module state in providers/state.ts, mirrored like
  * the ZDR flag, so a call deep inside an agent turn needs no path back to the renderer). Key
- * resolution and caching live here too — per provider, because both keys may be stored at once and
- * switching providers must never forget the other one.
+ * resolution and caching live here too — per provider, because all keys may be stored at once and
+ * switching providers must never forget another one.
  *
  * The API key never reaches the renderer — it is read here in the main process only.
  */
 import { resolve, type Provider } from '../secrets'
-import { modelBelongsTo, providerDefaults } from './models'
+import { isDirectOnlyId, modelBelongsTo, providerDefaults } from './models'
 import { runChatStream } from './providers/engine'
+import { googleTransport, transcribeGoogle } from './providers/google'
 import { openaiTransport, transcribeOpenAi } from './providers/openai'
 import { fetchOpenRouterPricing, openrouterTransport, transcribeOpenRouter } from './providers/openrouter'
 import { getActiveProvider } from './providers/state'
@@ -52,23 +53,25 @@ export function resetApiKey(): void {
 
 const NO_KEY_MESSAGE: Record<ProviderId, string> = {
   openrouter: 'No OpenRouter API key found — add one under Settings → AI → Provider.',
-  openai: 'No OpenAI API key found — add one under Settings → AI → Provider.'
+  openai: 'No OpenAI API key found — add one under Settings → AI → Provider.',
+  google: 'No Google API key found — add one under Settings → AI → Provider.'
 }
 
 const TRANSPORTS: Record<ProviderId, ChatTransport<any>> = {
   openrouter: openrouterTransport,
-  openai: openaiTransport
+  openai: openaiTransport,
+  google: googleTransport
 }
 
 /**
  * Last-resort guard on the model id, per provider. The call sites already resolve their defaults
  * provider-aware (findModel, providerDefaults) and ai/index.ts sanitizes stored choices, so this
- * firing means a straggler — but a bare OpenRouter id travelling to api.openai.com would 404 an
+ * firing means a straggler — but an id from another provider travelling to a direct API would 404 an
  * entire run over a stale setting, and that trade is never worth it. OpenRouter keeps today's
  * permissive pass-through (the eval harness sends ids the catalogue does not know on purpose).
  */
 function requestModelFor(id: string, p: ProviderId): string {
-  if (p === 'openrouter' && !(modelBelongsTo(id, 'openai') && !modelBelongsTo(id, 'openrouter'))) return id
+  if (p === 'openrouter' && !isDirectOnlyId(id)) return id
   if (p !== 'openrouter' && modelBelongsTo(id, p)) return id
   const fallback = providerDefaults(p).chat
   console.warn(`[prism-ai] model "${id}" is not available under the ${p} provider — using ${fallback}`)
@@ -87,7 +90,7 @@ export async function* streamChat(opts: StreamChatOpts): AsyncGenerator<StreamEv
   yield* runChatStream(TRANSPORTS[p], { ...opts, model: requestModelFor(opts.model, p) }, key)
 }
 
-/** Transcribe a voice recording via the active provider (see providers/*.ts for the two endpoints —
+/** Transcribe a voice recording via the active provider (see providers/*.ts for the three endpoints —
  *  genuinely different wire formats AND models, which is why the ledger books what this returns). */
 export async function transcribeAudio(
   opts: TranscribeOpts
@@ -95,12 +98,14 @@ export async function transcribeAudio(
   const p = getActiveProvider()
   const key = getApiKey(p)
   if (!key) throw new AiProviderError(NO_KEY_MESSAGE[p], 'no_key')
-  return p === 'openai' ? transcribeOpenAi(opts, key) : transcribeOpenRouter(opts, key)
+  if (p === 'openai') return transcribeOpenAi(opts, key)
+  if (p === 'google') return transcribeGoogle(opts, key)
+  return transcribeOpenRouter(opts, key)
 }
 
 /** Live pricing ($/1M tokens) for the given model ids. OpenRouter publishes its prices over the API;
- *  OpenAI does not, so OpenAI catalogue entries carry hand-maintained list prices instead
- *  (see models.ts) and are never looked up here. */
+ *  OpenAI and Google do not, so their catalogue entries carry hand-maintained list prices instead
+ *  (see directModels.ts) and are never looked up here. */
 export async function fetchPricing(
   ids: string[]
 ): Promise<Record<string, { input: number; output: number }>> {

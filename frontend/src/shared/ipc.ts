@@ -12,7 +12,7 @@
  * no DOM APIs, no imports that exist on only one side.
  */
 import type { ChatPlan, ChatRun, RunOutcome } from './plan'
-import type { ReasoningEffort } from './aiDefaults'
+import type { AiProviderId, ReasoningEffort } from './aiDefaults'
 
 import type { TransportSettings } from './distanceDefaults'
 import type { DisplaySettings } from './displayDefaults'
@@ -392,13 +392,13 @@ export type McpEvent =
 
 export interface AppSettings {
   /**
-   * Which API serves the assistant: OpenRouter (one key, many labs, ZDR routing) or OpenAI
-   * directly. A GLOBAL switch, not per model — the model pickers below show only the active
-   * provider's catalogue, and stored ids from the other provider stay stored but read as ''
-   * (= the role's default) while it is inactive. Keys for both providers stay stored in parallel;
-   * switching never clears either one.
+   * Which API serves the assistant: OpenRouter (one key, many labs, ZDR routing), OpenAI directly or
+   * Google directly. A GLOBAL switch, not per model — the model pickers below show only the active
+   * provider's catalogue, and stored ids from another provider stay stored but read as ''
+   * (= the role's default) while it is inactive. Keys for all providers stay stored in parallel;
+   * switching never clears any of them.
    */
-  provider: 'openrouter' | 'openai'
+  provider: AiProviderId
   /** Chat model id, and the model that writes report chapters ('' = follow the chat model). */
   model: string
   writerModel: string

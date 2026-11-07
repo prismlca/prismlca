@@ -72,26 +72,33 @@
  * Artificial Analysis requires attribution wherever these numbers are shown. The Settings table
  * carries it under the two columns; `docs/DATENHERKUNFT.md` carries the source row.
  */
-import { DEFAULT_MODEL_ID, DEFAULT_OPENAI_MODEL_ID, type ReasoningEffort } from '../../shared/aiDefaults'
+import {
+  DEFAULT_MODEL_ID,
+  DEFAULT_GOOGLE_MODEL_ID,
+  DEFAULT_OPENAI_MODEL_ID,
+  defaultChatModelFor,
+  type AiProviderId,
+  type ReasoningEffort
+} from '../../shared/aiDefaults'
 import { labKey } from '../../shared/labKey'
+import { DIRECT_MODELS } from './directModels'
 import { loadUserModelsFromUserData } from './userModels'
 
 export interface AiModel {
-  id: string // the provider's model id (OpenRouter: 'vendor/model'; OpenAI: bare, e.g. 'gpt-6.1-sol')
+  id: string // the provider's model id (OpenRouter: 'vendor/model'; direct: bare, e.g. 'gpt-6.1-sol')
   /** Which API serves this model. Absent = 'openrouter', so the original catalogue reads unchanged. */
-  provider?: 'openrouter' | 'openai'
+  provider?: AiProviderId
   /**
-   * Hand-maintained LIST prices in $/1M tokens — REQUIRED on every `provider: 'openai'` entry
-   * (models.test.ts enforces it) and absent on OpenRouter entries, whose prices are fetched live.
-   * OpenAI has no pricing endpoint and reports no `usage.cost`, so this table is what the cost
-   * breaker, the ledger and the per-message cost are computed from (providers/openai.ts). A stale
-   * price here is a silently mis-calibrated cost limit: whoever touches an OpenAI entry re-checks
-   * these numbers against developers.openai.com/api/docs/pricing AND bumps `OPENAI_PRICES_CHECKED`
-   * (shared/aiDefaults.ts), which is the date the settings table shows the user — the same
-   * discipline as the
-   * ratings block above.
+   * Hand-maintained LIST prices in $/1M tokens — REQUIRED on every direct-vendor entry (OpenAI,
+   * Google; models.test.ts enforces it) and absent on OpenRouter entries, whose prices are fetched
+   * live. Neither direct vendor reports a cost, so this table is what the cost breaker, the ledger and
+   * the per-message cost are computed from. The rows and the rules for keeping them live in
+   * directModels.ts.
    */
   pricing?: { input: number; cachedInput: number; output: number }
+  /** A price change the vendor has already announced, from the given day (YYYY-MM-DD) on. Read through
+   *  `priceOn` (directModels.ts), never directly — the transports and the table must agree on the day. */
+  priceChanges?: Array<{ from: string; input: number; cachedInput: number; output: number }>
   label: string // human name
   /** Short quality/cost hint, shown in the pickers. Strength first, price second, "open weight"
    *  where the weights are published. Written against the v4.3 ratings below and the
@@ -172,18 +179,6 @@ export interface AiModel {
  *    0.217 $ while its report-writing calls billed nothing, and the difference was six
  *    `research_web` legs, booked against the model's name in `ai-usage.json`.
  */
-/**
- * Hand-maintained NON-TOKEN list prices (developers.openai.com pricing docs; the date of the last
- * check is `OPENAI_PRICES_CHECKED` in shared/aiDefaults.ts, which the settings table prints —
- * bump it here and there in the same commit),
- * kept beside the per-model `pricing` table so every hand-kept number lives on one page: OpenAI
- * publishes no pricing API, so whoever touches an OpenAI entry re-verifies these two as well.
- */
-//: The web_search tool bills per CALL on top of the tokens: $10 per 1k calls.
-export const OPENAI_WEB_SEARCH_USD_PER_CALL = 0.01
-//: Per-minute list price of the transcription model (see OPENAI_STT_MODEL in providers/openai.ts).
-export const OPENAI_STT_USD_PER_MINUTE = 0.0045
-
 /**
  * The catalogue as it is maintained — new entries go wherever they read best next to their
  * neighbours' comments. Nothing displays this order: {@link getModels} returns the sorted view,
@@ -512,74 +507,8 @@ const CATALOGUE: AiModel[] = [
     vision: false,
     selectable: false
   },
-
-  // --- Direct-OpenAI catalogue (Settings → AI → provider 'OpenAI') --------------------------------
-  //
-  // The GPT-6 family, verified against developers.openai.com/api/docs/models on 2026-10-01: Astra
-  // (flagship), 6.1 Sol (the balance of cost and intelligence) and Luna (cheap, high volume). Unlike
-  // GPT-5.6, whose flagship was the bare `gpt-5.6`, every GPT-6 API id carries its name. There is
-  // no GPT-6 Terra. All three: 1,050,000-token context, text+image input, reasoning models — which
-  // in this catalogue means temperature stays null (calibrated to their own defaults), like Kimi K3.
-  //
-  // `explicitCache` stays unset: OpenAI caches prompt prefixes automatically, and agent.test.ts
-  // holds that only Anthropic entries mark cache breakpoints explicitly.
-  //
-  // Pricing checked against OpenAI's docs on 2026-10-01 (Standard tier, short context). The page
-  // now also lists a "cache writes" price (1.25× input); it is not modelled here — the synthesis in
-  // providers/openai.ts books cached reads and uncached input only, an under-estimate by the write
-  // surcharge on the first turn of a prefix. Prompts in the long-context band are billed at 2× input
-  // / 1.5× output for the whole request; the synthesis deliberately ignores that too (contexts that
-  // large are rare here and compaction starts far below it). Said here so nobody reads the ledger
-  // as exact in those corners.
-  //
-  // The same models are also in the OpenRouter list above, under OpenRouter's ids — that is not a
-  // duplicate, it is the other route to them, and the table only ever shows the active provider's
-  // half.
-  //
-  // `intelligence`/`agentic` come from the Artificial Analysis pull like every other row (see the
-  // ratings block in the header), not from a separate reading.
-  {
-    id: 'gpt-6-astra',
-    provider: 'openai',
-    pricing: { input: 10, cachedInput: 1, output: 50 },
-    label: 'GPT-6 Astra (OpenAI)',
-    descriptor: 'strongest (OpenAI), priciest',
-    temperature: null,
-    intelligence: 52.7,
-    agentic: 51,
-    vision: true,
-    planTool: false,
-    contextTokens: 1050000,
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
-  },
-  {
-    id: 'gpt-6.1-sol',
-    provider: 'openai',
-    pricing: { input: 2, cachedInput: 0.1, output: 10 },
-    label: 'GPT-6.1 Sol (OpenAI)',
-    descriptor: 'strong, mid price (default)',
-    temperature: null,
-    intelligence: 51.8,
-    agentic: null,
-    vision: true,
-    planTool: false,
-    contextTokens: 1050000,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
-  },
-  {
-    id: 'gpt-6-luna',
-    provider: 'openai',
-    pricing: { input: 0.1, cachedInput: 0.01, output: 0.5 },
-    label: 'GPT-6 Luna (OpenAI)',
-    descriptor: 'cheapest',
-    temperature: null,
-    intelligence: 38.1,
-    agentic: null,
-    vision: true,
-    planTool: true,
-    contextTokens: 1050000,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
-  }
+  // The rows served by a vendor directly, with their hand-kept prices (directModels.ts).
+  ...DIRECT_MODELS
 ]
 
 /**
@@ -665,17 +594,23 @@ setUserModels(loadUserModelsFromUserData(BUILTIN_IDS))
 // the renderer (see src/shared/aiDefaults.ts).
 export { DEFAULT_MODEL_ID }
 
-type ProviderKey = 'openrouter' | 'openai'
+type ProviderKey = AiProviderId
 
 const providerOf = (m: AiModel): ProviderKey => m.provider ?? 'openrouter'
 
-const defaultIdFor = (p: ProviderKey): string => (p === 'openai' ? DEFAULT_OPENAI_MODEL_ID : DEFAULT_MODEL_ID)
+const defaultIdFor = (p: ProviderKey): string => defaultChatModelFor(p)
 
 /** Does the catalogue offer this id under this provider? Used to sanitize STORED model choices when
  *  the active provider changes: a Sonnet-5 id under the OpenAI provider is not an error, it is a
  *  choice that is inactive there — it degrades to '' (= the role's default) instead of a 404. */
 export function modelBelongsTo(id: string | undefined, p: ProviderKey): boolean {
   return !!id && getModels().some((m) => m.id === id && providerOf(m) === p)
+}
+
+/** A catalogue id that belongs to a DIRECT provider and not to OpenRouter — a choice made under
+ *  another provider, which must not travel to OpenRouter as-is. */
+export function isDirectOnlyId(id: string): boolean {
+  return (modelBelongsTo(id, 'openai') || modelBelongsTo(id, 'google')) && !modelBelongsTo(id, 'openrouter')
 }
 
 /** The catalogue entry for this id UNDER THIS PROVIDER — an unknown id, or one belonging to the
@@ -713,6 +648,19 @@ export function providerDefaults(p: ProviderKey): {
       review: 'gpt-6-luna',
       writerFallback: 'gpt-6-luna',
       match: 'gpt-6-luna'
+    }
+  // Under Google every role runs on 3.8 Flash: it is the cheap tier and the only chat model a
+  // free-tier key reaches. The reviewer is therefore the same model as the researcher, which the
+  // OpenRouter defaults avoid on purpose — accepted here because the Google list has no second cheap
+  // model; whoever wants a different reviewer picks Argon under Settings → AI → Models. Unmeasured as
+  // matcher (the OpenRouter/OpenAI choice was measured on four import sets); the first paid run says.
+  if (p === 'google')
+    return {
+      chat: DEFAULT_GOOGLE_MODEL_ID,
+      research: 'gemini-3.8-flash',
+      review: 'gemini-3.8-flash',
+      writerFallback: 'gemini-3.8-flash',
+      match: 'gemini-3.8-flash'
     }
   return {
     chat: DEFAULT_MODEL_ID,

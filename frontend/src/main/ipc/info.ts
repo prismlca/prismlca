@@ -15,6 +15,7 @@ import {
   setUserModels,
   type AiModel
 } from '../ai/models'
+import { priceOn } from '../ai/directModels'
 import { loadUserModels, userDataDir, userModelsPath, writeUserModels } from '../ai/userModels'
 import { toolCatalog } from '../ai/tools'
 import { getUsage } from '../ai/usage'
@@ -107,9 +108,10 @@ export function registerInfoIpc(deps: AiIpcDeps): void {
   ipcMain.handle('ai:tools', () => toolCatalog())
 
   // Renderer → main: catalog + pricing for the settings picker/info table. Two pricing sources by
-  // necessity: OpenRouter rows come from its live /models endpoint, OpenAI rows from the catalogue's
-  // hand-maintained list prices (OpenAI has no pricing API) — `pricingSource: 'list'` lets the table
-  // say so instead of presenting both as the same kind of number.
+  // necessity: OpenRouter rows come from its live /models endpoint, OpenAI and Google rows from the
+  // catalogue's hand-maintained list prices (neither has a pricing API) — `pricingSource: 'list'` lets
+  // the table say so instead of presenting both as the same kind of number. A list price is shown as it
+  // stands TODAY (`priceOn`), the same figure the transports bill with.
   ipcMain.handle('ai:models', async () => {
     // Chat rows only: the speech model is billed per audio unit, so asking for a token price would
     // put a number in the $/1M column that is not one (see fetchOpenRouterPricing).
@@ -123,8 +125,8 @@ export function registerInfoIpc(deps: AiIpcDeps): void {
     // this, opening the composer fetched OpenRouter's whole list on a fresh install with no key at all.
     const pricing = getApiKey('openrouter') ? await fetchPricing(orIds).catch(() => ({})) : {}
     return catalogue.map((m) =>
-      m.provider === 'openai'
-        ? { ...m, pricing: m.pricing ?? null, pricingSource: 'list' }
+      m.provider === 'openai' || m.provider === 'google'
+        ? { ...m, pricing: priceOn(m) ?? null, pricingSource: 'list' }
         : { ...m, pricing: (pricing as any)[m.id] ?? null }
     )
   })

@@ -10,7 +10,7 @@
  *    not exist here, which is why the Settings privacy switch is inert under this provider).
  *  - **Cost is synthesized, not reported**: the API returns token counts only, and there is no
  *    pricing endpoint. `finishUsage` prices the tokens against the catalogue's hand-maintained list
- *    prices (models.ts) plus the per-call web-search fee, and marks the figure `estimated`. The cost
+ *    prices (directModels.ts) plus the per-call web-search fee, and marks the figure `estimated`. The cost
  *    breaker, the ledger and the per-message cost all keep working off that one field.
  *  - **429 is two different things**: `insufficient_quota` arrives as HTTP 429 but is a hard
  *    out-of-credits condition — mapped to 'credits' and never retried; a plain 429 stays 'rate_limit'.
@@ -22,7 +22,8 @@
  * live smoke before release re-checks them — this file is where stale training knowledge would hide.
  */
 import { clampMaxTokens } from '../../../shared/aiDefaults'
-import { getModels, OPENAI_STT_USD_PER_MINUTE, OPENAI_WEB_SEARCH_USD_PER_CALL } from '../models'
+import { OPENAI_STT_USD_PER_MINUTE, OPENAI_WEB_SEARCH_USD_PER_CALL, priceOn } from '../directModels'
+import { getModels } from '../models'
 import {
   AiProviderError,
   type AccumTool,
@@ -39,7 +40,7 @@ const BASE_URL = 'https://api.openai.com/v1'
  *  clamped here rather than bounced by the API. */
 const MAX_OUTPUT_TOKENS = 128_000
 
-// The per-call web-search fee lives with the other hand-maintained prices in models.ts.
+// The per-call web-search fee lives with the other hand-maintained prices in directModels.ts.
 // Counted per `web_search_call` output item and added to the synthesized cost.
 
 function isQuota(body: string): boolean {
@@ -175,13 +176,14 @@ interface OaiState {
   webSearches: number
 }
 
-/** Price the reported tokens against the catalogue's list prices (see models.ts `pricing`). */
+/** Price the reported tokens against the catalogue's list prices (directModels.ts, `priceOn`). */
 function finishUsage(state: OaiState, response: any): StreamEvent {
   const u = response?.usage ?? {}
   const prompt: number | undefined = u.input_tokens
   const cached: number = u.input_tokens_details?.cached_tokens ?? 0
   const completion: number | undefined = u.output_tokens
-  const pricing = getModels().find((m) => m.id === state.model && m.provider === 'openai')?.pricing
+  const entry = getModels().find((m) => m.id === state.model && m.provider === 'openai')
+  const pricing = entry ? priceOn(entry) : undefined
   let cost: number | undefined
   if (pricing && typeof prompt === 'number' && typeof completion === 'number') {
     cost =

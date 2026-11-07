@@ -1,15 +1,25 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_OPENAI_MODEL_ID } from '../../shared/aiDefaults'
-import { DEFAULT_MODEL_ID, findModel, getModels, modelBelongsTo, providerDefaults } from './models'
+import { DEFAULT_GOOGLE_MODEL_ID, DEFAULT_OPENAI_MODEL_ID } from '../../shared/aiDefaults'
+import { billedBy, labKey } from '../../shared/labKey'
+import { priceOn } from './directModels'
+import {
+  DEFAULT_MODEL_ID,
+  findModel,
+  getModels,
+  isDirectOnlyId,
+  modelBelongsTo,
+  providerDefaults
+} from './models'
 
 const AI_MODELS = getModels()
 
 const LOGO_MAP = join(__dirname, '../../renderer/src/lib/labLogos.ts')
 
-/** Same rule as the renderer's labKey(): a bare id (no slash) is a direct-OpenAI catalogue id. */
-const vendorOf = (id: string): string => (id.includes('/') ? id.split('/')[0] : 'openai')
+/** The renderer's rule, imported rather than copied: a copy kept "bare = OpenAI" after Google's bare
+ *  ids arrived and failed the order test for a reason that had nothing to do with the order. */
+const vendorOf = labKey
 
 describe('lab logos', () => {
   it('are registered for every vendor in the catalogue', () => {
@@ -29,19 +39,24 @@ describe('lab logos', () => {
   })
 })
 
-describe('the direct-OpenAI half of the catalogue', () => {
-  const openai = AI_MODELS.filter((m) => m.provider === 'openai')
+describe.each(['openai', 'google'] as const)('the direct-%s half of the catalogue', (provider) => {
+  const rows = AI_MODELS.filter((m) => m.provider === provider)
 
-  it('exists, and its ids are bare (no vendor prefix — that is how labKey tells the halves apart)', () => {
-    expect(openai.length).toBeGreaterThan(0)
-    for (const m of openai) expect(m.id.includes('/'), m.id).toBe(false)
+  it('exists, its ids are bare, and the ledger books them to this provider', () => {
+    expect(rows.length).toBeGreaterThan(0)
+    for (const m of rows) {
+      expect(m.id.includes('/'), m.id).toBe(false)
+      // The cost table has no provider column: it tells the halves apart by the id alone.
+      expect(billedBy(m.id), m.id).toBe(provider)
+      expect(labKey(m.id), m.id).toBe(provider)
+    }
   })
 
   it('carries complete hand-maintained list prices on EVERY entry', () => {
-    // OpenAI reports no usage.cost and has no pricing endpoint: this table is the only thing the
+    // Neither vendor reports a cost or has a pricing endpoint: this table is the only thing the
     // cost circuit breaker sees. A missing entry does not error anywhere — it silently blinds the
     // breaker and the ledger, which is exactly the failure this assertion exists to make loud.
-    for (const m of openai) {
+    for (const m of rows) {
       expect(m.pricing, `${m.id} needs pricing {input, cachedInput, output}`).toBeDefined()
       expect(m.pricing!.input, m.id).toBeGreaterThan(0)
       expect(m.pricing!.cachedInput, m.id).toBeGreaterThan(0)
@@ -49,8 +64,32 @@ describe('the direct-OpenAI half of the catalogue', () => {
     }
   })
 
-  it('never marks explicitCache (OpenAI caches automatically; the marker is Anthropic-only)', () => {
-    for (const m of openai) expect(m.explicitCache, m.id).toBeUndefined()
+  it('dates its announced price changes in order, each one a complete price', () => {
+    for (const m of rows) {
+      const days = (m.priceChanges ?? []).map((c) => c.from)
+      for (const d of days) expect(d, m.id).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(days, m.id).toEqual([...days].sort())
+      for (const c of m.priceChanges ?? [])
+        expect(c.input * c.output * c.cachedInput, m.id).toBeGreaterThan(0)
+    }
+  })
+
+  it('never marks explicitCache (both vendors cache automatically; the marker is Anthropic-only)', () => {
+    for (const m of rows) expect(m.explicitCache, m.id).toBeUndefined()
+  })
+})
+
+describe('list prices by date', () => {
+  const argon = AI_MODELS.find((m) => m.id === 'gemini-4-argon' && m.provider === 'google')!
+
+  it('bills the price that applies on the day — the announced step included', () => {
+    expect(priceOn(argon, '2026-11-30')?.input).toBe(2)
+    expect(priceOn(argon, '2026-12-01')?.input).toBe(4)
+    expect(priceOn(argon, '2027-06-01')?.output).toBe(20)
+  })
+
+  it('is undefined for a row without hand-kept prices', () => {
+    expect(priceOn({ pricing: undefined })).toBeUndefined()
   })
 })
 
@@ -65,6 +104,17 @@ describe('provider-aware model resolution', () => {
     expect(findModel('anthropic/claude-sonnet-5.5', 'openai').id).toBe(DEFAULT_OPENAI_MODEL_ID)
     expect(findModel('gpt-6.1-sol', 'openrouter').id).toBe(DEFAULT_MODEL_ID)
     expect(findModel('gpt-6.1-sol', 'openai').id).toBe('gpt-6.1-sol')
+    // The same model under two ids: OpenRouter's prefixed row and Google's bare one never mix.
+    expect(findModel('google/gemini-3.8-flash', 'google').id).toBe(DEFAULT_GOOGLE_MODEL_ID)
+    expect(findModel('gemini-4-argon', 'openrouter').id).toBe(DEFAULT_MODEL_ID)
+    expect(findModel('gemini-4-argon', 'google').id).toBe('gemini-4-argon')
+  })
+
+  it('knows which ids must never travel to OpenRouter', () => {
+    expect(isDirectOnlyId('gpt-6-luna')).toBe(true)
+    expect(isDirectOnlyId('gemini-3.8-flash')).toBe(true)
+    expect(isDirectOnlyId('google/gemini-3.8-flash')).toBe(false)
+    expect(isDirectOnlyId('some/unknown-model')).toBe(false)
   })
 
   it('answers membership the way Settings sanitizes stored choices', () => {
@@ -75,9 +125,9 @@ describe('provider-aware model resolution', () => {
   })
 
   it('names only catalogue models in the per-provider defaults, chat defaults included', () => {
-    for (const p of ['openrouter', 'openai'] as const) {
+    for (const p of ['openrouter', 'openai', 'google'] as const) {
       const d = providerDefaults(p)
-      for (const id of [d.chat, d.research, d.review, d.writerFallback]) {
+      for (const id of [d.chat, d.research, d.review, d.writerFallback, d.match]) {
         expect(findModel(id, p).id, `${p}: ${id}`).toBe(id)
       }
     }

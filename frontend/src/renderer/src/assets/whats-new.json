@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-08",
+    "title": "Google as AI provider",
+    "details": "Settings → AI → Provider has a third card: Google, for Gemini 3.8 Flash and Gemini 4 Argon straight from Google with a key from Google AI Studio. Research tools search with Google Search, voice input uses Gemini 3.5 Transcribe, and costs appear under Usage & costs in a Google tab, estimated from Google's list prices."
+  },
+  {
     "date": "2026-11-06",
     "title": "ecoinvent 3.13",
     "details": "PrismLCA imports ecoinvent 3.13 into a new workspace: choose the extracted release and its LCIA workbook as before. The wizard now shows the release it read from the files, asks for the version only where they name none, and refuses a workbook from another release. The new IPCC 2021 (GHG Protocol mandatory) total is recommended beside the IPCC 2021 total."

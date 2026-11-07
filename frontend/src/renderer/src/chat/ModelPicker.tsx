@@ -3,9 +3,11 @@ import { aiKeyStatus, aiModels, KEY_CHANGED_EVENT, MODELS_CHANGED_EVENT, type Ai
 import { EffortIcon, SwapIcon } from '../components/icons'
 import { setAS, useAppSettings } from '../lib/appSettings'
 import {
+  asAiProvider,
   DEFAULT_MODEL_ID,
-  DEFAULT_OPENAI_MODEL_ID,
+  defaultChatModelFor,
   REASONING_EFFORT_SHORT,
+  type AiProviderId,
   type ReasoningEffort
 } from '../../../shared/aiDefaults'
 import { EffortDial } from '../components/EffortScale'
@@ -25,15 +27,20 @@ export const modelCatalogue = (): Promise<AiModelInfo[]> => {
   return MODEL_CATALOGUE
 }
 
-type Provider = 'openrouter' | 'openai'
-const PROVIDER_NAME: Record<Provider, string> = { openrouter: 'OpenRouter', openai: 'OpenAI' }
+type Provider = AiProviderId
+const PROVIDERS: Provider[] = ['openrouter', 'openai', 'google']
+const PROVIDER_NAME: Record<Provider, string> = {
+  openrouter: 'OpenRouter',
+  openai: 'OpenAI',
+  google: 'Google'
+}
 
 /**
  * The chat-model picker in the composer's control row, and the reasoning effort with it: the button
  * reads "Sonnet 5.5 (Claude): High", the menu has an Effort row pinned above the scrolling model
  * list, and that row opens the levels as a submenu — one control, not two.
- * When BOTH providers have a key, a "Change provider" row sits above it and swaps the list below;
- * with one key the provider stays where its key lives, Settings → AI.
+ * When two or more providers have a key, a "Change provider" row sits above it and offers those —
+ * swapping the list below; with one key the provider stays where its key lives, Settings → AI.
  * No props: all three choices are app settings, and picking writes through to them.
  */
 export default function ModelPicker(): JSX.Element {
@@ -46,7 +53,7 @@ export default function ModelPicker(): JSX.Element {
   // Both keys stored? Only then is a provider switch offered here: switching to a provider without
   // a key would lock the chat behind "no key" one click later. Re-asked when a key is stored or
   // cleared (Settings opens over this panel).
-  const [bothKeys, setBothKeys] = useState(false)
+  const [keyed, setKeyed] = useState<Provider[]>([])
   const [modelList, setModelList] = useState<AiModelInfo[]>([])
   const [modelsReady, setModelsReady] = useState(false)
   const modelRef = useRef<HTMLDivElement | null>(null)
@@ -57,13 +64,13 @@ export default function ModelPicker(): JSX.Element {
   // Only the active provider's models are offered, exactly as in Settings: a mixed list would let a
   // click store a model the current key cannot serve. A stored id from the other provider is left
   // alone and simply shown as-is — main resolves it the same way Settings describes.
-  const provider: Provider = settings.provider === 'openai' ? 'openai' : 'openrouter'
+  const provider: Provider = asAiProvider(settings.provider)
   const pickableModels = modelList.filter(
     (m) => (m.provider ?? 'openrouter') === provider && m.selectable !== false
   )
   // The effort is keyed by the EFFECTIVE model, the one main will send: a stored id from the other
   // provider resolves to the active provider's default there (ipc/chat.ts), and so must its effort.
-  const defaultId = provider === 'openai' ? DEFAULT_OPENAI_MODEL_ID : DEFAULT_MODEL_ID
+  const defaultId = defaultChatModelFor(provider)
   const effectiveId = pickableModels.some((m) => m.id === currentModel) ? currentModel : defaultId
   const effective = pickableModels.find((m) => m.id === effectiveId)
   // The button names the model that WILL answer. A stored id from the other provider (a switch
@@ -110,9 +117,9 @@ export default function ModelPicker(): JSX.Element {
 
   useEffect(() => {
     const check = (): void => {
-      void Promise.all([aiKeyStatus('openrouter'), aiKeyStatus('openai')])
-        .then(([a, b]) => setBothKeys(a.present && b.present))
-        .catch(() => setBothKeys(false))
+      void Promise.all(PROVIDERS.map((p) => aiKeyStatus(p)))
+        .then((all) => setKeyed(PROVIDERS.filter((_, i) => all[i].present)))
+        .catch(() => setKeyed([]))
     }
     check()
     window.addEventListener(KEY_CHANGED_EVENT, check)
@@ -220,7 +227,7 @@ export default function ModelPicker(): JSX.Element {
         <div className="chat-plus-menu chat-model-menu" role="menu" aria-label="Chat model">
           {/* Pinned above the list, outside its scroll box, so it stays put however long the list is —
               and so its flyout is not clipped by the list's overflow. */}
-          {bothKeys ? (
+          {keyed.length >= 2 ? (
             <div
               className="chat-menu-sub chat-model-head"
               onMouseEnter={providerFly.hold}
@@ -231,7 +238,7 @@ export default function ModelPicker(): JSX.Element {
                 role="menuitem"
                 aria-haspopup="menu"
                 aria-expanded={providerOpen}
-                title="Switch between OpenRouter and OpenAI — the model list follows."
+                title="Switch to another provider you have a key for — the model list follows."
                 onClick={() => {
                   setEffortOpen(false)
                   setProviderOpen((v) => !v)
@@ -253,7 +260,7 @@ export default function ModelPicker(): JSX.Element {
                   role="menu"
                   aria-label="Provider"
                 >
-                  {(['openrouter', 'openai'] as Provider[]).map((p) => (
+                  {PROVIDERS.filter((p) => p === provider || keyed.includes(p)).map((p) => (
                     <button
                       key={p}
                       className={`chat-menu-item chat-model-item${p === provider ? ' on' : ''}`}

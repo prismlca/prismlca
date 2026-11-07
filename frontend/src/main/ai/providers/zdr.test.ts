@@ -77,9 +77,10 @@ describe('zdrForModel', () => {
   })
 
   it('treats a bare id (no vendor) as not exempted', () => {
-    // Direct-OpenAI catalogue ids never reach this transport, but an id without a slash must not
-    // accidentally read as a vendor match.
+    // Direct catalogue ids (OpenAI, Google) never reach this transport, but an id without a slash
+    // must not accidentally read as a vendor match.
     on(true, true)
     expect(zdrForModel('gpt-6.1-sol')).toBe(true)
+    expect(zdrForModel('gemini-3.8-flash')).toBe(true)
   })
 })

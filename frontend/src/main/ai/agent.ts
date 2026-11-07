@@ -5,7 +5,7 @@
  */
 import { streamChat } from './client'
 import { attachmentParts, attachmentStub, heading, stubForPartText } from './attachments'
-import { AiProviderError, type ChatMessage } from './providers/types'
+import { AiProviderError, assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
 import type { AgentEvent, AttachmentMeta, ToolTrace } from '../../shared/ipc'
 import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } from './tools'
 import { buildSystemPrompt, LANGUAGE_NAMES, type Skill } from './systemPrompt'
@@ -967,6 +967,11 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // Web on for this chat: the app-wide kill switch and the chat's own "+" menu switch, both. One value
   // for the research helpers' refusal, for whether they and their skill are offered, and for the prompt.
   const webOn = req.webSearchAllowed !== false && req.webSearch !== false
+  // The provider's own search beside our function tools. Under Google that combination is a preview on
+  // its API (and wants another tool-choice mode), so there the chat reaches the web through the research
+  // tools only — `webOn` above still offers them. The prompt is told the same, so it never promises a
+  // search the request does not carry.
+  const inlineWeb = provider === 'google' ? false : req.webSearch
   const skills = offeredSkills(await deps.getSkills().catch(() => []), { web: webOn })
   /** Switched off for this chat: not offered — and not executed either, whatever the model still
    *  remembers from earlier in the conversation. */
@@ -1131,7 +1136,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     studyLanguage,
     comparisonBriefs,
     isNewChat: req.history.length === 0,
-    webSearch: req.webSearch,
+    webSearch: inlineWeb,
     distances: req.distancesAvailable === true && !!deps.distances,
     eurostat: req.eurostatAvailable === true && !!deps.eurostat,
     research: webOn,
@@ -1507,6 +1512,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       let finishReason = ''
       let roundText = ''
       let toolCalls: Array<{ id: string; name: string; arguments: string }> | null = null
+      let replay: ProviderReplay | undefined
       /** Reasoning of the round just streamed — read after it ends, to price an empty response. */
       let roundReasoningChars = 0
 
@@ -1551,7 +1557,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             tools: specs,
             temperature: model.temperature,
             maxTokens: req.maxTokens,
-            webSearch: req.webSearch,
+            webSearch: inlineWeb,
             webLookupsCap: req.webLookupsCap,
             reasoningEffort,
             // One routing key per chat, so its rounds stay with one provider's cache (routingSession.ts).
@@ -1599,6 +1605,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               onUsage(ev.usage)
             } else if (ev.type === 'tool_calls') {
               toolCalls = ev.calls
+              replay = ev.replay
             }
           }
           break
@@ -1750,15 +1757,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       }
 
       // Record the assistant's tool-call turn.
-      messages.push({
-        role: 'assistant',
-        content: roundText || null,
-        tool_calls: toolCalls.map((tc) => ({
-          id: tc.id,
-          type: 'function',
-          function: { name: tc.name, arguments: tc.arguments }
-        }))
-      })
+      messages.push(assistantToolTurn(roundText || null, toolCalls, replay))
 
       const imageParts: ChatMessage[] = []
       /** One call, executed and reported live; the ORDERED bookkeeping (trace, transcript message,

@@ -20,7 +20,7 @@
 import { streamChat } from './client'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
-import type { ChatMessage } from './providers/types'
+import { assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
 import type { CostSink } from './subagent'
 import { TOOL_BY_NAME } from './tools'
 import type { ToolCtx } from './tools'
@@ -369,6 +369,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
   for (let round = 0; round < allowance + 1; round++) {
     let roundText = ''
     let calls: Array<{ id: string; name: string; arguments: string }> | null = null
+    let replay: ProviderReplay | undefined
     // The tools stay on once the budget is gone, because withdrawing them re-bills the whole conversation.
     // The lookup that spends the last call says so; a model that asks again all the same loses them
     // after this round. Merely refusing each call let a persistent model burn every round.
@@ -405,6 +406,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
         finish = ev.reason
       } else if (ev.type === 'tool_calls') {
         calls = ev.calls
+        replay = ev.replay
       }
     }
     assertLive()
@@ -416,15 +418,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
       break
     }
 
-    messages.push({
-      role: 'assistant',
-      content: roundText || null,
-      tool_calls: calls.map((c) => ({
-        id: c.id,
-        type: 'function',
-        function: { name: c.name, arguments: c.arguments }
-      }))
-    })
+    messages.push(assistantToolTurn(roundText || null, calls, replay))
 
     for (const call of calls) {
       const allowed = allowedTools.includes(call.name)

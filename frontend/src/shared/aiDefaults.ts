@@ -27,6 +27,28 @@ export const DEFAULT_MODEL_ID = 'openai/gpt-6.1-sol'
  *  developers.openai.com on 2026-10-01. */
 export const DEFAULT_OPENAI_MODEL_ID = 'gpt-6.1-sol'
 
+/** Chat default under the direct-Google provider: Gemini 3.8 Flash, Google's strongest Flash. Chosen
+ *  over Gemini 4 Argon, the stronger model, because Argon has no free tier — a first try with a fresh
+ *  AI Studio key would otherwise end in a quota error before the first answer. Argon stays one click
+ *  away in the picker. Id verified against Google's model docs on 2026-11-07. */
+export const DEFAULT_GOOGLE_MODEL_ID = 'gemini-3.8-flash'
+
+/** The AI providers PrismLCA talks to: OpenRouter, and two vendors directly. One union for main and
+ *  renderer, so a fourth provider is a compile error at every place that has to decide about it. */
+export type AiProviderId = 'openrouter' | 'openai' | 'google'
+
+/** The chat default per provider — the one place the three constants above are told apart. */
+export function defaultChatModelFor(p: AiProviderId): string {
+  if (p === 'openai') return DEFAULT_OPENAI_MODEL_ID
+  if (p === 'google') return DEFAULT_GOOGLE_MODEL_ID
+  return DEFAULT_MODEL_ID
+}
+
+/** A stored or IPC-supplied provider value, sanitised: anything unknown is OpenRouter. */
+export function asAiProvider(value: unknown): AiProviderId {
+  return value === 'openai' || value === 'google' ? value : 'openrouter'
+}
+
 /**
  * Default tool-round budget per turn (a round may fire several tool calls). Deliberately high: the
  * assistant is meant to carry out larger multi-step tasks. Overridable in Settings → AI.
@@ -48,6 +70,10 @@ export const DEFAULT_OPENAI_MODEL_ID = 'gpt-6.1-sol'
  * from a fresh one, so nothing but the habit protects it.
  */
 export const OPENAI_PRICES_CHECKED = '2026-10-01'
+
+/** The same date for the hand-maintained Google list prices (aistudio.google.com/docs/pricing), under
+ *  the same rule: bump it in the same commit as any Google price, including a scheduled change. */
+export const GOOGLE_PRICES_CHECKED = '2026-11-07'
 
 /**
  * The Artificial Analysis pull behind the `intelligence`/`agentic` columns: the day it was fetched,

@@ -5,7 +5,7 @@
  */
 import type { BrowserWindow } from 'electron'
 
-import { modelBelongsTo } from '../ai/models'
+import { isDirectOnlyId, modelBelongsTo } from '../ai/models'
 import { getActiveProvider } from '../ai/providers/state'
 
 export interface AiIpcDeps {
@@ -36,10 +36,10 @@ export const modelForActive = (id: string | undefined): string => {
   if (!id) return ''
   const p = getActiveProvider()
   if (p === 'openrouter') {
-    // Permissive, except for an id the catalogue knows as a DIRECT OpenAI model and not as an
-    // OpenRouter one: that is a choice made under the other provider, and it travelled to OpenRouter
+    // Permissive, except for an id the catalogue knows as a DIRECT model (OpenAI, Google) and not as
+    // an OpenRouter one: that is a choice made under another provider, and it travelled to OpenRouter
     // as-is while the UI showed the default.
-    return modelBelongsTo(id, 'openai') && !modelBelongsTo(id, 'openrouter') ? '' : id
+    return isDirectOnlyId(id) ? '' : id
   }
   return modelBelongsTo(id, p) ? id : ''
 }
