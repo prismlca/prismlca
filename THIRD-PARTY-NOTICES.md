@@ -1,7 +1,7 @@
 # PrismLCA third-party notices
 
 PrismLCA version 0.9.10.
-Generated from git commit cb7ef858 by `backend/scripts/third_party_notices.py`.
+Generated from git commit 4bb32872 by `backend/scripts/third_party_notices.py`.
 152 Python runtime packages, 267 npm packages.
 
 This file lists the third-party software, fonts, icons, data and models that ship with PrismLCA or that PrismLCA downloads, together with their licence and notice texts. PrismLCA itself is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only); see the LICENSE file. The file is generated; do not edit it by hand.
@@ -43321,7 +43321,7 @@ SOFTWARE.
 
 ### Simple Icons — CC0-1.0
 
-The logos in `frontend/src/renderer/src/assets/logos/` (anthropic = Claude, deepseek, github, google = Google Gemini, minimax, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are taken from Simple Icons, released under CC0 1.0; linkedin and openai come from earlier Simple Icons releases and have since been removed there. MiniMax's mark is in Simple Icons with its owner's permission and under its brand terms; GitHub's follows GitHub's logo guidelines. The logos label the respective provider or service only; all marks remain trademarks of their owners and imply no endorsement or partnership. Simple Icons' disclaimer follows its licence.
+The logos in `frontend/src/renderer/src/assets/logos/` (anthropic = Claude, deepseek, github, minimax, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are taken from Simple Icons, released under CC0 1.0; linkedin and openai come from earlier Simple Icons releases and have since been removed there. MiniMax's mark is in Simple Icons with its owner's permission and under its brand terms; GitHub's follows GitHub's logo guidelines. The logos label the respective provider or service only; all marks remain trademarks of their owners and imply no endorsement or partnership. Simple Icons' disclaimer follows its licence.
 
 File: `backend/scripts/third_party_texts/simple-icons-LICENSE.md`
 
@@ -43416,7 +43416,7 @@ The pull request of icon removal must be submitted by the Simple Icons maintaine
 
 ### LobeHub Icons — MIT
 
-The Tencent logo (`frontend/src/renderer/src/assets/logos/tencent.svg`) is taken from LobeHub Icons, Copyright (c) 2023 LobeHub. The mark remains a trademark of Tencent and implies no endorsement or partnership.
+The Tencent and Google Gemini logos (`frontend/src/renderer/src/assets/logos/tencent.svg`, `google.svg` from `gemini-color.svg`) are taken from LobeHub Icons, Copyright (c) 2023 LobeHub. The marks remain trademarks of Tencent and Google and imply no endorsement or partnership.
 
 File: `backend/scripts/third_party_texts/lobehub-icons-LICENSE.txt`
 

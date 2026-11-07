@@ -676,7 +676,7 @@ def _icons_section() -> list[str]:
         "Simple Icons — CC0-1.0",
         [
             "The logos in `frontend/src/renderer/src/assets/logos/` (anthropic = Claude, deepseek, github, "
-            "google = Google Gemini, minimax, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are "
+            "minimax, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are "
             "taken from Simple Icons, released under CC0 1.0; linkedin and openai come from earlier Simple "
             "Icons releases and have since been removed there. MiniMax's mark is in Simple Icons with its "
             "owner's permission and under its brand terms; GitHub's follows GitHub's logo guidelines. The "
@@ -688,9 +688,9 @@ def _icons_section() -> list[str]:
     out += _text_block(
         "LobeHub Icons — MIT",
         [
-            "The Tencent logo (`frontend/src/renderer/src/assets/logos/tencent.svg`) is taken from LobeHub "
-            "Icons, Copyright (c) 2023 LobeHub. The mark remains a trademark of Tencent and implies no "
-            "endorsement or partnership.",
+            "The Tencent and Google Gemini logos (`frontend/src/renderer/src/assets/logos/tencent.svg`, "
+            "`google.svg` from `gemini-color.svg`) are taken from LobeHub Icons, Copyright (c) 2023 LobeHub. "
+            "The marks remain trademarks of Tencent and Google and imply no endorsement or partnership.",
         ],
         [_hand_text("lobehub-icons-LICENSE.txt")],
     )

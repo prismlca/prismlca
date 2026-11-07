@@ -8,10 +8,10 @@ new model revision, ...), and update the date here.
 | File | Used for | Source |
 |---|---|---|
 | `feather-LICENSE.txt` | Feather Icons (most icons in `frontend/src/renderer/src/components/icons.tsx`, inline glyphs in `splash.ts`, `ComposerMenu.tsx`, `ModelPicker.tsx`) | <https://raw.githubusercontent.com/feathericons/feather/main/LICENSE> |
-| `simple-icons-LICENSE.md` | Simple Icons (provider logos in `frontend/src/renderer/src/assets/logos/`), CC0-1.0 | <https://raw.githubusercontent.com/simple-icons/simple-icons/develop/LICENSE.md> |
+| `simple-icons-LICENSE.md` | Simple Icons (most provider logos in `frontend/src/renderer/src/assets/logos/`), CC0-1.0 | <https://raw.githubusercontent.com/simple-icons/simple-icons/develop/LICENSE.md> |
 | `simple-icons-DISCLAIMER.md` | Simple Icons trademark disclaimer | <https://raw.githubusercontent.com/simple-icons/simple-icons/develop/DISCLAIMER.md> |
 | `lucide-LICENSE.txt` | Lucide (ISC; the icons in `icons.tsx` and the microphone glyphs that its source notes name), including Lucide's own MIT notice for its Feather-derived icons | <https://raw.githubusercontent.com/lucide-icons/lucide/main/LICENSE> (identical to the `LICENSE` of `lucide-static` 1.61.0) |
-| `lobehub-icons-LICENSE.txt` | LobeHub Icons (MIT; the Tencent logo in `assets/logos/`) | <https://raw.githubusercontent.com/lobehub/lobe-icons/master/LICENSE> |
+| `lobehub-icons-LICENSE.txt` | LobeHub Icons (MIT; the Tencent and Google Gemini logos in `assets/logos/`) | <https://raw.githubusercontent.com/lobehub/lobe-icons/master/LICENSE> |
 | `libertinus-OFL.txt` | Libertinus Serif, embedded in the `typst` wheel | <https://raw.githubusercontent.com/alerque/libertinus/master/OFL.txt> |
 | `newcm-GUST-FONT-LICENSE.txt` | New Computer Modern, embedded in the `typst` wheel (GUST Font License 1.0) | <https://www.gust.org.pl/projects/e-foundry/licenses/GUST-FONT-LICENSE.txt> |
 | `newcm-License.txt` | New Computer Modern licence statement (GPL-3.0-or-later + Font Exception + Distribution Exception for NewCM10-Regular) | <https://mirrors.ctan.org/fonts/newcomputermodern/License.txt> |
