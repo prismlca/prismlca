@@ -1,6 +1,18 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// The catalogue pulls in modules that import `electron`. Mocked, as in every other main-process test:
+// the real package resolves its binary at import, and in CI that meant downloading Electron from GitHub
+// in the middle of a test run — a GitHub outage turned the run red.
+vi.mock('electron', () => ({
+  app: {
+    getPath: () => '/tmp/prism-tools-test',
+    getAppPath: () => '/tmp/prism-tools-test',
+    isPackaged: false
+  }
+}))
+
 import { withUnknownFields } from './agent'
 import { UNOPENED_LINKS_SHOWN } from './tools/advice/hotspots'
 import {
