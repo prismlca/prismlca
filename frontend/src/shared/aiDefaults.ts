@@ -75,7 +75,7 @@ export function asAiProvider(value: unknown): AiProviderId {
  * **Bump this in the same commit as any OpenAI price.** `models.test.ts` cannot tell a stale date
  * from a fresh one, so nothing but the habit protects it.
  */
-export const OPENAI_PRICES_CHECKED = '2026-10-01'
+export const OPENAI_PRICES_CHECKED = '2026-11-08'
 
 /** The same date for the hand-maintained Google list prices (aistudio.google.com/docs/pricing), under
  *  the same rule: bump it in the same commit as any Google price, including a scheduled change. */

@@ -26,6 +26,7 @@ import {
   type ToolSpec,
   type TranscribeOpts
 } from './types'
+import { contextOverflow } from './contextOverflow'
 
 const BASE_URL = 'https://openrouter.ai/api/v1'
 
@@ -127,7 +128,7 @@ function translateStatus(status: number, body: string): AiProviderError {
     )
   if (status === 429)
     return new AiProviderError('OpenRouter rate limit reached — wait a moment and try again.', 'rate_limit')
-  if (status === 400 && /context|token|length/i.test(detail))
+  if (status === 400 && contextOverflow(detail))
     return new AiProviderError("Request too long for this model's context window.", 'context')
   // "No endpoints" / "all providers ignored" reads like PrismLCA filtered the model away. This
   // message once said categorically that no PrismLCA setting could cause it, and that was
@@ -151,9 +152,10 @@ function translateStatus(status: number, body: string): AiProviderError {
   return new AiProviderError(`OpenRouter error (HTTP ${status})${detail ? ` — ${detail}` : ''}.`, 'http')
 }
 
-/** Statuses worth a second attempt: rate limits and the provider's own bad days. Everything else —
+/** Statuses worth a second attempt: rate limits and the provider's own bad days — among them 520–524,
+ *  what Cloudflare in front of OpenRouter answers when the origin fails or times out. Everything else —
  *  a bad key, exhausted credits, a malformed request — fails the same way however often it is sent. */
-const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
+const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524])
 
 interface OrState {
   model: string
@@ -325,9 +327,20 @@ export const openrouterTransport: ChatTransport<OrState> = {
     // event (with finish_reason "error"); read as an ordinary chunk it left the partial text standing
     // as the answer and a review with half a text counted as ok.
     if (parsed?.error && typeof parsed.error === 'object') {
+      // Its `code` is the HTTP status the request would have failed with: classified and retried the same.
       const code = Number(parsed.error.code)
-      const message = String(parsed.error.message || 'OpenRouter reported an error mid-stream.')
-      throw new AiProviderError(message, code === 402 ? 'credits' : code === 429 ? 'rate_limit' : 'http')
+      const status = Number.isInteger(code) && code >= 400 && code < 600 ? code : 0
+      const body = JSON.stringify({
+        error: { message: String(parsed.error.message || 'OpenRouter reported an error mid-stream.') }
+      })
+      const e = status
+        ? translateStatus(status, body)
+        : new AiProviderError(
+            String(parsed.error.message || 'OpenRouter reported an error mid-stream.'),
+            'http'
+          )
+      e.retryable = RETRYABLE.has(status)
+      throw e
     }
     // Which endpoint actually served this request. OpenRouter puts it on every chunk; it used to
     // be dropped, and with it the only way to tell a slow provider from a slow model. Measured

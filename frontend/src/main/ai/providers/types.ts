@@ -35,9 +35,15 @@ export type ProviderErrorCode =
  */
 export class AiProviderError extends Error {
   code: ProviderErrorCode
-  constructor(message: string, code: ProviderErrorCode) {
+  /** A second request may clear it — an overload, a rate limit, a server fault, a connection that
+   *  dropped. Only read for an error that arrives after the request was accepted (inside the stream,
+   *  or a stream cut short): the engine re-sends while nothing of the reply has reached the caller
+   *  (engine.ts). A refused request is judged by its HTTP status (`ChatTransport.retryable`) instead. */
+  retryable: boolean
+  constructor(message: string, code: ProviderErrorCode, retryable = false) {
     super(message)
     this.code = code
+    this.retryable = retryable
   }
 }
 

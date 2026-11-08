@@ -32,8 +32,9 @@
  *    the current models) — neither is ever sent.
  */
 import { clampMaxTokens, type ReasoningEffort } from '../../../shared/aiDefaults'
-import { ANTHROPIC_CACHE_WRITE_FACTOR, ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH, priceOn } from '../directModels'
+import { ANTHROPIC_CACHE_WRITE_FACTOR, ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH, priceFor } from '../directModels'
 import { getModels } from '../models'
+import { contextOverflow } from './contextOverflow'
 import {
   AiProviderError,
   lastUserIndex,
@@ -118,7 +119,7 @@ function errorFor(status: number, type: string, message: string): AiProviderErro
       'Request too large for the Anthropic API — fewer or smaller attachments.',
       'context'
     )
-  if (status === 400 && /too long|context window|exceed.*(token|context)|maximum.*tokens/i.test(detail))
+  if (status === 400 && contextOverflow(detail))
     return new AiProviderError("Request too long for this model's context window.", 'context')
   if (status === 404 || type === 'not_found_error')
     return new AiProviderError(
@@ -142,6 +143,30 @@ function translateStatus(status: number, body: string): AiProviderError {
 }
 
 const RETRYABLE = new Set([408, 429, 500, 502, 503, 504, 529])
+
+/** The HTTP status each error type stands for (Anthropic's error docs), for an error that arrives as a
+ *  stream event after a 200 — classified and retried like the refused request it would otherwise be. */
+const STATUS_OF: Record<string, number> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529
+}
+
+/** An `error` event inside the stream, as the shared error with its retry verdict. Anthropic documents
+ *  the overload as such an event: the request was accepted and then not served. */
+function streamError(type: string, message: string): AiProviderError {
+  const status = STATUS_OF[type] ?? 0
+  const e = errorFor(status, type, message)
+  e.retryable = RETRYABLE.has(status) && !/credit balance/i.test(message)
+  return e
+}
 
 // --- request --------------------------------------------------------------------------------------
 
@@ -169,7 +194,7 @@ function partToBlock(p: Record<string, unknown>): Record<string, unknown> | null
   let block: Record<string, unknown> | null = null
   if (p.type === 'text') {
     const text = String(p.text ?? '')
-    block = text ? { type: 'text', text } : null
+    block = blankText(text) ? null : { type: 'text', text }
   } else if (p.type === 'image_url') {
     const url = (p.image_url as { url?: string } | undefined)?.url
     const d = url ? dataUrl(url) : null
@@ -187,8 +212,13 @@ function partToBlock(p: Record<string, unknown>): Record<string, unknown> | null
   return block
 }
 
+/** Text the API refuses as a block of its own: empty, or nothing but whitespace (measured: an assistant
+ *  turn holding "\n\n" is a 400 "text content blocks must contain non-whitespace text"). A tool round's
+ *  text can be exactly that, and a stored transcript would then fail every later request of the chat. */
+const blankText = (text: string): boolean => !text.trim()
+
 function blocksOf(content: ChatMessage['content']): Record<string, unknown>[] {
-  if (typeof content === 'string') return content ? [{ type: 'text', text: content }] : []
+  if (typeof content === 'string') return blankText(content) ? [] : [{ type: 'text', text: content }]
   if (!Array.isArray(content)) return []
   return content.map(partToBlock).filter((b): b is Record<string, unknown> => !!b)
 }
@@ -228,6 +258,8 @@ function assistantBlocks(m: ChatMessage, inCurrentTurn: boolean): Record<string,
     blocks = m.replay.steps
       .filter(isObj)
       .filter((b) => !(b.type === 'tool_use' && !ids.has(String(b.id))))
+      // Dropped the same way in every request, so the reasoning that follows was made on what is sent.
+      .filter((b) => !(b.type === 'text' && typeof b.text === 'string' && blankText(b.text)))
       .map((b) => {
         const { cache_control: _old, ...rest } = b
         return rest
@@ -407,9 +439,8 @@ export function usageEvent(model: string, usage: Record<string, unknown>, firstP
   const byTtl = isObj(usage.cache_creation) ? usage.cache_creation : null
   const hour = byTtl ? num(byTtl.ephemeral_1h_input_tokens) : 0
   const entry = getModels().find((m) => m.id === model && m.provider === 'anthropic')
-  const base = entry ? priceOn(entry) : undefined
   const tierPrompt = searches && firstPrompt ? firstPrompt : prompt
-  const price = entry?.longPrompt && tierPrompt > entry.longPrompt.above ? entry.longPrompt : base
+  const price = entry ? priceFor(entry, tierPrompt) : undefined
   const reported = typeof usage.input_tokens === 'number'
   const cost =
     price && reported
@@ -617,7 +648,7 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
       case 'error': {
         const err = isObj(parsed.error) ? parsed.error : {}
         // Billed all the same: the usage so far is booked first, the error raised from `finish`.
-        state.failure = errorFor(0, String(err.type ?? ''), String(err.message ?? ''))
+        state.failure = streamError(String(err.type ?? ''), String(err.message ?? ''))
         events.push(...sendUsage(state))
         break
       }

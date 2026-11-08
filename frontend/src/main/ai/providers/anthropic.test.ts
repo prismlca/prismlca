@@ -317,6 +317,33 @@ describe('the transcript', () => {
     expect(closed.messages[2].content.map((b) => b.type)).toEqual(['tool_result', 'text'])
   })
 
+  it('drops text blocks that hold nothing but whitespace — the API refuses them', () => {
+    // Inside the turn: the replayed round keeps its reasoning and its call, the blank text goes, and a
+    // tool that printed only whitespace answered all the same.
+    const m = callMsg('toolu_1')
+    m.replay!.steps.splice(0, 0, { type: 'text', text: '\n\n' })
+    const { messages } = toMessages([
+      { role: 'user', content: 'go' },
+      m,
+      { role: 'tool', tool_call_id: 'toolu_1', content: '  \n' }
+    ])
+    expect(messages[1].content.map((b) => b.type)).toEqual(['thinking', 'tool_use'])
+    expect(messages[2].content).toEqual([
+      { type: 'tool_result', tool_use_id: 'toolu_1', content: '(no output)' }
+    ])
+    // An earlier turn's round text that was only a line break disappears too, and so does an answer
+    // that was nothing but whitespace.
+    const earlier = toMessages([
+      { role: 'user', content: 'go' },
+      assistantToolTurn('\n', [{ id: 'toolu_9', name: 'list_models', arguments: '{}' }]),
+      { role: 'tool', tool_call_id: 'toolu_9', content: 'ok' },
+      { role: 'assistant', content: '\n' },
+      { role: 'user', content: 'next' }
+    ])
+    expect(earlier.messages.map((x) => x.role)).toEqual(['user', 'assistant', 'user'])
+    expect(earlier.messages[1].content.map((b) => b.type)).toEqual(['tool_use'])
+  })
+
   it('drops a replayed call the loop no longer carries — a call without its result is a 400', () => {
     const m = callMsg('toolu_1')
     m.tool_calls = []
@@ -505,9 +532,9 @@ describe('the stream', () => {
     expect(events.filter((e) => e.type === 'finish')).toEqual([{ type: 'finish', reason: 'length' }])
   })
 
-  it('books what an error mid-stream had used, then raises it', async () => {
+  it('books what an error mid-stream had used, then raises one that would fail again', async () => {
     fetchMock.mockResolvedValueOnce(
-      sse([messageStart(), { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }])
+      sse([messageStart(), { type: 'error', error: { type: 'invalid_request_error', message: 'Bad block' } }])
     )
     const seen: StreamEvent[] = []
     await expect(
@@ -519,13 +546,98 @@ describe('the stream', () => {
         }))
           seen.push(ev)
       })()
-    ).rejects.toThrow(/overloaded/i)
+    ).rejects.toThrow(/Bad block/)
     const usage = seen.find((e) => e.type === 'usage')
     expect(usage?.type === 'usage' && usage.usage.prompt_tokens).toBe(487)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends again when the stream opens with an overload, before any of the reply', async () => {
+    // Anthropic's documented overload after a 200: the request was accepted and not served.
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      fetchMock
+        .mockResolvedValueOnce(
+          sse([messageStart(), { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }])
+        )
+        .mockResolvedValueOnce(sse(toolRound))
+      const run = collect()
+      await vi.advanceTimersByTimeAsync(5_000)
+      const events = await run
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(events.some((e) => e.type === 'tool_calls')).toBe(true)
+      expect(events.filter((e) => e.type === 'usage')).toHaveLength(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends no second request once the spend ceiling tripped on the failed one', async () => {
+    fetchMock.mockImplementation(async () =>
+      sse([messageStart(), { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }])
+    )
+    const budget = new AbortController()
+    const seen: StreamEvent[] = []
+    await expect(
+      (async () => {
+        for await (const ev of streamChat({
+          model: 'claude-sonnet-5-5',
+          messages: [{ role: 'user', content: 'x' }],
+          temperature: null,
+          budget: budget.signal
+        })) {
+          seen.push(ev)
+          // The caller's ceiling trips on the failed attempt's own usage, as the agent's does.
+          if (ev.type === 'usage') budget.abort()
+        }
+      })()
+    ).rejects.toThrow(/overloaded/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a failed attempt’s stop reason away from the retry that succeeded', async () => {
+    // A paused reply whose connection closed before message_stop, then a complete answer.
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      fetchMock
+        .mockResolvedValueOnce(
+          sse([
+            messageStart(),
+            blockStart(0, { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: {} }),
+            blockStop(0),
+            messageDelta('pause_turn', usage0)
+          ])
+        )
+        .mockResolvedValueOnce(
+          sse([
+            messageStart(),
+            blockStart(0, { type: 'text', text: 'Done.' }),
+            blockStop(0),
+            messageDelta('end_turn', usage0),
+            messageStop
+          ])
+        )
+      const run = collect({ webSearch: true })
+      await vi.advanceTimersByTimeAsync(5_000)
+      const events = await run
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(events.filter((e) => e.type === 'finish')).toEqual([{ type: 'finish', reason: 'stop' }])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('calls a reply without message_stop cut off, and releases none of its calls', async () => {
-    fetchMock.mockResolvedValueOnce(sse(toolRound.slice(0, -1)))
+    // Text reached the caller before the cut, so the request is not sent again: the error stands.
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, { type: 'text', text: '' }),
+        blockDelta(0, { type: 'text_delta', text: 'Checking.' }),
+        blockStop(0),
+        ...toolRound.slice(5, -1)
+      ])
+    )
     const seen: StreamEvent[] = []
     await expect(
       (async () => {

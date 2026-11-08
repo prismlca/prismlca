@@ -7,7 +7,7 @@ import {
   DEFAULT_OPENAI_MODEL_ID
 } from '../../shared/aiDefaults'
 import { billedBy, labKey } from '../../shared/labKey'
-import { priceOn } from './directModels'
+import { priceFor, priceOn } from './directModels'
 import {
   DEFAULT_MODEL_ID,
   findModel,
@@ -82,6 +82,13 @@ describe.each(['anthropic', 'google', 'openai'] as const)(
 
     it('marks explicitCache exactly on Anthropic (the others cache automatically)', () => {
       for (const m of rows) expect(m.explicitCache === true, m.id).toBe(provider === 'anthropic')
+    })
+
+    it('applies the long-prompt prices only above the threshold, to the whole request', () => {
+      for (const m of rows.filter((r) => r.longPrompt)) {
+        expect(priceFor(m, m.longPrompt!.above), m.id).toEqual(priceOn(m))
+        expect(priceFor(m, m.longPrompt!.above + 1), m.id).toBe(m.longPrompt)
+      }
     })
 
     it('prices a longer prompt higher, if it prices it apart at all', () => {

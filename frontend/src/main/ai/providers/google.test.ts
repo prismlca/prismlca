@@ -454,10 +454,14 @@ describe('the event stream', () => {
 
   it('releases no call from a reply that ended before Google completed it', async () => {
     // A clean end of stream after one finished call and one unfinished: running the first would be half
-    // a round's mutations, so the reply is an error instead.
+    // a round's mutations, so the reply is an error instead. Text reached the caller first, so the
+    // request is not sent again.
     capture(() =>
       sse([
         created,
+        start(9, { type: 'model_output' }),
+        delta(9, { type: 'text', text: 'Deleting.' }),
+        stop(9),
         start(0, { type: 'thought' }),
         delta(0, { type: 'thought_signature', signature: 's' }),
         stop(0),
@@ -533,6 +537,62 @@ describe('the event stream', () => {
 })
 
 describe('a failed interaction', () => {
+  it('sends again an interaction that failed for a passing reason, before any of the reply', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      let n = 0
+      const { calls } = capture(() =>
+        ++n === 1
+          ? sse([
+              created,
+              {
+                event_type: 'interaction.completed',
+                interaction: { status: 'failed', error: { code: 503, message: 'Overloaded.' }, usage: {} }
+              }
+            ])
+          : sse([
+              created,
+              start(0, { type: 'model_output' }),
+              delta(0, { type: 'text', text: 'Fine.' }),
+              stop(0),
+              completed('completed', { total_input_tokens: 10, total_output_tokens: 2 })
+            ])
+      )
+      const seen: StreamEvent[] = []
+      const run = (async () => {
+        for await (const ev of streamChat({ model: 'gemini-3.8-flash', messages: [], temperature: null }))
+          seen.push(ev)
+      })()
+      await vi.advanceTimersByTimeAsync(5_000)
+      await run
+      expect(calls).toHaveLength(2)
+      expect(seen.filter((e) => e.type === 'delta').map((e) => (e as { text: string }).text)).toEqual([
+        'Fine.'
+      ])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('treats a used-up tier in the stream as billing, not as traffic', async () => {
+    const { calls } = capture(() =>
+      sse([
+        created,
+        {
+          event_type: 'error',
+          error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded … limit: 0, model: x' }
+        }
+      ])
+    )
+    await expect(
+      (async () => {
+        for await (const _ of streamChat({ model: 'gemini-3.8-flash', messages: [], temperature: null }))
+          void _
+      })()
+    ).rejects.toMatchObject({ code: 'credits' })
+    expect(calls).toHaveLength(1)
+  })
+
   it('books what Google billed before it raises the failure', async () => {
     capture(() =>
       sse([
@@ -553,7 +613,7 @@ describe('a failed interaction', () => {
         for await (const ev of streamChat({ model: 'gemini-3.8-flash', messages: [], temperature: null }))
           seen.push(ev)
       })()
-    ).rejects.toMatchObject({ code: 'http', message: 'Internal error.' })
+    ).rejects.toMatchObject({ code: 'http', message: 'Google: Internal error.' })
     const usage = seen.filter((e) => e.type === 'usage')
     expect(usage).toHaveLength(1)
     expect(usage[0].type === 'usage' && usage[0].usage.prompt_tokens).toBe(1000)

@@ -95,6 +95,51 @@ beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
 
 describe('retrying a request that produced nothing', () => {
+  it('sends again when the provider reports a passing error before any of the reply', async () => {
+    // Accepted with a 200, then the upstream failed before a word: the same as a refused 502.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(raw('data: {"error":{"code":502,"message":"upstream failed"}}\n\n'))
+      .mockResolvedValueOnce(ok('second time'))
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    expect(error).toBeUndefined()
+    expect(
+      events
+        .filter((e) => e.type === 'delta')
+        .map((e) => (e as { text?: string }).text)
+        .join('')
+    ).toBe('second time')
+    // Both requests happened, so both are booked.
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(2)
+  })
+
+  it('does not send again what fails the same way every time', async () => {
+    const fetchMock = vi.fn(async () => raw('data: {"error":{"code":402,"message":"no credits"}}\n\n'))
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect()
+    await vi.runAllTimersAsync()
+    expect((await run).error).toMatchObject({ code: 'credits' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('adds a random share to the wait, so parallel requests do not return in step', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(1)
+    const fetchMock = vi.fn().mockResolvedValueOnce(fail(429)).mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetchMock)
+    const run = drain()
+    // The curve says 1.5 s; the full random share makes it 2.25 s.
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await vi.runAllTimersAsync()
+    await run
+    vi.restoreAllMocks()
+  })
+
   it('retries a rate limit and returns the answer', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(fail(429)).mockResolvedValueOnce(ok('after the wait'))
     vi.stubGlobal('fetch', fetchMock)
@@ -242,24 +287,22 @@ describe('a provider that never answers', () => {
 describe('a reply the provider never finished', () => {
   it('is an error, not a short answer — and its calls are not handed out', async () => {
     // A tool call fully streamed, then the connection closed cleanly: no finish reason, no [DONE].
-    vi.stubGlobal(
-      'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          raw(
-            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function",' +
-              '"function":{"name":"delete_process","arguments":"{}"}}]}}]}\n\n'
-          )
-        )
+    // Nothing reached the caller, so the request is sent again — and cut off every time here.
+    const fetchMock = vi.fn(async () =>
+      raw(
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function",' +
+          '"function":{"name":"delete_process","arguments":"{}"}}]}}]}\n\n'
+      )
     )
+    vi.stubGlobal('fetch', fetchMock)
     const run = collect()
     await vi.runAllTimersAsync()
     const { events, error } = await run
     expect(error).toMatchObject({ code: 'network' })
     expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
-    // …and the call is booked once, cost unknown: the provider billed what it generated.
-    expect(events.filter((e) => e.type === 'usage')).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // …and each request is booked once, cost unknown: the provider billed what it generated.
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(3)
   })
 
   it('books a request that failed mid-stream exactly once', async () => {

@@ -22,7 +22,7 @@
  * live smoke before release re-checks them — this file is where stale training knowledge would hide.
  */
 import { clampMaxTokens } from '../../../shared/aiDefaults'
-import { OPENAI_STT_USD_PER_MINUTE, OPENAI_WEB_SEARCH_USD_PER_CALL, priceOn } from '../directModels'
+import { OPENAI_STT_USD_PER_MINUTE, OPENAI_WEB_SEARCH_USD_PER_CALL, priceFor } from '../directModels'
 import { getModels } from '../models'
 import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
@@ -34,6 +34,7 @@ import {
   type StreamEvent,
   type TranscribeOpts
 } from './types'
+import { contextOverflow } from './contextOverflow'
 
 const BASE_URL = 'https://api.openai.com/v1'
 
@@ -50,9 +51,11 @@ function isQuota(body: string): boolean {
 
 function translateStatus(status: number, body: string): AiProviderError {
   let detail = ''
+  let code = ''
   try {
     const err = JSON.parse(body)?.error
     detail = err?.message ?? ''
+    code = typeof err?.code === 'string' ? err.code : ''
   } catch {
     /* non-JSON error body */
   }
@@ -68,13 +71,14 @@ function translateStatus(status: number, body: string): AiProviderError {
     )
   if (status === 429)
     return new AiProviderError('OpenAI rate limit reached — wait a moment and try again.', 'rate_limit')
-  if (status === 400 && /context|token|length/i.test(detail))
+  if (status === 400 && contextOverflow(`${code} ${detail}`))
     return new AiProviderError("Request too long for this model's context window.", 'context')
   if (status === 404)
     return new AiProviderError(
       `${detail || 'Model not found on the OpenAI API.'} — pick another model under Settings → AI.`,
       'http'
     )
+  if (!status) return new AiProviderError(`OpenAI: ${detail || 'the response failed.'}`, 'http')
   return new AiProviderError(`OpenAI error (HTTP ${status})${detail ? ` — ${detail}` : ''}.`, 'http')
 }
 
@@ -82,6 +86,30 @@ function translateStatus(status: number, body: string): AiProviderError {
  *  credits" wearing a rate-limit status: three backoffs against that wall is a ten-second hang
  *  ending in the same error. */
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
+
+/** The HTTP status OpenAI answers with for the same error code, for a failure that arrives inside the
+ *  stream (`response.failed`, `error`) after a 200. An unknown code stands for no status: not retried. */
+const STATUS_OF: Record<string, number> = {
+  rate_limit_exceeded: 429,
+  insufficient_quota: 429,
+  context_length_exceeded: 400,
+  invalid_prompt: 400,
+  server_error: 500,
+  resource_unavailable: 503
+}
+
+/** A failure inside the stream, classified and given its retry verdict like a refused request. */
+function streamError(
+  err: { code?: unknown; message?: unknown } | undefined,
+  fallback: string
+): AiProviderError {
+  const code = typeof err?.code === 'string' ? err.code : ''
+  const status = STATUS_OF[code] ?? 0
+  const body = JSON.stringify({ error: { code, message: String(err?.message || fallback) } })
+  const e = translateStatus(status, body)
+  e.retryable = RETRYABLE.has(status) && !isQuota(body)
+  return e
+}
 
 /** Flatten message content to plain text (drops non-text parts; used for roles that carry prose). */
 function contentToText(content: ChatMessage['content']): string {
@@ -184,7 +212,9 @@ function finishUsage(state: OaiState, response: any): StreamEvent {
   const cached: number = u.input_tokens_details?.cached_tokens ?? 0
   const completion: number | undefined = u.output_tokens
   const entry = getModels().find((m) => m.id === state.model && m.provider === 'openai')
-  const pricing = entry ? priceOn(entry) : undefined
+  // Above 272K input tokens the whole request costs the long-prompt prices. A reply that searched may
+  // report its passes summed and be placed in the band too early: too high rather than too low.
+  const pricing = entry && typeof prompt === 'number' ? priceFor(entry, prompt) : undefined
   let cost: number | undefined
   if (pricing && typeof prompt === 'number' && typeof completion === 'number') {
     cost =
@@ -335,16 +365,10 @@ export const openaiTransport: ChatTransport<OaiState> = {
         events.push(finishUsage(state, parsed.response))
         break
       }
-      case 'response.failed': {
-        const msg = parsed.response?.error?.message
-        throw new AiProviderError(msg ? String(msg) : 'OpenAI reported the response as failed.', 'http')
-      }
-      case 'error': {
-        throw new AiProviderError(
-          typeof parsed.message === 'string' && parsed.message ? parsed.message : 'OpenAI stream error.',
-          'http'
-        )
-      }
+      case 'response.failed':
+        throw streamError(parsed.response?.error, 'OpenAI reported the response as failed.')
+      case 'error':
+        throw streamError(parsed, 'OpenAI stream error.')
     }
     return events
   },

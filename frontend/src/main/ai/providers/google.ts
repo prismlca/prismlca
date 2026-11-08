@@ -43,6 +43,7 @@ import {
   type StreamEvent,
   type TranscribeOpts
 } from './types'
+import { contextOverflow } from './contextOverflow'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
@@ -136,7 +137,7 @@ function translateStatus(status: number, body: string): AiProviderError {
         'aistudio.google.com/rate-limit.',
       'rate_limit'
     )
-  if (status === 400 && /context|too long|exceeds the maximum|token count/i.test(detail))
+  if (status === 400 && contextOverflow(detail))
     return new AiProviderError("Request too long for this model's context window.", 'context')
   if (status === 404)
     return new AiProviderError(
@@ -152,6 +153,39 @@ function translateStatus(status: number, body: string): AiProviderError {
 }
 
 const RETRYABLE = new Set([408, 429, 500, 502, 503, 504])
+
+const retryableStatus = (status: number, body: string): boolean =>
+  RETRYABLE.has(status) && !(status === 429 && (notInTier(body) || dailyQuota(body)))
+
+/** Google's status names (google.rpc.Code) → the HTTP status the same failure carries on a refused
+ *  request, for an error reported inside the stream. */
+const STATUS_OF: Record<string, number> = {
+  INVALID_ARGUMENT: 400,
+  FAILED_PRECONDITION: 400,
+  UNAUTHENTICATED: 401,
+  PERMISSION_DENIED: 403,
+  NOT_FOUND: 404,
+  RESOURCE_EXHAUSTED: 429,
+  INTERNAL: 500,
+  UNAVAILABLE: 503,
+  DEADLINE_EXCEEDED: 504
+}
+
+/** An error inside the stream (an `error` event, or an interaction that ended `failed`), classified and
+ *  given its retry verdict like the refused request it stands for. */
+function streamError(
+  err: { code?: unknown; status?: unknown; message?: unknown } | undefined,
+  fallback: string
+): AiProviderError {
+  const code = Number(err?.code)
+  const status =
+    Number.isInteger(code) && code >= 400 && code < 600 ? code : (STATUS_OF[String(err?.status ?? '')] ?? 0)
+  const message = typeof err?.message === 'string' && err.message ? err.message : fallback
+  const body = JSON.stringify({ error: { message, status: err?.status } })
+  const e = status ? translateStatus(status, body) : new AiProviderError(`Google: ${message}`, 'http')
+  e.retryable = retryableStatus(status, body)
+  return e
+}
 
 // --- request --------------------------------------------------------------------------------------
 
@@ -313,7 +347,7 @@ interface GoogleState {
   /** `interaction.completed` arrived. A stream that ends without it is a cut-off reply, not a short one. */
   completed: boolean
   /** The interaction ended as `failed`: raised from `finish`, AFTER its usage went to the ledger. */
-  failure?: string
+  failure?: AiProviderError
 }
 
 /** The url_citation annotations on one content part, wherever the API puts them. */
@@ -417,8 +451,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
   name: 'google',
   unreachable: 'Google unreachable — check your internet connection.',
   translateStatus,
-  retryable: (status, body) =>
-    RETRYABLE.has(status) && !(status === 429 && (notInTier(body) || dailyQuota(body))),
+  retryable: retryableStatus,
 
   buildRequest(opts: StreamChatOpts, key: string) {
     const { system, input } = toInteractionsInput(opts.messages)
@@ -561,9 +594,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
         state.completed = true
         if (interaction.status === 'failed') {
           // Billed all the same: the usage is booked first, the error raised from `finish`.
-          state.failure = interaction.error?.message
-            ? String(interaction.error.message)
-            : 'Google reported the interaction as failed.'
+          state.failure = streamError(interaction.error, 'Google reported the interaction as failed.')
           events.push(usageEvent(state, interaction.usage))
           break
         }
@@ -571,13 +602,8 @@ export const googleTransport: ChatTransport<GoogleState> = {
         events.push(usageEvent(state, interaction.usage))
         break
       }
-      case 'error': {
-        const msg = parsed.error?.message
-        throw new AiProviderError(
-          typeof msg === 'string' && msg ? `Google: ${msg}` : 'Google stream error.',
-          'http'
-        )
-      }
+      case 'error':
+        throw streamError(parsed.error, 'Google stream error.')
     }
     return events
   },
@@ -586,7 +612,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
   completed: (state) => state.completed,
 
   async finish(state: GoogleState): Promise<StreamEvent[]> {
-    if (state.failure) throw new AiProviderError(state.failure, 'http')
+    if (state.failure) throw state.failure
     const events: StreamEvent[] = []
     // The model also quotes search results Google did not annotate as citations (measured: a research_bom
     // leg wrote one as its source_url). Only Google's search mints such a link, so one that leads to a page

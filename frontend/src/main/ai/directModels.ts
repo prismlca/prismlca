@@ -28,6 +28,17 @@ export function priceOn(
   return price
 }
 
+/** The price of one request whose prompt is `promptTokens` long — cache reads and writes counted in:
+ *  the row's long-prompt prices above its threshold (they apply to the WHOLE request), else the day's
+ *  list price. One rule for every transport that synthesizes a cost. */
+export function priceFor(
+  m: Pick<AiModel, 'pricing' | 'priceChanges' | 'longPrompt'>,
+  promptTokens: number,
+  day?: string
+): AiModel['pricing'] {
+  return m.longPrompt && promptTokens > m.longPrompt.above ? m.longPrompt : priceOn(m, day)
+}
+
 /**
  * Hand-maintained NON-TOKEN list prices (developers.openai.com pricing docs; the date of the last
  * check is `OPENAI_PRICES_CHECKED` in shared/aiDefaults.ts, which the settings table prints —
@@ -147,13 +158,13 @@ export const DIRECT_MODELS: AiModel[] = [
   // `explicitCache` stays unset: OpenAI caches prompt prefixes automatically, and agent.test.ts
   // holds that only Anthropic entries mark cache breakpoints explicitly.
   //
-  // Pricing checked against OpenAI's docs on 2026-10-01 (Standard tier, short context). The page
-  // now also lists a "cache writes" price (1.25× input); it is not modelled here — the synthesis in
-  // providers/openai.ts books cached reads and uncached input only, an under-estimate by the write
-  // surcharge on the first turn of a prefix. Prompts in the long-context band are billed at 2× input
-  // / 1.5× output for the whole request; the synthesis deliberately ignores that too (contexts that
-  // large are rare here and compaction starts far below it). Said here so nobody reads the ledger
-  // as exact in those corners.
+  // Pricing checked against OpenAI's docs on 2026-11-08 (Standard tier). The page also lists a
+  // "cache writes" price (1.25× input); it is not modelled here — the synthesis in providers/openai.ts
+  // books cached reads and uncached input only, an under-estimate by the write surcharge on the first
+  // turn of a prefix, said here so nobody reads the ledger as exact in that corner. A prompt above
+  // 272K input tokens ("Long" on the page) is billed at the `longPrompt` prices for the whole request:
+  // 2× input and cached input, 1.5× output. A chat under OpenAI is compacted only at about half of its
+  // 1.05M window, so long sessions do cross it.
   //
   // The same models are also in the OpenRouter list above, under OpenRouter's ids — that is not a
   // duplicate, it is the other route to them, and the table only ever shows the active provider's
@@ -165,6 +176,7 @@ export const DIRECT_MODELS: AiModel[] = [
     id: 'gpt-6-astra',
     provider: 'openai',
     pricing: { input: 10, cachedInput: 1, output: 50 },
+    longPrompt: { above: 272_000, input: 20, cachedInput: 2, output: 75 },
     label: 'GPT-6 Astra (OpenAI)',
     descriptor: 'strongest (OpenAI), priciest',
     temperature: null,
@@ -179,6 +191,7 @@ export const DIRECT_MODELS: AiModel[] = [
     id: 'gpt-6.1-sol',
     provider: 'openai',
     pricing: { input: 2, cachedInput: 0.1, output: 10 },
+    longPrompt: { above: 272_000, input: 4, cachedInput: 0.2, output: 15 },
     label: 'GPT-6.1 Sol (OpenAI)',
     descriptor: 'strong, mid price (default)',
     temperature: null,
@@ -193,6 +206,7 @@ export const DIRECT_MODELS: AiModel[] = [
     id: 'gpt-6-luna',
     provider: 'openai',
     pricing: { input: 0.1, cachedInput: 0.01, output: 0.5 },
+    longPrompt: { above: 272_000, input: 0.2, cachedInput: 0.02, output: 0.75 },
     label: 'GPT-6 Luna (OpenAI)',
     descriptor: 'cheapest',
     temperature: null,

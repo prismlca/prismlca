@@ -450,7 +450,8 @@ export function AiModelsPanel(): JSX.Element {
       ) : provider === 'openai' ? (
         <p className="settings-hint">
           <b>*</b> Kept by hand — OpenAI has no pricing API. As of <b>{priceDate(OPENAI_PRICES_CHECKED)}</b>;
-          its costs are estimates.
+          a prompt over 272,000 tokens costs twice the input and 1.5 times the output price. Its costs are
+          estimates.
         </p>
       ) : provider === 'google' ? (
         <p className="settings-hint">

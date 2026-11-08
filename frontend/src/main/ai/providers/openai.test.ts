@@ -314,12 +314,94 @@ describe('the per-reply web-lookup ceiling', () => {
 })
 
 describe('a reply OpenAI never finished', () => {
+  it('classifies a failure inside the stream like the refused request it stands for', async () => {
+    const failing = (error: Record<string, unknown>) =>
+      vi.fn(async () => sse([{ type: 'response.created' }, { type: 'response.failed', response: { error } }]))
+    const run = async (): Promise<unknown> => {
+      try {
+        for await (const _ of streamChat({ model: 'gpt-6-luna', messages: [], temperature: null })) void _
+      } catch (e) {
+        return e
+      }
+      return null
+    }
+    let f = failing({ code: 'insufficient_quota', message: 'You exceeded your current quota.' })
+    vi.stubGlobal('fetch', f)
+    expect(await run()).toMatchObject({ code: 'credits' })
+    expect(f).toHaveBeenCalledTimes(1)
+    f = failing({
+      code: 'context_length_exceeded',
+      message: 'Your input exceeds the context window of this model.'
+    })
+    vi.stubGlobal('fetch', f)
+    expect(await run()).toMatchObject({ code: 'context' })
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends again a response that failed on the server before any of the reply', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    try {
+      const f = vi
+        .fn()
+        .mockResolvedValueOnce(
+          sse([
+            { type: 'response.created' },
+            { type: 'response.failed', response: { error: { code: 'server_error', message: 'oops' } } }
+          ])
+        )
+        .mockResolvedValueOnce(
+          sse([
+            { type: 'response.created' },
+            { type: 'response.output_text.delta', delta: 'Fine.' },
+            { type: 'response.completed', response: { usage: { input_tokens: 10, output_tokens: 2 } } }
+          ])
+        )
+      vi.stubGlobal('fetch', f)
+      let text = ''
+      const run = (async () => {
+        for await (const ev of streamChat({ model: 'gpt-6-luna', messages: [], temperature: null }))
+          if (ev.type === 'delta') text += ev.text
+      })()
+      await vi.advanceTimersByTimeAsync(5_000)
+      await run
+      expect(f).toHaveBeenCalledTimes(2)
+      expect(text).toBe('Fine.')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('bills a prompt above 272K input tokens at the long-context prices, for the whole request', async () => {
+    const cost = async (input: number): Promise<number | undefined> => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          sse([
+            { type: 'response.created' },
+            {
+              type: 'response.completed',
+              response: { usage: { input_tokens: input, output_tokens: 1_000_000 } }
+            }
+          ])
+        )
+      )
+      for await (const ev of streamChat({ model: 'gpt-6.1-sol', messages: [], temperature: null }))
+        if (ev.type === 'usage') return ev.usage.cost
+      return undefined
+    }
+    // Sol: $2 in / $10 out up to 272K, $4 / $15 above — output included.
+    expect(await cost(272_000)).toBeCloseTo(0.544 + 10, 6)
+    expect(await cost(300_000)).toBeCloseTo(1.2 + 15, 6)
+  })
+
   it('raises instead of releasing the calls it streamed', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () =>
         sse([
           { type: 'response.created' },
+          // Text reached the caller first: the request is not sent again, the cut stands as an error.
+          { type: 'response.output_text.delta', delta: 'Deleting.' },
           {
             type: 'response.output_item.done',
             output_index: 0,
