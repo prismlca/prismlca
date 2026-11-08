@@ -341,8 +341,9 @@ interface GoogleState {
   args: Map<number, string>
   text: Map<number, string>
   calls: Map<number, AccumTool>
-  /** Search queries the model ran — the unit Google bills search by. */
-  queries: number
+  /** The distinct search queries the model ran — what Google bills search by: "for billing purposes, we
+   *  ignore empty web search queries when counting unique queries" (AI Studio, Grounding docs). */
+  queries: Set<string>
   annotations: Citation[]
   /** `interaction.completed` arrived. A stream that ends without it is a cut-off reply, not a short one. */
   completed: boolean
@@ -375,7 +376,7 @@ function usageEvent(state: GoogleState, usage: any): StreamEvent {
         cached * price.cachedInput +
         (output + thought) * price.output) /
         1e6 +
-      state.queries * GOOGLE_SEARCH_USD_PER_QUERY
+      state.queries.size * GOOGLE_SEARCH_USD_PER_QUERY
   }
   return {
     type: 'usage',
@@ -385,7 +386,7 @@ function usageEvent(state: GoogleState, usage: any): StreamEvent {
       // Thinking is output as far as the bill goes, and the ledger's completion column is the bill's.
       completion_tokens: output + thought,
       prompt_tokens_details: { cached_tokens: cached },
-      ...(state.queries ? { server_tool_use: { web_search_requests: state.queries } } : {})
+      ...(state.queries.size ? { server_tool_use: { web_search_requests: state.queries.size } } : {})
     }
   }
 }
@@ -496,7 +497,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
     args: new Map(),
     text: new Map(),
     calls: new Map(),
-    queries: 0,
+    queries: new Set(),
     annotations: [],
     completed: false
   }),
@@ -571,7 +572,8 @@ export const googleTransport: ChatTransport<GoogleState> = {
             const { type: _type, ...rest } = d
             Object.assign(step, rest)
             const queries = (d.arguments as { queries?: unknown } | undefined)?.queries
-            if (d.type === 'google_search_call' && Array.isArray(queries)) state.queries += queries.length
+            if (d.type === 'google_search_call' && Array.isArray(queries))
+              for (const q of queries) if (typeof q === 'string' && q.trim()) state.queries.add(q.trim())
           }
         }
         break

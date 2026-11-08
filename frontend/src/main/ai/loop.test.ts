@@ -983,6 +983,31 @@ describe('durable: the plan tool and the transcript', () => {
     expect(await offers({ model: sonnet, planTool: true, planToolOverrides: { [sonnet]: false } })).toBe(true)
   })
 
+  it('ends a round the provider’s filter declined with its reason — no empty-round nudge, no resend', async () => {
+    chat.rounds = [
+      { text: '', finish: 'content_filter', finishDetail: 'category: bio' },
+      { text: 'never asked' }
+    ]
+    const d = deps()
+    const result = await runAgent(request(), d.deps)
+    expect(chat.seen).toHaveLength(1)
+    expect(result.text).toContain('safety filter declined this request (category: bio)')
+    expect(result.text).not.toContain('returned nothing')
+  })
+
+  it('runs none of the calls a declined round streamed before the stop', async () => {
+    chat.rounds = [
+      { calls: [{ id: 'w1', name: 'edit_parameter', arguments: '{}' }], finish: 'content_filter' },
+      { text: 'never asked' }
+    ]
+    const d = deps()
+    const result = await runAgent(request(), d.deps)
+    expect(chat.seen).toHaveLength(1)
+    // Only the turn's own reads: the declined write never reached the backend.
+    expect(d.apiCalls.filter((c) => c.method !== 'GET')).toHaveLength(0)
+    expect(result.text).toContain('safety filter declined this request')
+  })
+
   it('Stop keeps the transcript — in memory and in the store — with outcome cancelled', async () => {
     const ac = new AbortController()
     ac.abort()

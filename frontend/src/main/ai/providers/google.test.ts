@@ -360,6 +360,32 @@ describe('the event stream', () => {
     expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
   })
 
+  it('bills a query the model ran twice once, and an empty one not at all', async () => {
+    capture(() =>
+      sse([
+        created,
+        start(0, { id: 's1', type: 'google_search_call', signature: '' }),
+        delta(0, {
+          type: 'google_search_call',
+          signature: 'sig',
+          arguments: { queries: ['pet density', ' '] }
+        }),
+        stop(0),
+        start(1, { id: 's2', type: 'google_search_call', signature: '' }),
+        delta(1, {
+          type: 'google_search_call',
+          signature: 'sig',
+          arguments: { queries: ['pet density', 'hdpe density'] }
+        }),
+        stop(1),
+        completed('completed', { total_input_tokens: 0, total_output_tokens: 0 })
+      ])
+    )
+    const usage = (await run()).find((e) => e.type === 'usage')
+    expect(usage?.type === 'usage' && usage.usage.server_tool_use).toEqual({ web_search_requests: 2 })
+    expect(usage?.type === 'usage' && usage.usage.cost).toBeCloseTo(2 * 0.014, 6)
+  })
+
   it('prices thinking as output, search-tool tokens as input, and every search query', async () => {
     capture(() =>
       sse([

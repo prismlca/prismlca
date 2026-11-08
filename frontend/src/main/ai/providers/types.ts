@@ -168,7 +168,7 @@ export type StreamEvent =
    * wrote nothing from one that was cut off at `length` or refused. "Returned nothing" is not a
    * diagnosis; the reason it stopped is.
    */
-  | { type: 'finish'; reason: string }
+  | { type: 'finish'; reason: string; detail?: string }
   /** Who actually served this request. On OpenRouter that is the routed endpoint ("Fireworks",
    *  "BaseTen", …) — routing picks it per request from whatever is healthy and allowed, so speed,
    *  price and cache behaviour change between two otherwise identical runs, and this is the only

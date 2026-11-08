@@ -36,6 +36,7 @@ import {
 } from './approval'
 import { routingSession } from './routingSession'
 import { collectText, costOf } from './stream'
+import { refusalNote } from './stopNotes'
 
 import {
   DEFAULT_MAX_ROUNDS,
@@ -1324,6 +1325,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       deliverSteering()
       /** How the provider ended the round — "length" is an answer cut off, not a finished one. */
       let finishReason = ''
+      let finishDetail: string | undefined
       let roundText = ''
       let toolCalls: Array<{ id: string; name: string; arguments: string }> | null = null
       let replay: ProviderReplay | undefined
@@ -1382,6 +1384,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           })) {
             if (ev.type === 'finish') {
               finishReason = ev.reason
+              finishDetail = ev.detail
               continue
             }
             if (ev.type === 'delta') {
@@ -1488,6 +1491,14 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       // renderer (which already kept the partial on Stop) would receive and append it again.
       if (req.signal.aborted) return await finish('cancelled', true)
 
+      if (finishReason === 'content_filter') {
+        // Calls a refused reply streamed before the stop are part of what was declined: none is run.
+        const note = refusalNote(finishDetail)
+        finalText += note
+        deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+        answered = true
+        break // declined by the provider: neither an empty round to nudge nor an answer to go on from
+      }
       if (!toolCalls || !toolCalls.length) {
         // A round with NO tool call and NO text is not an answer — it is a dead round, and it was
         // indistinguishable from a finished one: `answered = true` below, no note, no error, not a

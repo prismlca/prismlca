@@ -40,6 +40,8 @@ export interface ScriptedRound {
   throws?: unknown
   /** The provider's finish reason for the round ("length" = cut off at the output limit). */
   finish?: string
+  /** What the provider said about it (a refusal's reason). */
+  finishDetail?: string
 }
 
 /** What the code under test actually sent — snapshot per streamChat call, messages deep-copied so
@@ -90,7 +92,8 @@ class ScriptedChat {
     const usage = round.usage ?? this.defaultUsage
     if (usage) yield { type: 'usage', usage }
     const finish = round.finish ?? this.defaultFinish
-    if (finish) yield { type: 'finish', reason: finish }
+    if (finish)
+      yield { type: 'finish', reason: finish, ...(round.finishDetail ? { detail: round.finishDetail } : {}) }
     if (round.calls?.length && (!this.gateCallsOnTools || opts.tools?.length))
       yield { type: 'tool_calls', calls: round.calls }
   }

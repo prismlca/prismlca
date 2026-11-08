@@ -407,6 +407,15 @@ interface AnthropicState {
   failure?: AiProviderError
 }
 
+/** A refusal's reason as Anthropic states it (`stop_details`: a category such as "bio" or "cyber", and
+ *  an explanation where it gives one) — for the note the chat shows (stopNotes.ts). */
+function refusalDetail(details: unknown): string | undefined {
+  if (!isObj(details)) return undefined
+  const category = typeof details.category === 'string' && details.category ? details.category : ''
+  const explanation = typeof details.explanation === 'string' ? details.explanation.trim() : ''
+  return [category && `category: ${category}`, explanation].filter(Boolean).join(' — ') || undefined
+}
+
 /** How the reply ended → our finish vocabulary. */
 function finishReason(stop: string | undefined): string {
   if (stop === 'tool_use') return 'tool_calls'
@@ -638,7 +647,11 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
           state.stopReason = parsed.delta.stop_reason
         // Cumulative counts: the last report holds the request's totals.
         if (isObj(parsed.usage)) Object.assign(state.usage, parsed.usage)
-        events.push({ type: 'finish', reason: finishReason(state.stopReason) })
+        events.push({
+          type: 'finish',
+          reason: finishReason(state.stopReason),
+          ...(state.stopReason === 'refusal' ? { detail: refusalDetail(parsed.delta?.stop_details) } : {})
+        })
         events.push(...sendUsage(state))
         break
       }
@@ -673,6 +686,9 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
         return { id: String(b.id ?? ''), name: String(b.name ?? ''), arguments: state.json.get(i) || '{}' }
       })
       .filter((c) => c.name)
+    // A refused reply's output is to be discarded (Anthropic's refusal docs): calls it streamed before the
+    // stop are not handed out to be run.
+    if (state.stopReason === 'refusal') return events
     // A tool round, or a paused one: either way the blocks have to go back as they came.
     if (calls.length || state.stopReason === 'pause_turn')
       events.push({

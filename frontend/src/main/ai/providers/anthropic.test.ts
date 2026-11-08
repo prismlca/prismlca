@@ -652,6 +652,42 @@ describe('the stream', () => {
     expect(seen.some((e) => e.type === 'tool_calls')).toBe(false)
   })
 
+  it('hands on the reason a refusal gives', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        {
+          type: 'message_delta',
+          delta: {
+            stop_reason: 'refusal',
+            stop_details: {
+              type: 'refusal',
+              category: 'bio',
+              explanation: 'Synthesis routes for this agent.'
+            }
+          },
+          usage: usage0
+        },
+        messageStop
+      ])
+    )
+    const finish = (await collect()).find((e) => e.type === 'finish')
+    expect(finish).toEqual({
+      type: 'finish',
+      reason: 'content_filter',
+      detail: 'category: bio — Synthesis routes for this agent.'
+    })
+  })
+
+  it('hands out no call from a reply that was refused after streaming it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sse([...toolRound.slice(0, -2), messageDelta('refusal', usage0), messageStop])
+    )
+    const events = await collect()
+    expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
+    expect(events.find((e) => e.type === 'finish')).toMatchObject({ reason: 'content_filter' })
+  })
+
   it('maps the stop reasons the agent branches on', async () => {
     const reasonFor = async (stop: string): Promise<string | undefined> => {
       fetchMock.mockResolvedValueOnce(sse([messageStart(), messageDelta(stop, usage0), messageStop]))
