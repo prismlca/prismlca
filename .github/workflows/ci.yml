@@ -126,7 +126,8 @@ jobs:
   test-windows:
     name: Tests on Windows
     runs-on: windows-2025
-    timeout-minutes: 60
+    # The backend suite alone took 49 minutes here (Linux: 4) — process start-up and SQLite on NTFS.
+    timeout-minutes: 90
     permissions:
       contents: read
     defaults:
@@ -155,10 +156,13 @@ jobs:
       - name: Backend tests
         working-directory: backend
         run: uv run pytest -n auto -q
+      # Each check runs even when the one before it failed, so one run shows everything Windows does differently.
       - name: Frontend tests
+        if: ${{ !cancelled() }}
         working-directory: frontend
         run: npx vitest run
       - name: The app starts and its window answers
+        if: ${{ !cancelled() }}
         working-directory: frontend
         run: |
           npm run build

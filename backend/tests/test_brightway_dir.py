@@ -111,7 +111,7 @@ def test_a_project_folder_inside_somebody_elses_brightway_is_refused_untouched(t
     (project / "lci" / "databases.db").write_bytes(b"their data")
     choice = choose(_settings(tmp_path, project), {}, from_source=False)
     assert choice.refusal is not None
-    assert {str(p.relative_to(project)) for p in project.rglob("*")} == {"lci", "lci/databases.db"}
+    assert {p.relative_to(project).as_posix() for p in project.rglob("*")} == {"lci", "lci/databases.db"}
 
 
 def test_the_brightway_folder_of_a_prismlca_data_directory_may_be_named_explicitly(tmp_path):

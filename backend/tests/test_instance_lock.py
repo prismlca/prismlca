@@ -37,8 +37,13 @@ def test_the_first_caller_gets_the_directory_and_the_second_is_told_who_has_it(t
         assert out.returncode == 0, out.stderr
         holder = json.loads(out.stdout.strip())
         assert holder is not None, "a second process must not get the same directory"
-        # It names who has it, so the message can say so.
-        assert holder["pid"] == os.getpid()
+        # It names who has it, so the message can say so — where it can read it: Windows locks a byte
+        # range, and the range held is the one the pid is written in, so there the refusal names the
+        # lock file only (server.py reads the pid with .get()).
+        if sys.platform == "win32":
+            assert holder["path"].endswith(instance_lock.LOCK_NAME)
+        else:
+            assert holder["pid"] == os.getpid()
         assert holder["path"].endswith(instance_lock.LOCK_NAME)
     finally:
         instance_lock.release()

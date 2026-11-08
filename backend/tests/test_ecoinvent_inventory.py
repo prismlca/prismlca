@@ -9,6 +9,7 @@ release — the worker task is replaced by a stand-in at module level, which a f
 
 from __future__ import annotations
 
+import multiprocessing
 import threading
 import time
 
@@ -29,6 +30,13 @@ def _slow(job):
 
 def _stuck(job):
     time.sleep(30)
+
+
+#: The stand-ins reach a worker only when it is forked from this process; a spawned one (Windows, macOS)
+#: imports the module afresh and runs the real reader on the placeholder files.
+_FORKED = pytest.mark.skipif(
+    multiprocessing.get_start_method() != "fork", reason="monkeypatched stand-ins reach forked workers only"
+)
 
 
 def _broken(job):
@@ -54,7 +62,7 @@ def _extract(monkeypatch, folder, task, *, use_mp=True, cancelled=None, stall=60
     return reader.extract(folder, "db", use_mp=use_mp)
 
 
-@pytest.mark.parametrize("use_mp", [False, True])
+@pytest.mark.parametrize("use_mp", [False, pytest.param(True, marks=_FORKED)])
 def test_reads_every_dataset_in_one_order_and_counts(monkeypatch, tmp_path, use_mp):
     seen: list[tuple[int, int]] = []
     data = _extract(monkeypatch, _datasets(tmp_path), _quick, use_mp=use_mp, seen=seen)
@@ -81,9 +89,10 @@ def test_workers_that_never_answer_end_in_an_error_not_a_wait(monkeypatch, tmp_p
     assert "0 of 3 read" in str(excinfo.value)
 
 
-def test_an_unreadable_file_is_named(monkeypatch, tmp_path):
+@pytest.mark.parametrize("use_mp", [False, pytest.param(True, marks=_FORKED)])
+def test_an_unreadable_file_is_named(monkeypatch, tmp_path, use_mp):
     with pytest.raises(PrismError) as excinfo:
-        _extract(monkeypatch, _datasets(tmp_path, ["a.spold", "b.spold", "c.spold"]), _broken)
+        _extract(monkeypatch, _datasets(tmp_path, ["a.spold", "b.spold", "c.spold"]), _broken, use_mp=use_mp)
     assert excinfo.value.code == "dataset_unreadable"
     assert "b.spold" in str(excinfo.value)
 

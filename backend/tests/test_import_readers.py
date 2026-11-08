@@ -137,6 +137,7 @@ def test_a_single_spold_file_does_not_pull_in_its_neighbours(tmp_path: Path):
     assert len(result.datasets) == 1
 
 
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="counts the process's open files in /proc")
 def test_the_ecospold1_repair_leaves_no_descriptor_open():
     """Mkstemp hands the descriptor over open, and only the path was kept."""
     import os

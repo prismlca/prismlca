@@ -195,7 +195,7 @@ def test_a_sensitivity_run_never_waits_for_the_bus_or_a_store(client, token, pro
     def hold() -> None:
         with bus._lock, ScenarioStore()._lock:
             held.set()
-            release.wait(20)
+            release.wait(180)
 
     result: list[dict] = []
 
@@ -209,11 +209,13 @@ def test_a_sensitivity_run_never_waits_for_the_bus_or_a_store(client, token, pro
     assert held.wait(5)
     worker = threading.Thread(target=work)
     worker.start()
-    worker.join(15)
+    # A second here; the budget is for a slow, busy CI runner (Windows took longer than 15 s). A run that
+    # waits for the locks never finishes while they are held, however long the budget.
+    worker.join(120)
     finished = not worker.is_alive()
     release.set()
     holder.join(5)
-    worker.join(15)
+    worker.join(60)
     assert finished, "a sensitivity run waited for the command bus or the scenario store"
     assert len(result) == 3
     _assert_baseline_back()

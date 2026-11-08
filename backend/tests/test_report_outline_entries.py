@@ -40,9 +40,9 @@ def _lines_in_the_list(template_id: str, key: str) -> list[list[float]]:
     """The x of each word of one title as the list sets it, line by line."""
     with tempfile.TemporaryDirectory(prefix="prism-outline-") as tmp:
         root = Path(tmp)
-        (root / "template.typ").write_text(typst_render.builtin_template_source(template_id))
-        (root / "palette.typ").write_text(report_palettes.palette_typst(None))
-        (root / "main.typ").write_text(DOCUMENT)
+        (root / "template.typ").write_text(typst_render.builtin_template_source(template_id), encoding="utf-8")
+        (root / "palette.typ").write_text(report_palettes.palette_typst(None), encoding="utf-8")
+        (root / "main.typ").write_text(DOCUMENT, encoding="utf-8")
         marks = json.loads(typst.query(str(root / "main.typ"), "<word>", field="value", root=str(root),
                                        font_paths=[str(typst_render.font_dir())], ignore_system_fonts=True))
     words = [m for m in marks if m["key"] == key]
