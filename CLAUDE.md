@@ -86,9 +86,13 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
     comment saying why they cannot live elsewhere. Both run in the normal suites, so run `npx vitest run`
     and `uv run pytest -n auto` before every commit that touches code (plus `npm run typecheck` and
     `npm run lint`); a commit that changes only docs, text, images or CSS may skip them. These local runs are
-    the check for work on `main`: CI (`.github/workflows/ci.yml`) runs on pull requests and on demand only —
-    started deliberately, and before every release, because its Windows job is the only place the suites run
-    on Windows. A red CI run is the next thing to fix.
+    the check for every commit: CI (`.github/workflows/ci.yml`) runs on pull requests and on demand only —
+    on every pull request, and started deliberately before every release, because its Windows job is the only
+    place the suites run on Windows. A red CI run is the next thing to fix.
+- **Changes reach `main` through pull requests**: one branch per feature or fix (in its own git worktree when
+  several people or agents share a checkout), small commits on the branch are fine, and the maintainer
+  squash-merges the pull request once it is approved, so `main` carries one commit per change. Only release
+  commits (`npm run release`) and pure documentation or typo fixes go to `main` directly.
 - **The full BAFU test is opt-in**: the normal suite writes one of bw2io's bundled methods per family, not
   all 762 (a minute on its own). Whoever changes the BAFU import (`engine/backgrounds/`) or bumps bw2io or
   bw2data also runs `PRISM_FULL_BAFU=1 uv run pytest tests/test_backgrounds_bafu.py` before committing.
