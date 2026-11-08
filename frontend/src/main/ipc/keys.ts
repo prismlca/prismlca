@@ -6,6 +6,7 @@
 import { ipcMain } from 'electron'
 
 import { asAiProvider } from '../../shared/aiDefaults'
+import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import { getApiKey, resetApiKey } from '../ai/client'
 import {
   clearSecret,
@@ -41,9 +42,10 @@ export function registerKeyIpc(deps: AiIpcDeps): void {
    *  store (secrets.resolve). Pushing the typed value instead sent the backend a key the chat did not
    *  use, and clearing pushed '' while the environment still held one. */
   const pushEffective = async (provider: Provider): Promise<void> => {
-    // The Google key serves the chat only: the backend has no Google embedding backend, so it never
-    // receives that key — a credential goes where it is used and nowhere else.
-    if (provider === 'google') return
+    // Only to a backend that uses it (API embeddings): a credential goes where it is used and nowhere
+    // else. The distance keys never reach the backend either.
+    if (provider !== 'openrouter' && provider !== 'openai') return
+    if (!PROVIDER_CAPS[provider].backendKey) return
     const key = resolveKey(provider).key ?? ''
     // Best-effort: the backend may still be starting. It also reads the keys from its environment at
     // spawn, so a failure here only costs the no-restart convenience.

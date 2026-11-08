@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { defaultVoiceLanguage, VOICE_LANGUAGES } from '../../lib/ai'
 import { setAS, useAppSettings } from '../../lib/appSettings'
+import { PROVIDER_CAPS, providersWith } from '../../../../shared/providerCaps'
 import {
+  asAiProvider,
   clampWebLookups,
   DEFAULT_WEB_LOOKUPS_PER_ANSWER,
   MAX_WEB_LOOKUPS_PER_ANSWER
@@ -32,7 +34,7 @@ export function AiChatPanel(): JSX.Element {
   }
   const eurostatEnabled = as.eurostatEnabled !== false
   // The hint names the service the recording actually goes to; it is the provider's, not a fixed one.
-  const provider = as.provider ?? 'openrouter'
+  const caps = PROVIDER_CAPS[asAiProvider(as.provider)]
 
   return (
     <>
@@ -47,13 +49,8 @@ export function AiChatPanel(): JSX.Element {
         />
       </label>
       <p className="settings-hint">
-        On = the chat shows a microphone button; the recording is sent to{' '}
-        {provider === 'openai'
-          ? 'OpenAI (gpt-transcribe)'
-          : provider === 'google'
-            ? 'Google (Gemini 3.5 Transcribe)'
-            : 'OpenRouter (Whisper)'}{' '}
-        for transcription and the transcript is sent as your message. Off = the button disappears entirely.
+        On = the chat shows a microphone button; the recording is sent to {caps.speechModel} for transcription
+        and the transcript is sent as your message. Off = the button disappears entirely.
       </p>
       {voiceEnabled ? (
         <>
@@ -89,11 +86,11 @@ export function AiChatPanel(): JSX.Element {
         for one conversation. The search runs on the provider’s side, so it sees the query the assistant
         writes from your workspace. Off = the toggle disappears entirely and the assistant, its research
         helpers included, can never reach the web.
-        {provider === 'google' ? (
+        {!caps.searchBesideTools ? (
           <>
             {' '}
-            Under Google the assistant reaches the web through its research helpers only: Google offers its
-            search alongside PrismLCA’s own tools only as a preview so far.
+            Under {caps.name} the assistant reaches the web through its research helpers only: the API offers
+            its search alongside PrismLCA’s own tools only as a preview so far.
           </>
         ) : null}
       </p>
@@ -114,9 +111,9 @@ export function AiChatPanel(): JSX.Element {
             />
           </label>
           <p className="settings-hint">
-            Searches and pages the provider may look up within one reply (OpenRouter and OpenAI; Google offers
-            no such cap). Each lookup runs the model over the whole conversation again, so a reply with three
-            lookups is billed four times; the chat then shows a “Web lookups by the provider” row. Default{' '}
+            Searches and pages the provider may look up within one reply ({providersWith('webLookupsCap')}{' '}
+            only). Each lookup runs the model over the whole conversation again, so a reply with three lookups
+            is billed four times; the chat then shows a “Web lookups by the provider” row. Default{' '}
             {DEFAULT_WEB_LOOKUPS_PER_ANSWER}; 0 = no cap of ours, the provider’s limit of{' '}
             {MAX_WEB_LOOKUPS_PER_ANSWER} applies.
           </p>

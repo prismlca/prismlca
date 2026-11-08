@@ -11,6 +11,7 @@ import {
   type ReasoningEffort
 } from '../../../shared/aiDefaults'
 import { EffortDial } from '../components/EffortScale'
+import { AI_PROVIDERS, PROVIDER_CAPS } from '../../../shared/providerCaps'
 
 /**
  * The model catalogue for the picker beside the mic, fetched once per session. The button has to
@@ -28,12 +29,8 @@ export const modelCatalogue = (): Promise<AiModelInfo[]> => {
 }
 
 type Provider = AiProviderId
-const PROVIDERS: Provider[] = ['openrouter', 'openai', 'google']
-const PROVIDER_NAME: Record<Provider, string> = {
-  openrouter: 'OpenRouter',
-  openai: 'OpenAI',
-  google: 'Google'
-}
+const PROVIDERS = AI_PROVIDERS
+const PROVIDER_NAME = (p: Provider): string => PROVIDER_CAPS[p].name
 
 /**
  * The chat-model picker in the composer's control row, and the reasoning effort with it: the button
@@ -251,7 +248,7 @@ export default function ModelPicker(): JSX.Element {
                 </span>
                 <span className="chat-menu-label">
                   Change provider
-                  <span className="chat-model-desc">{PROVIDER_NAME[provider]}</span>
+                  <span className="chat-model-desc">{PROVIDER_NAME(provider)}</span>
                 </span>
               </button>
               {providerOpen ? (
@@ -276,7 +273,7 @@ export default function ModelPicker(): JSX.Element {
                       <span className="chat-model-tick" aria-hidden="true">
                         {p === provider ? '✓' : ''}
                       </span>
-                      <span className="chat-menu-label">{PROVIDER_NAME[p]}</span>
+                      <span className="chat-menu-label">{PROVIDER_NAME(p)}</span>
                     </button>
                   ))}
                 </div>

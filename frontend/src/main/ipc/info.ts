@@ -16,6 +16,7 @@ import {
   type AiModel
 } from '../ai/models'
 import { priceOn } from '../ai/directModels'
+import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import { loadUserModels, userDataDir, userModelsPath, writeUserModels } from '../ai/userModels'
 import { toolCatalog } from '../ai/tools'
 import { getUsage } from '../ai/usage'
@@ -125,7 +126,7 @@ export function registerInfoIpc(deps: AiIpcDeps): void {
     // this, opening the composer fetched OpenRouter's whole list on a fresh install with no key at all.
     const pricing = getApiKey('openrouter') ? await fetchPricing(orIds).catch(() => ({})) : {}
     return catalogue.map((m) =>
-      m.provider === 'openai' || m.provider === 'google'
+      PROVIDER_CAPS[m.provider ?? 'openrouter'].pricing === 'list'
         ? { ...m, pricing: priceOn(m) ?? null, pricingSource: 'list' }
         : { ...m, pricing: (pricing as any)[m.id] ?? null }
     )

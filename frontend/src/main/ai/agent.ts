@@ -6,6 +6,7 @@
 import { streamChat } from './client'
 import { attachmentParts, attachmentStub, heading, stubForPartText } from './attachments'
 import { AiProviderError, assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
+import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import type { AgentEvent, AttachmentMeta, ToolTrace } from '../../shared/ipc'
 import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } from './tools'
 import { buildSystemPrompt, LANGUAGE_NAMES, type Skill } from './systemPrompt'
@@ -967,11 +968,11 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // Web on for this chat: the app-wide kill switch and the chat's own "+" menu switch, both. One value
   // for the research helpers' refusal, for whether they and their skill are offered, and for the prompt.
   const webOn = req.webSearchAllowed !== false && req.webSearch !== false
-  // The provider's own search beside our function tools. Under Google that combination is a preview on
-  // its API (and wants another tool-choice mode), so there the chat reaches the web through the research
-  // tools only — `webOn` above still offers them. The prompt is told the same, so it never promises a
-  // search the request does not carry.
-  const inlineWeb = provider === 'google' ? false : req.webSearch
+  // The provider's own search beside our function tools (shared/providerCaps.ts): where the API does not
+  // offer that combination (Google: a preview), the chat reaches the web through the research tools
+  // only — `webOn` above still offers them. The prompt is told the same, so it never promises a search
+  // the request does not carry.
+  const inlineWeb = PROVIDER_CAPS[provider].searchBesideTools ? req.webSearch : false
   const skills = offeredSkills(await deps.getSkills().catch(() => []), { web: webOn })
   /** Switched off for this chat: not offered — and not executed either, whatever the model still
    *  remembers from earlier in the conversation. */

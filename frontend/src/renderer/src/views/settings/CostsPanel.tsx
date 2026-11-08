@@ -5,17 +5,14 @@ import { fmtTokens, fmtUsd, monthLabel } from '../../lib/money'
 import { LAB_LOGOS, labKey } from '../../lib/labLogos'
 import { billedBy } from '../../../../shared/labKey'
 import { asAiProvider } from '../../../../shared/aiDefaults'
+import { AI_PROVIDERS, PROVIDER_CAPS } from '../../../../shared/providerCaps'
 import type { ProviderChoice } from './ProviderKeyBlock'
 
 /** Which provider a LEDGER row belongs to (shared/labKey.ts, `billedBy`): a vendor prefix means
  *  OpenRouter — `openai/whisper-large-v3` included — and a bare id the direct vendor it names. */
 const rowProvider = (id: string): ProviderChoice => billedBy(id)
 
-const TABS: Array<[ProviderChoice, string]> = [
-  ['openrouter', 'OpenRouter'],
-  ['openai', 'OpenAI'],
-  ['google', 'Google']
-]
+const TABS: Array<[ProviderChoice, string]> = AI_PROVIDERS.map((p) => [p, PROVIDER_CAPS[p].name])
 
 /** API-cost ledger: models as rows (with lab logo), months as columns, real OpenRouter USD. */
 export function CostsPanel(): JSX.Element {

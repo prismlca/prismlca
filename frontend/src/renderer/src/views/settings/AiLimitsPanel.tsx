@@ -15,6 +15,7 @@ import {
 import { fmtInt } from '../../lib/format'
 import type { ProviderChoice } from './ProviderKeyBlock'
 import { NumberInput } from '../../components/NumberInput'
+import { PROVIDER_CAPS } from '../../../../shared/providerCaps'
 
 /** AI → Limits: how far a run may go — rounds, the provider speed preference, research width, the
  *  cost brake and both reply budgets — plus the tool-focus and approval switches and the privacy rule. */
@@ -40,6 +41,7 @@ export function AiLimitsPanel(): JSX.Element {
   const zdrOpenai = as.zdrExceptOpenai
   const zdrGoogle = as.zdrExceptGoogle
   const provider = (as.provider ?? 'openrouter') as ProviderChoice
+  const caps = PROVIDER_CAPS[provider]
 
   const setRounds = (v: string): void => {
     const n = Math.max(1, Math.min(400, Math.round(Number(v) || DEFAULT_MAX_ROUNDS)))
@@ -89,17 +91,17 @@ export function AiLimitsPanel(): JSX.Element {
           max={MAX_MIN_THROUGHPUT}
           step={5}
           value={minTput}
-          disabled={provider !== 'openrouter'}
+          disabled={!caps.routing}
           onValue={setThroughput}
         />
       </label>
       {/* Disabled rather than hidden under OpenAI: the user set this value, and hiding it would read
           as losing it. The hint says WHY it does nothing there. */}
       <p className="settings-hint">
-        {provider !== 'openrouter' ? (
+        {!caps.routing ? (
           <>
-            An OpenRouter routing preference — the {provider === 'google' ? 'Gemini' : 'OpenAI'} API is one
-            provider with no routes to choose from. Your value stays stored for when you switch back.
+            An OpenRouter routing preference — the {caps.name} API is one provider with no routes to choose
+            from. Your value stays stored for when you switch back.
           </>
         ) : (
           <>
@@ -201,7 +203,7 @@ export function AiLimitsPanel(): JSX.Element {
         <input
           type="checkbox"
           checked={zdr}
-          disabled={provider !== 'openrouter'}
+          disabled={!caps.routing}
           onChange={(e) => {
             // Main holds an in-memory copy for the call sites deep inside a turn and mirrors it
             // (with provider, throughput, spellcheck) on every settings write.
@@ -228,7 +230,7 @@ export function AiLimitsPanel(): JSX.Element {
               <input
                 type="checkbox"
                 checked={value}
-                disabled={provider !== 'openrouter'}
+                disabled={!caps.routing}
                 onChange={(e) => setAS({ [key]: e.target.checked })}
               />
               <span>Except {name}</span>

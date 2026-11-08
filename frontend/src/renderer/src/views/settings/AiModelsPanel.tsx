@@ -16,6 +16,7 @@ import {
   OPENAI_PRICES_CHECKED
 } from '../../../../shared/aiDefaults'
 import type { ProviderChoice } from './ProviderKeyBlock'
+import { PROVIDER_CAPS } from '../../../../shared/providerCaps'
 
 /**
  * One model-role row: the picker, its explanation behind the info icon, and whatever note belongs
@@ -257,9 +258,8 @@ export function AiModelsPanel(): JSX.Element {
           <>
             Runs <code>research_web</code> and <code>research_bom</code> in isolation: no access to your
             model, web search only, one parallel leg per question. Wants a cheap model that searches well
-            rather than a clever one — each leg is a separate paid request, and web search costs about{' '}
-            {provider === 'openai' ? '$0.01' : provider === 'google' ? '$0.014' : '$0.005'} per search
-            {provider === 'google' ? ' query, after 5,000 free a month' : ''}.
+            rather than a clever one — each leg is a separate paid request, and web search costs{' '}
+            {PROVIDER_CAPS[provider].searchPrice}.
           </>
         }
         value={shownValue(researchModel)}
@@ -428,7 +428,7 @@ export function AiModelsPanel(): JSX.Element {
           <b>*</b> Live from OpenRouter's API, cached an hour; run costs are OpenRouter's own.
         </p>
       )}
-      {provider === 'openrouter' ? (
+      {PROVIDER_CAPS[provider].userModels ? (
         <div className="addmodel-bar">
           <button className="btn sm" onClick={() => setAddOpen(true)}>
             Add model…
