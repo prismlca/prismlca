@@ -114,6 +114,33 @@ describe('failedItems', () => {
 })
 
 describe('compactMessages', () => {
+  it('drops an older round’s reasoning replay first, and counts it as shrunk', () => {
+    // Reasoning blocks can dwarf everything else in a long turn; compaction must be able to free them,
+    // or the context rescue reads "nothing left" while the window is full of them.
+    const replay = {
+      provider: 'openrouter' as const,
+      model: 'm',
+      steps: [{ type: 'reasoning.text', text: 'x'.repeat(50_000) }]
+    }
+    const msgs: ChatMessage[] = [{ role: 'user', content: 'go' }]
+    for (let i = 0; i < 3; i++)
+      msgs.push(
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{ id: `c${i}`, type: 'function', function: { name: 'read', arguments: '{}' } }],
+          replay
+        },
+        { role: 'tool', tool_call_id: `c${i}`, content: '[earlier tool result omitted to fit the context]' }
+      )
+    expect(estimateChars(msgs)).toBeGreaterThan(150_000)
+    expect(compactMessages(msgs, 1)).toBe(2)
+    expect(msgs[1].replay).toBeUndefined()
+    expect(msgs[3].replay).toBeUndefined()
+    expect(msgs[5].replay).toBe(replay) // the newest round keeps what its provider needs
+    expect(estimateChars(msgs)).toBeLessThan(60_000)
+  })
+
   it('keeps the last N rounds verbatim and stubs older tool results', () => {
     const msgs = conversation(6)
     const before = estimateChars(msgs)

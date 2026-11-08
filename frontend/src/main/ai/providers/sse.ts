@@ -27,7 +27,13 @@ export class SseFramer {
       const field = colon < 0 ? line : line.slice(0, colon)
       let value = colon < 0 ? '' : line.slice(colon + 1)
       if (value.startsWith(' ')) value = value.slice(1)
-      if (field === 'data') this.data.push(value)
+      if (field !== 'data') continue
+      // A provider that separates its events by newline only (no blank line) would otherwise have every
+      // event of the reply joined into one, delivered at the very end — the stream would stop streaming.
+      // Pending data that is already a whole JSON value cannot be the start of a multi-line one, so it is
+      // delivered before the next line joins it.
+      if (this.data.length && isJson(this.data.join('\n'))) this.dispatch(out)
+      this.data.push(value)
     }
     return out
   }
@@ -42,6 +48,15 @@ export class SseFramer {
   private dispatch(out: string[]): void {
     if (this.data.length) out.push(this.data.join('\n'))
     this.data = []
+  }
+}
+
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
   }
 }
 

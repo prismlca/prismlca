@@ -18,6 +18,12 @@ describe('SSE framing', () => {
     expect(f.end()).toEqual(['[DONE]'])
   })
 
+  it('keeps streaming when a provider separates events by newline only', () => {
+    const f = new SseFramer()
+    expect(f.push('data: {"a":1}\ndata: {"b":2}\n')).toEqual(['{"a":1}'])
+    expect(f.end()).toEqual(['{"b":2}'])
+  })
+
   it('reads one JSON value per event, two objects on two lines as a fallback, and nothing else', () => {
     expect(parseEventData('{"a":1}')).toEqual([{ a: 1 }])
     expect(parseEventData('{"a":\n1}')).toEqual([{ a: 1 }])

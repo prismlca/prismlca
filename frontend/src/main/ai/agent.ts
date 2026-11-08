@@ -279,6 +279,8 @@ export function estimateChars(messages: ChatMessage[]): number {
   for (const m of messages) {
     n += typeof m.content === 'string' ? m.content.length : m.content ? JSON.stringify(m.content).length : 0
     if (m.tool_calls) n += JSON.stringify(m.tool_calls).length
+    // A provider's reasoning blocks travel with their round and count against the window like text.
+    if (m.replay) n += JSON.stringify(m.replay).length
   }
   return n
 }
@@ -390,6 +392,11 @@ export function compactMessages(messages: ChatMessage[], keepRounds: number, dro
         if (!sacrificeProtected && isProtected(m)) continue
         dropped?.push(m.content) // kept for the summariser, so the gist survives the truncation
         m.content = OMITTED_TOOL
+        n++
+      } else if (m.role === 'assistant' && m.replay) {
+        // An older round's reasoning blocks go first: only the provider reads them, and it needs only
+        // the recent rounds' (Google gets its skip signature for the rest, the others rebuild the round).
+        delete m.replay
         n++
       } else if (m.role === 'user' && Array.isArray(m.content)) {
         // The two kinds of bulk a user message can carry, both as base64 data URLs: canvas
