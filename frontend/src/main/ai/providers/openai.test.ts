@@ -296,6 +296,49 @@ describe('the event stream', () => {
   })
 })
 
+describe('the per-reply web-lookup ceiling', () => {
+  it('caps the built-in tool calls when web search is on and a cap is set', async () => {
+    const calls: Array<{ body: string }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_u: string, init: RequestInit) => {
+        calls.push({ body: String(init.body) })
+        return sse([completed({ input_tokens: 1, output_tokens: 1 })])
+      })
+    )
+    await run({ webSearch: true, webLookupsCap: 4 })
+    await run({ webSearch: false, webLookupsCap: 4 })
+    expect(JSON.parse(calls[0].body).max_tool_calls).toBe(4)
+    expect(JSON.parse(calls[1].body).max_tool_calls).toBeUndefined()
+  })
+})
+
+describe('a reply OpenAI never finished', () => {
+  it('raises instead of releasing the calls it streamed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        sse([
+          { type: 'response.created' },
+          {
+            type: 'response.output_item.done',
+            output_index: 0,
+            item: { type: 'function_call', call_id: 'c1', name: 'delete_process', arguments: '{}' }
+          }
+        ])
+      )
+    )
+    const seen: StreamEvent[] = []
+    await expect(
+      (async () => {
+        for await (const ev of streamChat({ model: 'gpt-6-luna', messages: [], temperature: null }))
+          seen.push(ev)
+      })()
+    ).rejects.toMatchObject({ code: 'network' })
+    expect(seen.some((e) => e.type === 'tool_calls')).toBe(false)
+  })
+})
+
 describe('error translation', () => {
   it('treats the quota-429 as credits and does NOT retry it', async () => {
     // OpenAI sends "out of credits" as HTTP 429 (insufficient_quota). Retrying that is a

@@ -10,17 +10,32 @@ import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
 export type ProviderId = AiProviderId
 
 /**
+ * The error vocabulary every transport maps its own statuses onto — a type, so a transport that invents
+ * a code of its own (OpenRouter's mid-stream 429 once said 'rate') no longer compiles.
+ */
+export type ProviderErrorCode =
+  | 'auth'
+  | 'credits'
+  | 'rate_limit'
+  | 'context'
+  | 'no_endpoint'
+  | 'http'
+  | 'network'
+  | 'stalled'
+  | 'no_key'
+  | 'aborted'
+
+/**
  * One error class for every provider, told apart by `.code` — the codes are the contract
- * (`agent.ts` retries on 'context', the renderer words its banner by code), so a new transport maps
- * its own statuses onto the SAME vocabulary instead of inventing one:
- * `auth | credits | rate_limit | context | no_endpoint | http | network | stalled | no_key | aborted`.
+ * (`agent.ts` retries on 'context' and drops a rejected effort on 'http'; the chat passes the code on
+ * with the message), so a new transport maps its own statuses onto the SAME vocabulary.
  *
  * Exported under its historical name `OpenRouterError` too (see ../openrouter.ts), so the call sites
  * and their tests did not have to move when the second provider arrived.
  */
 export class AiProviderError extends Error {
-  code: string
-  constructor(message: string, code: string) {
+  code: ProviderErrorCode
+  constructor(message: string, code: ProviderErrorCode) {
     super(message)
     this.code = code
   }
@@ -227,8 +242,12 @@ export interface ChatTransport<S> {
   createState(opts: StreamChatOpts): S
   /** Translate one parsed SSE data object into zero or more StreamEvents, in order. */
   interpret(parsed: unknown, state: S): StreamEvent[]
-  /** End-of-stream events: assembled tool calls, a synthesized usage, … May be async: Google's
-   *  citation links are redirects that are resolved here, once the stream has ended. */
+  /** Did the provider finish this reply — did its own end-of-reply event arrive? `sawDone` says whether
+   *  the `[DONE]` sentinel line came (OpenRouter's end). A stream that closes without it is a cut-off
+   *  reply: the engine raises an error and `finish` is not called, so its tool calls are never run. */
+  completed(state: S, sawDone: boolean): boolean
+  /** End-of-stream events of a COMPLETED reply: assembled tool calls, a synthesized usage, … May be
+   *  async: Google's citation links are redirects that are resolved here, once the stream has ended. */
   finish(state: S): StreamEvent[] | Promise<StreamEvent[]>
   /** Error text for a fetch that never reached the service at all. */
   unreachable: string

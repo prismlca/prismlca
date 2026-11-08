@@ -532,6 +532,34 @@ describe('the event stream', () => {
   })
 })
 
+describe('a failed interaction', () => {
+  it('books what Google billed before it raises the failure', async () => {
+    capture(() =>
+      sse([
+        created,
+        {
+          event_type: 'interaction.completed',
+          interaction: {
+            status: 'failed',
+            error: { message: 'Internal error.' },
+            usage: { total_input_tokens: 1000, total_output_tokens: 50 }
+          }
+        }
+      ])
+    )
+    const seen: StreamEvent[] = []
+    await expect(
+      (async () => {
+        for await (const ev of streamChat({ model: 'gemini-3.8-flash', messages: [], temperature: null }))
+          seen.push(ev)
+      })()
+    ).rejects.toMatchObject({ code: 'http', message: 'Internal error.' })
+    const usage = seen.filter((e) => e.type === 'usage')
+    expect(usage).toHaveLength(1)
+    expect(usage[0].type === 'usage' && usage[0].usage.prompt_tokens).toBe(1000)
+  })
+})
+
 describe('error translation', () => {
   it('reads a bad key from the array-shaped 400, says so, and does not retry', async () => {
     const body = JSON.stringify([
@@ -606,6 +634,16 @@ describe('error translation', () => {
 })
 
 describe('transcription', () => {
+  it('gives up on a transcription that does not answer, and says so', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw Object.assign(new Error('timed out'), { name: 'TimeoutError' })
+      })
+    )
+    await expect(transcribeAudio({ data: 'AA==', format: 'webm' })).rejects.toMatchObject({ code: 'stalled' })
+  })
+
   it('sends the audio inline to the speech model, unstored, and books what it costs', async () => {
     const { calls } = capture(
       () =>

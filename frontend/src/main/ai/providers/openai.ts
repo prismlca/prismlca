@@ -24,6 +24,7 @@
 import { clampMaxTokens } from '../../../shared/aiDefaults'
 import { OPENAI_STT_USD_PER_MINUTE, OPENAI_WEB_SEARCH_USD_PER_CALL, priceOn } from '../directModels'
 import { getModels } from '../models'
+import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
   AiProviderError,
   type AccumTool,
@@ -237,7 +238,12 @@ export const openaiTransport: ChatTransport<OaiState> = {
       max_output_tokens: Math.min(clampMaxTokens(opts.maxTokens), MAX_OUTPUT_TOKENS),
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       ...(opts.reasoningEffort ? { reasoning: { effort: opts.reasoningEffort } } : {}),
-      ...(tools.length ? { tools } : {})
+      ...(tools.length ? { tools } : {}),
+      // The per-reply ceiling on web lookups: OpenAI's cap on built-in tool calls, and web_search is the
+      // only built-in tool we attach. Each lookup re-runs the conversation, so this bounds the cost.
+      ...(opts.webSearch && opts.webLookupsCap && opts.webLookupsCap > 0
+        ? { max_tool_calls: opts.webLookupsCap }
+        : {})
     })
     return {
       url: `${BASE_URL}/responses`,
@@ -343,6 +349,9 @@ export const openaiTransport: ChatTransport<OaiState> = {
     return events
   },
 
+  // `response.completed` / `response.incomplete` set the finish reason; without either the reply was cut.
+  completed: (state) => state.finishReason !== undefined,
+
   finish(state: OaiState): StreamEvent[] {
     const assembled = Object.keys(state.calls)
       .map(Number)
@@ -379,9 +388,10 @@ export async function transcribeOpenAi(
       method: 'POST',
       headers: { Authorization: `Bearer ${key}` },
       body: fd,
-      signal: opts.signal
+      signal: withDeadline(opts.signal)
     })
   } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new AiProviderError(TRANSCRIBE_TIMEOUT, 'stalled')
     if ((e as Error)?.name === 'AbortError') throw new AiProviderError('Canceled.', 'aborted')
     throw new AiProviderError('OpenAI unreachable — check your internet connection.', 'network')
   }

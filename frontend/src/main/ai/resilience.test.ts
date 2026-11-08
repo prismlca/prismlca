@@ -56,6 +56,32 @@ function silent(): Response {
   } as unknown as Response
 }
 
+/** A response streaming exactly this SSE text, then closing. */
+function raw(text: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers(),
+    body: new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(text))
+        c.close()
+      }
+    })
+  } as unknown as Response
+}
+
+/** Every event of one request, and the error it ended with (if any). */
+async function collect(): Promise<{ events: Array<{ type: string }>; error?: unknown }> {
+  const events: Array<{ type: string }> = []
+  try {
+    for await (const ev of streamChat({ model: 'm', messages: [], temperature: null })) events.push(ev)
+  } catch (error) {
+    return { events, error }
+  }
+  return { events }
+}
+
 /** Drain a stream to completion, returning the text it yielded. */
 async function drain(): Promise<string> {
   let out = ''
@@ -191,5 +217,110 @@ describe('a request that never reports its usage', () => {
     expect(seen).toHaveLength(1)
     // …and it carries the output tokens the ledger now records (improvement 4).
     expect(seen[0].completion_tokens).toBe(4)
+  })
+})
+
+describe('a provider that never answers', () => {
+  it('gives up when not even the headers come, and does not queue again', async () => {
+    // A request the provider accepted and never answered: fetch itself hangs until its signal fires.
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_resolve, reject) =>
+          init.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))
+          )
+        )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const rejects = expect(drain()).rejects.toMatchObject({ code: 'stalled' })
+    await vi.advanceTimersByTimeAsync(180_000)
+    await rejects
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('a reply the provider never finished', () => {
+  it('is an error, not a short answer — and its calls are not handed out', async () => {
+    // A tool call fully streamed, then the connection closed cleanly: no finish reason, no [DONE].
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          raw(
+            'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function",' +
+              '"function":{"name":"delete_process","arguments":"{}"}}]}}]}\n\n'
+          )
+        )
+    )
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    expect(error).toMatchObject({ code: 'network' })
+    expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
+    // …and the call is booked once, cost unknown: the provider billed what it generated.
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(1)
+  })
+
+  it('books a request that failed mid-stream exactly once', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          raw(
+            'data: {"choices":[{"delta":{"content":"half"}}]}\n\n' +
+              'data: {"error":{"code":429,"message":"slow down"},"choices":[{"finish_reason":"error"}]}\n\n'
+          )
+        )
+    )
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    // The mid-stream 429 speaks the shared vocabulary ('rate_limit', not a code of its own).
+    expect(error).toMatchObject({ code: 'rate_limit' })
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(1)
+  })
+
+  it('ignores a second usage report instead of booking the request twice', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const usage = '"usage":{"cost":0.01,"prompt_tokens":10,"completion_tokens":4}'
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          raw(
+            `data: {"choices":[{"delta":{"content":"hi"}}],${usage}}\n\n` +
+              `data: {"choices":[{"delta":{},"finish_reason":"stop"}],${usage}}\n\ndata: [DONE]\n\n`
+          )
+        )
+    )
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    expect(error).toBeUndefined()
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(1)
+  })
+
+  it('reads an event split over two data lines, and says so when one is unreadable', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          raw(
+            ': keep-alive comment\n\n' +
+              'data: {"choices":[{"delta":\ndata: {"content":"joined"}}]}\n\n' +
+              'data: {not json\n\n' +
+              'data: [DONE]\n\n'
+          )
+        )
+    )
+    const run = drain()
+    await vi.runAllTimersAsync()
+    expect(await run).toBe('joined')
+    expect(warn.mock.calls.some((c) => String(c[0]).includes('unreadable stream event'))).toBe(true)
   })
 })

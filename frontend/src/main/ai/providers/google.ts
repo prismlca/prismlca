@@ -32,6 +32,7 @@
 import { clampMaxTokens, type ReasoningEffort } from '../../../shared/aiDefaults'
 import { GOOGLE_SEARCH_USD_PER_QUERY, priceOn } from '../directModels'
 import { getModels } from '../models'
+import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
   AiProviderError,
   type AccumTool,
@@ -311,8 +312,8 @@ interface GoogleState {
   annotations: Citation[]
   /** `interaction.completed` arrived. A stream that ends without it is a cut-off reply, not a short one. */
   completed: boolean
-  /** The request's own signal: a reply the user stopped ends without completion too, and that is no error. */
-  signal?: AbortSignal
+  /** The interaction ended as `failed`: raised from `finish`, AFTER its usage went to the ledger. */
+  failure?: string
 }
 
 /** The url_citation annotations on one content part, wherever the API puts them. */
@@ -464,8 +465,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
     calls: new Map(),
     queries: 0,
     annotations: [],
-    completed: false,
-    signal: opts.signal
+    completed: false
   }),
 
   interpret(raw: unknown, state: GoogleState): StreamEvent[] {
@@ -558,14 +558,15 @@ export const googleTransport: ChatTransport<GoogleState> = {
       }
       case 'interaction.completed': {
         const interaction = parsed.interaction ?? {}
-        if (interaction.status === 'failed')
-          throw new AiProviderError(
-            interaction.error?.message
-              ? String(interaction.error.message)
-              : 'Google reported the interaction as failed.',
-            'http'
-          )
         state.completed = true
+        if (interaction.status === 'failed') {
+          // Billed all the same: the usage is booked first, the error raised from `finish`.
+          state.failure = interaction.error?.message
+            ? String(interaction.error.message)
+            : 'Google reported the interaction as failed.'
+          events.push(usageEvent(state, interaction.usage))
+          break
+        }
         events.push({ type: 'finish', reason: finishReason(interaction.status) })
         events.push(usageEvent(state, interaction.usage))
         break
@@ -581,16 +582,11 @@ export const googleTransport: ChatTransport<GoogleState> = {
     return events
   },
 
+  // A cut-off reply never reaches `finish`: the engine raises it and releases none of its calls.
+  completed: (state) => state.completed,
+
   async finish(state: GoogleState): Promise<StreamEvent[]> {
-    // No completion event: the reply was cut off. Its finished calls are NOT released — running half a
-    // round's calls is a partial mutation of the user's model — and a stop by the user is quiet.
-    if (!state.completed) {
-      if (state.signal?.aborted) return []
-      throw new AiProviderError(
-        'Google ended the reply before it was complete — what arrived is shown; send it again to get the rest.',
-        'network'
-      )
-    }
+    if (state.failure) throw new AiProviderError(state.failure, 'http')
     const events: StreamEvent[] = []
     // The model also quotes search results Google did not annotate as citations (measured: a research_bom
     // leg wrote one as its source_url). Only Google's search mints such a link, so one that leads to a page
@@ -648,9 +644,10 @@ export async function transcribeGoogle(
       method: 'POST',
       headers: headers(key),
       body,
-      signal: opts.signal
+      signal: withDeadline(opts.signal)
     })
   } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new AiProviderError(TRANSCRIBE_TIMEOUT, 'stalled')
     if ((e as Error)?.name === 'AbortError') throw new AiProviderError('Canceled.', 'aborted')
     throw new AiProviderError('Google unreachable — check your internet connection.', 'network')
   }

@@ -155,3 +155,28 @@ describe('openrouter buildRequest — automatic caching', () => {
     expect(bodyOf(base)).not.toHaveProperty('session_id')
   })
 })
+
+describe('what the transcript carries for other providers', () => {
+  it('never sends another provider’s replay data to OpenRouter', () => {
+    const body = JSON.parse(
+      openrouterTransport.buildRequest(
+        {
+          ...base,
+          messages: [
+            { role: 'user', content: 'Weather?' },
+            {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{ id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }],
+              replay: { provider: 'google', steps: [{ type: 'thought', signature: 'secret-ish' }] }
+            },
+            { role: 'tool', tool_call_id: 'c1', content: 'ok' }
+          ]
+        },
+        'k'
+      ).body
+    ) as { messages: Array<Record<string, unknown>> }
+    expect(body.messages[1].replay).toBeUndefined()
+    expect(body.messages[1].tool_calls).toHaveLength(1)
+  })
+})

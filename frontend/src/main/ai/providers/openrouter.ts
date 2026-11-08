@@ -14,6 +14,7 @@ import {
   DEFAULT_ZDR_EXCEPT_OPENAI,
   DEFAULT_ZERO_DATA_RETENTION
 } from '../../../shared/aiDefaults'
+import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
   AiProviderError,
   type AccumTool,
@@ -202,7 +203,9 @@ export const openrouterTransport: ChatTransport<OrState> = {
 
     const body = JSON.stringify({
       model: opts.model,
-      messages: opts.messages,
+      // Our transcript minus what only another provider can read (`replay`, e.g. Google's signed thought
+      // steps after a provider switch): opaque data no OpenRouter model asked for.
+      messages: opts.messages.map(({ replay: _replay, ...m }) => m),
       ...(hasFile ? { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] } : {}),
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       max_tokens: clampMaxTokens(opts.maxTokens),
@@ -257,7 +260,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
     if (parsed?.error && typeof parsed.error === 'object') {
       const code = Number(parsed.error.code)
       const message = String(parsed.error.message || 'OpenRouter reported an error mid-stream.')
-      throw new AiProviderError(message, code === 402 ? 'credits' : code === 429 ? 'rate' : 'http')
+      throw new AiProviderError(message, code === 402 ? 'credits' : code === 429 ? 'rate_limit' : 'http')
     }
     // Which endpoint actually served this request. OpenRouter puts it on every chunk; it used to
     // be dropped, and with it the only way to tell a slow provider from a slow model. Measured
@@ -310,6 +313,10 @@ export const openrouterTransport: ChatTransport<OrState> = {
     return events
   },
 
+  // The end of a reply is the `[DONE]` line; a stream cut before it that still stated a finish reason
+  // also finished (the reason is on the reply's last chunk).
+  completed: (state, sawDone) => sawDone || state.sentFinish,
+
   finish(state: OrState): StreamEvent[] {
     const assembled = Object.keys(state.calls)
       .map(Number)
@@ -351,9 +358,10 @@ export async function transcribeOpenRouter(
         // raw voice, and the ZDR provider (Groq/whisper-large-v3) is the cheaper, better one anyway.
         provider: { data_collection: 'deny' }
       }),
-      signal: opts.signal
+      signal: withDeadline(opts.signal)
     })
   } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError') throw new AiProviderError(TRANSCRIBE_TIMEOUT, 'stalled')
     if ((e as Error)?.name === 'AbortError') throw new AiProviderError('Canceled.', 'aborted')
     throw new AiProviderError('OpenRouter unreachable — check your internet connection.', 'network')
   }
