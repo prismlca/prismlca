@@ -101,6 +101,7 @@ npm ci
 npm run dev
 npx vitest run                    # tests
 npm run typecheck && npm run lint
+npm run e2e                       # builds the app and drives it through Playwright (about a minute)
 ```
 
 `./start.sh` starts the app from the repository root; `--restart` replaces a running instance and `--status`
@@ -109,6 +110,11 @@ says what is running and why a start would refuse.
 Parallel backend tests are safe: each worker imports `tests/conftest.py` and gets its own throwaway
 `BRIGHTWAY2_DIR`, and every test creates a uniquely named project inside it. The tests need no background
 database.
+
+The end-to-end tests (`frontend/e2e/`) start the built app as a real Electron process with its backend, in
+throwaway data directories, and import the two invented BAFU datasets in `backend/tests/fixtures/import/bafu-mini`
+— no licensed data, no downloads. On Linux without a display, run them under `xvfb-run -a`. Coverage:
+`uv run pytest -n auto --cov` and `npm run test:cov`; CI publishes both reports on each run's summary page.
 
 ### Background data for development
 
