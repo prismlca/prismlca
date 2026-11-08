@@ -89,3 +89,55 @@ def test_the_pdf_probe_reports_a_reader_that_fails(monkeypatch):
     monkeypatch.setattr(bundle_check, "_typesetting_failures", lambda: [])
     monkeypatch.setenv("BRIGHTWAY2_DIR", os.environ.get("BRIGHTWAY2_DIR", ""))  # run() sets its own
     assert bundle_check.run() == 1
+
+
+def test_the_calculation_probe_computes_the_known_score_and_leaves_no_project_behind():
+    from prism_lca.engine.bootstrap import get_bd
+
+    bd = get_bd()
+    before, projects = bd.projects.current, set(bd.projects)
+    assert bundle_check._calculation_failures() == []
+    assert bd.projects.current == before
+    assert set(bd.projects) == projects
+
+
+def test_the_calculation_probe_reports_a_wrong_score(monkeypatch):
+    from prism_lca.engine import lca
+    from prism_lca.engine.bootstrap import get_bd
+
+    monkeypatch.setattr(lca, "compute_lcia", lambda *_a, **_k: {"score": 1.0, "direct": 0.1})
+    assert bundle_check._calculation_failures() == [
+        "calculation: score 1.0, direct 0.1; expected 1.1, 0.1"
+    ]
+    before = get_bd().projects.current
+
+    def broken(*_a, **_k):
+        raise RuntimeError("no solver")
+
+    monkeypatch.setattr(lca, "compute_lcia", broken)
+    with pytest.raises(RuntimeError):
+        bundle_check._calculation_failures()
+    assert get_bd().projects.current == before
+
+
+@pytest.mark.skipif(not Path("/proc/self/fd").is_dir(), reason="reads the process's open files from /proc")
+def test_the_calculation_probe_closes_the_project_files_before_deleting_them(monkeypatch):
+    """Windows refuses to delete an open file; /proc shows here what would still be open there."""
+    from prism_lca.engine.bootstrap import get_bd
+
+    bd = get_bd()
+    real, still_open = bd.projects.delete_project, []
+
+    def watched(name, delete_dir=False):
+        for fd in Path("/proc/self/fd").iterdir():
+            try:
+                target = os.readlink(fd)
+            except OSError:
+                continue
+            if "prism-bundle-check-" in target:
+                still_open.append(target)
+        return real(name, delete_dir=delete_dir)
+
+    monkeypatch.setattr(bd.projects, "delete_project", watched)
+    assert bundle_check._calculation_failures() == []
+    assert still_open == []

@@ -213,6 +213,17 @@ def invalidate_lca_cache(model_change: bool = True) -> None:
         _MODEL_GEN += 1
 
 
+def release_cached(project: str) -> None:
+    """Drop the cached factorisations of ``project`` and close the ZIP files their datapackages keep open.
+    bw2calc reads a database's processed arrays from ZIP files for as long as its LCA lives, and Windows
+    refuses to delete an open file: a project directory cannot be removed while one of its LCAs is cached."""
+    with _LCA_LOCK:
+        for key in [k for k in _LCA_CACHE if k[0] == project]:
+            for package in getattr(_LCA_CACHE.pop(key)["lca"], "packages", None) or []:
+                if getattr(package, "fs", None) is not None:
+                    package.fs.close()
+
+
 def cache_generation() -> int:
     """How often the MATRICES changed, for the factorisation caches. Includes the reversible
     scenario/sensitivity windows — do not key anything long-lived on this; use

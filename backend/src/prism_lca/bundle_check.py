@@ -14,8 +14,10 @@ starts two worker processes the way Windows always starts them (``spawn``: a fre
 and waits for their answers — the ecoinvent import reads its datasets in such workers, and a frozen worker
 that runs the normal start-up instead of its task never answers. Then it typesets one tiny document offline,
 through the worker process every preview and PDF is compiled in, and counts and reads one tiny PDF through the
-worker process every PDF attachment is read in (markitdown loads its PDF libraries only there). It prints each
-failure with its original cause. ``tests/test_bundle_check.py`` keeps the list complete: a function-level import
+worker process every PDF attachment is read in (markitdown loads its PDF libraries only there). Last it computes
+one LCA through the engine the calculate endpoint uses: an import proves a library loads, only a write and a
+solve prove that bw2data, bw_processing, matrix_utils and bw2calc work together with this build's solver and
+data files. It prints each failure with its original cause. ``tests/test_bundle_check.py`` keeps the list complete: a function-level import
 of a third-party module that is not on it fails the suite.
 """
 
@@ -212,6 +214,73 @@ def _pdf_failures() -> list[str]:
     return failures + ([] if pages == 1 else [f"pdf: counted {pages} pages, expected 1"])
 
 
+#: A bottle needs 2 kWh; each kWh emits 0.5 kg CO2 and the bottle itself 0.1 kg. At 1 per kg CO2 that is 1.1
+#: in all, 0.1 of it direct.
+_PROBE_SCORE, _PROBE_DIRECT = 1.1, 0.1
+
+
+def _write_probe_system(bd) -> None:
+    bd.Database("probe-biosphere").write(
+        {
+            ("probe-biosphere", "co2"): {
+                "name": "Carbon dioxide",
+                "type": "emission",
+                "categories": ("air",),
+                "unit": "kg",
+            }
+        }
+    )
+    bd.Database("probe").write(
+        {
+            ("probe", "elec"): {
+                "name": "electricity",
+                "unit": "kWh",
+                "reference product": "electricity",
+                "exchanges": [
+                    {"input": ("probe", "elec"), "amount": 1, "type": "production"},
+                    {"input": ("probe-biosphere", "co2"), "amount": 0.5, "type": "biosphere"},
+                ],
+            },
+            ("probe", "bottle"): {
+                "name": "bottle",
+                "unit": "unit",
+                "reference product": "bottle",
+                "exchanges": [
+                    {"input": ("probe", "bottle"), "amount": 1, "type": "production"},
+                    {"input": ("probe", "elec"), "amount": 2, "type": "technosphere"},
+                    {"input": ("probe-biosphere", "co2"), "amount": 0.1, "type": "biosphere"},
+                ],
+            },
+        }
+    )
+    bd.Method(("probe", "gwp")).write([(("probe-biosphere", "co2"), 1.0)])
+
+
+def _calculation_failures() -> list[str]:
+    """One LCA of a two-process system in a project of its own, which is deleted afterwards, and the
+    project that was current before made current again."""
+    from prism_lca.engine import lca
+    from prism_lca.engine.bootstrap import get_bd
+
+    bd = get_bd()
+    before = bd.projects.current
+    name = f"prism-bundle-check-{os.getpid()}"
+    bd.projects.set_current(name)
+    try:
+        _write_probe_system(bd)
+        result = lca.compute_lcia("probe", "bottle", ["probe", "gwp"], direct_split=True)
+    finally:
+        bd.projects.set_current(before)
+        # The cached LCA keeps the project's processed ZIP files open; Windows would refuse to delete them.
+        lca.release_cached(name)
+        bd.projects.delete_project(name, delete_dir=True)
+    got = (result["score"], result["direct"])
+    # Brightway's matrices hold float32: 1.1 comes back as 1.1000000015.
+    if abs(got[0] - _PROBE_SCORE) < 1e-6 and abs(got[1] - _PROBE_DIRECT) < 1e-6:
+        return []
+    return [f"calculation: score {got[0]}, direct {got[1]}; expected {_PROBE_SCORE}, {_PROBE_DIRECT}"]
+
+
 def run() -> int:
     """Import everything; print one line per failure. 0 when all imports work, 1 otherwise.
 
@@ -255,11 +324,15 @@ def _check_everything() -> int:
         failures += _pdf_failures()
     except Exception as exc:  # noqa: BLE001 — reported with its cause
         failures.append(f"pdf: {_cause(exc)}")
+    try:
+        failures += _calculation_failures()
+    except Exception as exc:  # noqa: BLE001 — reported with its cause
+        failures.append(f"calculation: {_cause(exc)}")
     for line in failures:
         print(f"bundle: FAIL {line}")
     print(
         f"bundle: {len(names)} package modules and {len(LAZY_IMPORTS)} libraries imported, "
         f"3 attachment formats converted, 2 worker processes asked, 1 document typeset, 1 PDF read, "
-        f"{len(failures)} failed"
+        f"1 LCA computed, {len(failures)} failed"
     )
     return 1 if failures else 0
