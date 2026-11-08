@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
+import { endAll, listed, processTree } from './processes'
 
 export const FRONTEND = resolve(__dirname, '..')
 export const FIXTURES = resolve(FRONTEND, '..', 'backend', 'tests', 'fixtures')
@@ -103,7 +104,44 @@ export async function launch(install: Install): Promise<RunningApp> {
   return { app, page, output, rendererErrors }
 }
 
-/** Quits the way a person does (the window closes, the app ends its backend) and waits for the process. */
-export async function quit(running: RunningApp): Promise<void> {
-  await running.app.close()
+/** How long a quit may take. The app gives its backend eight seconds to leave in order, then ends it. */
+const QUIT_MS = 60_000
+/** How long the processes of a finished quit may take to be gone (Chromium's helpers end a moment late). */
+const AFTERMATH_MS = 10_000
+
+const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms))
+
+/**
+ * Quits the way a person does (the window closes, the app ends its backend) and waits for the process.
+ * Fails if the quit does not finish in time, or if anything the app started is still running after it —
+ * a backend that outlives the app keeps the data folder locked. Whatever is left over is ended.
+ */
+export async function quit(running: RunningApp, install: Install): Promise<void> {
+  const proc = running.app.process()
+  const started = processTree(proc.pid === undefined ? [] : [proc.pid], install.root).map((p) => p.pid)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const outcome = await Promise.race([
+    running.app.close().then(() => 'closed' as const),
+    new Promise<'hung'>((done) => (timer = setTimeout(() => done('hung'), QUIT_MS)))
+  ])
+  clearTimeout(timer)
+  let left = processTree(started, install.root)
+  if (outcome === 'hung') {
+    endAll(left)
+    const main =
+      proc.exitCode === null && proc.signalCode === null
+        ? 'is still running'
+        : `exited (${proc.exitCode ?? proc.signalCode})`
+    throw new Error(
+      `The app did not quit within ${QUIT_MS / 1000} s; its main process ${main}. Still running:${listed(left)}`
+    )
+  }
+  for (const until = Date.now() + AFTERMATH_MS; left.length > 0 && Date.now() < until; ) {
+    await sleep(500)
+    left = processTree(started, install.root)
+  }
+  if (left.length > 0) {
+    endAll(left)
+    throw new Error(`The app quit, but what it started is still running:${listed(left)}`)
+  }
 }

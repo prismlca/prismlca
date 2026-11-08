@@ -153,12 +153,10 @@ jobs:
       - name: Frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Backend tests
-        working-directory: backend
-        run: uv run pytest -n auto -q
-      # Each check runs even when the one before it failed, so one run shows everything Windows does differently.
+      # The short checks first and the backend suite (most of the hour) last, so a finding in the app's
+      # start, window or quit is there in minutes. Each check runs even when the one before it failed, so
+      # one run shows everything Windows does differently.
       - name: Frontend tests
-        if: ${{ !cancelled() }}
         working-directory: frontend
         run: npx vitest run
       - name: The app starts and its window answers
@@ -182,3 +180,7 @@ jobs:
             frontend/test-results/
             frontend/playwright-report/
           retention-days: 14
+      - name: Backend tests
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: uv run pytest -n auto -q

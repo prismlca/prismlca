@@ -22,7 +22,7 @@ test.afterEach(async ({}, info) => {
 })
 
 test.afterAll(async () => {
-  if (running) await quit(running)
+  if (running) await quit(running, install)
   removeInstall(install)
 })
 
@@ -90,7 +90,7 @@ test('a model is built, calculated, changed, undone and still there after a rest
   await calculateExpecting(page, 2)
 
   // A restart brings the model back as it was, from the backend's store and the window's own settings.
-  await quit(running!)
+  await quit(running!, install)
   running = await launch(install)
   page = running.page
   await expect(page.getByText('Bring your background data')).toBeHidden()

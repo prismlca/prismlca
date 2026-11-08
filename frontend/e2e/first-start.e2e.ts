@@ -11,7 +11,7 @@ test('a fresh install starts, asks for background data and quits cleanly', async
     expect(health.status).toBe(200)
     expect(running.rendererErrors).toEqual([])
   } finally {
-    await quit(running)
+    await quit(running, install)
     removeInstall(install)
   }
 })
