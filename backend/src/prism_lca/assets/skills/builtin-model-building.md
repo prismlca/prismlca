@@ -427,8 +427,10 @@ process that entered the result at 42 % of its mass — both invisible without t
    - A dominant figure that is not a parameter yet becomes one first (section 6) — a number typed into an
      exchange, or a constant you derived by hand, cannot be varied. Details: the *Parameters & formulas*
      skill; ranges worth using for end-of-life: the *End-of-life & what-if scenarios* skill.
-6. **Get a second opinion: `review_model`, with `code` and `method`**, after every build of a whole
-   product system — not after single-value edits. It gathers its own evidence and runs its own hotspot
+6. **Get a second opinion: `review_model`, with `code` and `method`**, once a product system (several
+   processes or life-cycle phases) is built, whatever the request — and again before it goes into a report
+   or a comparison; not after single-value edits, and not for a quick figure from a one- or two-process
+   model. It gathers its own evidence and runs its own hotspot
    analysis, and it is a DIFFERENT model, which is the point: once it caught a wrong background dataset the
    builder kept reading past. Present the findings, act on them, and record the outcomes with
    `resolutions` — the *Critical review* skill has the details.

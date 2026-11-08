@@ -4,10 +4,17 @@ A model you built yourself is the hardest to see clearly. `review_model` gathers
 (health check, biggest contributors, goal & scope on record, background datasets) and has a separate
 reviewer judge it. It changes nothing — acting on the findings is your job.
 
-## 1. Review when it can still change something
-- **Before reporting.** A finding that arrives after the user has the number is worth much less.
-- **After a structural change** (new phase, swapped background dataset, changed allocation).
+## 1. When a review is worth it
+A review is a paid second model reading your whole model — spend it where a finding can still change a
+conclusion someone will rely on:
+- **Before a report is written** or a result goes out as a study finding.
 - **Before a comparison is drawn.** Comparative claims are what reviewers attack hardest.
+- **After a structural change** to such a model (new phase, swapped background dataset, changed allocation).
+
+Not for a quick figure from a small model — one or two processes linked straight to background datasets,
+calculated so the user sees a number; there the health check is the check. A model of several processes or
+life-cycle phases is reviewed once it is built, whatever the request — and again before it goes into a
+report or a comparison, or whenever the user asks for a review.
 Pass `code` and `method` — without them there is no contribution tree and the review can only judge
 structure and goal & scope, not what actually drives the result.
 

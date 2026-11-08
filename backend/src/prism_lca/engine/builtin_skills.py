@@ -135,7 +135,9 @@ BUILTIN_SKILLS: list[dict] = [
             "When and how to get a critical second opinion on a finished model with review_model, "
             "what a reviewer challenges (boundaries vs. what is modelled, proxy plausibility, LCIA "
             "method variant, treatment-process signs, single-hotspot dominance), and how to turn "
-            "findings into fixes or named limitations. Use before reporting or comparing results."
+            "findings into fixes or named limitations. Use once a product system of several processes "
+            "or life-cycle phases is built, before a result goes into a report, a study or a comparison, "
+            "and when the user asks — not for a quick figure from a one- or two-process model."
         ),
         "content": _content("builtin-review"),
         "enabled": True,
