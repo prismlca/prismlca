@@ -20,11 +20,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/renderer/src/**'],
-      // The test harness is not the subject under test; counting it flatters the number.
-      exclude: ['src/renderer/src/test/**']
-      // Deliberately no thresholds: with most of the renderer still untested, any honest number is
-      // either meaningless or a permanently red gate, and both teach people to ignore it.
+      // Main process, preload and shared code too: the glue between them (window, bridge, IPC) is where
+      // the unit tests are thinnest, and a renderer-only number hid exactly that.
+      include: ['src/**'],
+      // Tests and their harnesses are not the subject under test; counting them flatters the number.
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/test/**']
+      // Deliberately no thresholds: CI publishes the report to show where tests are thin. A percentage
+      // gate is met by the cheapest lines, not the riskiest, or it stays red and teaches people to ignore it.
     },
     projects: [
       {

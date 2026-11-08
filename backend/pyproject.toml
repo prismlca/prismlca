@@ -60,6 +60,9 @@ dev = [
     # stemming at match time was measured and rejected (it collapses "wichtigste" to "wichtig"
     # and blocked ordinary sentences). Nothing under src/ may import it.
     "snowballstemmer>=2.2",
+    # Coverage is measured in CI and published as a report, deliberately without a threshold: it shows where
+    # tests are thin, and a percentage gate would be met by the cheapest lines, not the riskiest ones.
+    "pytest-cov>=7",
 ]
 build = [
     "pyinstaller>=6.10",
@@ -110,6 +113,18 @@ max-statements = 90
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# `uv run pytest -n auto --cov` measures prism_lca. `patch = ["subprocess"]` follows the backend into the
+# child processes the start-up tests spawn (tests/backend_process.py) — without it server.py looked
+# untested. sys.monitoring keeps the overhead small on Python 3.12; we measure lines, not branches.
+[tool.coverage.run]
+source = ["prism_lca"]
+patch = ["subprocess"]
+core = "sysmon"
+
+[tool.coverage.report]
+precision = 1
+skip_empty = true
 
 # .python-version pins the bundled interpreter to an exact patch, because 3.12 now receives security fixes
 # only and every one of them must reach the bundle. A uv older than the pinned build cannot install it;
