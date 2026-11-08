@@ -52,7 +52,10 @@ function fs(opts: {
   }
 }
 
-describe('resolveDisplayEnv', () => {
+/** X11 and Wayland displays are a Linux matter; the resolver runs only there (and works with POSIX paths). */
+const linuxOnly = describe.skipIf(process.platform === 'win32')
+
+linuxOnly('resolveDisplayEnv', () => {
   it('keeps values the live session confirms, and starts on its Wayland socket', () => {
     const { env, notes, platform } = resolveDisplayEnv(
       {
@@ -160,7 +163,7 @@ describe('resolveDisplayEnv', () => {
   })
 })
 
-describe('resolveDisplayEnv: only displays of this user', () => {
+linuxOnly('resolveDisplayEnv: only displays of this user', () => {
   const otherX0 = { '/tmp/.X11-unix/X0': { uid: 1001, mode: 0o777, socket: true } }
 
   it("starts on the user's Wayland socket and passes on no X display of another account", () => {
@@ -279,7 +282,7 @@ describe('resolveDisplayEnv: only displays of this user', () => {
   })
 })
 
-describe('xDisplayTarget', () => {
+linuxOnly('xDisplayTarget', () => {
   it('reads DISPLAY the way libxcb does', () => {
     for (const d of [':0', ':0.1', 'unix:0', 'unix/:0', 'unix/somehost:0.0', ':00'])
       expect(xDisplayTarget(d)).toEqual({ via: 'unix', n: '0' })
@@ -325,7 +328,7 @@ describe('xDisplayTarget', () => {
   })
 })
 
-describe('resolveDisplayEnv: a TCP display on this machine', () => {
+linuxOnly('resolveDisplayEnv: a TCP display on this machine', () => {
   const run = (display: string, tcp: Record<number, number[]>, runtime: string[] = []) =>
     resolveDisplayEnv(
       { XDG_RUNTIME_DIR: '/run/user/1000', DISPLAY: display },
@@ -367,7 +370,7 @@ describe('resolveDisplayEnv: a TCP display on this machine', () => {
   })
 })
 
-describe('displayForLaunch', () => {
+linuxOnly('displayForLaunch', () => {
   it('drops inherited display values that failed the checks, and names the platform', () => {
     const base = {
       PATH: '/usr/bin',

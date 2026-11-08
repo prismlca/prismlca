@@ -157,7 +157,8 @@ describe('ai:attach only reads files the user handed over', () => {
     const r = await attach([link])
     expect(r[0]).toEqual(expect.objectContaining({ name: 'straight-link.txt' }))
     expect(r[0].error).toBeUndefined()
-    const target = realpathSync(picked)
+    // The native resolution, as the handler's: on Windows only it expands 8.3 short names (RUNNER~1).
+    const target = realpathSync.native(picked)
     expect(fsSpy.stat).toEqual([target])
     expect(fsSpy.readFile).toEqual([target])
     expect(contents).toEqual(['density 1.2 kg/l'])

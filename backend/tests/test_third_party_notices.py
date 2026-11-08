@@ -39,6 +39,13 @@ def generated(tool):
     return {"text": text, "failures": failures, "python": python, "npm": npm}
 
 
+#: The notices are generated on Linux, as CI and the release generate them: there, packages only Windows
+#: installs are covered by their SPDX text. A Windows environment has those installed and lacks the
+#: Linux-only ones (uvloop), so what it generates differs by design — the Linux job checks the file.
+_GENERATED_ON_LINUX = pytest.mark.skipif(sys.platform == "win32", reason="the notices are generated on Linux")
+
+
+@_GENERATED_ON_LINUX
 def test_committed_files_are_current(tool, generated):
     fresh = tool.comparable(generated["text"])
     for path in tool.OUTPUTS:
@@ -68,6 +75,7 @@ def test_required_texts_present(tool, generated):
     assert "3d7cfbdacd47fdda877c5cd8a79fbcc4f2a574f3" in text
 
 
+@_GENERATED_ON_LINUX
 def test_policy_passes(tool, generated):
     assert generated["failures"] == []
     names = {p.name for p in generated["python"]}

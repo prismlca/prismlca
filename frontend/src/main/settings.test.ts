@@ -524,7 +524,8 @@ describe('the start page settings', () => {
   })
 })
 
-describe('a save that fails', () => {
+// Provoked with POSIX permissions; on Windows a read-only mode bit does not stop a write into a folder.
+describe.skipIf(process.platform === 'win32')('a save that fails', () => {
   it('leaves the cache with the old values, so nothing reads a setting the file does not have', async () => {
     if (process.getuid?.() === 0) return // root writes anywhere; the guard cannot be provoked
     const { chmodSync } = await import('node:fs')

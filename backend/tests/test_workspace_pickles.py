@@ -152,7 +152,8 @@ def test_a_store_whose_index_disagrees_with_its_table_is_refused(tmp_path):
 
 def test_no_journal_of_a_checked_store_is_kept(tmp_path):
     _db(tmp_path / "lci" / "databases.db", "activitydataset", "data", [pickle.dumps(PLAIN)])
-    (tmp_path / "LCI").mkdir()
+    # On a case-insensitive file system (Windows, macOS) "LCI" is the "lci" folder itself.
+    (tmp_path / "LCI").mkdir(exist_ok=True)
     sides = [tmp_path / "LCI" / "databases.db-journal", tmp_path / "lci" / "DATABASES.DB-WAL",
              tmp_path / "Parameters.db-shm"]
     for side in sides:

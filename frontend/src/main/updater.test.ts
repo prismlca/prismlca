@@ -802,7 +802,8 @@ describe('V-3: a deb installation is updated from the release page', () => {
   })
 })
 
-describe('V-4: the AppImage swap', () => {
+// An AppImage exists on Linux only, and Windows refuses an fsync on a file opened for reading.
+describe.skipIf(process.platform === 'win32')('V-4: the AppImage swap', () => {
   it('puts the new file in place under the same name and keeps the old one as .prev', async () => {
     const { swapAppImage } = await import('./updater')
     const target = join(appState.userData, 'PrismLCA.AppImage')
