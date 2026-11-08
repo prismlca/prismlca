@@ -126,8 +126,10 @@ jobs:
   test-windows:
     name: Tests on Windows
     runs-on: windows-2025
-    # The backend suite alone took 49 minutes here (Linux: 4) — process start-up and SQLite on NTFS.
-    timeout-minutes: 90
+    # The backend suite alone takes 45 minutes and more here (Linux: 4) — process start-up and SQLite on
+    # NTFS — and the whole job between 52 and 76 minutes, depending on the runner. The limit leaves room for
+    # a slow runner, so that a job is never cancelled with every test still passing.
+    timeout-minutes: 120
     permissions:
       contents: read
     defaults:
