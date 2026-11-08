@@ -99,6 +99,48 @@ describe('the turn view of one chat', () => {
   })
 })
 
+describe('a request the provider refused, sent again', () => {
+  const wait: AiEvent = {
+    chatId: 'c',
+    type: 'retry',
+    phase: 'wait',
+    cause: 'busy',
+    detail: 'overloaded (529)',
+    attempt: 2,
+    until: 12_000
+  }
+
+  it('shows the wait, then the attempt under way with a fresh thinking clock', () => {
+    const waiting = fold([[wait, 5_000]], { ...emptyTurn(1_000), reasoning: 900 })!
+    expect(waiting.retry).toEqual({
+      phase: 'wait',
+      cause: 'busy',
+      detail: 'overloaded (529)',
+      attempt: 2,
+      until: 12_000
+    })
+    // The wait keeps the old clock: nothing new has started yet.
+    expect(waiting.thinkingAt).toBe(1_000)
+    const sending = foldTurn(waiting, { chatId: 'c', type: 'retry', phase: 'send', attempt: 2 }, 12_000)!
+    expect(sending).toMatchObject({ retry: { phase: 'send', attempt: 2 }, thinkingAt: 12_000, reasoning: 0 })
+  })
+
+  it('clears the note as soon as the round produces anything', () => {
+    for (const ev of [
+      { chatId: 'c', type: 'delta', text: 'Hi' },
+      { chatId: 'c', type: 'reasoning', chars: 400 },
+      tool('search', 'start'),
+      { chatId: 'c', type: 'round-restart', reason: 'empty' }
+    ] as AiEvent[])
+      expect(
+        fold([
+          [wait, 1],
+          [ev, 2]
+        ])!.retry
+      ).toBeUndefined()
+  })
+})
+
 describe('the store', () => {
   // Main sends an `error` after `done` when the answer could not be saved, and relies on the renderer
   // holding no partial text by then: a turn kept past `done` would put the answer in twice.

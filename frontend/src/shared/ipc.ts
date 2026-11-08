@@ -84,6 +84,21 @@ export type AgentEvent =
    */
   | { chatId: string; type: 'round-restart'; reason: 'empty' }
   /**
+   * The provider refused the round's request or could not be reached, before its first word, and the
+   * request goes out again: `wait` until `until` (ms since the epoch) — why, and which attempt comes —
+   * then `send` when that attempt starts. The run bar counts the wait down; it used to read as thinking.
+   */
+  | {
+      chatId: string
+      type: 'retry'
+      phase: 'wait'
+      cause: 'busy' | 'offline'
+      detail: string
+      attempt: number
+      until: number
+    }
+  | { chatId: string; type: 'retry'; phase: 'send'; attempt: number }
+  /**
    * How full the model's context is, after every round: the prompt size the provider counted for
    * the request just answered, the model's window (absent when the catalogue does not know it) and
    * the size at which older tool results are condensed. The run bar draws a meter from it.

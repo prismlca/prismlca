@@ -37,6 +37,9 @@ export interface ScriptedRound {
   reasoning?: number[]
   calls?: Array<{ id: string; name: string; arguments: string }>
   usage?: Usage
+  /** Events the engine yields before the reply — a retry's wait and send, the usage of a failed attempt
+   *  — played first, before `throws`. */
+  before?: StreamEvent[]
   throws?: unknown
   /** The provider's finish reason for the round ("length" = cut off at the output limit). */
   finish?: string
@@ -85,6 +88,7 @@ class ScriptedChat {
   streamChat: (opts: StreamChatOpts) => AsyncGenerator<StreamEvent>
 
   private async *play(round: ScriptedRound, opts: StreamChatOpts): AsyncGenerator<StreamEvent> {
+    for (const ev of round.before ?? []) yield ev
     if (round.throws) throw round.throws
     for (const chars of round.reasoning ?? []) yield { type: 'reasoning', chars }
     const text = round.text ?? (this.alwaysDelta ? '' : undefined)

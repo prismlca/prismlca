@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-08",
+    "title": "Runs wait out a busy provider",
+    "details": "When the AI provider is overloaded, rate-limits a request or cannot be reached, the chat now keeps trying instead of failing after a few seconds: up to two minutes for a busy provider, up to 15 minutes without a connection. The run bar says why it waits and counts down to the next attempt; Stop ends the wait."
+  },
+  {
+    "date": "2026-11-08",
     "title": "Anthropic as AI provider",
     "details": "Settings → AI → Provider has a fourth card: Anthropic, for Claude Sonnet 5.5, Opus 5.5, Fable 5.1 and Haiku 5.5 straight from Anthropic with a key from platform.claude.com. Web search works in the chat and in the research tools, and costs appear under Usage & costs in an Anthropic tab, estimated from Anthropic's list prices. Voice input is not offered there, as Anthropic has no speech model."
   },

@@ -516,17 +516,18 @@ describe('the stream', () => {
   })
 
   it('continues no paused reply once the spend ceiling has tripped', async () => {
-    fetchMock.mockResolvedValueOnce(
-      sse([
+    const budget = new AbortController()
+    // The ceiling trips while the first request runs — no request at all would start past it.
+    fetchMock.mockImplementationOnce(async () => {
+      budget.abort()
+      return sse([
         messageStart(),
         blockStart(0, { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: {} }),
         blockStop(0),
         messageDelta('pause_turn', usage0),
         messageStop
       ])
-    )
-    const budget = new AbortController()
-    budget.abort()
+    })
     const events = await collect({ webSearch: true, budget: budget.signal })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(events.filter((e) => e.type === 'finish')).toEqual([{ type: 'finish', reason: 'length' }])

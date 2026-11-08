@@ -5,8 +5,21 @@
  * from the original OpenRouter client — every supported provider speaks SSE over one POST, so the
  * resilience mechanics are genuinely shared while the wire formats are not.
  */
+import {
+  classifyFetchFailure,
+  RetryClock,
+  statusDetail,
+  streamFailureDetail,
+  tlsFailure
+} from './retryPolicy'
 import { parseEventData, SseFramer } from './sse'
-import { AiProviderError, type ChatTransport, type StreamChatOpts, type StreamEvent } from './types'
+import {
+  AiProviderError,
+  type ChatTransport,
+  type RetryCause,
+  type StreamChatOpts,
+  type StreamEvent
+} from './types'
 
 /** No byte at all for this long means the connection is dead, whatever the socket believes.
  *
@@ -34,53 +47,74 @@ export function withDeadline(signal: AbortSignal | undefined, ms: number = ONE_S
   return signal ? AbortSignal.any([signal, deadline]) : deadline
 }
 
-/** Attempts for a request that failed before producing a single byte. Once text has been yielded a
- *  retry would duplicate it, so the loop below only ever re-sends a request that produced nothing. */
-const MAX_ATTEMPTS = 3
+/** How long the body of a refused request may take to arrive. A provider that sends the headers of an
+ *  error and then nothing would otherwise hold the request past every deadline: the header timer is
+ *  disarmed by then, and the stall watchdog only guards a stream. */
+export const ERROR_BODY_MS = 30_000
 
-/** Base for the exponential wait between attempts. The providers' docs ask for exponential backoff
- *  and send `Retry-After` where they can be precise, which takes precedence. */
-const BACKOFF_MS = 1_500
-
-/** A random share added to every wait. Parallel requests that hit one rate limit together — research
- *  legs, report lanes — would otherwise come back in the same instant and hit it again together. */
-const JITTER_MS = 750
-
+/** Sleep until `ms` have passed or `signal` fires, whichever comes first, and leave no listener behind. */
 const wait = (ms: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve) => {
-    const t = setTimeout(resolve, ms)
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(t)
-        resolve()
-      },
-      { once: true }
-    )
+    if (signal?.aborted) return resolve()
+    const done = (): void => {
+      clearTimeout(t)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const t = setTimeout(done, ms)
+    signal?.addEventListener('abort', done, { once: true })
   })
 
-/** `Retry-After` in milliseconds — seconds or an HTTP date, per RFC 9110 — or null. Capped: a provider
- *  asking for ten minutes is a provider to give up on, not to sleep behind. */
+/** `Retry-After` in milliseconds — seconds or an HTTP date, per RFC 9110 — or null. Uncapped here: the
+ *  policy decides whether a figure is worth waiting for (retryPolicy.ts). */
 function retryAfterMs(res: Response): number | null {
   const raw = res.headers.get('retry-after')
   if (!raw) return null
   const seconds = Number(raw)
   const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(raw) - Date.now()
-  return Number.isFinite(ms) && ms > 0 ? Math.min(ms, 60_000) : null
+  return Number.isFinite(ms) && ms > 0 ? ms : null
 }
 
-/** The wait before attempt `attempt + 1`: the provider's own figure where it gave one, our curve where
- *  it did not, either way plus the jitter. */
-const backoff = (attempt: number, providerMs: number | null = null): number =>
-  (providerMs ?? BACKOFF_MS * 2 ** (attempt - 1)) + Math.random() * JITTER_MS
+/** The body of a refused request, or '' if it does not arrive within ERROR_BODY_MS — then `abandon`
+ *  ends the request, so the socket is not held open behind a read nobody waits for. */
+async function errorBody(res: Response, abandon: () => void): Promise<string> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      res.text(),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => {
+          abandon()
+          resolve('')
+        }, ERROR_BODY_MS)
+      })
+    ])
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 /** Events that hand the caller part of the reply. Before the first of them a failed request can be sent
  *  again without the caller noticing; after it, a second answer would be appended to the first. */
 const DELIVERS = new Set<StreamEvent['type']>(['delta', 'tool_calls', 'citations'])
 
-/** How one attempt ended, when it did not end the stream for good. `error` is what to raise instead
- *  when another attempt is not allowed after all (the caller's spend ceiling tripped meanwhile). */
-type Attempt = { again: true; pauseMs: number; why: string; error: AiProviderError } | { again: false }
+/** How one attempt ended, when it did not end the stream for good: the kind of failure and the
+ *  provider's own `Retry-After` for the policy, a few words for the run bar, and the error to raise
+ *  when the policy allows no further attempt. */
+type Attempt =
+  | {
+      again: true
+      cause: RetryCause
+      detail: string
+      retryAfterMs: number | null
+      error: AiProviderError
+    }
+  | { again: false }
+
+/** Raised when the spend ceiling has tripped before a request was sent at all. */
+const BUDGET_SPENT = 'The cost limit for this run was reached before the request was sent.'
 
 /**
  * Stream a chat completion through the given transport. Yields the transport's StreamEvents as they
@@ -88,9 +122,10 @@ type Attempt = { again: true; pauseMs: number; why: string; error: AiProviderErr
  *
  * Bounded in three ways that a plain `fetch` is not: a provider that sends no headers within
  * `HEADERS_MS`, or no byte for `STALL_MS` after them, is given up on rather than waited for forever; a
- * request that failed before yielding anything is retried with backoff; and a stream that ends without
- * the provider's own end-of-reply event is an error, not a short answer. All three are preconditions for
- * doing several of these at once — serially a rate limit costs a pause, in parallel it costs a chapter.
+ * request that failed before yielding anything is retried with backoff, for as long as its kind of
+ * failure allows (retryPolicy.ts), announcing every pause as a `retry` event; and a stream that ends
+ * without the provider's own end-of-reply event is an error, not a short answer. All three are
+ * preconditions for doing several of these at once — serially a rate limit costs a pause, in parallel it costs a chapter.
  * The last one also means a cut-off round never releases its tool calls: half a round's writes are a
  * partial change to the user's model.
  *
@@ -116,21 +151,42 @@ export async function* runChatStream<S>(
   // Stop ends the wait as well as the ceiling does; only Stop ends it quietly.
   const waitSignal =
     opts.budget && opts.signal ? AbortSignal.any([opts.signal, opts.budget]) : (opts.budget ?? opts.signal)
+  const clock = new RetryClock(opts.retry)
+  /** The last failure and its kind: what to raise when no further attempt may start. */
+  let failed: { error: AiProviderError; cause: RetryCause } | undefined
   for (let attempt = 1; ; attempt++) {
-    const outcome = yield* sendOnce(transport, opts, { url, headers, body }, attempt)
-    if (!outcome.again) return
     // Every attempt is a request of its own, billed as such: none once the spend ceiling has tripped —
-    // possibly on the usage of the attempt that just failed.
-    if (opts.budget?.aborted) throw outcome.error
-    // Said in the log: silent backoff looked exactly like a slow model, and four parallel report lanes
-    // hitting a rate limit serialised themselves with nothing anywhere to show why.
+    // possibly on the usage of the attempt that just failed, or on another request of the same run.
+    if (opts.budget?.aborted) throw failed?.error ?? new AiProviderError(BUDGET_SPENT, 'aborted')
+    if (failed) {
+      yield { type: 'retry', phase: 'send', attempt }
+      // The caller ran while the event was out, for as long as it liked: Stop or the ceiling may have
+      // fired, or the window closed, in the meantime. Checked here, right before the request goes out.
+      if (opts.signal?.aborted) return
+      if (opts.budget?.aborted || !clock.stillOpen(failed.cause)) throw failed.error
+    }
+    const outcome = yield* sendOnce(transport, opts, { url, headers, body })
+    if (!outcome.again) return
+    failed = { error: outcome.error, cause: outcome.cause }
+    const pauseMs = clock.next(outcome.cause, outcome.retryAfterMs)
+    if (pauseMs === null) throw outcome.error
+    // Said in the log as well as in the event: silent backoff looked exactly like a slow model, and four
+    // parallel report lanes hitting a rate limit serialised themselves with nothing anywhere to show why.
     console.warn(
-      `[${transport.name}] ${outcome.why} on ${opts.model}, attempt ${attempt}/${MAX_ATTEMPTS}, ` +
-        `waiting ${Math.round(outcome.pauseMs)}ms`
+      `[${transport.name}] ${outcome.detail} on ${opts.model}, attempt ${attempt}, waiting ${pauseMs}ms`
     )
-    await wait(outcome.pauseMs, waitSignal)
+    yield {
+      type: 'retry',
+      phase: 'wait',
+      cause: outcome.cause,
+      detail: outcome.detail,
+      attempt: attempt + 1,
+      waitMs: pauseMs
+    }
+    await wait(pauseMs, waitSignal)
     if (opts.signal?.aborted) return
-    if (opts.budget?.aborted) throw outcome.error
+    // A pause that ended past its window (the computer slept through it) announces no attempt at all.
+    if (!clock.stillOpen(outcome.cause)) throw outcome.error
   }
 }
 
@@ -138,10 +194,8 @@ export async function* runChatStream<S>(
 async function* sendOnce<S>(
   transport: ChatTransport<S>,
   opts: StreamChatOpts,
-  request: { url: string; headers: Record<string, string>; body: string },
-  attempt: number
+  request: { url: string; headers: Record<string, string>; body: string }
 ): AsyncGenerator<StreamEvent, Attempt> {
-  const last = attempt >= MAX_ATTEMPTS
   // The header deadline rides on the request's own signal, so it must be disarmed the moment the
   // headers are in — the same signal governs the body, and the stall watchdog takes over there.
   const unanswered = new AbortController()
@@ -162,20 +216,29 @@ async function* sendOnce<S>(
       )
     if ((e as Error)?.name === 'AbortError') return { again: false }
     const unreachable = new AiProviderError(transport.unreachable, 'network')
-    if (last) throw unreachable
-    return { again: true, pauseMs: backoff(attempt), why: 'no connection', error: unreachable }
+    const kind = classifyFetchFailure(e)
+    const tls = tlsFailure(e)
+    if (tls)
+      throw new AiProviderError(
+        `The provider's certificate was not accepted (${tls}) — a proxy or security software may be ` +
+          "intercepting the connection, or the computer's clock is wrong.",
+        'network'
+      )
+    if (!kind) throw unreachable
+    return { again: true, ...kind, retryAfterMs: null, error: unreachable }
   } finally {
     clearTimeout(timer)
   }
 
   if (!sent.ok || !sent.body) {
-    const text = await sent.text().catch(() => '')
+    const text = await errorBody(sent, () => unanswered.abort())
     const refused = transport.translateStatus(sent.status, text)
-    if (!transport.retryable(sent.status, text) || last) throw refused
+    if (!transport.retryable(sent.status, text)) throw refused
     return {
       again: true,
-      pauseMs: backoff(attempt, retryAfterMs(sent)),
-      why: String(sent.status),
+      cause: 'busy',
+      detail: statusDetail(sent.status),
+      retryAfterMs: retryAfterMs(sent),
       error: refused
     }
   }
@@ -313,8 +376,14 @@ async function* sendOnce<S>(
       yield { type: 'usage', usage: {} }
     }
     // Nothing of the reply reached the caller, and a second request may clear it: send it again.
-    if (e instanceof AiProviderError && e.retryable && !delivered && !last && !opts.signal?.aborted)
-      return { again: true, pauseMs: backoff(attempt), why: e.message, error: e }
+    if (e instanceof AiProviderError && e.retryable && !delivered && !opts.signal?.aborted)
+      return {
+        again: true,
+        cause: 'busy',
+        detail: streamFailureDetail(e.code, e.message),
+        retryAfterMs: null,
+        error: e
+      }
     throw e
   }
 }

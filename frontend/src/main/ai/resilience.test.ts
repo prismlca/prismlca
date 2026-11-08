@@ -17,6 +17,8 @@ process.env.OPENROUTER_API_KEY = 'test-key'
 
 const { streamChat } = await import('./client')
 const { AiProviderError: OpenRouterError } = await import('./providers/types')
+type StreamChatOpts = import('./providers/types').StreamChatOpts
+type StreamEvent = import('./providers/types').StreamEvent
 
 /** A completed SSE response with one delta. */
 function ok(text = 'hi'): Response {
@@ -72,10 +74,13 @@ function raw(text: string): Response {
 }
 
 /** Every event of one request, and the error it ended with (if any). */
-async function collect(): Promise<{ events: Array<{ type: string }>; error?: unknown }> {
-  const events: Array<{ type: string }> = []
+async function collect(
+  extra: Partial<StreamChatOpts> = {}
+): Promise<{ events: StreamEvent[]; error?: unknown }> {
+  const events: StreamEvent[] = []
   try {
-    for await (const ev of streamChat({ model: 'm', messages: [], temperature: null })) events.push(ev)
+    for await (const ev of streamChat({ model: 'm', messages: [], temperature: null, ...extra }))
+      events.push(ev)
   } catch (error) {
     return { events, error }
   }
@@ -130,8 +135,8 @@ describe('retrying a request that produced nothing', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(fail(429)).mockResolvedValueOnce(ok())
     vi.stubGlobal('fetch', fetchMock)
     const run = drain()
-    // The curve says 1.5 s; the full random share makes it 2.25 s.
-    await vi.advanceTimersByTimeAsync(2_000)
+    // The curve says 2 s; the full random share makes it 2.75 s.
+    await vi.advanceTimersByTimeAsync(2_500)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(400)
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -153,7 +158,7 @@ describe('retrying a request that produced nothing', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(fail(429, '7')).mockResolvedValueOnce(ok())
     vi.stubGlobal('fetch', fetchMock)
     const run = drain()
-    // Past our own first backoff (1.5 s) but short of the provider's 7 s: still exactly one attempt.
+    // Past our own first backoff (2 s) but short of the provider's 7 s: still exactly one attempt.
     await vi.advanceTimersByTimeAsync(3_000)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     await vi.runAllTimersAsync()
@@ -161,7 +166,7 @@ describe('retrying a request that produced nothing', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('gives up after three attempts and reports the status', async () => {
+  it('gives up once the two minutes for a busy provider are spent, and reports the status', async () => {
     const fetchMock = vi.fn().mockResolvedValue(fail(503))
     vi.stubGlobal('fetch', fetchMock)
     // The assertion is attached BEFORE the timers run: the rejection lands the moment the last
@@ -169,7 +174,8 @@ describe('retrying a request that produced nothing', () => {
     const rejects = expect(drain()).rejects.toBeInstanceOf(OpenRouterError)
     await vi.runAllTimersAsync()
     await rejects
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // Pauses of 2, 4, 8, 16, then 20 s: eight of them fit the 120 s window, a ninth would not.
+    expect(fetchMock).toHaveBeenCalledTimes(9)
   })
 
   it('does not retry a bad key — sending it again cannot help', async () => {
@@ -300,9 +306,10 @@ describe('a reply the provider never finished', () => {
     const { events, error } = await run
     expect(error).toMatchObject({ code: 'network' })
     expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // Every attempt of the busy window (see above) was cut off the same way…
+    expect(fetchMock).toHaveBeenCalledTimes(9)
     // …and each request is booked once, cost unknown: the provider billed what it generated.
-    expect(events.filter((e) => e.type === 'usage')).toHaveLength(3)
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(9)
   })
 
   it('books a request that failed mid-stream exactly once', async () => {
@@ -365,5 +372,198 @@ describe('a reply the provider never finished', () => {
     await vi.runAllTimersAsync()
     expect(await run).toBe('joined')
     expect(warn.mock.calls.some((c) => String(c[0]).includes('unreadable stream event'))).toBe(true)
+  })
+})
+
+describe('waiting out a busy provider or a lost network', () => {
+  /** What Node's fetch throws when the name does not resolve: a TypeError with the socket error as cause. */
+  const offline = (): TypeError =>
+    new TypeError('fetch failed', {
+      cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })
+    })
+
+  it('announces the pause and the next attempt, so the wait does not read as thinking', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok('back')))
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    vi.restoreAllMocks()
+    expect(error).toBeUndefined()
+    const retries = events.filter((e) => e.type === 'retry')
+    expect(retries).toEqual([
+      { type: 'retry', phase: 'wait', cause: 'busy', detail: 'unavailable (503)', attempt: 2, waitMs: 2_000 },
+      { type: 'retry', phase: 'send', attempt: 2 }
+    ])
+    // The announcement comes before the answer, never inside it.
+    expect(events.findIndex((e) => e.type === 'delta')).toBeGreaterThan(events.indexOf(retries[1]))
+  })
+
+  it('lets the chat wait a lost network out for minutes', async () => {
+    const start = Date.now()
+    const fetchMock = vi.fn(async () => {
+      if (Date.now() - start < 6 * 60_000) throw offline()
+      return ok('online again')
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect({ retry: { offlineMs: 15 * 60_000 } })
+    await vi.runAllTimersAsync()
+    const { events, error } = await run
+    expect(error).toBeUndefined()
+    expect(events.some((e) => e.type === 'retry' && e.phase === 'wait' && e.cause === 'offline')).toBe(true)
+    expect(events.filter((e) => e.type === 'delta')).toHaveLength(1)
+  })
+
+  it('gives a helper that shows no countdown two minutes without a network, not more', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const fetchMock = vi.fn(async () => {
+      throw offline()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { error } = await run
+    vi.restoreAllMocks()
+    expect(error).toMatchObject({ code: 'network' })
+    // Pauses of 2, 4, 8, 16, 30, 30 and 30 s fill the 120 s exactly; the eighth attempt is the last.
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+  })
+
+  it('does not wait behind a Retry-After longer than a minute', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fail(429, '120'))
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect()
+    await vi.runAllTimersAsync()
+    expect((await run).error).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends instead of asking early when a Retry-After does not fit what is left of the window', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fail(429, '15'))
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect({ retry: { busyMs: 10_000 } })
+    await vi.runAllTimersAsync()
+    expect((await run).error).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails at once on a certificate error — the next attempt would meet the same certificate', async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError('fetch failed', {
+        cause: Object.assign(new Error('expired'), { code: 'CERT_HAS_EXPIRED' })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { error } = await run
+    // Said as what it is: no reconnect fixes a certificate.
+    expect(error).toMatchObject({ code: 'network', message: expect.stringContaining('CERT_HAS_EXPIRED') })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing more once the spend ceiling trips during a pause', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fail(503))
+    vi.stubGlobal('fetch', fetchMock)
+    const budget = new AbortController()
+    const run = collect({ budget: budget.signal })
+    await vi.advanceTimersByTimeAsync(500)
+    budget.abort()
+    await vi.runAllTimersAsync()
+    expect((await run).error).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends nothing at all once the spend ceiling has tripped before the request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok())
+    vi.stubGlobal('fetch', fetchMock)
+    const budget = new AbortController()
+    budget.abort()
+    const { error } = await collect({ budget: budget.signal })
+    expect(error).toMatchObject({ code: 'aborted' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing more when the ceiling trips while the next attempt is being announced', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetchMock)
+    const budget = new AbortController()
+    const run = (async () => {
+      try {
+        for await (const ev of streamChat({
+          model: 'm',
+          messages: [],
+          temperature: null,
+          budget: budget.signal
+        }))
+          if (ev.type === 'retry' && ev.phase === 'send') budget.abort()
+      } catch (error) {
+        return error
+      }
+    })()
+    await vi.runAllTimersAsync()
+    expect(await run).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends no attempt when the computer slept through the pause and woke past the window', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetchMock)
+    const run = collect({ retry: { busyMs: 10_000 } })
+    await vi.advanceTimersByTimeAsync(100)
+    // A minute of sleep: the wall clock jumps, the pending pause has not fired yet.
+    vi.setSystemTime(Date.now() + 60_000)
+    await vi.runAllTimersAsync()
+    expect((await run).error).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends no attempt when its window closed while the caller handled the announcement', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetchMock)
+    const run = (async () => {
+      try {
+        // The caller takes its time over the event — here, a minute.
+        for await (const ev of streamChat({
+          model: 'm',
+          messages: [],
+          temperature: null,
+          retry: { busyMs: 10_000 }
+        }))
+          if (ev.type === 'retry' && ev.phase === 'send') vi.setSystemTime(Date.now() + 60_000)
+      } catch (error) {
+        return error
+      }
+    })()
+    await vi.runAllTimersAsync()
+    expect(await run).toBeInstanceOf(OpenRouterError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ends a pause quietly when the user stops', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fail(503))
+    vi.stubGlobal('fetch', fetchMock)
+    const stop = new AbortController()
+    const run = collect({ signal: stop.signal })
+    await vi.advanceTimersByTimeAsync(500)
+    stop.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    const { error } = await run
+    expect(error).toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not hang on a refused request whose body never arrives', async () => {
+    const hanging = {
+      ok: false,
+      status: 503,
+      headers: new Headers(),
+      text: () => new Promise<string>(() => {}),
+      body: null
+    } as unknown as Response
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(hanging).mockResolvedValueOnce(ok('after all')))
+    const run = drain()
+    await vi.runAllTimersAsync()
+    expect(await run).toBe('after all')
   })
 })

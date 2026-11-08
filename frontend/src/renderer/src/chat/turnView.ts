@@ -24,6 +24,11 @@ export interface TurnView {
   reasoning: number
   /** How many rounds this turn threw away and began again. */
   restarts: number
+  /**
+   * The provider refused the round's request or could not be reached, and it goes out again: waiting
+   * until `until`, or that attempt under way (`send`). Cleared as soon as the round produces anything.
+   */
+  retry?: RetryState
   context: ContextLevel | null
   /**
    * When the current thinking phase began: the turn's start, a restarted round, or the last call's end.
@@ -37,6 +42,10 @@ export interface TurnView {
    */
   runId?: string | null
 }
+
+export type RetryState =
+  | { phase: 'wait'; cause: 'busy' | 'offline'; detail: string; attempt: number; until: number }
+  | { phase: 'send'; attempt: number }
 
 export const emptyTurn = (now?: number): TurnView => ({
   streaming: '',
@@ -71,7 +80,7 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
     const newer = prev && (prev.runId === null || (prev.runId && prev.runId !== ev.run.runId))
     return newer ? prev : undefined
   }
-  const shown = ['delta', 'reasoning', 'context', 'round-restart', 'tool'].includes(ev.type)
+  const shown = ['delta', 'reasoning', 'context', 'round-restart', 'retry', 'tool'].includes(ev.type)
   if (!shown) return prev
   // A run this window did not see start (a reload): its view begins with what arrives now.
   const v = prev ?? emptyTurn(now)
@@ -81,16 +90,25 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
       // restart note: that note describes a round that returned nothing, and this round is visibly
       // returning something. Left standing, a single retry in minute 6 read as a recurring failure for
       // the remaining 48 minutes of a run (V283). The log line in the main process is the durable record.
-      return { ...v, streaming: v.streaming + ev.text, reasoning: 0, restarts: 0 }
+      return { ...v, streaming: v.streaming + ev.text, reasoning: 0, restarts: 0, retry: undefined }
     case 'reasoning':
-      return { ...v, reasoning: ev.chars }
+      return { ...v, reasoning: ev.chars, retry: undefined }
     case 'context':
       return { ...v, context: { tokens: ev.tokens, window: ev.window, budget: ev.budget } }
     case 'round-restart':
       // The round is starting over, so the clock has to as well — otherwise it keeps timing an attempt
       // whose reasoning has already been discarded, and the two numbers on that line stop describing
       // the same thing.
-      return { ...v, reasoning: 0, restarts: v.restarts + 1, thinkingAt: now }
+      return { ...v, reasoning: 0, restarts: v.restarts + 1, thinkingAt: now, retry: undefined }
+    case 'retry':
+      // A new attempt starts a new thinking phase: its clock and its reasoning count begin again, as
+      // after a restarted round. The wait before it keeps the old ones running.
+      if (ev.phase === 'send')
+        return { ...v, reasoning: 0, thinkingAt: now, retry: { phase: 'send', attempt: ev.attempt } }
+      return {
+        ...v,
+        retry: { phase: 'wait', cause: ev.cause, detail: ev.detail, attempt: ev.attempt, until: ev.until }
+      }
     case 'tool': {
       if (ev.phase === 'start')
         // A tool call is the round doing real work — the restart note has served its purpose (V283).
@@ -98,6 +116,7 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
           ...v,
           reasoning: 0,
           restarts: 0,
+          retry: undefined,
           live: [...v.live, { name: ev.name, args: ev.args }],
           started: [...v.started, now]
         }

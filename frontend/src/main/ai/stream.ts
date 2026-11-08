@@ -76,6 +76,10 @@ export async function collectText(opts: {
   /** The provider's own end-of-answer signal. A stream cut short by an abort returns its partial
    *  text like a finished one and never sends this — the only way to tell the two apart. */
   onFinish?: (reason: string) => void
+  /** The caller's spend ceiling (StreamChatOpts.budget): no attempt starts once it has tripped. */
+  budget?: StreamChatOpts['budget']
+  /** How long a failed request may keep trying (StreamChatOpts.retry); absent = the engine's default. */
+  retry?: StreamChatOpts['retry']
 }): Promise<string> {
   let text = ''
   for await (const ev of streamChat({
@@ -90,7 +94,9 @@ export async function collectText(opts: {
     webSearch: opts.webSearch,
     webDomains: opts.webDomains,
     reasoningEffort: opts.reasoningEffort,
-    maxTokens: opts.maxTokens
+    maxTokens: opts.maxTokens,
+    budget: opts.budget,
+    retry: opts.retry
   })) {
     if (ev.type === 'delta') {
       text += ev.text

@@ -147,7 +147,20 @@ function shrinkUserParts(
   return kept
 }
 
-export function compactMessages(messages: ChatMessage[], keepRounds: number, dropped?: string[]): number {
+/** A tool result compaction replaced with a stub, with the call that produced it — what the summariser
+ *  reads (compactionSummary.ts), so a result arrives with its origin instead of as JSON from nowhere. */
+export interface DroppedResult {
+  tool: string
+  /** The call's arguments as the model sent them (a JSON string). */
+  args: string
+  text: string
+}
+
+export function compactMessages(
+  messages: ChatMessage[],
+  keepRounds: number,
+  dropped?: DroppedResult[]
+): number {
   // Walk back to the start of the OLDEST round we want to keep; an assistant message carrying
   // tool_calls marks the start of a round. Everything before that index gets stubbed — which
   // includes the tool results of older rounds, since those follow their assistant message.
@@ -166,9 +179,13 @@ export function compactMessages(messages: ChatMessage[], keepRounds: number, dro
   // A `role:'tool'` message carries only the id of the call it answers, so the name has to come
   // from the assistant turn that made it.
   const toolNames = new Map<string, string>()
+  const toolArgs = new Map<string, string>()
   for (const m of messages) {
     if (m.role === 'assistant' && m.tool_calls) {
-      for (const tc of m.tool_calls) toolNames.set(tc.id, tc.function.name)
+      for (const tc of m.tool_calls) {
+        toolNames.set(tc.id, tc.function.name)
+        toolArgs.set(tc.id, tc.function.arguments)
+      }
     }
   }
   const isProtected = (m: ChatMessage): boolean =>
@@ -186,7 +203,9 @@ export function compactMessages(messages: ChatMessage[], keepRounds: number, dro
       if (m.role === 'tool' && typeof m.content === 'string' && m.content !== OMITTED_TOOL) {
         if (m === latestPlan) continue
         if (!sacrificeProtected && isProtected(m)) continue
-        dropped?.push(m.content) // kept for the summariser, so the gist survives the truncation
+        // Kept for the summariser, so the gist survives the truncation.
+        const id = m.tool_call_id ?? ''
+        dropped?.push({ tool: toolNames.get(id) ?? 'tool', args: toolArgs.get(id) ?? '', text: m.content })
         m.content = OMITTED_TOOL
         n++
       } else if (m.role === 'assistant' && m.replay && replayDroppable(m.replay, i > turnStart)) {

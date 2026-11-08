@@ -636,7 +636,7 @@ export function findModel(id: string | undefined, provider: ProviderKey = 'openr
  * OpenAI the cheap tier (Luna) takes over all three cheap roles — same "inexpensive, solid
  * synthesis" reasoning, one family. The exported constants at the historic sites (RESEARCH_MODEL,
  * REVIEW_MODEL, FALLBACK_MODEL) are assigned FROM here, so the two can never drift. The context
- * summariser has no role here: it runs on the chat model (agent.ts, summariseDropped).
+ * summariser has no role here: it runs on the chat model (compactionSummary.ts, summariseDropped).
  */
 export function providerDefaults(p: ProviderKey): {
   chat: string

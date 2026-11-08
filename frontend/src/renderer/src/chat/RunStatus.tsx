@@ -1,6 +1,7 @@
+import { useEffect, useState } from 'react'
 import type { ChatMessage } from '../lib/ai'
 import { Elapsed } from './ToolTraceList'
-import type { TurnView } from './turnView'
+import type { RetryState, TurnView } from './turnView'
 import { compact, contextLabel } from './chatFormat'
 
 /**
@@ -53,6 +54,33 @@ export function ChatUsage({
   )
 }
 
+/** Seconds until `until`, as m:ss, ticking once a second. */
+function Countdown({ until }: { until: number }): JSX.Element {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  const secs = Math.max(0, Math.ceil((until - now) / 1000))
+  return <>{`${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`}</>
+}
+
+/**
+ * Why the round is not answering yet, while the request is sent again: the provider's refusal or the
+ * missing network, a countdown to the next attempt, and then that attempt under way. Without it a
+ * provider's overload looked like the model thinking, and after three quick attempts the run was over.
+ */
+function RetryNote({ retry }: { retry: RetryState }): JSX.Element {
+  if (retry.phase === 'send')
+    return <span className="chat-runbar-note"> · trying again (attempt {retry.attempt})</span>
+  return (
+    <span className="chat-runbar-note">
+      {' '}
+      · {retry.detail}, next try in <Countdown until={retry.until} /> (attempt {retry.attempt})
+    </span>
+  )
+}
+
 /**
  * What the run is doing, pinned to the top of the panel.
  *
@@ -63,16 +91,24 @@ export function ChatUsage({
  * calls belong with the message, which is what the collapsed summary below keeps.
  */
 export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<string, string> }): JSX.Element {
-  const { live, reasoning, restarts, context } = turn
+  const { live, reasoning, restarts, context, retry } = turn
   const idx = live.findIndex((t) => !t.status)
   const pending = idx >= 0 ? live[idx] : undefined
+  const waiting = !pending && retry?.phase === 'wait' ? retry : undefined
   return (
     <div className="chat-runbar">
       <span className="chat-trace-pulse" aria-hidden="true" />
       <span className="chat-runbar-what">
-        {pending ? (labels[pending.name] ?? pending.name) : 'Thinking'}
+        {pending
+          ? (labels[pending.name] ?? pending.name)
+          : waiting
+            ? waiting.cause === 'offline'
+              ? 'Waiting for a connection'
+              : 'Waiting for the provider'
+            : 'Thinking'}
         {pending?.detail ? <span className="chat-runbar-note"> · {pending.detail}</span> : null}
-        {!pending && reasoning > 0 ? (
+        {!pending && retry ? <RetryNote retry={retry} /> : null}
+        {!pending && !retry && reasoning > 0 ? (
           <span className="chat-runbar-note">
             {' '}
             · reasoning, {Math.round(reasoning / 100) / 10}k characters

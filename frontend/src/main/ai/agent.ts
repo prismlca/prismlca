@@ -11,7 +11,8 @@ import {
   contextBudgetTokens,
   estimateChars,
   latestPlanResult,
-  projectTokens
+  projectTokens,
+  type DroppedResult
 } from './contextBudget'
 import { AiProviderError, assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
 import { PROVIDER_CAPS } from '../../shared/providerCaps'
@@ -21,7 +22,6 @@ import { buildSystemPrompt, LANGUAGE_NAMES, type Skill } from './systemPrompt'
 import { offeredSkills } from './skillRender'
 import { findModel } from './models'
 import { getActiveProvider } from './providers/state'
-import type { ProviderId } from './providers/types'
 import { researchBom, researchWeb, reviewDossier } from './subagent'
 import { capToolResult } from './resultBudget'
 import { createToolSession } from './execute'
@@ -35,7 +35,9 @@ import {
   type ChatApprovalMode
 } from './approval'
 import { routingSession } from './routingSession'
-import { collectText, costOf } from './stream'
+import { costOf } from './stream'
+import { summariseDropped, summaryTask } from './compactionSummary'
+import { CHAT_OFFLINE_MS } from './providers/retryPolicy'
 import { refusalNote } from './stopNotes'
 
 import {
@@ -227,60 +229,6 @@ export function announcesUnfinishedWork(text: string): boolean {
   // "Let me know if …" and "let's talk about" hand back to the user; they are not abandoned work.
   if (/\blet me know\b|\blet's discuss\b|\blet me summarise\b|\blet me summarize\b/i.test(tail)) return false
   return true
-}
-
-/** Don't bother summarising trivial amounts, and never feed the summariser more than this. */
-const SUMMARY_MIN_CHARS = 4_000
-const SUMMARY_MAX_INPUT = 60_000
-
-/**
- * Condense the tool output we just dropped into a few lines the agent can keep working from.
- *
- * Summarising beats plain truncation measurably: OpenHands report ~2× lower API cost from their
- * summarising condenser with no drop in agent performance, because the agent stops re-fetching what
- * it already learned. Best-effort by design — on any failure the run continues with the stubs alone.
- *
- * Runs on the CHAT model (`summaryModel` is its id), not on a cheap one of its own. It had its own
- * setting and a cheap default for a while: the call is rare and capped at 60k
- * characters, so the cheap tier saved cents — while what it writes replaces what the agent read,
- * and a lost database name or a number without its unit costs a re-fetch worth more than those cents.
- */
-async function summariseDropped(
-  dropped: string[],
-  summaryModel: string,
-  /** The run's pinned provider: the chat model's id only means something there. Without it the
-   *  dispatcher would use whichever provider is active at compaction time, substitute its default
-   *  for an id it does not serve, and book the usage under the id it never used. */
-  provider: ProviderId,
-  signal?: AbortSignal,
-  onCost?: (
-    modelId: string,
-    u: { cost?: number; prompt?: number; cached?: number; completion?: number }
-  ) => void
-): Promise<string | null> {
-  const joined = dropped.join('\n---\n')
-  if (joined.length < SUMMARY_MIN_CHARS) return null
-  try {
-    const out = await collectText({
-      model: summaryModel,
-      provider,
-      signal,
-      onCost,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You compress tool output for an LCA agent whose context is full. Reply with at most 12 terse bullet points ' +
-            'capturing ONLY facts the agent will still need: names, codes, database names, numbers with units, methods, ' +
-            'and anything it already tried. No prose, no preamble, no advice.'
-        },
-        { role: 'user', content: joined.slice(0, SUMMARY_MAX_INPUT) }
-      ]
-    })
-    return out.trim() || null
-  } catch {
-    return null // never let the summariser break the run
-  }
 }
 
 // AgentEvent/ToolTrace live in shared/ipc.ts so main, preload and renderer read one definition;
@@ -1255,6 +1203,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     provider: servedBy,
     contextTokens
   })
+  /** The user's words in this run — its message, then what they sent while it worked: the task the
+   *  history summariser is told about (compactionSummary.ts). */
+  const taskNotes: string[] = [req.userText]
   /**
    * Hand the model what the user typed while it was working — at a round boundary, never inside one.
    *
@@ -1271,6 +1222,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     for (const text of texts) {
       const t = text.trim()
       if (!t) continue
+      taskNotes.push(t)
       messages.push({
         role: 'user',
         content: `(Sent while you were working — take it into account from here on.) ${t}`
@@ -1281,6 +1233,17 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     }
     return texts.length
   }
+  /** Everything the history summariser needs besides what was dropped: the run's task, model,
+   *  provider, Stop and spend ceiling, and the ledger. */
+  const summaryOpts = (dropped: DroppedResult[]): Parameters<typeof summariseDropped>[0] => ({
+    dropped,
+    task: summaryTask(taskNotes),
+    model: model.id,
+    provider,
+    signal: req.signal,
+    budget: costStop.signal,
+    onCost
+  })
   const costNote = (): void => {
     const note = `\n\n_Stopped: the cost limit of $${(req.maxCostUsd ?? 0).toFixed(2)} for this run was reached._`
     finalText += note
@@ -1335,13 +1298,13 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       // Proactive: keep the conversation inside the window before we even ask — judged on the
       // provider's own token count where there is one (projectTokens), not on characters alone.
       if (projectTokens(messages, measured) > budgetTokens) {
-        const dropped: string[] = []
+        const dropped: DroppedResult[] = []
         const n = compactMessages(messages, KEEP_ROUNDS, dropped)
         if (n) {
           measured = null // the count described messages that no longer exist
           console.log(`[prism-ai] compacted ${n} older message(s) to stay inside the context window`)
           // Summarise what we dropped so the agent does not re-fetch what it already learned.
-          const summary = await summariseDropped(dropped, model.id, provider, req.signal, onCost)
+          const summary = await summariseDropped(summaryOpts(dropped))
           if (summary) {
             messages.push({
               role: 'user',
@@ -1380,6 +1343,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             sessionId: routingSession(`chat:${req.chatId}`),
             signal: req.signal,
             budget: costStop.signal,
+            // The run bar counts the wait down and Stop ends it, so a lost network may take longer here
+            // than in the helpers that wait unseen (retryPolicy.ts).
+            retry: { offlineMs: CHAT_OFFLINE_MS },
             provider
           })) {
             if (ev.type === 'finish') {
@@ -1419,6 +1385,25 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
                 console.log(`[prism-ai] served by ${ev.name} — ${model.id}`)
                 deps.emit({ chatId: req.chatId, type: 'provider', name: ev.name })
               }
+            } else if (ev.type === 'retry') {
+              // The provider refused or could not be reached before the round's first word. The run bar
+              // counts down to the next attempt and says when it starts — the wait used to read as thinking.
+              if (ev.phase === 'send') {
+                reasoningChars = 0
+                reasoningSent = 0
+                roundReasoningChars = 0
+                deps.emit({ chatId: req.chatId, type: 'retry', phase: 'send', attempt: ev.attempt })
+              } else {
+                deps.emit({
+                  chatId: req.chatId,
+                  type: 'retry',
+                  phase: 'wait',
+                  cause: ev.cause,
+                  detail: ev.detail,
+                  attempt: ev.attempt,
+                  until: Date.now() + ev.waitMs
+                })
+              }
             } else if (ev.type === 'usage') {
               onUsage(ev.usage)
             } else if (ev.type === 'tool_calls') {
@@ -1445,11 +1430,14 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             reasoningEffort = undefined
             continue
           }
+          // The spend ceiling tripped while the request failed or waited for its next attempt: the run
+          // ends on the limit, with its note, not as a provider error (the check below the loop).
+          if (costStopped) break
           const recoverable =
             e instanceof AiProviderError && e.code === 'context' && contextRetries < MAX_CONTEXT_RETRIES
           if (!recoverable) throw e
           contextRetries++
-          const dropped: string[] = []
+          const dropped: DroppedResult[] = []
           let n = compactMessages(messages, 1, dropped)
           // The last round's results are kept by default; when they ARE the bulk (ten large reads in
           // one round on a small window), keeping them makes the rescue impossible.
@@ -1457,7 +1445,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           console.log(`[prism-ai] context overflow — compacted ${n} message(s) and retrying the round`)
           if (!n) throw e // nothing left to shrink: the request is hopeless, surface the error
           measured = null
-          const summary = await summariseDropped(dropped, model.id, provider, req.signal, onCost)
+          const summary = await summariseDropped(summaryOpts(dropped))
           if (summary) {
             messages.push({
               role: 'user',

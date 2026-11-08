@@ -148,8 +148,29 @@ export interface Citation {
   via?: string[]
 }
 
+/**
+ * Why a request that failed before any of its reply arrived is sent again (retryPolicy.ts): `busy` — the
+ * provider answered and said not now, or dropped the connection; `offline` — this computer has no path
+ * to it at all. Each has its own window of patience.
+ */
+export type RetryCause = 'busy' | 'offline'
+
+/** How long, in milliseconds from the first failure of each kind, a request may keep trying. */
+export interface RetryWindows {
+  busyMs: number
+  offlineMs: number
+}
+
 export type StreamEvent =
   | { type: 'delta'; text: string }
+  /**
+   * The request failed before any of its reply arrived and goes out again (engine.ts): `wait` before
+   * the pause — why, which attempt comes next and how long until then — and `send` the moment that
+   * attempt starts. Not part of the reply: a caller that only collects the answer ignores both. The chat
+   * turns them into a countdown in its run bar; before, a provider's overload looked like a model thinking.
+   */
+  | { type: 'retry'; phase: 'wait'; cause: RetryCause; detail: string; attempt: number; waitMs: number }
+  | { type: 'retry'; phase: 'send'; attempt: number }
   /** Pages the provider-side web search cited in this reply, as they arrive (deduplicated by the
    *  consumer, not here). Only sent when the provider annotates; absent otherwise. */
   | { type: 'citations'; citations: Citation[] }
@@ -248,6 +269,10 @@ export interface StreamChatOpts {
    *  `pause_turn`) is not continued — a continuation is a request of its own (client.ts). The running
    *  request is left to finish, as the agent leaves its round to finish. */
   budget?: AbortSignal
+  /** How long this request may keep trying after failures, per kind (retryPolicy.ts DEFAULT_WINDOWS
+   *  when absent). A caller with a clock of its own passes less than that clock, so its deadline never
+   *  fires in the middle of a pause and reads as "out of time" when the network was the trouble. */
+  retry?: Partial<RetryWindows>
 }
 
 export interface TranscribeOpts {

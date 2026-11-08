@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatMessage } from './providers/types'
+import type { ChatMessage, StreamChatOpts } from './providers/types'
 import { chat, FakeOpenRouterError, type ScriptedRound } from './test/fakeStream'
 
 /**
@@ -532,7 +532,15 @@ describe('runAgent — long-run robustness', () => {
       { text: 'done' }
     ]
     const d = deps({ apiRaw: async () => ({ status: 200, body: huge }) })
-    const res = await runAgent(request({ model: SMALL_WINDOW }), d.deps)
+    const summarised: StreamChatOpts[] = []
+    const summariser = chat.toolless
+    chat.toolless = (opts) => {
+      summarised.push(opts)
+      return summariser?.(opts)
+    }
+    const res = await runAgent(request({ model: SMALL_WINDOW }), d.deps).finally(() => {
+      chat.toolless = summariser
+    })
 
     expect(res.aborted).toBe(false)
     const last = chat.seen.at(-1)!.messages
@@ -543,6 +551,14 @@ describe('runAgent — long-run robustness', () => {
     // Dropped output is summarised (OpenHands measure ~2x lower cost vs. plain truncation) and the
     // gist is handed back, so the agent does not re-fetch what it already learned.
     expect(chat.toollessSeen).toBeGreaterThan(0)
+    // The summariser reads the user's request and each result under the call that produced it, and
+    // it runs under the run's spend ceiling like every other request.
+    const asked = summarised[0]
+    expect(String(asked.messages[1].content)).toMatch(/^The user's current request:\nhello\n/)
+    expect(String(asked.messages[1].content)).toContain(
+      '### get_model_graph {"database":"demo-model","code":"p0"}'
+    )
+    expect(asked.budget).toBeInstanceOf(AbortSignal)
     expect(
       last.some(
         (m) => typeof m.content === 'string' && m.content.startsWith('Summary of earlier tool results')
@@ -706,6 +722,56 @@ describe('runAgent — long-run robustness', () => {
     expect(chat.toollessSeen).toBeGreaterThan(0)
     // Booked as its own call, under the chat model that wrote it.
     expect(recorded.some((r) => r.id === SMALL_WINDOW && r.cost === 0.02)).toBe(true)
+  })
+})
+
+describe('runAgent — a provider that fails before the round answers', () => {
+  it('tells the run bar how long it waits and when the next attempt starts', async () => {
+    chat.rounds = [
+      {
+        before: [
+          {
+            type: 'retry',
+            phase: 'wait',
+            cause: 'busy',
+            detail: 'rate limit (429)',
+            attempt: 2,
+            waitMs: 5_000
+          },
+          { type: 'retry', phase: 'send', attempt: 2 }
+        ],
+        text: 'Here it is.'
+      }
+    ]
+    const d = deps()
+    const before = Date.now()
+    const res = await runAgent(request(), d.deps)
+    expect(res.outcome).toBe('answered')
+    const retries = d.events.filter((e) => e.type === 'retry') as Array<Record<string, unknown>>
+    expect(retries).toHaveLength(2)
+    expect(retries[0]).toMatchObject({ phase: 'wait', cause: 'busy', detail: 'rate limit (429)', attempt: 2 })
+    // `until` is a moment, not a duration: the renderer counts down to it without knowing when it was sent.
+    expect(retries[0].until as number).toBeGreaterThanOrEqual(before + 5_000)
+    expect(retries[1]).toMatchObject({ phase: 'send', attempt: 2 })
+    // The note is the run bar's, never the answer's.
+    expect(res.text).toBe('Here it is.')
+  })
+
+  it('ends on the cost limit, not as an error, when the ceiling trips while a request fails', async () => {
+    chat.rounds = [
+      {
+        // The failed attempt's usage trips the ceiling; the engine then raises the provider's error.
+        before: [{ type: 'usage', usage: { cost: 1.5 } }],
+        throws: new FakeOpenRouterError('Overloaded', 'http')
+      },
+      { text: 'should never run' }
+    ]
+    const d = deps()
+    const res = await runAgent(request({ maxCostUsd: 1 }), d.deps)
+    expect(res.outcome).toBe('cost')
+    expect(res.text).toContain('cost limit')
+    expect(d.events.find((e) => e.type === 'error')).toBeUndefined()
+    expect(chat.seen).toHaveLength(1)
   })
 })
 

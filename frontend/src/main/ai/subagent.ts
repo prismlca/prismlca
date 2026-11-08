@@ -50,6 +50,9 @@ const LEG_BUDGET_MS = 360_000
  */
 const RETRY_BUDGET_MS = 90_000
 
+/** How long a leg's request may keep trying after the provider failed: below both budgets above. */
+const LEG_RETRY = { busyMs: 60_000, offlineMs: 60_000 }
+
 /** Books a request's usage. Research legs run on their OWN model and web search bills per request
  *  (~$0.005), so without this sink a turn's real cost stayed invisible — and the caller's cost limit
  *  could not see it either. */
@@ -134,6 +137,9 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       onCitations: opts.onCitations,
       reasoningEffort: 'low',
       signal,
+      // Well inside the leg's own clock, so a provider that refuses or a network that is gone ends the
+      // leg with that error, not with "ran past its budget" from a clock that fired in a pause.
+      retry: LEG_RETRY,
       onCost: opts.onCost
     })
     text = roundText.trim()
