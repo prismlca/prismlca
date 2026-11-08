@@ -57,6 +57,16 @@ jobs:
           npm run typecheck
           npm run lint
           npx vitest run
+      # The start-up self-check the release runs on its packages, here on the source build: the backend
+      # answers, the real window loads the renderer through the preload, and a request from the page
+      # comes back through the bridge (frontend/src/main/diagnostics/smokeWindow.ts).
+      - name: The app starts and its window answers
+        working-directory: frontend
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb > /dev/null
+          npm run build
+          PRISM_SMOKE=1 XDG_CONFIG_HOME="$RUNNER_TEMP/cfg" PRISM_DATA_DIR="$RUNNER_TEMP/data" \
+            BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" xvfb-run -a npx electron . --no-sandbox
 
   # The same suites on Windows, where most of our users run the app: paths, file locking, process handling
   # and worker start-up behave differently there, and until now only the release build ever ran on it.
@@ -97,3 +107,9 @@ jobs:
       - name: Frontend tests
         working-directory: frontend
         run: npx vitest run
+      - name: The app starts and its window answers
+        working-directory: frontend
+        run: |
+          npm run build
+          PRISM_SMOKE=1 PRISM_DATA_DIR="$RUNNER_TEMP/data" BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
+            npx electron . --user-data-dir="$RUNNER_TEMP/cfg"

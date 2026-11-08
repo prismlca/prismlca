@@ -16,6 +16,7 @@ import {
   runShotHarness,
   shotContentSize
 } from './diagnostics/screenshot'
+import { checkWindow } from './diagnostics/smokeWindow'
 import { resolve as resolveKey } from './secrets'
 import { getSettings } from './settings'
 import { attachSpellcheckMenu, initSpellcheck } from './spellcheck'
@@ -381,6 +382,8 @@ function createWindow(splash?: Splash | null): void {
     }
   })
   win.once('ready-to-show', () => {
+    // The self-check loads the window to test it, never to show it (diagnostics/smokeWindow.ts).
+    if (process.env.PRISM_SMOKE) return
     if (shotSize) win.setContentSize(shotSize.width, shotSize.height)
     // In screenshot mode, park the window far off-screen so a stray click can't land in it
     // while a capture is running (capturePage renders regardless of on-screen position).
@@ -590,11 +593,20 @@ function startApp(): void {
       backendInfo ? `(backend v${backendInfo.version})` : ''
     )
 
-    // Headless self-check: start the backend, verify readiness, then exit without a window.
+    // Headless self-check: start the backend, verify readiness, load the real window without showing it,
+    // and exit once the workbench has answered through the bridge (or with the reason it did not).
     if (process.env.PRISM_SMOKE) {
       const missing = bundledLegalFilesMissing()
       if (missing.length) console.error(`[prism] smoke: bundled legal files missing: ${missing.join(', ')}`)
-      app.exit(status.state === 'ready' && missing.length === 0 ? 0 : 1)
+      let windowProblems: string[] = []
+      if (status.state === 'ready') {
+        createWindow()
+        windowProblems = mainWindow ? await checkWindow(mainWindow.webContents) : ['no window was created']
+        for (const p of windowProblems) console.error(`[prism] smoke: ${p}`)
+        if (!windowProblems.length)
+          console.log('[prism] smoke: the workbench rendered and answered through the bridge')
+      }
+      app.exit(status.state === 'ready' && missing.length === 0 && windowProblems.length === 0 ? 0 : 1)
       return
     }
 
