@@ -17,7 +17,9 @@ import {
 import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
   AiProviderError,
+  lastUserIndex,
   type AccumTool,
+  type ChatMessage,
   type ChatTransport,
   type StreamChatOpts,
   type StreamEvent,
@@ -154,9 +156,70 @@ function translateStatus(status: number, body: string): AiProviderError {
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
 
 interface OrState {
+  model: string
   sentProvider: boolean // the serving endpoint's name rides on every chunk; report it once
   sentFinish: boolean // likewise for finish_reason: stated once, on the chunk that carries it
   calls: Record<number, AccumTool>
+  /** The reply's reasoning blocks (`reasoning_details`), in the order they arrived, assembled from
+   *  their streamed pieces. */
+  details: Array<Record<string, unknown>>
+}
+
+/** The string fields of a reasoning block that arrive in pieces; everything else (id, format, type, the
+ *  signature that comes last) is taken whole from whichever piece carries it. */
+const STREAMED_FIELDS = ['text', 'summary', 'data'] as const
+
+/**
+ * The reasoning formats whose blocks go back with their tool round — by measurement, not by default.
+ * Same modelling task, three runs per side, with and without the blocks (2026-11-08): Gemini's
+ * (`google-gemini-v1`) made the prompt cache hit more often (63 % → 75 % of prompt tokens) and the run
+ * a fifth cheaper; OpenAI's (`openai-responses-v1`) added a third to every request for no gain; Anthropic's
+ * showed nothing either way at this size. A format joins this list when a measurement says it pays.
+ */
+const REPLAYED_FORMATS = new Set(['google-gemini-v1'])
+
+/**
+ * Merge one streamed `reasoning_details` piece into the block it continues, or start a new one. A piece
+ * continues only the LAST block, and only one of its own type, index and id — several blocks may share
+ * an index (a summary and an encrypted block both at 0), and an encrypted block is never glued to
+ * another unless both name the same id: two blobs joined are one invalid blob, and OpenRouter wants the
+ * blocks back exactly as the model produced them.
+ */
+function addDetail(state: OrState, piece: Record<string, unknown>): void {
+  const block = state.details.at(-1)
+  const continues =
+    !!block &&
+    block.type === piece.type &&
+    (block.index ?? null) === (piece.index ?? null) &&
+    (piece.id == null || block.id == null || piece.id === block.id) &&
+    (piece.type !== 'reasoning.encrypted' || (piece.id != null && piece.id === block.id))
+  if (!block || !continues) {
+    state.details.push({ ...piece })
+    return
+  }
+  for (const [k, v] of Object.entries(piece)) {
+    if ((STREAMED_FIELDS as readonly string[]).includes(k) && typeof v === 'string')
+      block[k] = String(block[k] ?? '') + v
+    else if (v != null) block[k] = v
+  }
+}
+
+/** Our transcript as OpenRouter messages: another provider's replay stays out, and this provider's
+ *  reasoning blocks go back on the assistant message of their tool round — unchanged and in order, as
+ *  OpenRouter requires — when the request goes to the model that wrote them, and only for the rounds of
+ *  the current turn (after the last user message): that is what the models continue from, and older
+ *  blocks would only grow every request. */
+function toOpenRouterMessages(messages: ChatMessage[], model: string): Array<Record<string, unknown>> {
+  const turnStart = lastUserIndex(messages)
+  return messages.map(({ replay, ...m }, i) =>
+    i > turnStart &&
+    m.role === 'assistant' &&
+    replay?.provider === 'openrouter' &&
+    replay.model === model &&
+    replay.steps.length
+      ? { ...m, reasoning_details: replay.steps }
+      : m
+  )
 }
 
 /**
@@ -203,9 +266,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
 
     const body = JSON.stringify({
       model: opts.model,
-      // Our transcript minus what only another provider can read (`replay`, e.g. Google's signed thought
-      // steps after a provider switch): opaque data no OpenRouter model asked for.
-      messages: opts.messages.map(({ replay: _replay, ...m }) => m),
+      messages: toOpenRouterMessages(opts.messages, opts.model),
       ...(hasFile ? { plugins: [{ id: 'file-parser', pdf: { engine: 'cloudflare-ai' } }] } : {}),
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       max_tokens: clampMaxTokens(opts.maxTokens),
@@ -249,7 +310,13 @@ export const openrouterTransport: ChatTransport<OrState> = {
     }
   },
 
-  createState: (_opts) => ({ sentProvider: false, sentFinish: false, calls: {} }),
+  createState: (opts) => ({
+    model: opts.model,
+    sentProvider: false,
+    sentFinish: false,
+    calls: {},
+    details: []
+  }),
 
   interpret(raw: unknown, state: OrState): StreamEvent[] {
     const parsed = raw as any
@@ -304,6 +371,9 @@ export const openrouterTransport: ChatTransport<OrState> = {
     // upstreams); count whichever arrives. Only the length travels on — see StreamEvent.
     const think = delta?.reasoning ?? delta?.reasoning_content
     if (typeof think === 'string' && think.length) events.push({ type: 'reasoning', chars: think.length })
+    if (Array.isArray(delta?.reasoning_details))
+      for (const piece of delta.reasoning_details)
+        if (piece && typeof piece === 'object') addDetail(state, piece as Record<string, unknown>)
     for (const tc of delta?.tool_calls ?? []) {
       const slot = (state.calls[tc.index] ??= { id: '', name: '', arguments: '' })
       if (tc.id) slot.id = tc.id
@@ -323,7 +393,24 @@ export const openrouterTransport: ChatTransport<OrState> = {
       .sort((a, b) => a - b)
       .map((i) => state.calls[i])
       .filter((c) => c.name)
-    return assembled.length ? [{ type: 'tool_calls', calls: assembled }] : []
+    if (!assembled.length) return []
+    // Only formats measured to pay for themselves travel back (REPLAYED_FORMATS). A block may leave out
+    // `format` (continuations do), so the reply's NAMED formats decide: all of them on the list, and at
+    // least one named — otherwise the round keeps none, so a reply is never resent with half its reasoning.
+    const formats = new Set(
+      state.details
+        .map((d) => d.format)
+        .filter((f) => f != null)
+        .map(String)
+    )
+    const steps = formats.size > 0 && [...formats].every((f) => REPLAYED_FORMATS.has(f)) ? state.details : []
+    return [
+      {
+        type: 'tool_calls',
+        calls: assembled,
+        ...(steps.length ? { replay: { provider: 'openrouter' as const, model: state.model, steps } } : {})
+      }
+    ]
   }
 }
 

@@ -180,3 +180,218 @@ describe('what the transcript carries for other providers', () => {
     expect(body.messages[1].tool_calls).toHaveLength(1)
   })
 })
+
+describe('reasoning blocks across a tool round', () => {
+  const call = { id: 'c1', type: 'function' as const, function: { name: 'f', arguments: '{}' } }
+  const steps = [{ type: 'reasoning.text', text: 'I should call f.', signature: 'sig', index: 0 }]
+  const msgs = (model: string) =>
+    JSON.parse(
+      openrouterTransport.buildRequest(
+        {
+          ...base,
+          model,
+          messages: [
+            { role: 'user', content: 'Go' },
+            {
+              role: 'assistant',
+              content: null,
+              tool_calls: [call],
+              replay: { provider: 'openrouter', model: 'anthropic/claude-sonnet-5.5', steps }
+            },
+            { role: 'tool', tool_call_id: 'c1', content: 'ok' }
+          ]
+        },
+        'k'
+      ).body
+    ).messages as Array<Record<string, unknown>>
+
+  it('go back unchanged on their assistant message, to the model that wrote them', () => {
+    expect(msgs('anthropic/claude-sonnet-5.5')[1].reasoning_details).toEqual(steps)
+  })
+
+  it('stay out when the conversation moved to another model', () => {
+    expect(msgs('z-ai/glm-5.3')[1].reasoning_details).toBeUndefined()
+  })
+
+  it('are assembled from their streamed pieces and handed on with the calls', async () => {
+    const state = openrouterTransport.createState({ ...base, model: 'google/gemini-3.8-flash' })
+    const chunk = (delta: Record<string, unknown>, finish?: string) => ({
+      choices: [{ delta, ...(finish ? { finish_reason: finish } : {}) }]
+    })
+    openrouterTransport.interpret(
+      chunk({
+        reasoning_details: [
+          {
+            type: 'reasoning.text',
+            text: 'I should ',
+            index: 0,
+            format: 'google-gemini-v1',
+            signature: null
+          }
+        ]
+      }),
+      state
+    )
+    openrouterTransport.interpret(
+      chunk({ reasoning_details: [{ type: 'reasoning.text', text: 'call f.', index: 0 }] }),
+      state
+    )
+    openrouterTransport.interpret(
+      chunk({ reasoning_details: [{ type: 'reasoning.text', index: 0, signature: 'sig' }] }),
+      state
+    )
+    openrouterTransport.interpret(
+      chunk(
+        { tool_calls: [{ index: 0, id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }] },
+        'tool_calls'
+      ),
+      state
+    )
+    const [ev] = await openrouterTransport.finish(state)
+    expect(ev).toMatchObject({
+      type: 'tool_calls',
+      replay: {
+        provider: 'openrouter',
+        model: 'google/gemini-3.8-flash',
+        steps: [
+          {
+            type: 'reasoning.text',
+            text: 'I should call f.',
+            signature: 'sig',
+            index: 0,
+            format: 'google-gemini-v1'
+          }
+        ]
+      }
+    })
+  })
+})
+
+describe('reasoning blocks that share an index', () => {
+  it('stay separate blocks in arrival order — two encrypted blobs are never glued together', async () => {
+    const state = openrouterTransport.createState({ ...base, model: 'openai/gpt-6-luna' })
+    const pieces = [
+      { type: 'reasoning.summary', summary: 'First ', index: 0, format: 'google-gemini-v1' },
+      { type: 'reasoning.summary', summary: 'thought.', index: 0 },
+      { type: 'reasoning.encrypted', data: 'blob-A', id: 'rs_A', index: 0, format: 'google-gemini-v1' },
+      { type: 'reasoning.summary', summary: 'Second thought.', index: 0 },
+      { type: 'reasoning.encrypted', data: 'blob-B', id: 'rs_B', index: 0, format: 'google-gemini-v1' }
+    ]
+    for (const p of pieces)
+      openrouterTransport.interpret({ choices: [{ delta: { reasoning_details: [p] } }] }, state)
+    openrouterTransport.interpret(
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }]
+            },
+            finish_reason: 'tool_calls'
+          }
+        ]
+      },
+      state
+    )
+    const [ev] = await openrouterTransport.finish(state)
+    const steps = ev.type === 'tool_calls' ? (ev.replay?.steps as Array<Record<string, unknown>>) : []
+    expect(steps.map((s) => [s.type, s.summary ?? s.data])).toEqual([
+      ['reasoning.summary', 'First thought.'],
+      ['reasoning.encrypted', 'blob-A'],
+      ['reasoning.summary', 'Second thought.'],
+      ['reasoning.encrypted', 'blob-B']
+    ])
+  })
+
+  it('go back only for the rounds of the current turn', () => {
+    const call = { id: 'c1', type: 'function' as const, function: { name: 'f', arguments: '{}' } }
+    const replay = {
+      provider: 'openrouter' as const,
+      model: 'm',
+      steps: [{ type: 'reasoning.text', text: 't' }]
+    }
+    const body = JSON.parse(
+      openrouterTransport.buildRequest(
+        {
+          ...base,
+          model: 'm',
+          messages: [
+            { role: 'user', content: 'first turn' },
+            { role: 'assistant', content: null, tool_calls: [call], replay },
+            { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+            { role: 'assistant', content: 'done' },
+            { role: 'user', content: 'second turn' },
+            { role: 'assistant', content: null, tool_calls: [{ ...call, id: 'c2' }], replay },
+            { role: 'tool', tool_call_id: 'c2', content: 'ok' }
+          ]
+        },
+        'k'
+      ).body
+    ) as { messages: Array<Record<string, unknown>> }
+    expect(body.messages[1].reasoning_details).toBeUndefined()
+    expect(body.messages[5].reasoning_details).toEqual(replay.steps)
+  })
+
+  it('stay with their round when a screenshot comes back as a user message inside it', () => {
+    const call = {
+      id: 'c1',
+      type: 'function' as const,
+      function: { name: 'screenshot_canvas', arguments: '{}' }
+    }
+    const replay = {
+      provider: 'openrouter' as const,
+      model: 'm',
+      steps: [{ type: 'reasoning.text', text: 't' }]
+    }
+    const image = [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA' } }]
+    const body = JSON.parse(
+      openrouterTransport.buildRequest(
+        {
+          ...base,
+          model: 'm',
+          messages: [
+            { role: 'user', content: 'look at my canvas' },
+            { role: 'assistant', content: null, tool_calls: [call], replay },
+            { role: 'tool', tool_call_id: 'c1', content: 'screenshot attached' },
+            { role: 'user', content: image },
+            { role: 'user', content: image }
+          ]
+        },
+        'k'
+      ).body
+    ) as { messages: Array<Record<string, unknown>> }
+    expect(body.messages[1].reasoning_details).toEqual(replay.steps)
+  })
+})
+
+describe('which reasoning formats travel back', () => {
+  it('only the measured ones: a round in another format keeps no replay', async () => {
+    for (const format of ['anthropic-claude-v1', 'openai-responses-v1']) {
+      const state = openrouterTransport.createState({ ...base, model: 'x/y' })
+      openrouterTransport.interpret(
+        {
+          choices: [
+            { delta: { reasoning_details: [{ type: 'reasoning.text', text: 't', index: 0, format }] } }
+          ]
+        },
+        state
+      )
+      openrouterTransport.interpret(
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, id: 'c1', type: 'function', function: { name: 'f', arguments: '{}' } }
+                ]
+              },
+              finish_reason: 'tool_calls'
+            }
+          ]
+        },
+        state
+      )
+      const [ev] = await openrouterTransport.finish(state)
+      expect(ev.type === 'tool_calls' && ev.replay, format).toBeFalsy()
+    }
+  })
+})

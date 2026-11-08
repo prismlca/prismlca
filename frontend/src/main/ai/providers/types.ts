@@ -61,8 +61,40 @@ export interface ChatMessage {
  */
 export interface ProviderReplay {
   provider: ProviderId
+  /** The model that produced them. OpenAI's and OpenRouter's reasoning blocks go back only to that model
+   *  — another one cannot read them, and a block it cannot read is a rejected request, not a lost hint.
+   *  Google says its backend copes with a switch, so its replay is resent regardless. */
+  model?: string
   /** The provider's own steps for this turn, in the order it sent them. */
   steps: unknown[]
+}
+
+/**
+ * Index of the message that opened the current turn — the last user message that is not a tool's
+ * image (the agent hands a screenshot back as a user message right after the tool's result, inside the
+ * same round). After it, a tool round's reasoning still matters to the model; -1 when there is none.
+ */
+export function lastUserIndex(messages: ChatMessage[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'user') continue
+    // Several screenshots follow one another; what decides is the last message before the run of user
+    // messages — a tool's result means they are its images.
+    let j = i - 1
+    while (j >= 0 && messages[j].role === 'user') j--
+    if (messages[j]?.role !== 'tool') return i
+    i = j + 1
+  }
+  return -1
+}
+
+/**
+ * May compaction drop this round's replay? Google's can always go (a round without it gets the skip
+ * signature, accepted live) and so can OpenAI's (resending reasoning is optional there). OpenRouter's
+ * may carry Anthropic's signed thinking, which must come back whole and unmodified for the tool loop it
+ * belongs to — so inside the current turn it stays.
+ */
+export function replayDroppable(replay: ProviderReplay, inCurrentTurn: boolean): boolean {
+  return replay.provider !== 'openrouter' || !inCurrentTurn
 }
 
 /** The assistant message of a tool-call round — one shape for the agent loop and both writers, so the
