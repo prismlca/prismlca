@@ -1,20 +1,23 @@
-# Checks on every push to main and every pull request: the same tests, lint and notices check the release
-# workflow starts with, without building installers — that stays the release's work, on a tag. Pull requests
+# Checks on every pull request, and on demand (Actions → CI → Run workflow, or `gh workflow run ci.yml --ref
+# main`): the same tests, lint and notices check the release workflow starts with, plus the end-to-end tests
+# and the whole suite on Windows, without building installers — that stays the release's work, on a tag.
+# Not on every push to main: work on main is checked locally before each commit, and this run (an hour, for
+# Windows) is started deliberately — before every release, as the release check recommends. Pull requests
 # from forks run with a read-only token and, by the organisation's setting, only after the maintainer
 # approves the run.
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions: {}
 
-# A newer push to the same branch or pull request makes the older run pointless.
+# A newer push to a pull request makes its older run pointless. A run started by hand is never cancelled by
+# the next one, which waits instead: it is the check a release waits for.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NODE_VERSION: '22'
