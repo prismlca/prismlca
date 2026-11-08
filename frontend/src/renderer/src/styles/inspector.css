@@ -221,3 +221,9 @@ input.props-amt:focus { outline: none; border-color: var(--green); }
 .props-add { align-items: flex-start; }
 .props-add .unit-combo { flex: 1; min-width: 0; }
 .props-add .unit-combo-list { position: static; margin-top: 2px; }
+/* A panel shorter than the editor: the whole inspector scrolls, and the editor keeps its height instead of
+   shrinking under its own content — shrunk, its fields ran over the Tags line and the audit log below
+   (a screen 768 pixels high was enough). The audit log keeps a few lines of its own at the bottom. */
+.panel.right { overflow-y: auto; }
+.panel.right > .insp.editor { flex-shrink: 0; }
+.panel.right > .audit-wrap { min-height: 120px; }
