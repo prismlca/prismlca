@@ -489,6 +489,9 @@ export interface AppSettings {
   /** Reasoning effort per chat model id (shared/aiDefaults.ts); a model not listed sends nothing,
    *  i.e. runs on its API's default. Offered levels come from the catalogue row (`reasoningEfforts`). */
   reasoningEffort: Record<string, ReasoningEffort>
+  /** Per chat model id: the user's choice about the `plan` tool where it differs from the catalogue
+   *  (`planTool` in main/ai/models.ts). Absent = the catalogue decides; see `planToolOn`. */
+  planToolByModel: Record<string, boolean>
 }
 
 /**

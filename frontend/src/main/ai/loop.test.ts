@@ -963,6 +963,26 @@ describe('durable: the plan tool and the transcript', () => {
     expect(String(chat.seen[0].messages[0].content)).toContain('Task plan')
   })
 
+  it('without a caller decision the run asks its own model: catalogue row, then the user’s choice', async () => {
+    const offers = async (over: Partial<Parameters<typeof runAgent>[0]>): Promise<boolean> => {
+      chat.rounds = [{ text: 'ok' }]
+      chat.seen.length = 0
+      await runAgent(request(over), deps().deps)
+      const offered = toolNames(chat.seen[0]).includes('plan')
+      // Anthropic models get the system prompt as a cacheable content array.
+      expect(JSON.stringify(chat.seen[0].messages[0].content).includes('Task plan')).toBe(offered)
+      return offered
+    }
+    const sonnet = 'anthropic/claude-sonnet-5.5'
+    expect(await offers({ model: sonnet })).toBe(false)
+    expect(await offers({ model: sonnet, planToolOverrides: { [sonnet]: true } })).toBe(true)
+    expect(await offers({ planToolOverrides: { 'z-ai/glm-5.3': false } })).toBe(false)
+    // A choice stored for another model does not leak onto this one.
+    expect(await offers({ model: sonnet, planToolOverrides: { 'z-ai/glm-5.3': true } })).toBe(false)
+    // An explicit decision from the caller wins over the stored choices.
+    expect(await offers({ model: sonnet, planTool: true, planToolOverrides: { [sonnet]: false } })).toBe(true)
+  })
+
   it('Stop keeps the transcript — in memory and in the store — with outcome cancelled', async () => {
     const ac = new AbortController()
     ac.abort()

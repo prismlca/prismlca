@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-08",
+    "title": "Task plan per model",
+    "details": "Settings → AI → Models has a new switch under Reasoning effort: Task plan beside the chat. It turns the assistant's checklist on for a model that works without it by default — the strongest ones, such as Sonnet, Opus or Sol — or off for any other. The choice is kept per model."
+  },
+  {
+    "date": "2026-11-08",
     "title": "Google as AI provider",
     "details": "Settings → AI → Provider has a third card: Google, for Gemini 3.8 Flash and Gemini 4 Argon straight from Google with a key from Google AI Studio. Research tools search with Google Search, voice input uses Gemini 3.5 Transcribe, and costs appear under Usage & costs in a Google tab, estimated from Google's list prices."
   },

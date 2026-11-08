@@ -199,9 +199,6 @@ export function registerChatIpc(
             resumeFrom = run.outcome
         }
       }
-      // Per model (models.ts `planTool`): the run gets the tool, its prompt paragraph and its dispatch
-      // together, or none of the three.
-      const planTool = findModel(req.model, getActiveProvider()).planTool !== false
       const costLimit = clampCost(req.maxCostUsd)
       const runId = `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       const startedAt = new Date().toISOString()
@@ -291,7 +288,8 @@ export function registerChatIpc(
             // The store's, not the caller's: a preference is a modelling decision the user made once.
             preferredBackground: getSettings().preferredBackground,
             eurostatAvailable: eurostatOn,
-            planTool,
+            // The run decides the plan tool against the model it resolves itself (agent.ts).
+            planToolOverrides: getSettings().planToolByModel,
             plan: storedPlan,
             resumeFrom,
             // The store's, never the caller's: whether the card is shown is a guardrail.

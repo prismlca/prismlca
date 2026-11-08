@@ -38,6 +38,7 @@ import {
   DEFAULT_ZDR_EXCEPT_GOOGLE,
   DEFAULT_ZDR_EXCEPT_OPENAI,
   DEFAULT_ZERO_DATA_RETENTION,
+  sanitisePlanToolOverrides,
   sanitiseReasoningEfforts
 } from '../shared/aiDefaults'
 import { DEFAULT_TRANSPORT, sanitiseTransport } from '../shared/distanceDefaults'
@@ -172,7 +173,9 @@ export const DEFAULTS: AppSettings = {
   // On: the chat asks on a card before an irreversible tool action (main/ai/approval.ts).
   chatApproval: 'irreversible',
   // Nothing chosen: every model runs on its API's own reasoning default.
-  reasoningEffort: {}
+  reasoningEffort: {},
+  // Nothing chosen: every model gets the plan tool as its catalogue row says.
+  planToolByModel: {}
 }
 
 /** The five roles that name a model. Listed once — the retirement migration below walks the same
@@ -308,6 +311,7 @@ export function getSettings(): AppSettings {
   out.chatApproval = out.chatApproval === 'never' ? 'never' : 'irreversible'
   // A map the overlay copied whole: only known levels under non-empty ids survive.
   out.reasoningEffort = sanitiseReasoningEfforts(stored.reasoningEffort)
+  out.planToolByModel = sanitisePlanToolOverrides(stored.planToolByModel)
   // A list the overlay copied wholesale — every entry checked, deduped, ordered and capped here.
   out.recentModels = sanitiseRecentModels(stored.recentModels)
   return out

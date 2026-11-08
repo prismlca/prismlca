@@ -455,6 +455,7 @@ export default function Settings({
                     maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
                     minThroughput: DEFAULT_MIN_THROUGHPUT,
                     reasoningEffort: {},
+                    planToolByModel: {},
                     disabledTools: [],
                     zeroDataRetention: DEFAULT_ZERO_DATA_RETENTION,
                     zdrExceptAnthropic: DEFAULT_ZDR_EXCEPT_ANTHROPIC,

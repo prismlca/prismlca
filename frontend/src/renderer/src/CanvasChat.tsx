@@ -32,7 +32,6 @@ import { readDraft, writeDraft } from './chat/chatPrefs'
 import { useChatPrefs } from './chat/useChatPrefs'
 import { useAttachments } from './chat/useAttachments'
 import ChatComposer from './chat/ChatComposer'
-import { modelCatalogue } from './chat/ModelPicker'
 import { usePlanState } from './chat/usePlanState'
 import OtherRuns, { type OtherRun } from './chat/OtherRuns'
 import { dropTurn, onChatEvent, startTurn, turnOf, useTurnFeed, useTurnView } from './chat/turnView'
@@ -41,7 +40,9 @@ import { useRunAdoption } from './chat/useRunAdoption'
 import { ContinueButton, PlanCard, PlanPill, resumable, runReason } from './components/PlanCard'
 import { useAppSettings } from './lib/appSettings'
 import { noteChatModel, setVisibleChat } from './lib/chatNotices'
-import { DEFAULT_MODEL_ID } from '../../shared/aiDefaults'
+import { asAiProvider, DEFAULT_MODEL_ID } from '../../shared/aiDefaults'
+import { planFrozen } from './chat/planModel'
+import { useModelFacts } from './chat/useModelFacts'
 import {
   approvalOf,
   askQuestions,
@@ -229,30 +230,18 @@ export default function CanvasChat({
   // `prefs.x()` would have to depend on the whole object, which is new on every render.
   const { typeInput, adopt } = prefs
   const [pickingComparison, setPickingComparison] = useState(false)
-  // The plan card (plan tool). Frozen = the selected model has no plan tool (`planTool: false` in
-  // its catalogue row): a plan an earlier model left stays readable, collapsed, and nothing opens it
-  // automatically. A model missing from the catalogue counts as not frozen, as main defaults to true.
+  // The plan card (plan tool). Frozen = the model a run would use has no plan tool (`planTool: false` in
+  // its catalogue row, or switched off in Settings → AI → Models; chat/planModel.ts asks it the way main
+  // does): a plan an earlier model left stays readable, collapsed, and nothing opens it automatically.
   const appSettings = useAppSettings()
   const currentModel = appSettings.model || DEFAULT_MODEL_ID
-  const [planToolOff, setPlanToolOff] = useState<Set<string>>(() => new Set())
-  /** Context window per model id, for the meter's 100 % (absent = the catalogue does not know). */
-  const [windows, setWindows] = useState<Record<string, number>>({})
-  useEffect(() => {
-    let stale = false
-    void modelCatalogue()
-      .then((list) => {
-        if (stale) return
-        setPlanToolOff(new Set(list.filter((m) => m.planTool === false).map((m) => m.id)))
-        setWindows(
-          Object.fromEntries(list.filter((m) => m.contextTokens).map((m) => [m.id, m.contextTokens!]))
-        )
-      })
-      .catch(() => {})
-    return () => {
-      stale = true
-    }
-  }, [])
-  const frozen = planToolOff.has(currentModel)
+  const { planRows, windows } = useModelFacts()
+  const frozen = planFrozen(
+    currentModel,
+    asAiProvider(appSettings.provider),
+    planRows,
+    appSettings.planToolByModel
+  )
   /** Whether the canvas column has room for the card beside the dock; measured below. Without room the
    *  card can only open over the transcript, so it waits as the pill until it is asked for. */
   const [planWide, setPlanWide] = useState(true)

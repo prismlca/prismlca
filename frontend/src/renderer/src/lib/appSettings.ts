@@ -91,7 +91,8 @@ function legacy(): AppSettings {
     recentModels: [],
     // Newer than the move to a file; the default stands until main answers.
     chatApproval: 'irreversible',
-    reasoningEffort: {}
+    reasoningEffort: {},
+    planToolByModel: {}
   }
 }
 

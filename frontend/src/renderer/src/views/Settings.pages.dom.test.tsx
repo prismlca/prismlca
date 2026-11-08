@@ -29,7 +29,13 @@ import {
  * of holding copies, so a change from anywhere — Reset, a refused write, another writer — shows at once.
  */
 const MODELS = [
-  { id: 'anthropic/claude-sonnet-5.5', label: 'Sonnet 5 (Claude)', descriptor: 'balanced', selectable: true },
+  {
+    id: 'anthropic/claude-sonnet-5.5',
+    label: 'Sonnet 5 (Claude)',
+    descriptor: 'balanced',
+    selectable: true,
+    planTool: false
+  },
   { id: 'moonshotai/kimi-k3', label: 'Kimi K3 (Moonshot)', descriptor: 'open weight', selectable: true },
   {
     id: DEFAULT_MODEL_ID,
@@ -230,6 +236,30 @@ describe('Settings → Reset AI settings puts the AI pages back to their default
     await waitFor(() => expect(prism.settings.model).toBe(DEFAULT_MODEL_ID))
     const now = await screen.findByRole('combobox', { name: 'Chat model' })
     expect(now).not.toHaveValue('moonshotai/kimi-k3')
+  })
+
+  it('offers the plan checklist per chat model, in both directions, storing only a deviation', async () => {
+    const user = userEvent.setup()
+    const { prism } = renderWithPrism(<Settings onClose={() => {}} initialCategory="ai-models" />, {
+      routes: ROUTES,
+      overrides: OVERRIDES
+    })
+    const chat = await screen.findByRole('combobox', { name: 'Chat model' })
+    // A model whose catalogue row has the plan tool off: unticked, and ticking it stores the exception.
+    await user.selectOptions(chat, 'anthropic/claude-sonnet-5.5')
+    const box = await screen.findByRole('checkbox', { name: 'Task plan beside the chat' })
+    expect(box).not.toBeChecked()
+    await user.click(box)
+    expect(prism.settings.planToolByModel).toEqual({ 'anthropic/claude-sonnet-5.5': true })
+    // Back to the catalogue's choice: the exception goes, nothing is stored.
+    await user.click(box)
+    expect(prism.settings.planToolByModel).toEqual({})
+    // A model with the tool on by default can be switched off.
+    await user.selectOptions(chat, 'moonshotai/kimi-k3')
+    const on = await screen.findByRole('checkbox', { name: 'Task plan beside the chat' })
+    expect(on).toBeChecked()
+    await user.click(on)
+    expect(prism.settings.planToolByModel).toEqual({ 'moonshotai/kimi-k3': false })
   })
 
   it('switches voice input and web search back on on the Chat page', async () => {

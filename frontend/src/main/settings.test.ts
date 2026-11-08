@@ -16,6 +16,7 @@ const userData = mkdtempSync(join(tmpdir(), 'prism-settings-'))
 vi.mock('electron', () => ({ app: { getPath: () => userData } }))
 
 const s = await import('./settings')
+const { planToolOn, sanitisePlanToolOverrides } = await import('../shared/aiDefaults')
 const FILE = join(userData, 'settings.json')
 
 beforeEach(() => {
@@ -555,5 +556,23 @@ describe('the chat guardrails', () => {
     s.setSettings({ chatApproval: 'never', reasoningEffort: { 'z-ai/glm-5.3': 'xhigh' } })
     expect(s.getSettings().chatApproval).toBe('never')
     expect(s.getSettings().reasoningEffort).toEqual({ 'z-ai/glm-5.3': 'xhigh' })
+  })
+
+  it('keeps only real per-model plan choices, and the rule falls back to the catalogue', () => {
+    writeFileSync(
+      FILE,
+      JSON.stringify({
+        schema: 4,
+        planToolByModel: { 'openai/gpt-6.1-sol': true, 'z-ai/glm-5.3': 'no', '': false }
+      })
+    )
+    s.resetSettingsCache()
+    expect(s.getSettings().planToolByModel).toEqual({ 'openai/gpt-6.1-sol': true })
+    expect(sanitisePlanToolOverrides([true])).toEqual({})
+    // The user's choice wins either way; without one the catalogue row decides, absent meaning on.
+    expect(planToolOn('openai/gpt-6.1-sol', false, { 'openai/gpt-6.1-sol': true })).toBe(true)
+    expect(planToolOn('openai/gpt-6-luna', true, { 'openai/gpt-6-luna': false })).toBe(false)
+    expect(planToolOn('openai/gpt-6.1-sol', false, {})).toBe(false)
+    expect(planToolOn('my/own-model', undefined, undefined)).toBe(true)
   })
 })

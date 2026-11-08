@@ -298,6 +298,31 @@ export const REASONING_EFFORT_SHORT: Record<ReasoningEffort, string> = {
   xhigh: 'X-high'
 }
 
+/**
+ * The user's per-model choice about the `plan` tool (Settings → AI → Models): `true` offers it to a model
+ * whose catalogue row has it off, `false` takes it from one that has it on. Only the deviations are
+ * stored — an id that is absent follows the catalogue. A stored value crosses IPC and may come from a
+ * hand-edited file, so only booleans under a non-empty id survive.
+ */
+export function sanitisePlanToolOverrides(value: unknown): Record<string, boolean> {
+  const out: Record<string, boolean> = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out
+  for (const [id, v] of Object.entries(value as Record<string, unknown>))
+    if (id && typeof v === 'boolean') out[id] = v
+  return out
+}
+
+/** Whether a model gets the plan tool — one rule for the run (main) and the plan card (renderer): the
+ *  user's override if there is one, else the catalogue row, where an absent `planTool` means on. */
+export function planToolOn(
+  id: string,
+  catalogueDefault: boolean | undefined,
+  overrides: Record<string, boolean> | undefined
+): boolean {
+  const chosen = overrides?.[id]
+  return typeof chosen === 'boolean' ? chosen : catalogueDefault !== false
+}
+
 /** The stored per-model choices, cleaned: only known levels, keyed by a non-empty model id. */
 export function sanitiseReasoningEfforts(value: unknown): Record<string, ReasoningEffort> {
   const out: Record<string, ReasoningEffort> = {}

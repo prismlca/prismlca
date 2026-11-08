@@ -37,7 +37,12 @@ import {
 import { routingSession } from './routingSession'
 import { collectText, costOf } from './stream'
 
-import { DEFAULT_MAX_ROUNDS, clampResearchQuestions, type ReasoningEffort } from '../../shared/aiDefaults'
+import {
+  DEFAULT_MAX_ROUNDS,
+  clampResearchQuestions,
+  planToolOn,
+  type ReasoningEffort
+} from '../../shared/aiDefaults'
 import { formatPlanForModel, type ChatPlan, type RunOutcome } from '../../shared/plan'
 
 /**
@@ -648,10 +653,14 @@ export interface AgentRequest {
    */
   focusTools?: boolean
   /**
-   * The `plan` tool is offered to this model (models.ts `planTool`); false removes the tool, its
-   * prompt paragraph AND its dispatch, in one place. Default true.
+   * Offer the `plan` tool? A boolean is the caller's decision (an eval forcing it either way); absent,
+   * the run's own model decides — its catalogue row (models.ts `planTool`) with the user's per-model
+   * choice on top (`planToolOverrides`). Off removes the tool, its prompt paragraph AND its dispatch.
    */
   planTool?: boolean
+  /** The user's per-model plan choices (Settings → AI → Models), read against the model this run
+   *  resolves — not a model resolved earlier by the caller, which a provider switch could have changed. */
+  planToolOverrides?: Record<string, boolean>
   /** The chat's accepted plan at turn start (the store's), or null. */
   plan?: ChatPlan | null
   /**
@@ -781,7 +790,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // One effective flag, enforced at the three places a tool can reach the model: the prompt
   // paragraph (buildSystemPrompt), the offered specs (toolSpecs) and dispatch (the executor's
   // disabled set) — a model that guesses the name anyway gets the same refusal as for a switched-off tool.
-  const planTool = req.planTool !== false && !disabled.has('plan')
+  const planTool =
+    (typeof req.planTool === 'boolean'
+      ? req.planTool
+      : planToolOn(model.id, model.planTool, req.planToolOverrides)) && !disabled.has('plan')
   if (!planTool) disabled.add('plan')
 
   // One id per run (= one chat turn). It rides as a header on every backend call of this run, the

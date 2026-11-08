@@ -13,6 +13,7 @@ import {
   AA_RATINGS_PULLED,
   defaultChatModelFor,
   GOOGLE_PRICES_CHECKED,
+  planToolOn,
   OPENAI_PRICES_CHECKED
 } from '../../../../shared/aiDefaults'
 import type { ProviderChoice } from './ProviderKeyBlock'
@@ -107,6 +108,7 @@ export function AiModelsPanel(): JSX.Element {
   const matchModel = as.matchModel
   // Per model id: '' / absent = the API's default. Read live, so a model switch shows that model's choice.
   const efforts = as.reasoningEffort ?? {}
+  const plans = as.planToolByModel ?? {}
   // The note under the table says whether the privacy rule covers self-added models.
   const zdr = as.zeroDataRetention
   // Column sort for the info table: click a header → asc → desc → back to catalog order.
@@ -228,6 +230,30 @@ export function AiModelsPanel(): JSX.Element {
                 }}
               />
             </label>
+            {/* The plan checklist, per model like the dial above: the catalogue's choice is the default,
+                and only a deviation is stored. The tool and its prompt rule follow together. */}
+            {current ? (
+              <>
+                <label className="settings-field settings-check">
+                  <input
+                    type="checkbox"
+                    style={{ width: 'auto' }}
+                    checked={planToolOn(current.id, current.planTool, plans)}
+                    onChange={(e) => {
+                      const next = { ...plans }
+                      if (e.target.checked === (current.planTool !== false)) delete next[current.id]
+                      else next[current.id] = e.target.checked
+                      setAS({ planToolByModel: next })
+                    }}
+                  />
+                  <span>Task plan beside the chat</span>
+                </label>
+                <p className="settings-hint">
+                  A checklist the assistant keeps beside the chat for work with several parts. Off by default
+                  for the strongest models, which keep track without it.
+                </p>
+              </>
+            ) : null}
           </>
         )
       })()}
