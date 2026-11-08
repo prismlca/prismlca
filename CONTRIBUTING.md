@@ -27,6 +27,14 @@ pull request and name the source and its licence (CLA Section 7). Everything shi
 `THIRD-PARTY-NOTICES.md`, which `backend/scripts/third_party_notices.py` regenerates; a test fails if a
 dependency changes without regenerating it.
 
+## How changes reach `main`
+
+Every feature and fix is developed on its own branch and comes in as a pull request. The pull request runs the
+full CI suite — tests, lint and notices on Linux, the end-to-end tests, and the whole suite on Windows — and is
+squash-merged once it is approved, so `main` carries one commit per change. Only release commits and pure
+documentation or typo fixes go to `main` directly. The history before the commit that added this section was
+built commit by commit and is left as it is.
+
 ## The usual
 
 - Backend: `cd backend && uv run pytest -n auto` and `uv run ruff check src tests scripts`. After changing the
