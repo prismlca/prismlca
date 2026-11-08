@@ -214,8 +214,9 @@ def support_bundle(request: Request) -> Response:
     )
 
 
-# --- orderly stop for an update -----------------------------------------------------------------
-# The Electron shell installs an update only after this process has exited (V-2).
+# --- orderly stop for an update or a quit --------------------------------------------------------
+# The Electron shell installs an update only after this process has exited (V-2), and a quit asks
+# here too before it falls back to a signal.
 # On Windows `child.kill()` is TerminateProcess: no atexit, no lock release, and a write
 # into the Brightway SQLite files cut off wherever it stood. So the shell asks here first, and uvicorn
 # leaves the way it does on SIGTERM — in-flight requests finish, then the process ends normally.
@@ -313,7 +314,7 @@ class ShutdownResponse(BaseModel):
     "/shutdown",
     response_model=ShutdownResponse,
     dependencies=[Depends(require_token)],
-    summary="End this backend in order (used before an update is installed)",
+    summary="End this backend in order (before an update is installed, and when the app quits)",
 )
 async def shutdown(request: Request, payload: ShutdownRequest) -> ShutdownResponse:
     """Refuse while work is running unless ``force``; otherwise tell uvicorn to exit.

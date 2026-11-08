@@ -93,6 +93,11 @@ test('a model is built, calculated, changed, undone and still there after a rest
 
   // A restart brings the model back as it was, from the backend's store and the window's own settings.
   await quit(running!, install)
+  // The app asked its backend to leave, and it left in order rather than being ended by a signal — on
+  // Windows that signal is TerminateProcess, which cuts off whatever the backend was writing.
+  const quitOutput = running!.output.join('')
+  expect(quitOutput).toContain('[prism] the backend left in order')
+  expect(quitOutput).toContain('Shutting down')
   running = await launch(install)
   page = running.page
   await expect(page.getByText('Bring your background data')).toBeHidden()

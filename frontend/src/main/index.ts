@@ -650,6 +650,12 @@ function startApp(): void {
       keepAwake.stop()
       mcp.shutdownNow()
     },
+    // Forced: the person is quitting, so running work is no reason to stay — the signal this request
+    // comes before never asked either.
+    askToLeave: async () => {
+      const { status, body } = await apiRequest('POST', '/api/v1/system/shutdown', { force: true })
+      return status === 200 && (body as { accepted?: unknown } | null)?.accepted === true
+    },
     quit: () => app.quit(),
     // As a person's start: the command a bridge would use, without the bridge's flag.
     relaunch: () => {
