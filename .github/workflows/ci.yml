@@ -78,6 +78,47 @@ jobs:
           PRISM_SMOKE=1 XDG_CONFIG_HOME="$RUNNER_TEMP/cfg" PRISM_DATA_DIR="$RUNNER_TEMP/data" \
             BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" xvfb-run -a npx electron . --no-sandbox
 
+  # The built app as a person uses it: real Electron, real renderer and preload, the Python backend it
+  # spawns, driven by Playwright through the visible interface (frontend/e2e/). A job of its own, so a red
+  # end-to-end run never hides the result of the unit suites. Screenshots and the app's output of a failed
+  # test are the `e2e-report` artifact.
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: End-to-end tests
+        working-directory: frontend
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb > /dev/null
+          npm run build
+          xvfb-run -a npx playwright test
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-report
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 14
+
   # The same suites on Windows, where most of our users run the app: paths, file locking, process handling
   # and worker start-up behave differently there, and until now only the release build ever ran on it.
   # GitHub-hosted on purpose — the self-hosted Windows runner signs releases, and only the release workflow

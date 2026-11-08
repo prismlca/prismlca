@@ -31,6 +31,11 @@ coverage.xml
 .cache/
 # The frontend side of the same thing (`npm run test:cov` writes an HTML report here).
 frontend/coverage/
+# Playwright end-to-end runs: traces and screenshots of failed tests, the HTML report.
+frontend/test-results/
+frontend/playwright-report/
+# The backend's coverage report as JSON (CI writes it for the run's summary page).
+backend/coverage.json
 
 # Type checkers / linters
 .mypy_cache/
