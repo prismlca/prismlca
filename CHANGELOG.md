@@ -3,6 +3,38 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.11 — 2026-11-08
+
+### New
+
+- **Google and Anthropic as AI providers.** Settings → AI → Provider has two more cards: Google, for Gemini models
+  with a key from Google AI Studio, and Anthropic, for Claude models with a key from platform.claude.com. Web search
+  works in the chat and in the research tools, and costs appear under *Usage & costs* in a tab per provider,
+  estimated from the provider's list prices. Voice input is offered with Google, not with Anthropic.
+- **Runs wait out a busy provider.** When the AI provider is overloaded, rate-limits a request or cannot be reached,
+  the chat keeps trying instead of failing after a few seconds: up to two minutes for a busy provider, up to
+  15 minutes without a connection. The run bar says why it waits and counts down to the next attempt; *Stop* ends
+  the wait.
+- **Task plan per model.** Settings → AI → Models has a switch *Task plan beside the chat* under *Reasoning effort*.
+  It turns the assistant's checklist on for a model that works without it by default, or off for any other, and is
+  kept per model. Plan and review now scale with the task: a quick figure needs neither.
+
+### Fixes
+
+- On a short screen the inspector panel scrolls instead of its fields running over *Tags* and the audit log.
+- Deleting a workspace after calculating in it works on Windows again.
+- Quitting asks the calculation engine to finish in order, and the engine also ends when PrismLCA is gone.
+- A provider's safety-filter stop ends the round with its reason, and a reply counts as finished only when the
+  provider finished it.
+
+**Installing.** The Windows installer is signed by *Open Source Developer Jonas Harth*. While the certificate is
+new, Windows SmartScreen may still warn: check that *More info* names this publisher, compare the installer with
+`SHA256SUMS` below, then choose *Run anyway*. On Linux the AppImage needs FUSE 2 (`sudo apt install libfuse2t64` on
+Ubuntu 24.04); the deb and the rpm need nothing extra. PrismLCA 0.9.3 and later find this release under *Check for
+updates*.
+
+Changes since v0.9.10: https://github.com/prismlca/prismlca/compare/v0.9.10...v0.9.11
+
 ## 0.9.10 — 2026-11-06
 
 ### New

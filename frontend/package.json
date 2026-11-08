@@ -1,6 +1,6 @@
 {
   "name": "prism-lca",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "desktopName": "prism-lca.desktop",
   "description": "PrismLCA — modern desktop LCA software (Electron shell).",
   "author": {
