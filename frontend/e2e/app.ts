@@ -32,8 +32,13 @@ export function freshInstall(): Install {
 }
 
 export function removeInstall(install: Install): void {
-  // The backend may still hold a SQLite handle for a moment on Windows; a leftover temp folder is harmless.
-  rmSync(install.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
+  // The backend may still hold a SQLite handle for a moment on Windows; a leftover temp folder is harmless
+  // and must not turn a passed test into a failed one.
+  try {
+    rmSync(install.root, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
+  } catch (e) {
+    console.warn(`left ${install.root} behind: ${String(e)}`)
+  }
 }
 
 /** The calling environment without anything that would configure the app or its backend. */

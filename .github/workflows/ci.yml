@@ -168,3 +168,17 @@ jobs:
           npm run build
           PRISM_SMOKE=1 PRISM_DATA_DIR="$RUNNER_TEMP/data" BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
             npx electron . --user-data-dir="$RUNNER_TEMP/cfg"
+      # The end-to-end suite here too: native dialogs, paths, and starting and ending the backend are where
+      # Windows has behaved differently before. The build is the one the window check just made.
+      - name: End-to-end tests
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: npx playwright test
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-report-windows
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 14
