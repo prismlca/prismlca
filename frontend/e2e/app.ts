@@ -63,6 +63,8 @@ export interface RunningApp {
   output: string[]
   /** Errors the renderer logged; a test ends by asserting there were none. */
   rendererErrors: string[]
+  /** quit() has been called: the window is gone or going, and a second quit has nothing to end. */
+  stopped: boolean
 }
 
 /** Starts the app on `install` and returns once its main window (not the splash) has loaded. */
@@ -101,7 +103,7 @@ export async function launch(install: Install): Promise<RunningApp> {
   })
   page.on('pageerror', (e) => rendererErrors.push(`uncaught: ${e.message}`))
   await page.waitForLoadState('domcontentloaded')
-  return { app, page, output, rendererErrors }
+  return { app, page, output, rendererErrors, stopped: false }
 }
 
 /** How long a quit may take. The app gives its backend eight seconds to leave in order, then ends it. */
@@ -117,6 +119,8 @@ const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(do
  * a backend that outlives the app keeps the data folder locked. Whatever is left over is ended.
  */
 export async function quit(running: RunningApp, install: Install): Promise<void> {
+  if (running.stopped) return
+  running.stopped = true
   const proc = running.app.process()
   const started = processTree(proc.pid === undefined ? [] : [proc.pid], install.root).map((p) => p.pid)
   let timer: ReturnType<typeof setTimeout> | undefined

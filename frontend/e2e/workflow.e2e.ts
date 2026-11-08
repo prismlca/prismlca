@@ -16,7 +16,9 @@ test.beforeAll(() => {
 
 test.afterEach(async ({}, info) => {
   if (info.status !== info.expectedStatus && running) {
-    await info.attach('window', { body: await running.page.screenshot(), contentType: 'image/png' })
+    if (!running.stopped) {
+      await info.attach('window', { body: await running.page.screenshot(), contentType: 'image/png' })
+    }
     await info.attach('app output', { body: running.output.join(''), contentType: 'text/plain' })
   }
 })
