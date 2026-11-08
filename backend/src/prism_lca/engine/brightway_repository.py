@@ -178,6 +178,11 @@ class BrightwayRepository(LcaRepository):
         # Never delete the project we are standing in — switch to 'default' first.
         if name == bd.projects.current:
             bd.projects.set_current("default")
+        # A cached LCA keeps the project's processed ZIP files open, and Windows refuses to delete an open
+        # file: without this, Brightway's rmtree below cannot remove a workspace calculated in this session.
+        from prism_lca.engine import lca
+
+        lca.release_cached(name)
         # de facto via Brightway — removes both the DB row and the on-disk data directory.
         bd.projects.delete_project(name, delete_dir=True)
 

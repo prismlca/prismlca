@@ -112,3 +112,39 @@ def test_a_background_reset_waits_for_a_running_import(client, token, project, m
     r = client.post("/api/v1/setup/background/reset", json={"code": code}, headers=token)
     assert r.status_code == 409, r.text
     assert ecoinvent._status.state == ecoinvent.JobState.running  # still owned by the import
+
+
+def test_a_workspace_calculated_in_can_be_deleted_with_nothing_of_it_left_open(client, token):
+    """bw2calc keeps a database's processed ZIP files open while its LCA is cached, and Windows refuses to
+    delete an open file, so deleting a workspace right after a calculation in it fails there. /proc shows on
+    Linux what would still be open on Windows; on Windows the delete itself is the check."""
+    import os
+    from pathlib import Path
+
+    from test_calc import _seed_calc
+
+    from prism_lca.engine.bootstrap import get_bd
+
+    name = "calc-" + uuid.uuid4().hex[:8]
+    assert client.post("/api/v1/projects", json={"name": name}, headers=token).status_code == 200
+    _seed_calc(get_bd())
+    folder = Path(get_bd().projects.dir)
+    r = client.post(
+        "/api/v1/calc/lcia", json={"database": "cfg", "code": "bottle", "method": ["test", "gwp"]}, headers=token
+    )
+    assert r.status_code == 200, r.text
+
+    r = client.delete(f"/api/v1/projects/{name}", headers=token)
+    assert r.status_code == 200, r.text
+    assert not folder.exists()
+    fds = Path("/proc/self/fd")
+    if fds.is_dir():
+        still_open = []
+        for fd in fds.iterdir():
+            try:
+                target = os.readlink(fd)
+            except OSError:
+                continue
+            if target.startswith(str(folder)):
+                still_open.append(target)
+        assert still_open == []
