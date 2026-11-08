@@ -5,7 +5,7 @@ import json
 import socket
 
 import pytest
-from backend_process import dotenv_folder, spawn, stop, wait_for_start
+from backend_process import dotenv_folder, next_line, spawn, stop, wait_for_start
 
 #: Stands in for uvicorn's serving loop: reports the sockets it was handed and keeps them, so the test sees
 #: the port in the state the shell finds it in when it reads the handshake.
@@ -51,7 +51,7 @@ def test_the_announced_port_is_already_held_and_served_from_that_socket(started)
             other.listen()
     finally:
         other.close()
-    serving = json.loads(proc.stdout.readline())
+    serving = json.loads(next_line(proc, 60))
     assert serving == {"event": "test-serving", "ports": [ready["port"]], "listening": [1]}
 
 
