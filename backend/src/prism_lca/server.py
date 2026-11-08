@@ -63,10 +63,15 @@ def _watch_parent(pid: int, interval: float = 5.0) -> None:
     while True:
         time.sleep(interval)
         if not _pid_alive(pid):
-            print(
-                json.dumps({"event": "prism-parent-gone", "detail": f"parent {pid} vanished — exiting"}),
-                flush=True,
-            )
+            # Best effort: stdout is the pipe the shell read, and it usually died with the shell. A
+            # write that raised here used to end this thread instead of the process.
+            try:
+                print(
+                    json.dumps({"event": "prism-parent-gone", "detail": f"parent {pid} vanished — exiting"}),
+                    flush=True,
+                )
+            except Exception as exc:
+                _log.swallowed(exc, "_watch_parent")
             os._exit(0)  # daemon-thread exit must not wait on uvicorn's worker threads
 
 
