@@ -57,3 +57,43 @@ jobs:
           npm run typecheck
           npm run lint
           npx vitest run
+
+  # The same suites on Windows, where most of our users run the app: paths, file locking, process handling
+  # and worker start-up behave differently there, and until now only the release build ever ran on it.
+  # GitHub-hosted on purpose — the self-hosted Windows runner signs releases, and only the release workflow
+  # may run on it. Lint, typecheck and notices are platform-independent and stay with the Linux job.
+  test-windows:
+    name: Tests on Windows
+    runs-on: windows-2025
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The runner's git converts line endings to CRLF on checkout; our golden files, notices and
+      # byte-for-byte comparisons are written with LF, as every other checkout has them.
+      - name: Check out with the repository's own line endings
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Backend dependencies
+        working-directory: backend
+        run: uv sync --locked --extra dev --extra build
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Backend tests
+        working-directory: backend
+        run: uv run pytest -n auto -q
+      - name: Frontend tests
+        working-directory: frontend
+        run: npx vitest run
