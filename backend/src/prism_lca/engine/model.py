@@ -18,6 +18,7 @@ from prism_lca.config import get_settings
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
+from prism_lca.engine.notfound import not_found_hint
 from prism_lca.engine.pedigree import gsd_from_pedigree
 from prism_lca.errors import PrismError
 
@@ -103,41 +104,7 @@ def get_activity(database: str, code: str):
         f"Activity '{code}' not found in '{database}'.",
         code="activity_not_found",
         status_code=404,
-        hint=_not_found_hint(code),
-    )
-
-
-#: How many codes of a mis-sent batch the hint repeats back. Enough to recognise it as one's own
-#: list, short enough that a forty-code slip does not become a wall of hex.
-_HINT_CODES = 3
-
-
-def _not_found_hint(code: str) -> str:
-    """The hint, and where the value says what went wrong, the hint says it.
-
-    A model sent ``code`` a JSON array as a STRING — the whole batch under the singular field — and
-    got back "Activity '[\"0d6068eb…\", …]' not found. Check the activity code and database". The
-    value was right there in the message; nothing read it. Two dead calls, and in one session's tooling
-    critique it became the accusation that the batch parameter is broken. It is not: `codes` works,
-    it was simply not the field that was used (V277).
-
-    Same shape as the report gate's repair (V267): where the refusing party already knows the
-    remedy, the refusal says so.
-    """
-    text = (code or "").strip()
-    if not (text.startswith("[") and text.endswith("]")):
-        return "Check the activity code and database."
-    try:
-        items = json.loads(text)
-    except ValueError:
-        return "Check the activity code and database."
-    if not isinstance(items, list) or not all(isinstance(i, str) for i in items) or not items:
-        return "Check the activity code and database."
-    shown = ", ".join(items[:_HINT_CODES])
-    more = f" (+{len(items) - _HINT_CODES} more)" if len(items) > _HINT_CODES else ""
-    return (
-        f"That is a list of {len(items)} codes in the single-code field. Pass them as "
-        f'"codes": [{shown}]{more} — one call, one result per code.'
+        hint=not_found_hint(bd, code, database),
     )
 
 

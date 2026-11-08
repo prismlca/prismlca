@@ -372,13 +372,23 @@ def resolve_method(method) -> tuple:
         if hits:
             # Several: naming them is the useful answer. Guessing is not — picking one of five climate
             # indicators for the user is how a study ends up reporting the wrong one.
-            recommended = [m for m in hits if _is_recommended(" · ".join(m))]
-            shown = (recommended or hits)[:5]
+            # The recommended ones first, the others still named: filtering to the recommended alone
+            # answered "matches 4 methods — say which" with ONE candidate, and the variant a user asked
+            # for by name (fossil only, GWP20) was not on the list to pick.
+            names = [" · ".join(m) for m in hits]
+            recommended = [n for n in names if _is_recommended(n)]
+            others = [n for n in names if n not in recommended]
+            if recommended:
+                hint = "Recommended: " + " | ".join(recommended[:5])
+                if others:
+                    hint += ". Also matching: " + " | ".join(others[:5])
+            else:
+                hint = "Candidates: " + " | ".join(names[:5])
             raise PrismError(
                 f"LCIA method {list(t)} matches {len(hits)} methods — say which.",
                 code="method_ambiguous",
                 status_code=404,
-                hint="Candidates: " + " | ".join(" · ".join(m) for m in shown),
+                hint=hint,
             )
 
     near = [m for m in bd.methods if words and _matches(words[:1], " · ".join(m))][:5]

@@ -96,14 +96,14 @@ def test_a_batch_error_that_sees_an_array_says_which_parameter_to_use():
     """V277. A model put the whole batch under the singular `code`, as a JSON string, and got back
     "Activity '[…]' not found — Check the activity code and database". The value was in the message;
     nothing read it. Two dead calls, and a tooling critique blaming a batch that works."""
-    from prism_lca.engine.model import _not_found_hint
+    from prism_lca.engine.notfound import batch_hint
 
-    hint = _not_found_hint('["aaa", "bbb", "ccc", "ddd"]')
-    assert '"codes"' in hint and "4 codes" in hint and "+1 more" in hint
-    # An ordinary miss keeps the ordinary hint.
-    assert _not_found_hint("0d6068eb37e8505839cdff55ac38045e") == "Check the activity code and database."
-    assert _not_found_hint("[not json") == "Check the activity code and database."
-    assert _not_found_hint("[]") == "Check the activity code and database."
+    hint = batch_hint('["aaa", "bbb", "ccc", "ddd"]')
+    assert hint and '"codes"' in hint and "4 codes" in hint and "+1 more" in hint
+    # An ordinary miss is not a batch: the lookup's other hints take over.
+    assert batch_hint("0d6068eb37e8505839cdff55ac38045e") is None
+    assert batch_hint("[not json") is None
+    assert batch_hint("[]") is None
 
 
 def test_it_names_every_candidate_because_it_cannot_know_which_one_was_meant():

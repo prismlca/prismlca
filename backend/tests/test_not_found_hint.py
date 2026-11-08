@@ -1,0 +1,78 @@
+"""What a refused activity lookup says, and what an ambiguous method name says.
+
+Both were measured to cost a model a round: a background dataset's code sent with the model's own
+database name ("not found in 'PET bottle'" — true, and no help), and "matches 4 methods — say which"
+followed by ONE candidate. The hints now name what the refusing side can see, without inviting an edit
+somewhere it does not belong.
+"""
+
+import pytest
+
+from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.guardrails import set_read_only
+from prism_lca.engine.model import get_activity
+from prism_lca.errors import PrismError
+
+
+def _two_databases(bd) -> None:
+    bd.Database("bg").write({("bg", "pet-granulate"): {"name": "PET granulate", "unit": "kg"}})
+    bd.Database("glass").write({("glass", "transport-1"): {"name": "transport", "unit": "tkm"}})
+    bd.Database("pet").write({("pet", "bottle"): {"name": "bottle", "unit": "unit"}})
+    set_read_only("glass", False)
+    set_read_only("pet", False)
+
+
+def _hint(database: str, code: str) -> str:
+    with pytest.raises(PrismError) as caught:
+        get_activity(database, code)
+    assert caught.value.code == "activity_not_found"
+    return caught.value.hint or ""
+
+
+def test_a_background_code_sent_with_the_models_name_says_where_it_lives_and_that_it_stays_put(project):
+    _two_databases(get_bd())
+    hint = _hint("pet", "pet-granulate")
+    assert "'bg'" in hint and "read-only" in hint
+    # The one use that is right in every caller: as an input. Never an invitation to edit it.
+    assert "as the input's database" in hint and "cannot be changed" in hint
+
+
+def test_a_code_from_another_model_is_named_as_such_without_a_suggestion_to_act_there(project):
+    _two_databases(get_bd())
+    hint = _hint("pet", "transport-1")
+    assert hint == "That code is a process in 'glass', not in 'pet'."
+
+
+def test_a_code_found_nowhere_keeps_the_plain_hint_and_a_batch_keeps_its_own(project):
+    _two_databases(get_bd())
+    assert _hint("pet", "no-such-code") == "Check the activity code and database."
+    assert '"codes"' in _hint("pet", '["a", "b"]')
+
+
+def test_an_ambiguous_method_names_the_recommended_one_first_and_still_the_others(client, token, project):
+    bd = get_bd()
+    bd.Database("biosphere").write({("biosphere", "co2"): {"name": "Carbon dioxide", "unit": "kg"}})
+    bd.Database("cfg").write({
+        ("cfg", "bottle"): {
+            "name": "bottle", "unit": "unit",
+            "exchanges": [{"input": ("biosphere", "co2"), "amount": 1, "type": "biosphere"}],
+        }
+    })
+    for name in (
+        ("IPCC 2021", "climate change", "global warming potential (GWP100)"),
+        ("IPCC 2021", "climate change: fossil", "global warming potential (GWP100)"),
+        ("IPCC 2021", "climate change: biogenic (incl. CO2)", "global warming potential (GWP100)"),
+    ):
+        bd.Method(name).write([(("biosphere", "co2"), 1.0)])
+    r = client.post(
+        "/api/v1/calc/lcia",
+        json={"database": "cfg", "code": "bottle", "method": "IPCC 2021 climate change GWP100"},
+        headers=token,
+    )
+    assert r.status_code == 404, r.text
+    error = r.json()["error"]
+    assert error["code"] == "method_ambiguous"
+    hint = error["hint"]
+    # Never picked for the user — but the recommended one leads, and the fossil variant is there to choose.
+    assert hint.startswith("Recommended: IPCC 2021 · climate change · global warming potential (GWP100)")
+    assert "Also matching:" in hint and "climate change: fossil" in hint

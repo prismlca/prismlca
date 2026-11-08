@@ -36,7 +36,7 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/health.py": 1984,  # 1959
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601
-    "prism_lca/engine/model.py": 1550,  # 1525
+    "prism_lca/engine/model.py": 1539,  # 1514 — the not-found hint moved to notfound.py
     # 1564 — raised by 5 for the exchange notes in `sources_of`, the one function that fingerprints every text a
     # chapter read; a second home for one of those sources would split the list it exists to keep whole.
     "prism_lca/engine/report_staleness.py": 1594,
