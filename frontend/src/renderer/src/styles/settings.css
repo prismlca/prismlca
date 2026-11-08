@@ -48,7 +48,7 @@
    one decision on its page, and a select hides the alternative. Same selected-state grammar as the
    category rail (.settings-cat.on): surface, border, a soft shadow — plus the green ring the inputs
    already use for "this one is active". */
-.provider-cards { display: flex; gap: 12px; margin: 2px 0 12px; }
+.provider-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 2px 0 12px; }
 /* Square tiles (141 × 141) — as tall as they are wide (after 3:4 and 5:6 both
    read too tall in the panel). Content sits top-anchored with the logo carrying the visual
    weight; see the name-alignment note below. */

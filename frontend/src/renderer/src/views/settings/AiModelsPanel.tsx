@@ -11,6 +11,7 @@ import { useSortState } from '../../lib/useSortState'
 import {
   AA_INDEX_VERSION,
   AA_RATINGS_PULLED,
+  ANTHROPIC_PRICES_CHECKED,
   defaultChatModelFor,
   GOOGLE_PRICES_CHECKED,
   planToolOn,
@@ -332,7 +333,9 @@ export function AiModelsPanel(): JSX.Element {
         tip="Places the flows of an imported database — from SimaPro, openLCA, GaBi or an ILCD package — onto PrismLCA's own vocabulary. It only ever chooses from a shortlist the import has already found, and it may always answer “none of these”: an unmatched flow is reported, a wrongly matched one becomes a number that looks finished. Bulk work with one short answer per flow, so a cheap model is the right answer here."
         value={shownValue(matchModel)}
         onPick={pickMatchModel}
-        blank="Default (GPT-6 Luna)"
+        // Neutral like the rows above: the default differs by provider (GPT-6 Luna on OpenRouter and OpenAI,
+        // Claude Haiku 5.5, Gemini 3.8 Flash), and main's role table is not the renderer's to import.
+        blank="Default (a cheap model)"
         models={providerModels}
       />
       <h4>Cost &amp; performance</h4>
@@ -438,7 +441,13 @@ export function AiModelsPanel(): JSX.Element {
       </div>
       {/* One line each. The reader needs the origin and, where it is hand-kept, the date — the rest
           was explanation nobody had asked for. */}
-      {provider === 'openai' ? (
+      {provider === 'anthropic' ? (
+        <p className="settings-hint">
+          <b>*</b> Kept by hand — Anthropic has no pricing API. As of{' '}
+          <b>{priceDate(ANTHROPIC_PRICES_CHECKED)}</b>; Claude Haiku 5.5 costs five times as much on a prompt
+          over 100,000 tokens. Its costs are estimates.
+        </p>
+      ) : provider === 'openai' ? (
         <p className="settings-hint">
           <b>*</b> Kept by hand — OpenAI has no pricing API. As of <b>{priceDate(OPENAI_PRICES_CHECKED)}</b>;
           its costs are estimates.

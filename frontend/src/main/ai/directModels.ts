@@ -1,10 +1,10 @@
 /**
- * The models PrismLCA reaches at the vendor directly — OpenAI and Google — with the list prices we
- * keep by hand for them.
+ * The models PrismLCA reaches at the vendor directly — Anthropic, Google and OpenAI — with the list
+ * prices we keep by hand for them.
  *
- * Neither vendor reports a cost per request or publishes prices over an API, so every row here MUST
- * carry `pricing` (models.test.ts enforces it), and the cost breaker, the ledger and the per-message
- * cost are computed from it by the transports (providers/openai.ts, providers/google.ts). A stale
+ * None of these vendors reports a cost per request or publishes prices over an API, so every row here
+ * MUST carry `pricing` (models.test.ts enforces it), and the cost breaker, the ledger and the per-message
+ * cost are computed from it by the transports (providers/anthropic.ts, openai.ts, google.ts). A stale
  * price is a silently mis-calibrated cost limit, which is why the prices sit together on one page with
  * the date they were checked (`OPENAI_PRICES_CHECKED` / `GOOGLE_PRICES_CHECKED` in shared/aiDefaults.ts,
  * printed by the settings table) and why a price change the vendor has ANNOUNCED is entered as a dated
@@ -49,7 +49,93 @@ export const OPENAI_STT_USD_PER_MINUTE = 0.0045
  */
 export const GOOGLE_SEARCH_USD_PER_QUERY = 0.014
 
+/**
+ * Anthropic's non-token list prices (platform.claude.com/docs/en/about-claude/pricing, checked with
+ * ANTHROPIC_PRICES_CHECKED). The web_search server tool bills per search on top of the tokens — $10 per
+ * 1,000, a failed search not at all — and its results then count as input tokens like any other text.
+ */
+export const ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH = 0.01
+/** Writing a prompt prefix into Anthropic's cache costs this multiple of the input price (the
+ *  five-minute cache, the only one PrismLCA asks for); a later read costs the row's `cachedInput`. */
+export const ANTHROPIC_CACHE_WRITE_FACTOR = 1.25
+
 export const DIRECT_MODELS: AiModel[] = [
+  // --- Direct-Anthropic catalogue (Settings → AI → provider 'Anthropic') --------------------------
+  //
+  // Verified on 2026-11-08 against Anthropic's Models API (ids, 1M context, 128K output, effort low–max,
+  // web search, image and PDF input on all four) and its pricing page. Served through the Messages API
+  // (providers/anthropic.ts). Thinking is adaptive and always on for these models, and the 2026-10-21 API
+  // version rejects sampling parameters — so temperature stays null, as on their OpenRouter rows.
+  //
+  // Prices: standard tier, global inference. Cache reads differ by model (Fable 0.025×, Opus and Sonnet
+  // 0.05×, Haiku 0.1× of input); cache writes cost ANTHROPIC_CACHE_WRITE_FACTOR × input. Haiku 5.5 is the
+  // one row priced by prompt length (`longPrompt`). `intelligence`/`agentic`, `planTool` and the effort
+  // levels are their OpenRouter rows' — the same models, the same readings; our effort vocabulary ends at
+  // xhigh, so Anthropic's `max` is not offered.
+  {
+    id: 'claude-sonnet-5-5',
+    provider: 'anthropic',
+    pricing: { input: 2, cachedInput: 0.1, output: 10 },
+    label: 'Claude Sonnet 5.5 (Anthropic)',
+    descriptor: 'top tier at mid price (default)',
+    temperature: null,
+    intelligence: 56,
+    agentic: null,
+    vision: true,
+    planTool: false,
+    contextTokens: 1000000,
+    explicitCache: true,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+  },
+  {
+    id: 'claude-opus-5-5',
+    provider: 'anthropic',
+    pricing: { input: 4, cachedInput: 0.2, output: 20 },
+    label: 'Claude Opus 5.5 (Anthropic)',
+    descriptor: 'highest intelligence score',
+    temperature: null,
+    intelligence: 57.6,
+    agentic: null,
+    vision: true,
+    planTool: false,
+    contextTokens: 1000000,
+    explicitCache: true,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+  },
+  {
+    // Anthropic keeps every Fable 5.1 request for 30 days for safety review (a "Covered Model"); the
+    // other three rows fall under its standard terms. PRIVACY.md says so.
+    id: 'claude-fable-5-1',
+    provider: 'anthropic',
+    pricing: { input: 10, cachedInput: 0.25, output: 50 },
+    label: 'Claude Fable 5.1 (Anthropic)',
+    descriptor: 'highest agentic score, priciest',
+    temperature: null,
+    intelligence: 53.4,
+    agentic: 57.9,
+    vision: true,
+    planTool: false,
+    contextTokens: 1000000,
+    explicitCache: true,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+  },
+  {
+    id: 'claude-haiku-5-5',
+    provider: 'anthropic',
+    pricing: { input: 0.1, cachedInput: 0.01, output: 0.5 },
+    longPrompt: { above: 100_000, input: 0.5, cachedInput: 0.05, output: 2.5 },
+    label: 'Claude Haiku 5.5 (Anthropic)',
+    descriptor: 'cheapest, strongest at that price',
+    temperature: null,
+    intelligence: 43.4,
+    agentic: null,
+    vision: true,
+    planTool: true,
+    contextTokens: 1000000,
+    explicitCache: true,
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+  },
+
   // --- Direct-OpenAI catalogue (Settings → AI → provider 'OpenAI') --------------------------------
   //
   // The GPT-6 family, verified against developers.openai.com/api/docs/models on 2026-10-01: Astra

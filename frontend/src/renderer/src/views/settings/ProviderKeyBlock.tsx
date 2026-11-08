@@ -14,15 +14,15 @@ const KEY_COPY = {
     flow: 'straight to OpenRouter’s servers, and on to whichever model you pick',
     terms: ''
   },
-  openai: {
-    label: 'OpenAI API key',
-    placeholder: 'sk-…',
-    envVar: 'OPENAI_API_KEY',
-    company: 'OpenAI',
-    createAt: 'platform.openai.com under API keys',
-    devfile: '.secrets/openai-key',
-    sends: 'your search queries and the contents of the documents you index',
-    flow: 'straight to OpenAI’s servers',
+  anthropic: {
+    label: 'Anthropic API key',
+    placeholder: 'sk-ant-…',
+    envVar: 'ANTHROPIC_API_KEY',
+    company: 'Anthropic',
+    createAt: 'platform.claude.com under API keys',
+    devfile: '.secrets/anthropic-key',
+    sends: 'your chats with the assistant, the model data it reads and the documents you attach',
+    flow: 'straight to Anthropic’s Claude API',
     terms: ''
   },
   google: {
@@ -37,6 +37,17 @@ const KEY_COPY = {
     // Google's terms split on billing; what PrismLCA describes is the paid contract, so it says so.
     terms:
       'Use a key from a Google Cloud project with billing: under Google’s terms for paid use, your prompts are not used to improve its products.'
+  },
+  openai: {
+    label: 'OpenAI API key',
+    placeholder: 'sk-…',
+    envVar: 'OPENAI_API_KEY',
+    company: 'OpenAI',
+    createAt: 'platform.openai.com under API keys',
+    devfile: '.secrets/openai-key',
+    sends: 'your search queries and the contents of the documents you index',
+    flow: 'straight to OpenAI’s servers',
+    terms: ''
   }
 } as const
 
@@ -136,10 +147,9 @@ export function ProviderKeyBlock({ provider }: { provider: ProviderChoice }): JS
       <h4>Provider key</h4>
       {/* The whole point of this block, above the field rather than below it. */}
       <p className="settings-notice">
-        Entering {copy.company === 'OpenAI' || copy.company === 'OpenRouter' ? 'an' : 'a'} {copy.company} API
-        key sends {copy.sends} {copy.flow}. What happens to that data there is governed by your own agreement
-        and terms of use with {copy.company}, not by anything PrismLCA can promise.{' '}
-        {copy.terms ? <>{copy.terms} </> : null}
+        Entering {/^[AEIOU]/.test(copy.company) ? 'an' : 'a'} {copy.company} API key sends {copy.sends}{' '}
+        {copy.flow}. What happens to that data there is governed by your own agreement and terms of use with{' '}
+        {copy.company}, not by anything PrismLCA can promise. {copy.terms ? <>{copy.terms} </> : null}
         <strong>Set a spending limit on the key.</strong> PrismLCA has brakes of its own — a cost ceiling per
         run, a tool-round budget, and the running total under Usage &amp; costs — but the account is yours and
         so is the bill, including what a run costs when a brake is switched off or fails.

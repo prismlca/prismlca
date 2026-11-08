@@ -1377,6 +1377,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             // One routing key per chat, so its rounds stay with one provider's cache (routingSession.ts).
             sessionId: routingSession(`chat:${req.chatId}`),
             signal: req.signal,
+            budget: costStop.signal,
             provider
           })) {
             if (ev.type === 'finish') {

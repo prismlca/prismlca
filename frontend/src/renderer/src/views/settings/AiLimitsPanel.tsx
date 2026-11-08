@@ -239,7 +239,17 @@ export function AiLimitsPanel(): JSX.Element {
         </div>
       ) : null}
       <p className="settings-hint">
-        {provider === 'google' ? (
+        {provider === 'anthropic' ? (
+          <>
+            An OpenRouter routing rule — Anthropic’s Claude API has no per-request equivalent, so this switch
+            has no effect there and PrismLCA says so rather than pretending. What holds instead: Anthropic
+            does not use API data for training without your permission and deletes inputs and outputs within
+            30 days; requests to Claude Fable 5.1 are kept for 30 days for safety review, and anything its
+            systems flag as a usage-policy violation for up to two years. Zero retention is an agreement
+            between you and Anthropic at organization level. If the per-request zero-retention guarantee
+            matters to your data, use the OpenRouter provider.
+          </>
+        ) : provider === 'google' ? (
           <>
             An OpenRouter routing rule — Google’s Gemini API has no per-request equivalent, so this switch has
             no effect there and PrismLCA says so rather than pretending. What holds instead, with a key from a

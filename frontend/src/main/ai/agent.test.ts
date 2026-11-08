@@ -286,14 +286,18 @@ describe('compactMessages', () => {
 })
 
 describe('explicitCache flags', () => {
+  // Claude via OpenRouter (`anthropic/…`) and Claude direct (provider 'anthropic').
+  const isClaude = (m: { id: string; provider?: string }): boolean =>
+    m.id.startsWith('anthropic/') || m.provider === 'anthropic'
+
   it('is set for every Anthropic model (they only cache when asked)', () => {
-    for (const m of AI_MODELS.filter((x) => x.id.startsWith('anthropic/'))) {
+    for (const m of AI_MODELS.filter(isClaude)) {
       expect(m.explicitCache, m.id).toBe(true)
     }
   })
 
   it('is NOT set for other providers (they cache automatically or ignore the marker)', () => {
-    for (const m of AI_MODELS.filter((x) => !x.id.startsWith('anthropic/'))) {
+    for (const m of AI_MODELS.filter((x) => !isClaude(x))) {
       expect(m.explicitCache, m.id).toBeUndefined()
     }
   })

@@ -113,7 +113,7 @@ describe.skipIf(!LIVE)('import matcher, live trap suite', () => {
     // from module state rather than from the model id. Point it at whoever owns this model.
     const { setActiveProvider } = await import('./client')
     const { modelBelongsTo } = await import('./models')
-    const owner = (['openai', 'google'] as const).find((p) => modelBelongsTo(MODEL, p))
+    const owner = (['anthropic', 'google', 'openai'] as const).find((p) => modelBelongsTo(MODEL, p))
     setActiveProvider(owner ?? 'openrouter')
 
     const { matchBatch } = await import('./importMatcher')

@@ -12,6 +12,7 @@ vi.mock('electron', () => ({
 
 import { AI_PROVIDERS, PROVIDER_CAPS } from '../../../shared/providerCaps'
 import type { AiProviderId } from '../../../shared/aiDefaults'
+import { anthropicTransport } from './anthropic'
 import { googleTransport } from './google'
 import { openaiTransport } from './openai'
 import { openrouterTransport } from './openrouter'
@@ -19,6 +20,7 @@ import type { ChatTransport, StreamChatOpts } from './types'
 
 const TRANSPORT: Record<AiProviderId, ChatTransport<unknown>> = {
   openrouter: openrouterTransport as ChatTransport<unknown>,
+  anthropic: anthropicTransport as ChatTransport<unknown>,
   openai: openaiTransport as ChatTransport<unknown>,
   google: googleTransport as ChatTransport<unknown>
 }
@@ -26,6 +28,7 @@ const TRANSPORT: Record<AiProviderId, ChatTransport<unknown>> = {
 /** How each request spells its web-search tool. */
 const SEARCH_TOOL: Record<AiProviderId, string> = {
   openrouter: 'openrouter:web_search',
+  anthropic: '"type":"web_search_20250305"',
   openai: '"type":"web_search"',
   google: '"type":"google_search"'
 }

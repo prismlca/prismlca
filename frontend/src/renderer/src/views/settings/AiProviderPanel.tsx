@@ -3,7 +3,7 @@ import { LAB_LOGOS } from '../../lib/labLogos'
 import openrouterLogo from '../../assets/logos/openrouter.svg'
 import { ProviderKeyBlock, type ProviderChoice } from './ProviderKeyBlock'
 
-/** AI → Provider: who answers — OpenRouter, OpenAI direct or Google direct — and that provider’s key. */
+/** AI → Provider: who answers — OpenRouter, or Anthropic, Google or OpenAI directly — and that provider’s key. */
 export function AiProviderPanel(): JSX.Element {
   const provider = (useAppSettings().provider ?? 'openrouter') as ProviderChoice
   const pickProvider = (p: ProviderChoice): void => setAS({ provider: p })
@@ -18,8 +18,14 @@ export function AiProviderPanel(): JSX.Element {
         {(
           [
             { id: 'openrouter', logo: openrouterLogo, name: 'OpenRouter', blurb: 'One key, many labs' },
-            { id: 'openai', logo: LAB_LOGOS.openai, name: 'OpenAI', blurb: 'Direct — OpenAI models only' },
-            { id: 'google', logo: LAB_LOGOS.google, name: 'Google', blurb: 'Direct — Gemini models only' }
+            {
+              id: 'anthropic',
+              logo: LAB_LOGOS.anthropic,
+              name: 'Anthropic',
+              blurb: 'Direct — Claude models only'
+            },
+            { id: 'google', logo: LAB_LOGOS.google, name: 'Google', blurb: 'Direct — Gemini models only' },
+            { id: 'openai', logo: LAB_LOGOS.openai, name: 'OpenAI', blurb: 'Direct — OpenAI models only' }
           ] as const
         ).map((c) => (
           <button
@@ -38,10 +44,10 @@ export function AiProviderPanel(): JSX.Element {
       </div>
       <p className="settings-hint">
         Where every model request goes. OpenRouter offers models from many labs behind one key and can be told
-        to route only to zero-retention endpoints; OpenAI direct talks straight to api.openai.com with an
-        OpenAI key and offers OpenAI&rsquo;s models only; Google direct talks straight to Google&rsquo;s
-        Gemini API with a Google AI Studio key and offers Gemini models only. Model choices (under Models) and
-        the keys of the inactive providers stay stored — switching back restores them.
+        to route only to zero-retention endpoints. The three direct providers talk straight to one lab&rsquo;s
+        own API with that lab&rsquo;s key and offer its models only: Anthropic&rsquo;s Claude API,
+        Google&rsquo;s Gemini API (a Google AI Studio key) and the OpenAI API. Model choices (under Models)
+        and the keys of the inactive providers stay stored — switching back restores them.
       </p>
       <ProviderKeyBlock provider={provider} />
     </>

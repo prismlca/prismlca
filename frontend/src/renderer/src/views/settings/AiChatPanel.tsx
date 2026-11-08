@@ -49,8 +49,18 @@ export function AiChatPanel(): JSX.Element {
         />
       </label>
       <p className="settings-hint">
-        On = the chat shows a microphone button; the recording is sent to {caps.speechModel} for transcription
-        and the transcript is sent as your message. Off = the button disappears entirely.
+        {caps.speechModel ? (
+          <>
+            On = the chat shows a microphone button; the recording is sent to {caps.speechModel} for
+            transcription and the transcript is sent as your message. Off = the button disappears entirely.
+          </>
+        ) : (
+          <>
+            {caps.name} offers no speech-to-text model, so the chat shows no microphone under this provider —
+            your recording is never sent to another provider instead. The setting stays stored for when you
+            switch.
+          </>
+        )}
       </p>
       {voiceEnabled ? (
         <>

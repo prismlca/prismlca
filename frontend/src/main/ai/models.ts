@@ -73,6 +73,7 @@
  * carries it under the two columns; `docs/DATENHERKUNFT.md` carries the source row.
  */
 import {
+  DEFAULT_ANTHROPIC_MODEL_ID,
   DEFAULT_MODEL_ID,
   DEFAULT_GOOGLE_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
@@ -99,6 +100,10 @@ export interface AiModel {
   /** A price change the vendor has already announced, from the given day (YYYY-MM-DD) on. Read through
    *  `priceOn` (directModels.ts), never directly — the transports and the table must agree on the day. */
   priceChanges?: Array<{ from: string; input: number; cachedInput: number; output: number }>
+  /** Prices for a request whose prompt is LONGER than `above` tokens, cache reads and writes counted in —
+   *  the whole request is then billed at these (Claude Haiku 5.5: five times the short-prompt price above
+   *  100,000 tokens). Read by the transport per request; the table shows the short-prompt price. */
+  longPrompt?: { above: number; input: number; cachedInput: number; output: number }
   label: string // human name
   /** Short quality/cost hint, shown in the pickers. Strength first, price second, "open weight"
    *  where the weights are published. Written against the v4.3 ratings below and the
@@ -610,7 +615,10 @@ export function modelBelongsTo(id: string | undefined, p: ProviderKey): boolean 
 /** A catalogue id that belongs to a DIRECT provider and not to OpenRouter — a choice made under
  *  another provider, which must not travel to OpenRouter as-is. */
 export function isDirectOnlyId(id: string): boolean {
-  return (modelBelongsTo(id, 'openai') || modelBelongsTo(id, 'google')) && !modelBelongsTo(id, 'openrouter')
+  return (
+    (modelBelongsTo(id, 'anthropic') || modelBelongsTo(id, 'openai') || modelBelongsTo(id, 'google')) &&
+    !modelBelongsTo(id, 'openrouter')
+  )
 }
 
 /** The catalogue entry for this id UNDER THIS PROVIDER — an unknown id, or one belonging to the
@@ -654,6 +662,18 @@ export function providerDefaults(p: ProviderKey): {
   // OpenRouter defaults avoid on purpose — accepted here because the Google list has no second cheap
   // model; whoever wants a different reviewer picks Argon under Settings → AI → Models. Unmeasured as
   // matcher (the OpenRouter/OpenAI choice was measured on four import sets); the first paid run says.
+  // Under Anthropic the cheap roles go to Haiku 5.5, as they go to Luna under OpenAI: the cheapest
+  // class, and Anthropic's strongest model at that price. The reviewer is therefore the researcher's
+  // model, as under Google; Sonnet 5.5 is one pick away under Settings → AI → Models, at twenty times the
+  // price. Unmeasured as matcher.
+  if (p === 'anthropic')
+    return {
+      chat: DEFAULT_ANTHROPIC_MODEL_ID,
+      research: 'claude-haiku-5-5',
+      review: 'claude-haiku-5-5',
+      writerFallback: 'claude-haiku-5-5',
+      match: 'claude-haiku-5-5'
+    }
   if (p === 'google')
     return {
       chat: DEFAULT_GOOGLE_MODEL_ID,

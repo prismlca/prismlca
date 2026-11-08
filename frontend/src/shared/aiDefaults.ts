@@ -33,12 +33,18 @@ export const DEFAULT_OPENAI_MODEL_ID = 'gpt-6.1-sol'
  *  away in the picker. Id verified against Google's model docs on 2026-11-07. */
 export const DEFAULT_GOOGLE_MODEL_ID = 'gemini-3.8-flash'
 
-/** The AI providers PrismLCA talks to: OpenRouter, and two vendors directly. One union for main and
- *  renderer, so a fourth provider is a compile error at every place that has to decide about it. */
-export type AiProviderId = 'openrouter' | 'openai' | 'google'
+/** Chat default under the direct-Anthropic provider: Claude Sonnet 5.5, Anthropic's middle tier — the
+ *  same class as the OpenAI default (6.1 Sol) at the same list price. Opus 5.5 and Fable 5.1 stay one
+ *  click away in the picker. Id verified against Anthropic's Models API on 2026-11-08. */
+export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-sonnet-5-5'
 
-/** The chat default per provider — the one place the three constants above are told apart. */
+/** The AI providers PrismLCA talks to: OpenRouter, and three vendors directly. One union for main and
+ *  renderer, so a new provider is a compile error at every place that has to decide about it. */
+export type AiProviderId = 'openrouter' | 'anthropic' | 'google' | 'openai'
+
+/** The chat default per provider — the one place the constants above are told apart. */
 export function defaultChatModelFor(p: AiProviderId): string {
+  if (p === 'anthropic') return DEFAULT_ANTHROPIC_MODEL_ID
   if (p === 'openai') return DEFAULT_OPENAI_MODEL_ID
   if (p === 'google') return DEFAULT_GOOGLE_MODEL_ID
   return DEFAULT_MODEL_ID
@@ -46,7 +52,7 @@ export function defaultChatModelFor(p: AiProviderId): string {
 
 /** A stored or IPC-supplied provider value, sanitised: anything unknown is OpenRouter. */
 export function asAiProvider(value: unknown): AiProviderId {
-  return value === 'openai' || value === 'google' ? value : 'openrouter'
+  return value === 'anthropic' || value === 'openai' || value === 'google' ? value : 'openrouter'
 }
 
 /**
@@ -74,6 +80,10 @@ export const OPENAI_PRICES_CHECKED = '2026-10-01'
 /** The same date for the hand-maintained Google list prices (aistudio.google.com/docs/pricing), under
  *  the same rule: bump it in the same commit as any Google price, including a scheduled change. */
 export const GOOGLE_PRICES_CHECKED = '2026-11-07'
+
+/** The same date for the hand-maintained Anthropic list prices (platform.claude.com/docs/en/about-claude/pricing),
+ *  under the same rule: bump it in the same commit as any Anthropic price. */
+export const ANTHROPIC_PRICES_CHECKED = '2026-11-08'
 
 /**
  * The Artificial Analysis pull behind the `intelligence`/`agentic` columns: the day it was fetched,

@@ -83,8 +83,9 @@ export function CostsPanel(): JSX.Element {
       <h4>API costs</h4>
       <p className="settings-hint">
         Cost (USD) per request, summed per model and month — as reported by OpenRouter, and computed from list
-        prices under the OpenAI provider (estimates). The prompt-cache discount is already included. “Cached”
-        is the share of prompt tokens the provider served from its cache instead of charging in full.
+        prices under the direct providers — Anthropic, Google, OpenAI (estimates). The prompt-cache discount
+        is already included. “Cached” is the share of prompt tokens the provider served from its cache instead
+        of charging in full.
       </p>
       {modelIds.length === 0 ? (
         <p className="empty" style={{ padding: 0 }}>

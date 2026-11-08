@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertIcon, ClockIcon, LinkIcon, PaperclipIcon } from '../components/icons'
 import { aiHasKey, KEY_CHANGED_EVENT } from '../lib/ai'
 import { useAppSettings } from '../lib/appSettings'
+import { asAiProvider } from '../../../shared/aiDefaults'
+import { PROVIDER_CAPS } from '../../../shared/providerCaps'
 import type { SettingsCategory, SettingsFocus } from '../views/Settings'
 import ComposerMenu from './ComposerMenu'
 import ModelPicker from './ModelPicker'
@@ -67,14 +69,17 @@ export default function ChatComposer({
   const [hasKey, setHasKey] = useState<boolean | null>(null) // null = still checking
   const taRef = useRef<HTMLTextAreaElement | null>(null)
 
-  // Settings → AI Chat can disable voice input app-wide; the mic then disappears.
-  const voiceAllowed = useAppSettings().voiceEnabled
+  // Settings → AI Chat can disable voice input app-wide; the mic then disappears — and so it does under a
+  // provider without a speech model (Anthropic), rather than sending the recording to another key.
+  const appSettings = useAppSettings()
+  const voiceAllowed =
+    appSettings.voiceEnabled && PROVIDER_CAPS[asAiProvider(appSettings.provider)].speechModel !== null
   // Is a key configured for the ACTIVE provider? If not, the chat is disabled with a hint.
   // Re-checked when the provider setting changes: main answers for whichever provider is active,
   // so a switch in Settings must re-ask — checked only on mount, an open chat kept the stale gate.
   // And re-asked when a key is stored or cleared: Settings opens over this panel, and a key saved for the
   // same provider left the chat locked on the stale answer until a provider switch.
-  const activeProvider = useAppSettings().provider
+  const activeProvider = appSettings.provider
   useEffect(() => {
     const check = (): void => {
       void aiHasKey()

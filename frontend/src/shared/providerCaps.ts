@@ -28,14 +28,16 @@ export interface ProviderCaps {
   pricing: 'live' | 'list'
   /** The backend needs this provider's key too (API embeddings). */
   backendKey: boolean
-  /** The speech-to-text model, as Settings names it. */
-  speechModel: string
+  /** The speech-to-text model, as Settings names it; null where the provider has none — the microphone
+   *  is then not offered, rather than sending the recording to another provider's key. */
+  speechModel: string | null
   /** One web search as the research-model hint prices it. */
   searchPrice: string
 }
 
-/** The providers in the order every list shows them. */
-export const AI_PROVIDERS: readonly AiProviderId[] = ['openrouter', 'openai', 'google']
+/** The providers in the order every list shows them: OpenRouter first — one key for many labs, the
+ *  default — then the direct vendors alphabetically. */
+export const AI_PROVIDERS: readonly AiProviderId[] = ['openrouter', 'anthropic', 'google', 'openai']
 
 export const PROVIDER_CAPS: Record<AiProviderId, ProviderCaps> = {
   openrouter: {
@@ -49,6 +51,21 @@ export const PROVIDER_CAPS: Record<AiProviderId, ProviderCaps> = {
     backendKey: true,
     speechModel: 'OpenRouter (Whisper)',
     searchPrice: 'about $0.005 per search'
+  },
+  anthropic: {
+    name: 'Anthropic',
+    routing: false,
+    // `max_uses` and `allowed_domains` on the web_search server tool.
+    webLookupsCap: true,
+    webDomainFilter: true,
+    searchBesideTools: true,
+    userModels: false,
+    pricing: 'list',
+    // No embeddings at Anthropic: the key goes where it is used and nowhere else.
+    backendKey: false,
+    // Anthropic offers no speech-to-text model.
+    speechModel: null,
+    searchPrice: 'about $0.01 per search'
   },
   openai: {
     name: 'OpenAI',

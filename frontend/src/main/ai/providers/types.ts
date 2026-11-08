@@ -1,7 +1,7 @@
 /**
  * The provider-neutral chat contract: message/tool shapes, the stream-event vocabulary, and the
  * error class every caller branches on. Everything here is what the agent loop, the report writers
- * and the sub-agents are written against — a transport (OpenRouter, OpenAI, Google) translates its own
+ * and the sub-agents are written against — a transport (OpenRouter, Anthropic, Google, OpenAI) translates its own
  * wire format into these and nothing else, so the callers never learn which provider served them.
  */
 
@@ -89,12 +89,12 @@ export function lastUserIndex(messages: ChatMessage[]): number {
 
 /**
  * May compaction drop this round's replay? Google's can always go (a round without it gets the skip
- * signature, accepted live) and so can OpenAI's (resending reasoning is optional there). OpenRouter's
- * may carry Anthropic's signed thinking, which must come back whole and unmodified for the tool loop it
- * belongs to — so inside the current turn it stays.
+ * signature, accepted live) and so can OpenAI's (resending reasoning is optional there). Anthropic's
+ * signed thinking — direct, or carried by OpenRouter — must come back whole and unmodified for the tool
+ * loop it belongs to, so inside the current turn it stays.
  */
 export function replayDroppable(replay: ProviderReplay, inCurrentTurn: boolean): boolean {
-  return replay.provider !== 'openrouter' || !inCurrentTurn
+  return (replay.provider !== 'openrouter' && replay.provider !== 'anthropic') || !inCurrentTurn
 }
 
 /** The assistant message of a tool-call round — one shape for the agent loop and both writers, so the
@@ -238,6 +238,10 @@ export interface StreamChatOpts {
    *  only one provider and ignores it. */
   sessionId?: string
   signal?: AbortSignal
+  /** The caller's spend ceiling, apart from Stop: once it fires, a reply the provider paused (Anthropic's
+   *  `pause_turn`) is not continued — a continuation is a request of its own (client.ts). The running
+   *  request is left to finish, as the agent leaves its round to finish. */
+  budget?: AbortSignal
 }
 
 export interface TranscribeOpts {

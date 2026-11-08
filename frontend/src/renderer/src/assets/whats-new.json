@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-08",
+    "title": "Anthropic as AI provider",
+    "details": "Settings → AI → Provider has a fourth card: Anthropic, for Claude Sonnet 5.5, Opus 5.5, Fable 5.1 and Haiku 5.5 straight from Anthropic with a key from platform.claude.com. Web search works in the chat and in the research tools, and costs appear under Usage & costs in an Anthropic tab, estimated from Anthropic's list prices. Voice input is not offered there, as Anthropic has no speech model."
+  },
+  {
+    "date": "2026-11-08",
     "title": "Task plan per model",
     "details": "Settings → AI → Models has a new switch under Reasoning effort: Task plan beside the chat. It turns the assistant's checklist on for a model that works without it by default — the strongest ones, such as Sonnet, Opus or Sol — or off for any other. The choice is kept per model."
   },

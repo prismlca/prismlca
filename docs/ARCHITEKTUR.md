@@ -545,16 +545,21 @@ Format of each ADR: **Context · Decision · Alternatives · Consequences**.
   user is present and redo exists; it stays irreversible for MCP. `ask_user` puts a question card in
   the chat. Every write goes through the command bus — audited under the assistant's label, grouped
   per turn, undoable (ADR-004).
-- **Decision — providers**: Three transports behind one contract (`main/ai/providers/`): OpenRouter (the
-  default, many vendors), OpenAI directly (Responses API) and Google directly (Interactions API — Google's
+- **Decision — providers**: Four transports behind one contract (`main/ai/providers/`): OpenRouter (the
+  default, many vendors), Anthropic directly (Messages API), Google directly (Interactions API — Google's
   default interface; its OpenAI-compatible endpoint has no Google Search, and `generateContent` is
-  legacy). All three are plain HTTP + SSE without a vendor SDK, so streaming, stall detection, retries
-  with backoff and exactly one usage record per request are shared (`providers/engine.ts`). Privacy flags
-  are set wherever a provider has them: on OpenRouter `data_collection: deny` and zero data retention,
-  with per-vendor exceptions the user can switch; on OpenAI and Google `store: false` on every request
-  (neither has a per-request retention switch, and Settings says so). Google's stateless mode needs the
-  model's signed thought steps back with every tool round; they ride on the assistant message as opaque
-  `replay` data. There is no PrismLCA key and no proxy: the user is the provider's customer. Cost is
+  legacy) and OpenAI directly (Responses API). All four are plain HTTP + SSE without a vendor SDK, so
+  streaming, stall detection, retries with backoff and exactly one usage record per request are shared
+  (`providers/engine.ts`). Privacy flags are set wherever a provider has them: on OpenRouter
+  `data_collection: deny` and zero data retention, with per-vendor exceptions the user can switch; on
+  OpenAI and Google `store: false` on every request (neither has a per-request retention switch, and
+  Settings says so); Anthropic's API has no such flag at all. Anthropic's and Google's models need their
+  signed reasoning back with every tool round; it rides on the assistant message as opaque `replay` data.
+  Anthropic binds that reasoning to the conversation, so it goes back only inside the current turn and
+  every request asks the API to drop, not refuse, reasoning a compacted history invalidated. Anthropic
+  caches only where a breakpoint says so: the agent marks the fixed prefix, and a tool loop adds the
+  automatic breakpoint that moves to the last block. There is no PrismLCA key and no proxy: the user is
+  the provider's customer. Cost is
   taken from the provider where it reports it and otherwise computed from prices kept by hand
   (`main/ai/directModels.ts`, with announced price changes dated in), marked as estimated. Reasoning
   effort is sent only at the levels a vendor documents for that model.

@@ -9,6 +9,7 @@
  */
 import { resolve, type Provider } from '../secrets'
 import { isDirectOnlyId, modelBelongsTo, providerDefaults } from './models'
+import { anthropicTransport } from './providers/anthropic'
 import { runChatStream } from './providers/engine'
 import { googleTransport, transcribeGoogle } from './providers/google'
 import { openaiTransport, transcribeOpenAi } from './providers/openai'
@@ -18,6 +19,7 @@ import {
   AiProviderError,
   type ChatTransport,
   type ProviderId,
+  type ProviderReplay,
   type StreamChatOpts,
   type StreamEvent,
   type TranscribeOpts
@@ -53,12 +55,14 @@ export function resetApiKey(): void {
 
 const NO_KEY_MESSAGE: Record<ProviderId, string> = {
   openrouter: 'No OpenRouter API key found — add one under Settings → AI → Provider.',
+  anthropic: 'No Anthropic API key found — add one under Settings → AI → Provider.',
   openai: 'No OpenAI API key found — add one under Settings → AI → Provider.',
   google: 'No Google API key found — add one under Settings → AI → Provider.'
 }
 
 const TRANSPORTS: Record<ProviderId, ChatTransport<any>> = {
   openrouter: openrouterTransport,
+  anthropic: anthropicTransport,
   openai: openaiTransport,
   google: googleTransport
 }
@@ -78,16 +82,49 @@ function requestModelFor(id: string, p: ProviderId): string {
   return fallback
 }
 
+/** How often one call continues a reply the provider paused (Anthropic's `pause_turn`: a long turn of
+ *  its server-side web search). Each continuation is a request of its own, billed as such. */
+const MAX_CONTINUATIONS = 3
+
 /**
  * Stream a chat completion via the active provider. Yields text deltas as they arrive, and (at the
  * end of a round) any assembled tool calls — see StreamEvent in providers/types.ts for the full
  * vocabulary and providers/engine.ts for the shared resilience mechanics.
+ *
+ * A paused reply is continued here, so no caller has to know the case: the transport reports the pause
+ * as a `pause_turn` finish plus a replay without calls, and the paused content goes back as the last
+ * assistant turn — the documented way on, and the one place an assistant turn may end a request. The
+ * caller sees one reply with one usage report per request it took.
  */
 export async function* streamChat(opts: StreamChatOpts): AsyncGenerator<StreamEvent> {
   const p = (opts.provider as ProviderId | undefined) ?? getActiveProvider()
   const key = getApiKey(p)
   if (!key) throw new AiProviderError(NO_KEY_MESSAGE[p], 'no_key')
-  yield* runChatStream(TRANSPORTS[p], { ...opts, model: requestModelFor(opts.model, p) }, key)
+  const model = requestModelFor(opts.model, p)
+  let messages = opts.messages
+  /** The paused passes' content so far. It is the front of the round: the caller stores it with the
+   *  round's calls, or the next request would carry a search result without the search that asked. */
+  let carried: unknown[] = []
+  for (let hop = 0; ; hop++) {
+    let pausing = false
+    let paused: ProviderReplay | undefined
+    for await (const ev of runChatStream(TRANSPORTS[p], { ...opts, model, messages }, key)) {
+      if (ev.type === 'finish' && ev.reason === 'pause_turn') pausing = true
+      else if (ev.type === 'tool_calls' && pausing && ev.calls.length === 0) paused = ev.replay
+      else if (ev.type === 'tool_calls' && carried.length && ev.replay)
+        yield { ...ev, replay: { ...ev.replay, steps: [...carried, ...ev.replay.steps] } }
+      else yield ev
+    }
+    if (!pausing || opts.signal?.aborted) return
+    // Each continuation is billed: none once the caller's spend ceiling has tripped.
+    if (!paused || hop >= MAX_CONTINUATIONS || opts.budget?.aborted) {
+      // Given up on a paused reply: what arrived stands, and the caller learns it is not the whole.
+      yield { type: 'finish', reason: 'length' }
+      return
+    }
+    carried = [...carried, ...paused.steps]
+    messages = [...opts.messages, { role: 'assistant', content: null, replay: { ...paused, steps: carried } }]
+  }
 }
 
 /** Transcribe a voice recording via the active provider (see providers/*.ts for the three endpoints —
@@ -98,6 +135,13 @@ export async function transcribeAudio(
   const p = getActiveProvider()
   const key = getApiKey(p)
   if (!key) throw new AiProviderError(NO_KEY_MESSAGE[p], 'no_key')
+  // Anthropic has no speech-to-text model; the composer hides the microphone under it (providerCaps.ts),
+  // so this only answers a stray call — never by sending the recording to another provider's key.
+  if (p === 'anthropic')
+    throw new AiProviderError(
+      'Voice input is not available under Anthropic, which has no speech model.',
+      'http'
+    )
   if (p === 'openai') return transcribeOpenAi(opts, key)
   if (p === 'google') return transcribeGoogle(opts, key)
   return transcribeOpenRouter(opts, key)

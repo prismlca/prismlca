@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_GOOGLE_MODEL_ID, DEFAULT_OPENAI_MODEL_ID } from '../../shared/aiDefaults'
+import {
+  DEFAULT_ANTHROPIC_MODEL_ID,
+  DEFAULT_GOOGLE_MODEL_ID,
+  DEFAULT_OPENAI_MODEL_ID
+} from '../../shared/aiDefaults'
 import { billedBy, labKey } from '../../shared/labKey'
 import { priceOn } from './directModels'
 import {
@@ -39,45 +43,58 @@ describe('lab logos', () => {
   })
 })
 
-describe.each(['openai', 'google'] as const)('the direct-%s half of the catalogue', (provider) => {
-  const rows = AI_MODELS.filter((m) => m.provider === provider)
+describe.each(['anthropic', 'google', 'openai'] as const)(
+  'the direct-%s half of the catalogue',
+  (provider) => {
+    const rows = AI_MODELS.filter((m) => m.provider === provider)
 
-  it('exists, its ids are bare, and the ledger books them to this provider', () => {
-    expect(rows.length).toBeGreaterThan(0)
-    for (const m of rows) {
-      expect(m.id.includes('/'), m.id).toBe(false)
-      // The cost table has no provider column: it tells the halves apart by the id alone.
-      expect(billedBy(m.id), m.id).toBe(provider)
-      expect(labKey(m.id), m.id).toBe(provider)
-    }
-  })
+    it('exists, its ids are bare, and the ledger books them to this provider', () => {
+      expect(rows.length).toBeGreaterThan(0)
+      for (const m of rows) {
+        expect(m.id.includes('/'), m.id).toBe(false)
+        // The cost table has no provider column: it tells the halves apart by the id alone.
+        expect(billedBy(m.id), m.id).toBe(provider)
+        expect(labKey(m.id), m.id).toBe(provider)
+      }
+    })
 
-  it('carries complete hand-maintained list prices on EVERY entry', () => {
-    // Neither vendor reports a cost or has a pricing endpoint: this table is the only thing the
-    // cost circuit breaker sees. A missing entry does not error anywhere — it silently blinds the
-    // breaker and the ledger, which is exactly the failure this assertion exists to make loud.
-    for (const m of rows) {
-      expect(m.pricing, `${m.id} needs pricing {input, cachedInput, output}`).toBeDefined()
-      expect(m.pricing!.input, m.id).toBeGreaterThan(0)
-      expect(m.pricing!.cachedInput, m.id).toBeGreaterThan(0)
-      expect(m.pricing!.output, m.id).toBeGreaterThan(0)
-    }
-  })
+    it('carries complete hand-maintained list prices on EVERY entry', () => {
+      // Neither vendor reports a cost or has a pricing endpoint: this table is the only thing the
+      // cost circuit breaker sees. A missing entry does not error anywhere — it silently blinds the
+      // breaker and the ledger, which is exactly the failure this assertion exists to make loud.
+      for (const m of rows) {
+        expect(m.pricing, `${m.id} needs pricing {input, cachedInput, output}`).toBeDefined()
+        expect(m.pricing!.input, m.id).toBeGreaterThan(0)
+        expect(m.pricing!.cachedInput, m.id).toBeGreaterThan(0)
+        expect(m.pricing!.output, m.id).toBeGreaterThan(0)
+      }
+    })
 
-  it('dates its announced price changes in order, each one a complete price', () => {
-    for (const m of rows) {
-      const days = (m.priceChanges ?? []).map((c) => c.from)
-      for (const d of days) expect(d, m.id).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-      expect(days, m.id).toEqual([...days].sort())
-      for (const c of m.priceChanges ?? [])
-        expect(c.input * c.output * c.cachedInput, m.id).toBeGreaterThan(0)
-    }
-  })
+    it('dates its announced price changes in order, each one a complete price', () => {
+      for (const m of rows) {
+        const days = (m.priceChanges ?? []).map((c) => c.from)
+        for (const d of days) expect(d, m.id).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+        expect(days, m.id).toEqual([...days].sort())
+        for (const c of m.priceChanges ?? [])
+          expect(c.input * c.output * c.cachedInput, m.id).toBeGreaterThan(0)
+      }
+    })
 
-  it('never marks explicitCache (both vendors cache automatically; the marker is Anthropic-only)', () => {
-    for (const m of rows) expect(m.explicitCache, m.id).toBeUndefined()
-  })
-})
+    it('marks explicitCache exactly on Anthropic (the others cache automatically)', () => {
+      for (const m of rows) expect(m.explicitCache === true, m.id).toBe(provider === 'anthropic')
+    })
+
+    it('prices a longer prompt higher, if it prices it apart at all', () => {
+      for (const m of rows.filter((r) => r.longPrompt)) {
+        const long = m.longPrompt!
+        expect(long.above, m.id).toBeGreaterThan(0)
+        expect(long.input, m.id).toBeGreaterThan(m.pricing!.input)
+        expect(long.cachedInput, m.id).toBeGreaterThan(m.pricing!.cachedInput)
+        expect(long.output, m.id).toBeGreaterThan(m.pricing!.output)
+      }
+    })
+  }
+)
 
 describe('list prices by date', () => {
   const argon = AI_MODELS.find((m) => m.id === 'gemini-4-argon' && m.provider === 'google')!
@@ -108,12 +125,17 @@ describe('provider-aware model resolution', () => {
     expect(findModel('google/gemini-3.8-flash', 'google').id).toBe(DEFAULT_GOOGLE_MODEL_ID)
     expect(findModel('gemini-4-argon', 'openrouter').id).toBe(DEFAULT_MODEL_ID)
     expect(findModel('gemini-4-argon', 'google').id).toBe('gemini-4-argon')
+    expect(findModel('anthropic/claude-sonnet-5.5', 'anthropic').id).toBe(DEFAULT_ANTHROPIC_MODEL_ID)
+    expect(findModel('claude-opus-5-5', 'openrouter').id).toBe(DEFAULT_MODEL_ID)
+    expect(findModel('claude-opus-5-5', 'anthropic').id).toBe('claude-opus-5-5')
   })
 
   it('knows which ids must never travel to OpenRouter', () => {
     expect(isDirectOnlyId('gpt-6-luna')).toBe(true)
     expect(isDirectOnlyId('gemini-3.8-flash')).toBe(true)
     expect(isDirectOnlyId('google/gemini-3.8-flash')).toBe(false)
+    expect(isDirectOnlyId('claude-haiku-5-5')).toBe(true)
+    expect(isDirectOnlyId('anthropic/claude-haiku-5.5')).toBe(false)
     expect(isDirectOnlyId('some/unknown-model')).toBe(false)
   })
 
@@ -125,7 +147,7 @@ describe('provider-aware model resolution', () => {
   })
 
   it('names only catalogue models in the per-provider defaults, chat defaults included', () => {
-    for (const p of ['openrouter', 'openai', 'google'] as const) {
+    for (const p of ['openrouter', 'anthropic', 'google', 'openai'] as const) {
       const d = providerDefaults(p)
       for (const id of [d.chat, d.research, d.review, d.writerFallback, d.match]) {
         expect(findModel(id, p).id, `${p}: ${id}`).toBe(id)

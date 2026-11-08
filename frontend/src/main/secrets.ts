@@ -24,15 +24,17 @@ import { dirname, join } from 'node:path'
 /** The providers a key can be stored for. The file format was a map from the start, so each new
  *  provider was exactly what the original note promised: a new key, not a migration. All keys may
  *  be stored at once — switching the active provider in Settings must never forget another one. */
-export type Provider = 'openrouter' | 'openai' | 'google' | 'ors' | 'mapbox'
+export type Provider = 'openrouter' | 'anthropic' | 'openai' | 'google' | 'ors' | 'mapbox'
 
-/** The three AI providers; the other two slots hold the transport-distance keys (openrouteservice
+/** The four AI providers; the other two slots hold the transport-distance keys (openrouteservice
  *  and Mapbox), which never reach the chat client or the backend — see main/distance. */
-export type AiProvider = 'openrouter' | 'openai' | 'google'
+export type AiProvider = 'openrouter' | 'anthropic' | 'openai' | 'google'
 
 /** The environment variable that can pin each provider's key for one run. */
 const ENV_VAR: Record<Provider, string> = {
   openrouter: 'OPENROUTER_API_KEY',
+  // The name Anthropic's SDKs and docs read.
+  anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   // Google's own SDKs and docs read this name, so a developer who already has it set is covered.
   google: 'GEMINI_API_KEY',

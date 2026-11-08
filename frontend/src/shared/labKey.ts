@@ -5,22 +5,25 @@
  * stops reading as blocks for exactly one vendor.
  *
  * OpenRouter ids carry their vendor as the prefix before the "/"; a BARE id (no slash) belongs to one
- * of the two vendors PrismLCA talks to directly — neither API uses vendor prefixes. Google's ids all
- * start with their family name (`gemini-…`, `gemma-…`), everything else bare is OpenAI's.
+ * of the vendors PrismLCA talks to directly — none of their APIs uses vendor prefixes. Anthropic's ids
+ * start with `claude-`, Google's with their family name (`gemini-…`, `gemma-…`); everything else bare is
+ * OpenAI's.
  */
 export function labKey(modelId: string): string {
   if (modelId.includes('/')) return modelId.split('/')[0]
-  return isGoogleBareId(modelId) ? 'google' : 'openai'
+  return bareVendor(modelId)
 }
 
-const isGoogleBareId = (id: string): boolean => /^(gemini|gemma)-/.test(id)
+/** The direct vendor of a bare id. The lab keys match OpenRouter's prefixes, so one logo serves both. */
+const bareVendor = (id: string): 'anthropic' | 'google' | 'openai' =>
+  /^claude-/.test(id) ? 'anthropic' : /^(gemini|gemma)-/.test(id) ? 'google' : 'openai'
 
 /**
  * Which provider BILLED a ledger row, from its model id alone — the ledger keys rows by id and was
  * never given a provider column. A vendor prefix means OpenRouter (`openai/whisper-large-v3` included,
  * `google/gemini-3.8-flash` too); a bare id is the direct vendor `labKey` names.
  */
-export function billedBy(modelId: string): 'openrouter' | 'openai' | 'google' {
+export function billedBy(modelId: string): 'openrouter' | 'anthropic' | 'google' | 'openai' {
   if (modelId.includes('/')) return 'openrouter'
-  return isGoogleBareId(modelId) ? 'google' : 'openai'
+  return bareVendor(modelId)
 }
