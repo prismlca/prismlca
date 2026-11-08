@@ -306,7 +306,9 @@ export function AiModelsPanel(): JSX.Element {
         }
         value={shownValue(reviewModel)}
         onPick={pickReviewModel}
-        blank="Default (a cheap model, different from the chat)"
+        // Not "different from the chat": under Google the default reviewer is the chat default (Gemini 3.8
+        // Flash), the one cheap model that list has.
+        blank="Default (a cheap model)"
         models={providerModels}
         note={
           <>
