@@ -499,9 +499,7 @@ describe('two assistants working on two models', () => {
     'POST /api/v1/ai/chats/a': { id: 'chat-a', title: '', messages: [] },
     'POST /api/v1/ai/chats/b': { id: 'chat-b', title: '', messages: [] },
     'POST /api/v1/ai/chats/a/chat-a/messages': {},
-    'POST /api/v1/ai/chats/b/chat-b/messages': {},
-    'POST /api/v1/ai/chats/a/chat-a/rename': {},
-    'POST /api/v1/ai/chats/b/chat-b/rename': {}
+    'POST /api/v1/ai/chats/b/chat-b/messages': {}
   }
   // A run that never ends on its own — the test decides when a chat is done, via events.
   const pending = (): Promise<unknown> => new Promise(() => {})
@@ -712,30 +710,16 @@ describe('two assistants working on two models', () => {
     expect(uiResult).not.toHaveBeenCalled()
   })
 
-  it("titles the run's own chat, not the chat on screen", async () => {
+  it("reads the chat list again when main stored a chat's title, and stores none itself", async () => {
     const user = userEvent.setup()
-    const { rerender, prism } = mount()
+    const { prism } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" onJump={onJump} />)
-    await screen.findByTitle('Send')
-
-    act(() =>
-      prism.emitUiTool({
-        reqId: 'u3',
-        name: 'set_chat_title',
-        args: { title: 'PET bottle' },
-        chatId: 'chat-a',
-        database: 'a'
-      })
-    )
-    await vi.waitFor(() =>
-      expect(prism.calls).toContainEqual({
-        method: 'POST',
-        path: '/api/v1/ai/chats/a/chat-a/rename',
-        body: { title: 'PET bottle' }
-      })
-    )
-    expect(prism.calls.some((c) => c.path.includes('/chats/b/'))).toBe(false)
+    const lists = (): number =>
+      prism.calls.filter((c) => c.method === 'GET' && c.path === '/api/v1/ai/chats/a').length
+    const before = lists()
+    act(() => prism.emit({ chatId: 'chat-a', type: 'title', title: 'PET bottle' }))
+    await vi.waitFor(() => expect(lists()).toBe(before + 1))
+    expect(prism.calls.some((c) => c.path.endsWith('/rename'))).toBe(false)
   })
 })
 

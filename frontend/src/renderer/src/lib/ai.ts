@@ -453,8 +453,6 @@ export const appendMessages = (db: string, id: string, messages: ChatMessage[]):
   api('POST', `/api/v1/ai/chats/${enc(db)}/${enc(id)}/messages`, { messages })
 export const deleteChat = (db: string, id: string): Promise<unknown> =>
   api('POST', `/api/v1/ai/chats/${enc(db)}/${enc(id)}/delete`)
-export const renameChat = (db: string, id: string, title: string): Promise<unknown> =>
-  api('POST', `/api/v1/ai/chats/${enc(db)}/${enc(id)}/rename`, { title })
 
 export const listSkills = (): Promise<{ skills: Skill[] }> => api('GET', '/api/v1/ai/skills')
 export const createSkill = (name: string, description: string, content: string): Promise<Skill> =>

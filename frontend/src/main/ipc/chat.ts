@@ -25,6 +25,7 @@ import { distanceKeys } from './distance'
 import { queryEurostatEol } from '../eurostat/service'
 import { modelForActive, type AiIpcDeps, type RunControllers } from './shared'
 import type { UiBridge, UiCallOpts } from './uiBridge'
+import { withChatTitle } from './chatTitle'
 
 // The ask timeout moved to uiBridge.ts with the round-trip; re-exported for its importers.
 export { ASK_USER_TIMEOUT_MS } from './uiBridge'
@@ -309,7 +310,11 @@ export function registerChatIpc(
           },
           {
             apiRaw: api,
-            callUiTool,
+            callUiTool: withChatTitle(callUiTool, {
+              chatPath,
+              request: safe,
+              announce: (title) => emit({ chatId: req.chatId, type: 'title', title })
+            }),
             emit,
             getSkills,
             recordUsage,

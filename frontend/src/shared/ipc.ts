@@ -168,6 +168,8 @@ export type AgentEvent =
    * (main/ipc/chat.ts `steers`). Sent whenever the queue changes; empty once the loop took them.
    */
   | { chatId: string; type: 'steer'; queued: string[] }
+  /** The chat got its title from the run (`set_chat_title`), stored by main (main/ipc/chatTitle.ts). */
+  | { chatId: string; type: 'title'; title: string }
 
 /** A question the assistant is waiting on — see main/ai/pendingAsks.ts. */
 export interface PendingAsk {

@@ -204,7 +204,6 @@ describe('requests that are not about the canvas', () => {
     const t = setup('results')
     t.ask('ask_user', { questions: [] })
     t.ask('open_page', { page: 'model' })
-    t.ask('set_chat_title', { title: 'x' })
     await new Promise((r) => setTimeout(r, 50))
     expect(t.answers).toEqual([])
   })

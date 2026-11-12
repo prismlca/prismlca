@@ -114,7 +114,8 @@ export interface ToolCtx {
   }
   /**
    * The title `set_chat_title` gave this chat during the run. MUTABLE: set by that tool once the
-   * renderer accepted it, read by `plan` as the title of a first plan sent without one.
+   * chat IPC answered it (main/ipc/chatTitle.ts), read by `plan` as the title of a first plan sent
+   * without one.
    */
   chatTitle?: string
   /**

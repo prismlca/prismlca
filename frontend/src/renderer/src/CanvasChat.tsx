@@ -16,7 +16,7 @@ import {
   deleteChat,
   getChat,
   listChats,
-  renameChat,
+  onAiEvent,
   onUiTool,
   openSource,
   uiResult,
@@ -310,6 +310,22 @@ export default function CanvasChat({
     }
   }, [activeDb, clearQueued, seedPlan])
 
+  // A run named its chat (main stored the title): the list on screen is read again. From the store, not
+  // patched in place — a chat created a moment ago may not be in the list yet.
+  useEffect(
+    () =>
+      onAiEvent((ev) => {
+        const db = activeDbRef.current
+        if (ev.type !== 'title' || !db) return
+        void listChats(db)
+          .then((r) => {
+            if (activeDbRef.current === db) setChats(r.chats)
+          })
+          .catch(() => {})
+      }),
+    []
+  )
+
   // Whether the chat now on screen is running, its questions and queue — once it is on screen.
   useRunAdoption({ chatId, chatIdRef, activeDbRef, askRef, markRunning, setQueued, setAsk })
 
@@ -420,8 +436,8 @@ export default function CanvasChat({
     return off
   }, [markRunning])
 
-  // Answer the chat's own UI-tool requests: its question cards and its title. Subscribed once; the
-  // state it needs is read through refs.
+  // Answer the chat's own UI-tool requests: its question cards. Subscribed once; the state it needs is
+  // read through refs. A chat's title is main's to store (main/ipc/chatTitle.ts).
   useEffect(() => {
     const off = onUiTool(async (msg) => {
       // Not this panel's: an external session's request (answered by the Workbench and the
@@ -458,23 +474,6 @@ export default function CanvasChat({
             if (pending && pending.chatId !== target && pending.chatId === chatIdRef.current) return
             setAsk({ reqId: msg.reqId, chatId: target, questions, ...(approval ? { approval } : {}) })
             return // resolved later by answerAsk / answerApproval (click or typed answer) or stop()
-          }
-          case 'set_chat_title': {
-            // The run's own chat and model, not whatever is on screen: with the user in another
-            // model meanwhile, the old reading renamed THAT model's open chat.
-            const db = msg.database ?? activeDbRef.current
-            const id = msg.chatId ?? chatIdRef.current
-            const title = String(msg.args.title || '').slice(0, 80)
-            if (db && id && title) {
-              await renameChat(db, id, title).catch(() => {})
-              if (db === activeDbRef.current) {
-                void listChats(db)
-                  .then((r) => setChats(r.chats))
-                  .catch(() => {})
-              }
-            }
-            result = { ok: true }
-            break
           }
           default:
             result = { error: `Unknown UI tool: ${msg.name}` }
