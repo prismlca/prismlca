@@ -457,6 +457,12 @@ export interface AppSettings {
   zdrExceptAnthropic: boolean
   zdrExceptOpenai: boolean
   zdrExceptGoogle: boolean
+  /** OpenRouter only: send `provider.only` with the allowlist (shared/providerAllowlist.ts). */
+  providerAllowlistOn: boolean
+  /** The user's difference from our default allowlist — hosts added and default hosts removed.
+   *  Stored as a difference so a later change to the default reaches every installation. */
+  providerAllowlistAdded: string[]
+  providerAllowlistRemoved: string[]
   focusTools: boolean
   voiceEnabled: boolean
   voiceLanguage: string

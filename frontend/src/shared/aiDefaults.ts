@@ -34,7 +34,7 @@ export const DEFAULT_OPENAI_MODEL_ID = 'gpt-6.1-sol'
 export const DEFAULT_GOOGLE_MODEL_ID = 'gemini-3.8-flash'
 
 /** Chat default under the direct-Anthropic provider: Claude Sonnet 5.5, Anthropic's middle tier — the
- *  same class as the OpenAI default (6.1 Sol) at the same list price. Opus 5.5 and Fable 5.1 stay one
+ *  same class as the OpenAI default (6.1 Sol) at the same list price. Opus 5.5 and Fable 5.2 stay one
  *  click away in the picker. Id verified against Anthropic's Models API on 2026-11-08. */
 export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-sonnet-5-5'
 
@@ -83,10 +83,10 @@ export const GOOGLE_PRICES_CHECKED = '2026-11-07'
 
 /** The same date for the hand-maintained Anthropic list prices (platform.claude.com/docs/en/about-claude/pricing),
  *  under the same rule: bump it in the same commit as any Anthropic price. */
-export const ANTHROPIC_PRICES_CHECKED = '2026-11-08'
+export const ANTHROPIC_PRICES_CHECKED = '2026-11-12'
 
 /**
- * The Artificial Analysis pull behind the `intelligence`/`agentic` columns: the day it was fetched,
+ * The Artificial Analysis pull behind the `intelligence` column: the day it was fetched,
  * and the Intelligence Index version those scores belong to.
  *
  * Here for the same reason as the date above — the settings table prints both, and the renderer
@@ -94,11 +94,11 @@ export const ANTHROPIC_PRICES_CHECKED = '2026-11-08'
  * only, so "43.8" without "v4.3" beside it is a number the reader cannot place, and v4.1.1 → v4.3
  * moved every model in the catalogue by double digits without any model changing.
  *
- * **Bump both in the same commit as the columns in `main/ai/models.ts`**, and move the whole column
+ * **Bump both in the same commit as the column in `main/ai/models.ts`**, and move the whole column
  * at once — `backend/local/aa_ratings/` (local, gitignored) pulls it and prints the drift.
  */
-export const AA_RATINGS_PULLED = '2026-10-01'
-export const AA_INDEX_VERSION = '4.3'
+export const AA_RATINGS_PULLED = '2026-11-12'
+export const AA_INDEX_VERSION = '5'
 
 export const DEFAULT_MAX_ROUNDS = 150
 
@@ -250,9 +250,10 @@ export const DEFAULT_ZERO_DATA_RETENTION = true
  * use, and for the same reason they document: "you may want to enforce ZDR for all other models
  * while keeping first-party Anthropic, OpenAI and Google endpoints available".
  *
- * ON by default, because OFF is not free: measured against `/api/v1/endpoints/zdr` on 2026-09-10,
- * `anthropic/claude-fable-5.1` has **no** zero-retention endpoint at all, so strict ZDR would take
- * the strongest model in the catalogue out of the picker on first launch. The Anthropic and OpenAI
+ * ON by default, because OFF is not free: measured against `/api/v1/endpoints/zdr` on 2026-09-10
+ * for Fable 5.1 and again on 2026-11-12 for its successor, `anthropic/claude-fable-5.2` has **no**
+ * zero-retention endpoint at all (a "Covered Model", kept 30 days on every surface), so strict ZDR
+ * would take the strongest model in the catalogue out of the picker on first launch. The Anthropic and OpenAI
  * models PrismLCA offers are first-party or Azure/Bedrock/Vertex — vendors with contractual retention
  * terms, not the long tail these settings exist to guard against.
  *

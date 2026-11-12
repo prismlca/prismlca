@@ -577,3 +577,32 @@ describe('the chat guardrails', () => {
     expect(planToolOn('my/own-model', undefined, undefined)).toBe(true)
   })
 })
+
+describe('the provider allowlist', () => {
+  it('starts on, with no difference from our default', () => {
+    const got = s.getSettings()
+    expect(got.providerAllowlistOn).toBe(true)
+    expect(got.providerAllowlistAdded).toEqual([])
+    expect(got.providerAllowlistRemoved).toEqual([])
+  })
+
+  it('reads a hand-edited file towards the restriction, and only slugs reach the lists', () => {
+    writeFileSync(
+      FILE,
+      JSON.stringify({
+        schema: 5,
+        providerAllowlistOn: 'no',
+        providerAllowlistAdded: ['Groq', 'groq', 'two words', 3],
+        providerAllowlistRemoved: 'novita'
+      })
+    )
+    s.resetSettingsCache()
+    const got = s.getSettings()
+    expect(got.providerAllowlistOn).toBe(true)
+    expect(got.providerAllowlistAdded).toEqual(['groq'])
+    expect(got.providerAllowlistRemoved).toEqual([])
+    s.setSettings({ providerAllowlistOn: false, providerAllowlistRemoved: ['novita'] })
+    expect(s.getSettings().providerAllowlistOn).toBe(false)
+    expect(s.getSettings().providerAllowlistRemoved).toEqual(['novita'])
+  })
+})

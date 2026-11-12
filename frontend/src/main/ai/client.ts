@@ -13,7 +13,8 @@ import { anthropicTransport } from './providers/anthropic'
 import { runChatStream } from './providers/engine'
 import { googleTransport, transcribeGoogle } from './providers/google'
 import { openaiTransport, transcribeOpenAi } from './providers/openai'
-import { fetchOpenRouterPricing, openrouterTransport, transcribeOpenRouter } from './providers/openrouter'
+import { openrouterTransport, transcribeOpenRouter } from './providers/openrouter'
+import { fetchOpenRouterPricing } from './providers/openrouterListings'
 import { getActiveProvider } from './providers/state'
 import {
   AiProviderError,

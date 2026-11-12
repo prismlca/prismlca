@@ -287,8 +287,11 @@ const api = {
         Record<string, Record<string, { cost: number; prompt: number; cached: number; calls: number }>>
       >,
     models: () => ipcRenderer.invoke('ai:models') as Promise<unknown[]>,
+    openrouterPrices: () =>
+      ipcRenderer.invoke('ai:openrouterPrices') as Promise<Record<string, { input: number; output: number }>>,
     modelIssues: () => ipcRenderer.invoke('ai:modelIssues') as Promise<string[]>,
     openrouterCatalogue: () => ipcRenderer.invoke('ai:openrouterCatalogue') as Promise<unknown[]>,
+    openrouterProviders: () => ipcRenderer.invoke('ai:openrouterProviders') as Promise<unknown[]>,
     addUserModel: (entry: unknown) =>
       ipcRenderer.invoke('ai:addUserModel', entry) as Promise<{ ok: boolean; problems: string[] }>,
     removeUserModel: (id: string) =>

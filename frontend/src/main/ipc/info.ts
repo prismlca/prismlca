@@ -6,7 +6,11 @@
 import { ipcMain } from 'electron'
 
 import { fetchPricing, getApiKey } from '../ai/client'
-import { clearPriceCache, fetchOpenRouterCatalogue } from '../ai/providers/openrouter'
+import {
+  clearPriceCache,
+  fetchOpenRouterCatalogue,
+  fetchOpenRouterProviders
+} from '../ai/providers/openrouterListings'
 import {
   BUILTIN_IDS,
   getModels,
@@ -72,6 +76,14 @@ export function registerInfoIpc(deps: AiIpcDeps): void {
     return rows.map((r) => ({ ...r, inCatalogue: known.has(r.id) }))
   })
 
+  // Renderer → main: the hosts OpenRouter routes to, for completing a name in the allowlist editor.
+  // Asked when the editor opens, and like the catalogue only with a key: nothing leaves the machine
+  // before the user has acted. Without a key there is no completion; a slug typed in full still works.
+  ipcMain.handle('ai:openrouterProviders', async () => {
+    const key = getApiKey('openrouter')
+    return key ? await fetchOpenRouterProviders(key).catch(() => []) : []
+  })
+
   // Renderer → main: add one model to the user's own models.json, or take one out again.
   //
   // Both go through the SAME loader that reads the file at startup: the file is written, then read
@@ -108,27 +120,28 @@ export function registerInfoIpc(deps: AiIpcDeps): void {
   // Renderer → main: the tool catalog (friendly names + hints) for Settings → AI-Tools.
   ipcMain.handle('ai:tools', () => toolCatalog())
 
-  // Renderer → main: catalog + pricing for the settings picker/info table. Two pricing sources by
-  // necessity: OpenRouter rows come from its live /models endpoint, OpenAI and Google rows from the
-  // catalogue's hand-maintained list prices (neither has a pricing API) — `pricingSource: 'list'` lets
-  // the table say so instead of presenting both as the same kind of number. A list price is shown as it
-  // stands TODAY (`priceOn`), the same figure the transports bill with.
-  ipcMain.handle('ai:models', async () => {
-    // Chat rows only: the speech model is billed per audio unit, so asking for a token price would
-    // put a number in the $/1M column that is not one (see fetchOpenRouterPricing).
-    // ONE snapshot, taken before the await and used after it. Read twice, the rows could come
-    // from a different generation of the catalogue than the prices fetched for them.
-    const catalogue = getModels()
-    const orIds = catalogue
-      .filter((m) => (m.provider ?? 'openrouter') === 'openrouter' && m.selectable !== false)
-      .map((m) => m.id)
-    // Same rule: the price columns stay blank (the table renders a dash) until a key exists. Before
-    // this, opening the composer fetched OpenRouter's whole list on a fresh install with no key at all.
-    const pricing = getApiKey('openrouter') ? await fetchPricing(orIds).catch(() => ({})) : {}
-    return catalogue.map((m) =>
+  // Renderer → main: the catalogue for every picker, the plan card, the cost ledger and the Models table.
+  // Answers at once and asks nobody: the direct providers' rows carry their hand-maintained list prices
+  // (`pricingSource: 'list'`, as they stand TODAY by `priceOn` — the figure the transports bill with);
+  // OpenRouter rows carry none, their live prices come separately (`ai:openrouterPrices`), asked only by
+  // the one table that shows them. Waiting for those here held every model choice in the app.
+  ipcMain.handle('ai:models', () =>
+    getModels().map((m) =>
       PROVIDER_CAPS[m.provider ?? 'openrouter'].pricing === 'list'
         ? { ...m, pricing: priceOn(m) ?? null, pricingSource: 'list' }
-        : { ...m, pricing: (pricing as any)[m.id] ?? null }
+        : { ...m, pricing: null }
     )
+  )
+
+  // Renderer → main: OpenRouter's live prices for the Models table — per model, the cheapest provider the
+  // allowlist and zero-retention setting leave (fetchOpenRouterPricing in openrouterListings.ts). Only
+  // with a key: without one the columns stay blank and nothing is sent. Chat rows only — the speech
+  // model is billed per audio unit, and its figure in a column headed $/1M would be no token price.
+  ipcMain.handle('ai:openrouterPrices', async () => {
+    if (!getApiKey('openrouter')) return {}
+    const ids = getModels()
+      .filter((m) => (m.provider ?? 'openrouter') === 'openrouter' && m.selectable !== false)
+      .map((m) => m.id)
+    return fetchPricing(ids).catch(() => ({}))
   })
 }

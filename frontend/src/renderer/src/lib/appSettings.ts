@@ -30,6 +30,7 @@ import {
 } from '../../../shared/aiDefaults'
 import { DEFAULT_TRANSPORT } from '../../../shared/distanceDefaults'
 import type { AppSettings as MainAppSettings } from '../../../shared/ipc'
+import { PROVIDER_ALLOWLIST_RESET } from '../../../shared/providerAllowlist'
 import { readLs } from './persist'
 import { sanitiseDisplay, type DisplaySettings } from '../../../shared/displayDefaults'
 
@@ -69,6 +70,8 @@ function legacy(): AppSettings {
     zdrExceptAnthropic: DEFAULT_ZDR_EXCEPT_ANTHROPIC,
     zdrExceptOpenai: DEFAULT_ZDR_EXCEPT_OPENAI,
     zdrExceptGoogle: DEFAULT_ZDR_EXCEPT_GOOGLE,
+    // Newer than the move to a file; the default stands until main answers.
+    ...PROVIDER_ALLOWLIST_RESET,
     focusTools: readLs('prism.ai.focusTools', false),
     voiceEnabled: readLs('prism.ai.voiceEnabled', true),
     voiceLanguage: readLs('prism.ai.voiceLanguage', ''),

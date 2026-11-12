@@ -676,7 +676,7 @@ def _icons_section() -> list[str]:
         "Simple Icons — CC0-1.0",
         [
             "The logos in `frontend/src/renderer/src/assets/logos/` (anthropic = Claude, deepseek, github, "
-            "minimax, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are "
+            "minimax, mistralai, moonshotai, nvidia, openrouter, qwen, substack, xiaomi) are "
             "taken from Simple Icons, released under CC0 1.0; linkedin and openai come from earlier Simple "
             "Icons releases and have since been removed there. MiniMax's mark is in Simple Icons with its "
             "owner's permission and under its brand terms; GitHub's follows GitHub's logo guidelines. The "

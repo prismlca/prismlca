@@ -296,8 +296,9 @@ export interface ChatTransport<S> {
     opts: StreamChatOpts,
     key: string
   ): { url: string; headers: Record<string, string>; body: string }
-  /** Map an HTTP failure onto the shared error vocabulary (see AiProviderError). */
-  translateStatus(status: number, body: string): AiProviderError
+  /** Map an HTTP failure onto the shared error vocabulary (see AiProviderError). `opts` is the request
+   *  that failed, for a transport whose wording depends on what that request carried. */
+  translateStatus(status: number, body: string, opts?: StreamChatOpts): AiProviderError
   /** Is this failure worth a second attempt? Takes the body because the status alone can lie:
    *  OpenAI sends "out of credits" as a 429 (`insufficient_quota`), Google a model the key's tier
    *  does not include as a 429 with "limit: 0", and retrying either is a hang ending in the same

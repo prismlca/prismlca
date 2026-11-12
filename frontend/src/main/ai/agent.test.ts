@@ -74,7 +74,6 @@ describe('compactThreshold', () => {
           descriptor: 'test',
           temperature: null,
           intelligence: null,
-          agentic: null,
           vision: false,
           contextTokens: 262144,
           userAdded: true

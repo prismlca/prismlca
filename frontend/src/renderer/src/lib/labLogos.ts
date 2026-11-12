@@ -5,6 +5,7 @@ import deepseekLogo from '../assets/logos/deepseek.svg'
 import moonshotLogo from '../assets/logos/moonshotai.svg'
 import zaiLogo from '../assets/logos/zai.svg'
 import minimaxLogo from '../assets/logos/minimax.svg'
+import mistralLogo from '../assets/logos/mistralai.svg'
 import tencentLogo from '../assets/logos/tencent.svg'
 import qwenLogo from '../assets/logos/qwen.svg'
 import nvidiaLogo from '../assets/logos/nvidia.svg'
@@ -21,6 +22,7 @@ export const LAB_LOGOS: Record<string, string> = {
   moonshotai: moonshotLogo,
   'z-ai': zaiLogo,
   minimax: minimaxLogo,
+  mistralai: mistralLogo,
   tencent: tencentLogo,
   qwen: qwenLogo,
   nvidia: nvidiaLogo,

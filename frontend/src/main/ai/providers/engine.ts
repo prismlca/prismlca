@@ -232,7 +232,7 @@ async function* sendOnce<S>(
 
   if (!sent.ok || !sent.body) {
     const text = await errorBody(sent, () => unanswered.abort())
-    const refused = transport.translateStatus(sent.status, text)
+    const refused = transport.translateStatus(sent.status, text, opts)
     if (!transport.retryable(sent.status, text)) throw refused
     return {
       again: true,

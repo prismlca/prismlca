@@ -267,6 +267,8 @@ export function makePrism(routes: Routes = {}, overrides: PrismOverrides = {}): 
       models: async () => [],
       modelIssues: async () => [],
       openrouterCatalogue: async () => [],
+      openrouterPrices: async () => ({}),
+      openrouterProviders: async () => [],
       addUserModel: async () => ({ ok: true, problems: [] }),
       removeUserModel: async () => ({ ok: true, problems: [] }),
       tools: async () => [],

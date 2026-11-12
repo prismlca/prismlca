@@ -234,7 +234,6 @@ function read(builtinIds: Set<string>, path: string): UserModelLoad {
         provider: 'openrouter' as const,
         temperature: typeof temperature === 'number' ? temperature : null,
         intelligence: null,
-        agentic: null,
         vision: entry.vision === true,
         contextTokens: typeof ctx === 'number' ? ctx : DEFAULT_CONTEXT,
         ...(id.startsWith('anthropic/') ? { explicitCache: true as const } : {}),

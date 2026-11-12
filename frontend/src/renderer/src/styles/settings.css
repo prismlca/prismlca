@@ -202,3 +202,38 @@
 .about-link img, .about-link svg { width: 14px; height: 14px; flex: none; }
 .about-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
 :root[data-theme='dark'] .about-link .about-gh { filter: invert(1); }
+/* AI → Provider → the OpenRouter allowlist. The switch, "Edit list" and "Reset defaults" share one row;
+   the switch is drawn like the chat menu's toggles (left = off, right = on). The editor below holds one
+   chip per host and the field that adds one. */
+.allowlist-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 8px; }
+.allowlist-switch { display: inline-flex; align-items: center; gap: 9px; margin-right: auto; padding: 2px 0;
+  background: none; border: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.allowlist-switch:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 4px; }
+.slide-switch { flex: none; position: relative; width: 28px; height: 16px; border-radius: 999px;
+  background: var(--border-strong); transition: background .15s ease; }
+.slide-switch i { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: var(--surface); transition: left .15s ease; }
+.slide-switch.on { background: var(--green); }
+.slide-switch.on i { left: 14px; }
+.allowlist-editor { margin: 0 0 12px; }
+/* One chip per host, the look of the app's other removable chips (ParamRule's values): the UI font only —
+   the slug is the chip's tooltip, not a second typeface inside it. */
+.allowlist-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 0; list-style: none; }
+.allowlist-item { display: inline-flex; align-items: center; gap: 2px; padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface);
+  font-size: var(--fs-sec); color: var(--text); }
+.allowlist-remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  padding: 0; border: none; border-radius: 50%; background: none; color: var(--faint); font: inherit;
+  font-size: 14px; line-height: 1; cursor: pointer; }
+.allowlist-remove:hover { color: var(--bad); }
+.allowlist-remove:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+/* The add field is dressed like every other settings field; the suggestion list is the shared combo's. */
+/* stretch: the Add button takes the field's height, whatever the font size makes of it. */
+.allowlist-add { display: flex; align-items: stretch; gap: 8px; max-width: 560px; }
+.allowlist-add .unit-combo { flex: 1; min-width: 0; }
+.allowlist-add input { padding: 5px 8px; border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px;
+  background: var(--bg, #fff); color: var(--ink, #303030); font: inherit; font-size: var(--fs-body); }
+.allowlist-add input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.allowlist-add .btn { flex: none; padding-top: 0; padding-bottom: 0; }
+.allowlist-editor > .settings-hint { margin: 8px 0 0; }
+.allowlist-editor > .settings-hint:first-child { margin: 0 0 10px; }

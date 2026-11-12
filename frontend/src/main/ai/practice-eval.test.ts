@@ -26,11 +26,9 @@ import { afterAll, beforeAll, describe, it, vi } from 'vitest'
  */
 
 const LIVE = process.env.PRISM_EVAL_LIVE === '1'
-// Was the :free MiniMax endpoint, which cost nothing. That promotion ended and the endpoint
-// now serves no provider at all, so the default moved to the paid sibling — the
-// same weights and the same model card, at $0.30/$1.20 per 1M. This whole file is opt-in and
-// bills either way; what changed is that it no longer bills zero.
-const MODEL = process.env.PRISM_EVAL_MODEL || 'minimax/minimax-m3'
+// The catalogue's MiniMax row, $0.075/$0.30 per 1M. It was the :free MiniMax endpoint once, until
+// that promotion ended; this whole file is opt-in and bills whichever model runs.
+const MODEL = process.env.PRISM_EVAL_MODEL || 'minimax/minimax-m3.1-flash'
 const ONLY = (process.env.PRISM_EVAL_ONLY?.toLowerCase() ?? '')
   .split(',')
   .map((s) => s.trim())

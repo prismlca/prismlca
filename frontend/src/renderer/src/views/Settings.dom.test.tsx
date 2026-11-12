@@ -318,8 +318,7 @@ describe('a model the user added themselves', () => {
       descriptor: 'fast and cheap',
       selectable: true,
       userAdded: true as const,
-      intelligence: null,
-      agentic: null
+      intelligence: null
     }
   ]
 

@@ -2,8 +2,10 @@ import { setAS, useAppSettings } from '../../lib/appSettings'
 import { LAB_LOGOS } from '../../lib/labLogos'
 import openrouterLogo from '../../assets/logos/openrouter.svg'
 import { ProviderKeyBlock, type ProviderChoice } from './ProviderKeyBlock'
+import { ProviderAllowlist } from './ProviderAllowlist'
 
-/** AI → Provider: who answers — OpenRouter, or Anthropic, Google or OpenAI directly — and that provider’s key. */
+/** AI → Provider: who answers — OpenRouter, or Anthropic, Google or OpenAI directly — that provider’s key,
+ *  and for OpenRouter the allowlist of hosts it may route to. */
 export function AiProviderPanel(): JSX.Element {
   const provider = (useAppSettings().provider ?? 'openrouter') as ProviderChoice
   const pickProvider = (p: ProviderChoice): void => setAS({ provider: p })
@@ -42,13 +44,8 @@ export function AiProviderPanel(): JSX.Element {
           </button>
         ))}
       </div>
-      <p className="settings-hint">
-        Where every model request goes. OpenRouter offers models from many labs behind one key and can be told
-        to route only to zero-retention endpoints. The three direct providers talk straight to one lab&rsquo;s
-        own API with that lab&rsquo;s key and offer its models only: Anthropic&rsquo;s Claude API,
-        Google&rsquo;s Gemini API (a Google AI Studio key) and the OpenAI API. Model choices (under Models)
-        and the keys of the inactive providers stay stored — switching back restores them.
-      </p>
+      {/* Directly under the cards: the allowlist belongs to the OpenRouter choice itself. */}
+      {provider === 'openrouter' ? <ProviderAllowlist /> : null}
       <ProviderKeyBlock provider={provider} />
     </>
   )

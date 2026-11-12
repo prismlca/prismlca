@@ -1,6 +1,16 @@
 [
   {
     "date": "2026-11-12",
+    "title": "Only trusted OpenRouter providers",
+    "details": "Under Settings → AI → Provider, a switch below the provider cards keeps OpenRouter requests to an allowlist of providers: the labs, the large clouds and established inference hosts. It is on by default, because some hosts dropped tool-call fields or cut answers short in long runs. Edit list removes a provider or adds one by name; Reset defaults brings back our list."
+  },
+  {
+    "date": "2026-11-12",
+    "title": "Claude Fable 5.2, Gemini 4 Carbon, Hy4, MiniMax M3.1 Flash and Mistral Large 4",
+    "details": "Claude Fable 5.2 replaces Fable 5.1, on OpenRouter and with Anthropic directly. OpenRouter also offers Gemini 4 Carbon, Google's new flagship at Argon's price; Tencent's Hy4, very cheap and reading images; MiniMax M3.1 Flash in place of M3, rated higher at a quarter of the price; and Mistral Large 4, served by Mistral itself. Settings → AI → Models now rates models by the Artificial Analysis Intelligence Index v5; the Agentic column is gone."
+  },
+  {
+    "date": "2026-11-12",
     "title": "Filter the dataset search by unit",
     "details": "The search beside the canvas and in the Results has a unit filter under the regions: it suggests the units of the ticked databases (kg, kWh, MJ …) and shows only datasets in the chosen ones. Every filter now applies at once — a type, region or unit repeats the last search without pressing Enter — and switching workspaces clears them."
   },

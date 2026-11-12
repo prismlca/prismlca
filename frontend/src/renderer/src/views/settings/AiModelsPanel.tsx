@@ -8,6 +8,7 @@ import { InfoTip } from '../../components/InfoTip'
 import { EffortScale } from '../../components/EffortScale'
 import { LAB_LOGOS, labKey } from '../../lib/labLogos'
 import { useSortState } from '../../lib/useSortState'
+import { useLivePrices } from './useLivePrices'
 import {
   AA_INDEX_VERSION,
   AA_RATINGS_PULLED,
@@ -91,7 +92,7 @@ function priceDate(iso: string): string {
     : d.toLocaleDateString('en-GB', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-type ModelSortKey = 'lab' | 'label' | 'temperature' | 'input' | 'output' | 'intelligence' | 'agentic'
+type ModelSortKey = 'lab' | 'label' | 'temperature' | 'input' | 'output' | 'intelligence'
 /** AI → Models: the model of each job, the chat model’s thinking dial, and the catalogue table with
  *  prices and ratings — the only AI page that needs the catalogue, so the only one that loads it. */
 export function AiModelsPanel(): JSX.Element {
@@ -130,7 +131,9 @@ export function AiModelsPanel(): JSX.Element {
   // Only the ACTIVE provider's catalogue is offered and listed — a mixed table would compare live
   // OpenRouter prices with OpenAI's hand-maintained list prices as if they were the same number.
   const provider = (as.provider ?? 'openrouter') as ProviderChoice
-  const providerModels = models.filter((m) => (m.provider ?? 'openrouter') === provider)
+  // OpenRouter's prices arrive after the rows; until then their cells say they are coming.
+  const { rows: priced, loading: pricesLoading } = useLivePrices(models, provider === 'openrouter')
+  const providerModels = priced.filter((m) => (m.provider ?? 'openrouter') === provider)
 
   // A stored choice from the OTHER provider is not rewritten — the picker falls back to its
   // "Default (…)" row, and main resolves it the same way, so display and behaviour agree by
@@ -371,10 +374,6 @@ export function AiModelsPanel(): JSX.Element {
                 Intel.<sup>†</sup>
                 {mark('intelligence')}
               </th>
-              <th className="num th-sortable" onClick={() => sortClick('agentic')}>
-                Agentic<sup>†</sup>
-                {mark('agentic')}
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -432,10 +431,9 @@ export function AiModelsPanel(): JSX.Element {
                 >
                   {m.temperature ?? 'default'}
                 </td>
-                <td className="num">{money(m.pricing?.input)}</td>
-                <td className="num">{money(m.pricing?.output)}</td>
+                <td className="num">{m.pricing || !pricesLoading ? money(m.pricing?.input) : '…'}</td>
+                <td className="num">{m.pricing || !pricesLoading ? money(m.pricing?.output) : '…'}</td>
                 <td className="num">{m.intelligence ?? '–'}</td>
-                <td className="num">{m.agentic ?? '–'}</td>
               </tr>
             ))}
           </tbody>
@@ -463,7 +461,10 @@ export function AiModelsPanel(): JSX.Element {
         </p>
       ) : (
         <p className="settings-hint">
-          <b>*</b> Live from OpenRouter's API, cached an hour; run costs are OpenRouter's own.
+          <b>*</b> Live from OpenRouter's API, cached an hour: the cheapest provider that your allowlist and
+          zero-retention setting leave for the model. Prices differ between providers and change often, so a
+          run can cost more; run costs are what OpenRouter charges. A dash: no price could be had, or no
+          permitted provider serves the model.
         </p>
       )}
       {PROVIDER_CAPS[provider].userModels ? (
@@ -517,7 +518,7 @@ export function AiModelsPanel(): JSX.Element {
         </p>
       ) : null}
       <p className="settings-hint">
-        <b>†</b> Intelligence Index v{AA_INDEX_VERSION} and Agentic Index by{' '}
+        <b>†</b> Intelligence Index v{AA_INDEX_VERSION} by{' '}
         <a
           href={AA_SITE}
           onClick={(e) => {

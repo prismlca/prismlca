@@ -1,7 +1,8 @@
 /**
  * The OpenRouter transport: request shape, routing preferences (zero data retention, preferred
- * throughput), the wire-to-StreamEvent translation, error wording, voice transcription and the live
- * pricing lookup. Uses the raw OpenAI-compatible HTTP API over `fetch` (no SDK dependency). The
+ * throughput, the provider allowlist), the wire-to-StreamEvent translation, error wording and voice
+ * transcription. The live listings (prices, the model catalogue, provider names) are in
+ * openrouterListings.ts; they read the routing state through `providerAllowlist` and `zdrForModel`. Uses the raw OpenAI-compatible HTTP API over `fetch` (no SDK dependency). The
  * shared mechanics (retry, stall watchdog, SSE splitting) live in engine.ts; key resolution and
  * provider dispatch live in ../client.ts.
  */
@@ -14,6 +15,7 @@ import {
   DEFAULT_ZDR_EXCEPT_OPENAI,
   DEFAULT_ZERO_DATA_RETENTION
 } from '../../../shared/aiDefaults'
+import { DEFAULT_PROVIDER_ALLOWLIST } from '../../../shared/providerAllowlist'
 import { TRANSCRIBE_TIMEOUT, withDeadline } from './engine'
 import {
   AiProviderError,
@@ -28,7 +30,7 @@ import {
 } from './types'
 import { contextOverflow } from './contextOverflow'
 
-const BASE_URL = 'https://openrouter.ai/api/v1'
+export const BASE_URL = 'https://openrouter.ai/api/v1'
 
 /**
  * Diagnostics only — never a setting: `PRISM_OPENROUTER_PROVIDER_ORDER="Amazon Bedrock,Google"` pins a
@@ -41,7 +43,7 @@ const PINNED_PROVIDERS: string[] = (process.env['PRISM_OPENROUTER_PROVIDER_ORDER
   .map((x) => x.trim())
   .filter(Boolean)
 // Sent so OpenRouter can attribute traffic to the app (optional but recommended).
-const APP_HEADERS = {
+export const APP_HEADERS = {
   'HTTP-Referer': 'https://github.com/prismlca/prismlca',
   'X-Title': 'PrismLCA'
 }
@@ -88,7 +90,7 @@ export function getZeroDataRetention(): boolean {
  * OpenRouter's per-request flag is a single boolean — the per-model-group fields
  * (`enforce_zdr_anthropic` …) exist only account-wide and on guardrails — so the exception is made
  * here, by vendor prefix, which produces the same routing. Measured: without an
- * exception, `anthropic/claude-fable-5.1` and `qwen/qwen3.8-max` have no zero-retention endpoint at
+ * exception, `anthropic/claude-fable-5.2` and `qwen/qwen3.8-max` have no zero-retention endpoint at
  * all and would answer 404. Google followed: its Gemini endpoints (Vertex and AI Studio)
  * log prompts for abuse monitoring, and OpenRouter announced "Safety Retention" for all Google models
  * from 2026-10-18.
@@ -113,7 +115,47 @@ export function setMinThroughput(tokensPerSecond: number): void {
   _minThroughput = clampMinThroughput(tokensPerSecond)
 }
 
-function translateStatus(status: number, body: string): AiProviderError {
+/**
+ * The hosts a chat request may go to (`provider.only`), or null for no restriction. Mirrored from
+ * Settings → AI → Provider like the two above, and like them the default stands until the mirror
+ * arrives: a call that beats the sync is held to our list, not let out to every host.
+ *
+ * `only` narrows within the account's own "Allowed Providers" — that list stays the ceiling — and it
+ * does not switch Auto Exacto off (only `sort`, `:floor` and an account-wide sort do), so among the
+ * hosts left OpenRouter still routes tool calls by quality. An empty list is sent as it is: every
+ * request then fails with the 404 below, which names this setting, rather than quietly running on
+ * every host while the switch says otherwise.
+ */
+let _only: string[] | null = [...DEFAULT_PROVIDER_ALLOWLIST]
+
+export function setProviderAllowlist(list: string[] | null): void {
+  _only = list ? [...list] : null
+}
+
+/** The allowlist in force, or null — for the price lookup, which prices what routing may use. */
+export function providerAllowlist(): string[] | null {
+  return _only ? [..._only] : null
+}
+
+/** Everything a request's routing restrictions depend on, as one string: the price cache is only
+ *  valid for the settings it was filled under. */
+export function routingSignature(): string {
+  return JSON.stringify([_only, _zdr, _zdrExcept])
+}
+
+/** The two PrismLCA restrictions that can empty a model's endpoint list — as a request carried them. */
+interface Restrictions {
+  zdr: boolean
+  only: boolean
+}
+const UNRESTRICTED: Restrictions = { zdr: false, only: false }
+
+/** What each request carried, recorded when it was built: a setting changed while the request runs must
+ *  not change what its failure says. Keyed by the request's options object, which the engine hands
+ *  to `buildRequest`, `createState` and `translateStatus` alike, and which nothing else holds on to. */
+const _sent = new WeakMap<StreamChatOpts, Restrictions>()
+
+function translateStatus(status: number, body: string, sent: Restrictions = UNRESTRICTED): AiProviderError {
   let detail = ''
   try {
     detail = JSON.parse(body)?.error?.message ?? ''
@@ -135,16 +177,25 @@ function translateStatus(status: number, body: string): AiProviderError {
   // true then — `data_collection` and the speed preference cannot. It stopped being true the day
   // PrismLCA began sending `zdr: true`: that one CAN empty the endpoint list, and some models have no
   // zero-retention endpoint at all. A message that rules out the actual cause is worse than none,
-  // so it now names both possibilities in the order worth checking.
+  // so it names the possibilities in the order worth checking — and only those the failed request
+  // actually carried: a transcription sends neither restriction, an exempted vendor no `zdr`.
   if (status === 404 && /provider|endpoint/i.test(detail))
     return new AiProviderError(
-      `${detail || 'No provider is available for this model.'} — two possible causes. ` +
-        (getZeroDataRetention()
-          ? 'First, PrismLCA itself: “Only use providers that keep nothing” restricts this model to ' +
-            'zero-retention endpoints, and some models have none. Settings → AI → Limits → ' +
-            'Privacy, where you can also exempt a vendor. '
-          : '') +
-        "Second, your OpenRouter ACCOUNT's own provider policy, which no request setting can " +
+      `${detail || 'No provider is available for this model.'} — ` +
+        (sent.zdr || sent.only
+          ? 'First, PrismLCA itself. ' +
+            (sent.zdr
+              ? '“Only use providers that keep nothing” restricts this model to zero-retention ' +
+                'endpoints, and some models have none (Settings → AI → Limits → Privacy, where you can ' +
+                'also exempt a vendor). '
+              : '') +
+            (sent.only
+              ? '“Only use providers from the allowlist” restricts it to the hosts on that list, and ' +
+                'none of them may serve it (Settings → AI → Provider → Edit list). '
+              : '') +
+            'Second, '
+          : 'Check ') +
+        "your OpenRouter ACCOUNT's own provider policy, which no request setting can " +
         'widen — allow the provider under openrouter.ai/settings/privacy. A model served by a ' +
         'single provider is unusable as soon as that one is excluded.',
       'no_endpoint'
@@ -159,6 +210,8 @@ const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504, 520, 521, 522, 523
 
 interface OrState {
   model: string
+  /** What this request carried, for the wording of a mid-stream "no endpoint" error. */
+  restrictions: Restrictions
   sentProvider: boolean // the serving endpoint's name rides on every chunk; report it once
   sentFinish: boolean // likewise for finish_reason: stated once, on the chunk that carries it
   calls: Record<number, AccumTool>
@@ -231,7 +284,8 @@ function toOpenRouterMessages(messages: ChatMessage[], model: string): Array<Rec
 export const openrouterTransport: ChatTransport<OrState> = {
   name: 'openrouter',
   unreachable: 'OpenRouter unreachable — check your internet connection.',
-  translateStatus,
+  translateStatus: (status, body, opts) =>
+    translateStatus(status, body, (opts && _sent.get(opts)) ?? UNRESTRICTED),
   retryable: (status) => RETRYABLE.has(status),
 
   buildRequest(opts: StreamChatOpts, key: string) {
@@ -266,6 +320,10 @@ export const openrouterTransport: ChatTransport<OrState> = {
       (m) => Array.isArray(m.content) && m.content.some((p) => (p as { type?: string }).type === 'file')
     )
 
+    // The two restrictions a "no endpoint" answer may be blamed on, taken once and kept with the request.
+    const only = _only
+    const sent: Restrictions = { zdr: zdrForModel(opts.model), only: only !== null }
+    _sent.set(opts, sent)
     const body = JSON.stringify({
       model: opts.model,
       messages: toOpenRouterMessages(opts.messages, opts.model),
@@ -289,12 +347,14 @@ export const openrouterTransport: ChatTransport<OrState> = {
       //    at 4.5 and then 20 tokens/s minutes apart. Documented as unable to prevent a request from
       //    running — endpoints that clear the bar are favoured, and if none does the request goes out
       //    unchanged — so this can slow nothing down and block nothing. A bare number is the p50.
-      ...(_zdr || _minThroughput || PINNED_PROVIDERS.length
+      //  - only: the allowlist (see setProviderAllowlist) — the hosts that may serve at all.
+      ...(_zdr || _minThroughput || only || PINNED_PROVIDERS.length
         ? {
             provider: {
               ...(_zdr ? { data_collection: 'deny' } : {}),
-              ...(zdrForModel(opts.model) ? { zdr: true } : {}),
+              ...(sent.zdr ? { zdr: true } : {}),
               ...(_minThroughput ? { preferred_min_throughput: _minThroughput } : {}),
+              ...(only ? { only } : {}),
               ...(PINNED_PROVIDERS.length ? { order: PINNED_PROVIDERS, allow_fallbacks: false } : {})
             }
           }
@@ -314,6 +374,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
 
   createState: (opts) => ({
     model: opts.model,
+    restrictions: _sent.get(opts) ?? UNRESTRICTED,
     sentProvider: false,
     sentFinish: false,
     calls: {},
@@ -334,7 +395,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
         error: { message: String(parsed.error.message || 'OpenRouter reported an error mid-stream.') }
       })
       const e = status
-        ? translateStatus(status, body)
+        ? translateStatus(status, body, state.restrictions)
         : new AiProviderError(
             String(parsed.error.message || 'OpenRouter reported an error mid-stream.'),
             'http'
@@ -456,6 +517,8 @@ export async function transcribeOpenRouter(
         ...(opts.language ? { language: opts.language } : {}),
         // Always zero-data-retention, deliberately NOT following the chat setting: a recording is
         // raw voice, and the ZDR provider (Groq/whisper-large-v3) is the cheaper, better one anyway.
+        // Nor the allowlist: it is about how hosts carry long tool-calling runs, and every host of
+        // the speech model already passes the stricter zero-retention rule above.
         provider: { data_collection: 'deny' }
       }),
       signal: withDeadline(opts.signal)
@@ -471,187 +534,4 @@ export async function transcribeOpenRouter(
   }
   const json = (await res.json()) as { text?: string; usage?: { cost?: number } }
   return { text: (json.text ?? '').trim(), cost: json.usage?.cost, model: STT_MODEL }
-}
-
-/**
- * Live pricing ($/1M tokens) for the given model ids, from OpenRouter /models (1 h cache).
- *
- * `/models` is a listing, not the full set of ids OpenRouter serves: an id that is an ALIAS of a
- * dated snapshot answers on `/chat/completions` and on `/models/{id}/endpoints`, but never appears
- * in the listing — `qwen/qwen3.8-max` (served by Alibaba, listed only as `…-max-0902`) is one, and
- * it sat in the settings table with an empty price column while working perfectly. So anything the
- * listing does not cover is asked for directly, one call per unmatched id, behind the same hour of
- * cache. Cheapest endpoint wins, which is what routing picks by default.
- *
- * An id with genuinely NO endpoint (a promo that ended) still comes back without a price — that
- * dash is correct, and it is the visible half of a model that can no longer be called at all.
- *
- * Pass only token-billed chat ids. The speech model is billed per audio unit, and its "prompt"
- * figure would render as a token price in a column headed $/1M (the three endpoints quote
- * 0.0000075, 0.0015 and 0.111 per unit — not the same unit, and none of them tokens).
- */
-let _priceCache: { ts: number; data: Record<string, { input: number; output: number }> } = {
-  ts: 0,
-  data: {}
-}
-/**
- * Drop the price cache. Called when the catalogue gains a model, because the cache is keyed by
- * nothing: it answers with whatever it fetched an hour ago, for whatever ids were asked for THEN.
- * A model added through the dialog would otherwise show "–" in the price column until the hour was
- * up — which is exactly what happened the first time the dialog was used against the running app.
- */
-export function clearPriceCache(): void {
-  _priceCache = { ts: 0, data: {} }
-}
-
-export async function fetchOpenRouterPricing(
-  ids: string[],
-  key: string | null
-): Promise<Record<string, { input: number; output: number }>> {
-  // Every requested id must be covered, not just "the cache is fresh": the entry set changes when
-  // the user adds a model, and a hit on a stale key set is how a new row loses its price.
-  const covered = ids.every((id) => id in _priceCache.data)
-  if (covered && Date.now() - _priceCache.ts < 3_600_000 && Object.keys(_priceCache.data).length)
-    return _priceCache.data
-  try {
-    const res = await fetch(`${BASE_URL}/models`, {
-      headers: key ? { Authorization: `Bearer ${key}`, ...APP_HEADERS } : APP_HEADERS
-    })
-    if (!res.ok) return _priceCache.data
-    const json = (await res.json()) as { data: Array<{ id: string; pricing?: Record<string, string> }> }
-    const wanted = new Set(ids)
-    const out: Record<string, { input: number; output: number }> = {}
-    for (const m of json.data) {
-      if (!wanted.has(m.id)) continue
-      out[m.id] = {
-        input: parseFloat(m.pricing?.prompt ?? '0') * 1_000_000,
-        output: parseFloat(m.pricing?.completion ?? '0') * 1_000_000
-      }
-    }
-    // Bounded and parallel. `ai:models` awaits this before it returns ANY row, and since the user
-    // can now put fifty ids of their own in models.json, a serial loop of unmatched lookups would
-    // hold the whole picker open on their typos. Beyond the cap a row simply shows no price, which
-    // the table already renders as a dash.
-    const missing = ids.filter((id) => !out[id]).slice(0, MAX_ENDPOINT_LOOKUPS)
-    const extra = await Promise.all(missing.map((id) => fetchEndpointPricing(id, key)))
-    missing.forEach((id, i) => {
-      const p = extra[i]
-      if (p) out[id] = p
-    })
-    _priceCache = { ts: Date.now(), data: out }
-    return out
-  } catch {
-    return _priceCache.data
-  }
-}
-
-/**
- * Everything the "Add model" dialog needs about one OpenRouter model, in the shape it is shown.
- *
- * Assembled from two endpoints, both cached for the hour: `/models` for the listing, and
- * `/endpoints/zdr` for the one column a user cannot guess — whether the model can be served at all
- * under PrismLCA's privacy rule. Measured: sixteen of the eighteen catalogue models have a
- * zero-retention endpoint and two have none, so this is not a nicety, it is the difference between
- * a model that works and a 404 on first use.
- */
-export interface OrCatalogueEntry {
-  id: string
-  name: string
-  contextTokens: number | null
-  vision: boolean
-  pricing: { input: number; output: number } | null
-  /** Has at least one zero-retention endpoint. `false` = unusable while the privacy rule is on;
-   *  `null` = the ZDR listing could not be fetched, so nothing is known either way. */
-  zdr: boolean | null
-}
-
-let _cat: { ts: number; rows: OrCatalogueEntry[] } = { ts: 0, rows: [] }
-
-/** The full OpenRouter model list, for the picker. One hour of cache, like the prices. */
-export async function fetchOpenRouterCatalogue(key: string | null): Promise<OrCatalogueEntry[]> {
-  if (Date.now() - _cat.ts < 3_600_000 && _cat.rows.length) return _cat.rows
-  const headers = key ? { Authorization: `Bearer ${key}`, ...APP_HEADERS } : APP_HEADERS
-  try {
-    const [listRes, zdrRes] = await Promise.all([
-      fetch(`${BASE_URL}/models`, { headers }),
-      // Best effort: without it every row would claim "no ZDR", which is worse than saying nothing.
-      fetch(`${BASE_URL}/endpoints/zdr`, { headers }).catch(() => null)
-    ])
-    if (!listRes.ok) return _cat.rows
-    const list = (await listRes.json()) as {
-      data: Array<{
-        id: string
-        name?: string
-        context_length?: number
-        top_provider?: { context_length?: number }
-        architecture?: { input_modalities?: string[] }
-        pricing?: Record<string, string>
-      }>
-    }
-    const zdrIds = new Set<string>()
-    let zdrKnown = false
-    if (zdrRes?.ok) {
-      const z = (await zdrRes.json()) as { data?: Array<{ model_id?: string }> }
-      for (const e of z.data ?? []) if (e.model_id) zdrIds.add(e.model_id)
-      zdrKnown = true
-    }
-    const rows = list.data.map((m) => {
-      const input = parseFloat(m.pricing?.prompt ?? '') * 1_000_000
-      const output = parseFloat(m.pricing?.completion ?? '') * 1_000_000
-      return {
-        id: m.id,
-        name: m.name || m.id,
-        // top_provider is the conservative figure — the catalogue's own convention (see the Kimi
-        // entry in models.ts): the smallest window any serving endpoint offers.
-        contextTokens: m.top_provider?.context_length ?? m.context_length ?? null,
-        vision: (m.architecture?.input_modalities ?? []).includes('image'),
-        pricing: Number.isFinite(input) && Number.isFinite(output) ? { input, output } : null,
-        // Unknown stays unknown: a failed ZDR fetch used to mark every model "no ZDR" for an hour.
-        zdr: zdrKnown ? zdrIds.has(m.id) : null
-      }
-    })
-    rows.sort((a, b) => a.id.localeCompare(b.id))
-    // Without the ZDR column the listing is served now but retried on the next call, not in an hour.
-    _cat = { ts: zdrKnown ? Date.now() : Date.now() - 3_600_000 + 60_000, rows }
-    return rows
-  } catch {
-    return _cat.rows
-  }
-}
-
-/** How many ids the listing did not cover are looked up one by one. Small on purpose: it is a
- *  display nicety, and it sits in front of the settings table's first paint. */
-const MAX_ENDPOINT_LOOKUPS = 8
-/** Timeout for one such lookup. Without it a stalled connection holds the catalogue response. */
-const ENDPOINT_TIMEOUT_MS = 4000
-
-/** The cheapest endpoint's price for one model id, or null if nothing serves it. */
-async function fetchEndpointPricing(
-  id: string,
-  key: string | null
-): Promise<{ input: number; output: number } | null> {
-  try {
-    // Segment-encoded: this id can come from the user's own models.json. The loader's grammar
-    // already refuses URL syntax, but a single door on a value that steers an authenticated
-    // request is one door too few.
-    const path = id.split('/').map(encodeURIComponent).join('/')
-    const res = await fetch(`${BASE_URL}/models/${path}/endpoints`, {
-      headers: key ? { Authorization: `Bearer ${key}`, ...APP_HEADERS } : APP_HEADERS,
-      signal: AbortSignal.timeout(ENDPOINT_TIMEOUT_MS)
-    })
-    if (!res.ok) return null
-    const json = (await res.json()) as {
-      data?: { endpoints?: Array<{ pricing?: Record<string, string> }> }
-    }
-    const priced = (json.data?.endpoints ?? [])
-      .map((e) => ({
-        input: parseFloat(e.pricing?.prompt ?? '') * 1_000_000,
-        output: parseFloat(e.pricing?.completion ?? '') * 1_000_000
-      }))
-      .filter((p) => Number.isFinite(p.input) && Number.isFinite(p.output))
-    if (!priced.length) return null
-    return priced.reduce((a, b) => (a.input + a.output <= b.input + b.output ? a : b))
-  } catch {
-    return null
-  }
 }

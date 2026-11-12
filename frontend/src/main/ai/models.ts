@@ -7,70 +7,68 @@
  * docs/model cards. The modern pattern: reasoning-tuned models are calibrated to their DEFAULT
  * sampling values, and the frontier vendors removed the knob entirely — `null` means "do not send
  * the parameter at all":
- *   - Claude Sonnet 5.5 / Opus 5.5 / Fable 5.1 / Haiku 5.5: Anthropic REMOVED temperature/top_p/top_k from the
+ *   - Claude Sonnet 5.5 / Opus 5.5 / Fable 5.2 / Haiku 5.5: Anthropic REMOVED temperature/top_p/top_k from the
  *     API (non-default values → HTTP 400, since Opus 4.7) → null (omit).
  *   - Gemini 3.8 Flash: Google explicitly recommends REMOVING sampling params on Gemini 3.x —
  *     reasoning is optimised for the defaults → null (omit).
- *   - Gemini 4 Argon: reasoning is mandatory and Google states no value for the 4 generation; the
- *     Gemini 3.x advice and the catalogue's reasoning-model rule agree → null (omit).
+ *   - Gemini 4 Argon / Carbon: reasoning is mandatory and Google states no value for the 4 generation;
+ *     the Gemini 3.x advice and the catalogue's reasoning-model rule agree → null (omit).
  *   - DeepSeek V4.1 Flash: default 1.0; the V4 docs warn that LOWERING temperature collapses the
  *     reasoning chain → 1.0.
  *   - Kimi K3: sampling is FIXED server-side (temperature locked at 1.0, top_p 0.95) — Moonshot
  *     says to omit the parameters entirely → null (omit).
- *   - MiniMax M3: model card recommends 1.0 (top_p 0.95) → 1.0.
+ *   - MiniMax M3.1 Flash: model card recommends 1.0 (top_p 0.95) → 1.0.
  *   - GLM 5.3: Z.AI default/benchmarks at 1.0; never tune temperature and top_p together → 1.0.
  *   - Qwen3.8 2.4T A95B: model card recommends 1.0 (top_p 0.95, top_k 20) → 1.0.
- *   - GPT-6 Astra / 6.1 Sol / Luna, MiMo-V2.6-Pro, GLM 5.3 Flash: reasoning models without a
+ *   - GPT-6 Astra / 6.1 Sol / Luna, MiMo-V2.6-Pro, GLM 5.3 Flash, Hy4: reasoning models without a
  *     stated vendor value → null (omit).
  *
  * Pricing ($/1M tokens) is NOT hard-coded here — it is fetched live from OpenRouter's /models
  * endpoint (see openrouter.ts) and merged with these ratings for the settings info table.
  *
- * RATINGS: every `intelligence` and `agentic` value was pulled from the Artificial Analysis Data
- * API on **2026-10-01**, in one pass, so the two columns rank consistently. The whole column moves
- * together or not at all: scores compare only within one index version, and a single row patched
- * from a newer index makes a column that is only ever read as a ranking quietly meaningless.
+ * RATINGS: every `intelligence` value was pulled from the Artificial Analysis Data API on
+ * **2026-11-12**, in one pass. The whole column moves together or not at all: scores compare only
+ * within one index version, and a single row patched from a newer index makes a column that is only
+ * ever read as a ranking quietly meaningless.
  *
- *   - `intelligence` = AA Intelligence Index **v4.3** (10 evaluations: AA-Briefcase, GDPval-AA v2,
- *     AutomationBench-AA, Terminal-Bench v4.0, SciCode, AA-LCR v1.1, AA-Omniscience, HLE, GDP.pdf,
- *     CritPt), field `artificial_analysis_intelligence_index`.
- *   - `agentic` = AA Agentic Index, field `artificial_analysis_agentic_index` — a subset of the same
- *     evaluations, not separately versioned. Via the API it comes to one decimal, not as the integer
- *     the public chart shows.
+ *   - `intelligence` = AA Intelligence Index **v5**, field `artificial_analysis_intelligence_index`,
+ *     from `GET /api/v2/language/models/free`. Via the API it comes to one decimal, not as the
+ *     integer the public chart shows.
  *
- * Both come from `GET /api/v2/language/models/free`. Do not re-read them off the website by hand:
- * `backend/local/aa_ratings/` (local, gitignored) pulls them, joins them to these ids by slug, and
- * prints the drift. Adding a model means adding it to that folder's `model_map.json` too, and then
- * the next pull covers it like the rest.
+ * There is no agentic column any more. AA's Agentic Index came with v4.3; under v5 the API returns
+ * it for no model at all, and a second column that is empty in every row says nothing.
  *
- * v4.1.1 → v4.3 cost every model roughly 14 points of intelligence and 5 of agentic (Opus 5 50.7
- * where it stood at 63) — the models did not get worse, the index got harder. Which is the lesson
- * of the two rows that stood here as `null`: a v4.3 figure of ~53 for Fable 5.1 was rejected in
- * September as "implausible, below Sonnet 5's 55" when 55 was a v4.1.1 number. It was right. A
- * figure that looks wrong against this column is first of all a figure from a different index.
+ * Do not re-read the scores off the website by hand: `backend/local/aa_ratings/` (local, gitignored)
+ * pulls them, joins them to these ids by slug, and prints the drift. Adding a model means adding it
+ * to that folder's `model_map.json` too, and then the next pull covers it like the rest.
+ *
+ * Index versions move numbers without any model changing: v4.1.1 → v4.3 cost every model roughly
+ * 14 points, and v4.3 → v5 reshuffled the field instead (Astra +4, Opus 5.5 +1.5, GLM 5.3 −13,
+ * MiMo-V2.6-Pro −16). A v4.3 figure of ~53 for Fable 5.1 was once rejected as "implausible, below
+ * Sonnet 5's 55" when 55 was a v4.1.1 number. It was right. A figure that looks wrong against this
+ * column is first of all a figure from a different index.
  *
  * Where a model is rated per reasoning effort, the HIGHEST variant is taken, consistently — on AA
  * that is the bare slug (`gpt-6-sol` = "GPT-6 Sol (Max)"; the lower efforts carry their own
  * `-high`/`-medium`/… slugs). It is the only choice that compares like with like, but note that
  * without a choice under Settings → AI → Models PrismLCA sends no `reasoning_effort`, so what you
- * get is the provider default, which for several models is far below the max row (GPT-6 Luna: 38.1
- * at max, 29.9 at medium, 18.5 non-reasoning). `reasoningEfforts` per row lists what the setting may
+ * get is the provider default, which for several models is far below the max row (GPT-6 Luna: 27.9
+ * at max, 18.5 at medium, 9.4 non-reasoning). `reasoningEfforts` per row lists what the setting may
  * offer — the levels the model's API documents (OpenRouter's reasoning-tokens guide and
  * the vendors' pages); a row without it offers only the default, because an unsupported level is a
  * 400 that costs a run. The loop falls back to the default once if the API rejects a level.
  * Gemini 3.8 Flash is AA's "(high)" row — its top effort there, and also its best score; Gemini 4
- * Argon's "(High)" row is the only one AA has published for it so far.
+ * Argon's and Carbon's "(High)" rows are their top effort too.
  *
  * `null` means AA does not rate it, not that it scored zero, and the table renders it as "–". The
- * speech model carries it in both columns (AA rates it on its speech leaderboard instead). Since the
- * October pull several rows carry it in the AGENTIC column only — Opus/Sonnet/Haiku 5.5, GPT-6.1 Sol,
- * GPT-6 Luna, DeepSeek V4.1 Flash, MiMo-V2.6-Pro, Gemini 4 Argon: AA had published their intelligence score but not
- * yet run the agentic subset. The next pull fills them; until then the column ranks only the rest. (Kimi K2.6
- * was removed from the catalogue rather than kept as a row with nothing to say — an
- * unrated row is worth keeping only where the model itself is still worth offering.)
+ * speech model carries it for good (AA rates it on its speech leaderboard instead). Since the v5
+ * pull three chat rows carry it as well — DeepSeek V4.1 Flash, Kimi K3 and Qwen3.8 2.4T A95B: AA
+ * lists them but had not yet run them on v5. The next pull fills them; until then they sort last in
+ * their lab. (Kimi K2.6 was removed from the catalogue rather than kept as a row with nothing to
+ * say — an unrated row is worth keeping only where the model itself is still worth offering.)
  *
  * Artificial Analysis requires attribution wherever these numbers are shown. The Settings table
- * carries it under the two columns; `docs/DATENHERKUNFT.md` carries the source row.
+ * carries it under the column; `docs/DATENHERKUNFT.md` carries the source row.
  */
 import {
   DEFAULT_ANTHROPIC_MODEL_ID,
@@ -106,14 +104,18 @@ export interface AiModel {
   longPrompt?: { above: number; input: number; cachedInput: number; output: number }
   label: string // human name
   /** Short quality/cost hint, shown in the pickers. Strength first, price second, "open weight"
-   *  where the weights are published. Written against the v4.3 ratings below and the
-   *  OpenRouter prices at the time; "strongest open weight" is said twice on purpose — GLM 5.3
-   *  leads the open models on agentic (53.1), MiMo-V2.6-Pro on intelligence (46.3). A price word is a
-   *  class, not a number: "cheapest" ≈ $0.10/$0.50, "very cheap" under $0.50 in, "mid" ≈ $2/$10. */
+   *  where the weights are published. Every one was re-checked against the v5 ratings below and the
+   *  OpenRouter prices of 2026-11-12, and a superlative is re-checked whenever either moves. "Top
+   *  tier" is the four rows from 56.9 up, "strong" the three from 50 to 55. Rankings among the open
+   *  and cheap rows say "highest-rated"/"lowest-rated": three open rows are unrated under v5, so GLM
+   *  5.3 (31.7) holds its end only among the rated ones until the next pull. On a direct vendor's
+   *  list a superlative is about that list, the only one the table shows. A price word is a class,
+   *  not a number: "cheapest" ≈ $0.10/$0.50, "very cheap" under $0.50 in, "cheap" under $1 in,
+   *  "mid" ≈ $2/$10, "upper-mid" ≈ $4/$20, "premium" ≈ $8/$40, "priciest" the top row; "lowest
+   *  price here" is the one row below all of them. */
   descriptor: string
   temperature: number | null // researched per-model value; null = omit the parameter (vendor default)
   intelligence: number | null // Artificial Analysis Intelligence Index
-  agentic: number | null // Artificial Analysis Agentic Index
   vision: boolean // accepts image input (gates the canvas-screenshot tool)
   /** false = shown in the cost/info table but NOT offered as a chat model (e.g. the STT model). */
   selectable?: boolean
@@ -191,15 +193,12 @@ export interface AiModel {
  */
 const CATALOGUE: AiModel[] = [
   {
-    // Replaces Sonnet 5. Eighteen points above it on intelligence at the same price —
-    // and above Opus 5 too, which says more about the index than about either model. No agentic
-    // score yet: AA had not run that subset on the 5.5 generation when the column was pulled.
+    // Replaces Sonnet 5, at the same price.
     id: 'anthropic/claude-sonnet-5.5',
     label: 'Sonnet 5.5 (Claude)',
-    descriptor: 'top tier at mid price',
+    descriptor: 'strong, mid price',
     temperature: null,
-    intelligence: 56,
-    agentic: null,
+    intelligence: 54.5,
     vision: true,
     planTool: false,
     // A megatoken on all eight OpenRouter endpoints. It matters beyond display: `compactThreshold`
@@ -214,10 +213,9 @@ const CATALOGUE: AiModel[] = [
     // Replaces Opus 5, and is cheaper than it was ($4/$20 against $5/$25).
     id: 'anthropic/claude-opus-5.5',
     label: 'Opus 5.5 (Claude)',
-    descriptor: 'highest intelligence score',
+    descriptor: 'top tier, upper-mid price',
     temperature: null,
-    intelligence: 57.6,
-    agentic: null,
+    intelligence: 59.1,
     vision: true,
     planTool: false,
     contextTokens: 1000000,
@@ -226,35 +224,35 @@ const CATALOGUE: AiModel[] = [
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
-    id: 'anthropic/claude-fable-5.1',
-    label: 'Fable 5.1 (Claude)',
-    descriptor: 'highest agentic score, priciest',
+    // Replaces Fable 5.1: 64.6 against its 49.2, the highest score in the catalogue, and cheaper
+    // than it was ($8/$40 against $10/$50). Four endpoints at that price — Anthropic, Azure, Bedrock,
+    // Vertex — plus Anthropic's priority tier ("fast") at twice it, all paid (checked 2026-11-12).
+    // None of them is zero-retention: Anthropic lists Fable 5.2 as a "Covered Model", whose prompts
+    // are kept for 30 days on every surface it is offered on. So it answers only under the Anthropic
+    // exception to the ZDR switch, as Fable 5.1 did (shared/aiDefaults.ts).
+    id: 'anthropic/claude-fable-5.2',
+    label: 'Fable 5.2 (Claude)',
+    descriptor: 'highest intelligence score, premium price',
     temperature: null,
-    // The strongest row in the catalogue on both counts, and the one that vindicates the rule above:
-    // it stood at `null` because a search once offered 53 / 58 and 53 looked implausible
-    // below Sonnet 5's 55. Those 55 were v4.1.1; under v4.3 Sonnet 5 is 38.4 and this is 53.4 / 58 —
-    // the figure had been right all along, read against the wrong index.
-    intelligence: 53.4,
-    agentic: 57.9,
+    intelligence: 64.6,
     vision: true,
     planTool: false,
     contextTokens: 1000000,
     explicitCache: true,
     // Anthropic's effort levels through OpenRouter; `none` is answered with 400 and `minimal` is sent as low.
+    // OpenRouter also lists `max`, which our effort vocabulary does not have.
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
-    // The cheapest price class ($0.10/$0.50, the same as GPT-6 Luna) at 43.4 —
-    // five points above Luna. The rating came from a pull on the day it went in; the index was still
-    // v4.3 and no other row had drifted, so the column stays one reading. No agentic score yet.
-    // Privacy as for the other Claude rows: Anthropic, Google, Azure and Bedrock endpoints, all paid.
+    // The cheapest price class ($0.10/$0.50, the same as GPT-6 Luna) at 36.5 — nine points
+    // above Luna. Privacy as for the other Claude rows: Anthropic, Google, Azure and Bedrock
+    // endpoints, all paid.
     id: 'anthropic/claude-haiku-5.5',
     label: 'Haiku 5.5 (Claude)',
     descriptor: 'cheapest, strongest at that price',
     // No `temperature` among its supported parameters, like the other 5.x Claude rows.
     temperature: null,
-    intelligence: 43.4,
-    agentic: null,
+    intelligence: 36.5,
     vision: true,
     // On by class, not by vendor: Anthropic's "no checklist" judgement was about its top models, and
     // this row sits in the cheap tier with GPT-6 Luna and DeepSeek V4.1 Flash. Unmeasured, like its class.
@@ -271,11 +269,9 @@ const CATALOGUE: AiModel[] = [
     label: 'GPT-6 Astra (OpenAI)',
     descriptor: 'top tier, priciest',
     temperature: null,
-    // Below both Claude 5.5 rows on intelligence, and well under Fable 5.1 on
-    // agentic — the two columns do not rank the catalogue in the same order, which is the whole
-    // reason both are shown.
-    intelligence: 52.7,
-    agentic: 51,
+    // Above Sonnet 5.5, below Opus 5.5, Fable 5.2 and Gemini 4 Carbon — and still the priciest
+    // row, at $10/$50.
+    intelligence: 56.9,
     vision: true,
     planTool: false,
     contextTokens: 1050000,
@@ -286,18 +282,17 @@ const CATALOGUE: AiModel[] = [
     // (agent.test.ts checks exactly this — the entry had inherited it from its template).
   },
   {
-    // Replaces Gemini 3.5 Flash: eight points more intelligence, fourteen more agentic,
-    // and at $0.75/$3.75 half its price. Re-checked when Argon went in: still Google's newest
-    // Flash (released 2026-09-02; OpenRouter lists nothing later, AA neither), so the row stays.
-    // Privacy for both Google rows: only Google's own endpoints (Vertex, AI Studio), which log prompts
-    // for abuse monitoring — hence the Google exception to the ZDR rule (shared/aiDefaults.ts).
+    // Replaces Gemini 3.5 Flash. $0.825/$4.125 on OpenRouter (Google's own list price, which the
+    // direct row carries, is $0.75/$3.75; checked 2026-11-12). Re-checked when Carbon went in:
+    // still Google's newest Flash (released 2026-09-02; OpenRouter lists nothing later), so the row
+    // stays. Privacy for all Google rows: only Google's own endpoints (Vertex, AI Studio), which log
+    // prompts for abuse monitoring — hence the Google exception to the ZDR rule (shared/aiDefaults.ts).
     id: 'google/gemini-3.8-flash',
     label: 'Gemini 3.8 Flash (Google)',
     descriptor: 'fast, cheap',
     temperature: null,
     // AA's "(high)" row — its top effort for this model, and here also the best-scoring one.
-    intelligence: 40.9,
-    agentic: 40.2,
+    intelligence: 30.8,
     vision: true,
     planTool: true,
     // All six OpenRouter endpoints report 1,048,576.
@@ -306,19 +301,16 @@ const CATALOGUE: AiModel[] = [
     reasoningEfforts: ['minimal', 'low', 'medium', 'high']
   },
   {
-    // Added three days after Google released it: Google's flagship, 52.6 on intelligence —
-    // level with GPT-6 Astra, ahead of GPT-6.1 Sol — at Sol's and Sonnet 5.5's price ($2/$10). The
-    // rating came from a pull on the day it went in; the index was still v4.3 and no other row had
-    // drifted, so the column stays one reading. No agentic score yet. Six OpenRouter endpoints, all
-    // Google's own (Vertex, AI Studio, each also as flex/priority tier), all paid.
+    // Google's previous flagship, at Sol's and Sonnet 5.5's price ($2/$10). Six OpenRouter endpoints,
+    // all Google's own (Vertex, AI Studio, each also as flex/priority tier), all paid. Gemini 4 Carbon
+    // below scores ten points more at the same price.
     id: 'google/gemini-4-argon',
     label: 'Gemini 4 Argon (Google)',
-    descriptor: 'top tier, mid price',
+    descriptor: 'strong, mid price · Carbon scores higher',
     temperature: null,
-    intelligence: 52.6,
-    agentic: null,
+    intelligence: 50.4,
     vision: true,
-    // Off by class: it sits in the top tier with Astra, Sol and the Claude 5.5 rows. Unmeasured.
+    // Off by class: the strong tier, with Sol and Sonnet 5.5. Unmeasured.
     planTool: false,
     // All six endpoints report 1,048,576.
     contextTokens: 1048576,
@@ -326,16 +318,35 @@ const CATALOGUE: AiModel[] = [
     reasoningEfforts: ['low', 'medium', 'high']
   },
   {
-    // Replaces DeepSeek V4 Pro: the newer Flash out-scores the old Pro by three points
-    // on intelligence at a fraction of the price ($0.03/$0.50), and it takes images. Temperature
-    // follows DeepSeek's V4 guidance (default 1.0; lowering it collapses the reasoning chain) — the
-    // V4.1 docs say nothing new about it. It is also the writer's cheap fallback, the role Hy3 had.
+    // Google's newest flagship: 60 — above Opus 5.5, second only to Fable 5.2 — at Argon's price
+    // ($2/$10). Seven endpoints, all Google's own and paid: Vertex (global, EU, US, global
+    // priority) and AI Studio (standard, flex, priority). Privacy as for
+    // the other Google rows.
+    id: 'google/gemini-4-carbon',
+    label: 'Gemini 4 Carbon (Google)',
+    descriptor: 'top tier at mid price',
+    temperature: null,
+    // AA's "(High)" row, its top effort.
+    intelligence: 60,
+    vision: true,
+    // Off by class: the top tier, with Fable 5.2, Opus 5.5 and Astra. Unmeasured.
+    planTool: false,
+    // All seven endpoints report 1,048,576.
+    contextTokens: 1048576,
+    // Same API as Argon: reasoning is mandatory, OpenRouter lists low | medium | high, default medium.
+    reasoningEfforts: ['low', 'medium', 'high']
+  },
+  {
+    // Replaces DeepSeek V4 Pro: under v4.3 the newer Flash out-scored the old Pro by three points
+    // at a fraction of the price ($0.03/$0.50), and it takes images. Temperature follows DeepSeek's
+    // V4 guidance (default 1.0; lowering it collapses the reasoning chain) — the V4.1 docs say
+    // nothing new about it. It is also the writer's cheap fallback, the role Hy3 had.
     id: 'deepseek/deepseek-v4.1-flash',
     label: 'DeepSeek V4.1 Flash',
     descriptor: 'very cheap · open weight',
     temperature: 1.0,
-    intelligence: 39.5,
-    agentic: null,
+    // Not yet run on v5 (see the ratings block above).
+    intelligence: null,
     vision: true,
     planTool: true,
     // Thirty-two OpenRouter endpoints, 1,000,000 to 1,048,576; the smallest is taken so the figure
@@ -351,10 +362,9 @@ const CATALOGUE: AiModel[] = [
     // longer offers is a reference nobody can follow.
     id: 'z-ai/glm-5.3',
     label: 'GLM 5.3 (Z.AI)',
-    descriptor: 'strongest open weight (agentic) · cheap in, mid out',
+    descriptor: 'highest-rated open weight · very cheap',
     temperature: 1.0,
-    intelligence: 44.8,
-    agentic: 53.1,
+    intelligence: 31.7,
     vision: false,
     planTool: true,
     // 20 of 28 OpenRouter endpoints report 1,048,576; three fringe ones serve 262,144 and one
@@ -369,8 +379,8 @@ const CATALOGUE: AiModel[] = [
     label: 'Kimi K3 (Moonshot)',
     descriptor: 'open weight · pricier output',
     temperature: null,
-    intelligence: 43.6,
-    agentic: 50,
+    // Not yet run on v5 (see the ratings block above).
+    intelligence: null,
     vision: true,
     planTool: true,
     // Every one of OpenRouter's K3 endpoints reports 1,048,576 (a couple serve 1,000,000 / 974,842);
@@ -380,39 +390,49 @@ const CATALOGUE: AiModel[] = [
     contextTokens: 974842
   },
   {
-    id: 'minimax/minimax-m3',
-    label: 'MiniMax M3',
-    descriptor: 'very cheap · weakest here · open weight',
+    // MiniMax's newest, in place of M3: 29.1 against M3's 18.9, at a quarter of its price ($0.075/$0.30
+    // against $0.30/$1.20), the same size (about 428B parameters, 23B active) and the same community
+    // licence. Reads images: every endpoint takes multipart input. Eight of its eleven OpenRouter
+    // endpoints are zero-retention — all but MiniMax's own, GMICloud and StreamLake (checked 2026-11-12).
+    id: 'minimax/minimax-m3.1-flash',
+    label: 'MiniMax M3.1 Flash',
+    descriptor: 'very cheap · open weight',
     temperature: 1.0,
-    intelligence: 29.2,
-    agentic: 29.5,
-    vision: false,
+    intelligence: 29.1,
+    vision: true,
     planTool: true,
-    contextTokens: 1000000
+    // Most endpoints report 1,048,576; StreamLake and inference.net serve 1,000,000, which is also
+    // what the card states, so that is the figure taken.
+    contextTokens: 1000000,
+    // The card: low | medium | high | xhigh | max, reasoning always on. OpenRouter's default is max,
+    // which "Default" keeps; our scale stops at xhigh.
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
     // The open weights of Qwen3.8 Max, in place of the Max row. `qwen/qwen3.8-max` is served by
     // Alibaba alone, and no Alibaba endpoint is zero-retention, so under the default privacy rule
-    // that row answered 404 on every call. This id has four zero-retention endpoints (Novita,
-    // SiliconFlow, Venice, Together) at the same price, $2/$6 (checked 2026-10-22).
+    // that row answered 404 on every call. This id has four endpoints at the same price, $2/$6 —
+    // Novita, Alibaba, SiliconFlow, Venice — three of them zero-retention (all but Alibaba; checked
+    // 2026-11-12).
     //
     // What it gives up, per the model card: no image input, so no canvas screenshots, and no
-    // non-thinking mode. AA rates it level with the FIRST Max snapshot (39.9/50.1 against
-    // 40.2/49.1), not with the 0902 one the Max alias serves now (45.4/56) — it is no longer the
-    // strongest open model on either count. Whoever wants the Max can add `qwen/qwen3.8-max` under
-    // "Add model"; it only answers with the privacy switch off, since no exception covers Qwen.
+    // non-thinking mode. Under v4.3 AA rated it level with the FIRST Max snapshot (39.9 against
+    // 40.2), not with the 0902 one the Max alias serves now (45.4). Whoever wants the Max can add
+    // `qwen/qwen3.8-max` under "Add model"; it only answers with the privacy switch off, since no
+    // exception covers Qwen.
     id: 'qwen/qwen3.8-2.4t-a95b',
     label: 'Qwen3.8 2.4T A95B (Alibaba)',
-    descriptor: 'Qwen3.8 Max, open weight · mid price',
+    // Not "Qwen3.8 Max": in the picker that read as if this row were the Max itself.
+    descriptor: 'open weight · mid price',
     // The card's own recommendation. Sent rather than omitted: with four hosts, an omitted value is
     // whatever each host's server defaults to, not Qwen's.
     temperature: 1.0,
-    intelligence: 39.9,
-    agentic: 50.1,
+    // Not yet run on v5 (see the ratings block above).
+    intelligence: null,
     vision: false,
     planTool: true,
-    // Novita 1,000,000, Together 1,010,000, SiliconFlow 1,048,576 — and Venice 262,144, the model's
-    // native window, which the card extends to 1,010,000. As with GLM 5.3, the one fringe endpoint
+    // Novita and Alibaba 1,000,000, SiliconFlow 1,048,576 — and Venice 262,144, the model's native
+    // window, which the card extends to 1,010,000. As with GLM 5.3, the one fringe endpoint
     // is not taken; the smallest of the rest is.
     contextTokens: 1000000,
     // The card: "supported levels are xhigh, medium, and low", xhigh by default; thinking is always on.
@@ -422,19 +442,61 @@ const CATALOGUE: AiModel[] = [
     // Xiaomi's top model, added to the catalogue. Checked against the privacy defaults before it went in:
     // all three OpenRouter endpoints are paid (no training-on-prompts free tier for
     // `data_collection: 'deny'` to block), and DeepInfra serves it zero-retention, so the ZDR switch
-    // leaves it reachable rather than answering 404. No agentic score yet. No vendor temperature
-    // could be found and it is a reasoning model, so the parameter is omitted — the catalogue's
-    // reasoning-model rule.
+    // leaves it reachable rather than answering 404. No vendor temperature could be found and it is
+    // a reasoning model, so the parameter is omitted — the catalogue's reasoning-model rule.
     id: 'xiaomi/mimo-v2.6-pro',
     label: 'MiMo-V2.6-Pro (Xiaomi)',
-    descriptor: 'strongest open weight (intelligence) · very cheap',
+    descriptor: 'open weight · very cheap',
     temperature: null,
-    intelligence: 46.3,
-    agentic: null,
+    intelligence: 29.9,
     vision: true,
     planTool: true,
     // Three endpoints, 1,048,576 to 1,050,000; the smallest, per the convention above.
     contextTokens: 1048576
+  },
+  {
+    // Tencent's Hy4, on OpenRouter since 2026-11-04 — the successor of the Hy3 that once held the
+    // writer's fallback. 34.6, second only to Haiku 5.5 among the rows below the mid price, at
+    // $0.42/$1.25, and it takes images. One endpoint, Tencent's own (fp4-quantised), which is on
+    // OpenRouter's zero-retention list, so the ZDR switch leaves it reachable; an account that
+    // excludes Tencent cannot reach it at all. The weights are announced but not yet published,
+    // hence no "open weight". No vendor temperature is stated and it is a reasoning model, so the
+    // parameter is omitted — the catalogue's reasoning-model rule.
+    id: 'tencent/hy4',
+    label: 'Hy4 (Tencent)',
+    descriptor: 'solid, very cheap',
+    temperature: null,
+    intelligence: 34.6,
+    vision: true,
+    // On by class: the cheap tier, with Haiku 5.5, GPT-6 Luna and the GLM rows. Unmeasured.
+    planTool: true,
+    // The one endpoint reports 1,048,576.
+    contextTokens: 1048576,
+    // Reasoning is optional: OpenRouter lists none | low | high, default high.
+    reasoningEfforts: ['none', 'low', 'high']
+  },
+  {
+    // Mistral's open-weight frontier model (about 1T parameters, 49B active; Mistral Ecosystem Open
+    // Weight Licence), $0.70/$2.10, reads images. Served by Mistral alone, through two OpenRouter
+    // endpoints, both on the zero-retention list — `mistral/zdr` and `mistral/eu`, which runs in the EU
+    // (checked 2026-11-12) — so the ZDR switch and the provider allowlist leave it reachable. No vendor
+    // temperature is published and reasoning is always on, so the parameter is omitted — the catalogue's
+    // reasoning-model rule.
+    id: 'mistralai/mistral-large-4-0',
+    label: 'Mistral Large 4',
+    descriptor: 'European lab · open weight',
+    temperature: null,
+    // AA's "(High)" row, its top effort and Mistral's own recommendation.
+    intelligence: 26.1,
+    vision: true,
+    // On by class: the open-weight tier, with the GLM, Kimi and MiniMax rows. Unmeasured.
+    planTool: true,
+    // `mistral/zdr` reports 1,048,576, `mistral/eu` 524,288; the smaller is taken so the figure holds
+    // whichever one routing picks (the convention the Kimi entry states).
+    contextTokens: 524288,
+    // Mistral's ladder for Large 4 only: low | medium | high, default high; it takes no `none` or
+    // `xhigh` (docs.mistral.ai, reasoning).
+    reasoningEfforts: ['low', 'medium', 'high']
   },
   {
     // Ox Alpha, unmasked. It ran in OpenRouter's stealth programme until 2026-08-26, when the
@@ -448,16 +510,12 @@ const CATALOGUE: AiModel[] = [
     // (V244).
     //
     // Reasoning is mandatory and the vendor recommends effort "max", so temperature stays null — the
-    // same choice as Kimi K3. The agentic score is the notable half: 50.9 against
-    // Kimi K3's 50, while sitting 1.8 under it on intelligence — a model that acts better than it
-    // reasons, which is what its live runs under the old name showed. Its full sibling
-    // GLM 5.3 above is the stronger of the two on both counts.
+    // same choice as Kimi K3. Its full sibling GLM 5.3 above is the stronger of the two.
     id: 'z-ai/glm-5.3-flash',
     label: 'GLM 5.3 Flash (Z.AI)',
-    descriptor: 'very cheap · open weight',
+    descriptor: 'lowest price here · open weight',
     temperature: null,
-    intelligence: 41.8,
-    agentic: 50.9,
+    intelligence: 27.8,
     vision: true,
     planTool: true,
     contextTokens: 1048576,
@@ -475,14 +533,12 @@ const CATALOGUE: AiModel[] = [
     // direct route reports no `usage.cost`, so its ledger entries are computed from the hand-kept
     // table rather than billed.
     //
-    // No agentic score on either yet: AA had not run that subset when the column was pulled.
     // No `explicitCache`: only Anthropic takes a cache breakpoint from us (agent.test.ts holds it).
     id: 'openai/gpt-6.1-sol',
     label: 'GPT-6.1 Sol (OpenAI)',
     descriptor: 'strong, mid price (default)',
     temperature: null,
-    intelligence: 51.8,
-    agentic: null,
+    intelligence: 54.6,
     vision: true,
     planTool: false,
     contextTokens: 1050000,
@@ -494,8 +550,7 @@ const CATALOGUE: AiModel[] = [
     label: 'GPT-6 Luna (OpenAI)',
     descriptor: 'cheapest',
     temperature: null,
-    intelligence: 38.1,
-    agentic: null,
+    intelligence: 27.9,
     vision: true,
     planTool: true,
     contextTokens: 1050000,
@@ -508,7 +563,6 @@ const CATALOGUE: AiModel[] = [
     descriptor: 'voice transcription',
     temperature: null,
     intelligence: null,
-    agentic: null,
     vision: false,
     selectable: false
   },
@@ -684,8 +738,8 @@ export function providerDefaults(p: ProviderKey): {
     }
   return {
     chat: DEFAULT_MODEL_ID,
-    // Research on the Flash sibling: same lab and price class, higher agentic
-    // score, 1M context — and the review deliberately stays on the NON-flash sibling, so the
+    // Research on the Flash sibling: same lab and price class, chosen on its agentic score under
+    // v4.3, 1M context — and the review deliberately stays on the NON-flash sibling, so the
     // reviewer is at least a different model than the researcher.
     research: 'z-ai/glm-5.3-flash',
     review: 'z-ai/glm-5.3',

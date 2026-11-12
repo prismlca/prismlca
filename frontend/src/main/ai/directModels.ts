@@ -73,14 +73,14 @@ export const ANTHROPIC_CACHE_WRITE_FACTOR = 1.25
 export const DIRECT_MODELS: AiModel[] = [
   // --- Direct-Anthropic catalogue (Settings → AI → provider 'Anthropic') --------------------------
   //
-  // Verified on 2026-11-08 against Anthropic's Models API (ids, 1M context, 128K output, effort low–max,
-  // web search, image and PDF input on all four) and its pricing page. Served through the Messages API
+  // Verified on 2026-11-08 (Fable 5.2 on 2026-11-12) against Anthropic's Models API (ids, 1M context,
+  // 128K output, effort low–max, web search, image and PDF input on all four) and its pricing page. Served through the Messages API
   // (providers/anthropic.ts). Thinking is adaptive and always on for these models, and the 2026-10-21 API
   // version rejects sampling parameters — so temperature stays null, as on their OpenRouter rows.
   //
   // Prices: standard tier, global inference. Cache reads differ by model (Fable 0.025×, Opus and Sonnet
   // 0.05×, Haiku 0.1× of input); cache writes cost ANTHROPIC_CACHE_WRITE_FACTOR × input. Haiku 5.5 is the
-  // one row priced by prompt length (`longPrompt`). `intelligence`/`agentic`, `planTool` and the effort
+  // one row priced by prompt length (`longPrompt`). `intelligence`, `planTool` and the effort
   // levels are their OpenRouter rows' — the same models, the same readings; our effort vocabulary ends at
   // xhigh, so Anthropic's `max` is not offered.
   {
@@ -88,10 +88,9 @@ export const DIRECT_MODELS: AiModel[] = [
     provider: 'anthropic',
     pricing: { input: 2, cachedInput: 0.1, output: 10 },
     label: 'Claude Sonnet 5.5 (Anthropic)',
-    descriptor: 'top tier at mid price (default)',
+    descriptor: 'strong, mid price (default)',
     temperature: null,
-    intelligence: 56,
-    agentic: null,
+    intelligence: 54.5,
     vision: true,
     planTool: false,
     contextTokens: 1000000,
@@ -103,10 +102,9 @@ export const DIRECT_MODELS: AiModel[] = [
     provider: 'anthropic',
     pricing: { input: 4, cachedInput: 0.2, output: 20 },
     label: 'Claude Opus 5.5 (Anthropic)',
-    descriptor: 'highest intelligence score',
+    descriptor: 'top tier, upper-mid price',
     temperature: null,
-    intelligence: 57.6,
-    agentic: null,
+    intelligence: 59.1,
     vision: true,
     planTool: false,
     contextTokens: 1000000,
@@ -114,16 +112,16 @@ export const DIRECT_MODELS: AiModel[] = [
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
-    // Anthropic keeps every Fable 5.1 request for 30 days for safety review (a "Covered Model"); the
-    // other three rows fall under its standard terms. PRIVACY.md says so.
-    id: 'claude-fable-5-1',
+    // Anthropic keeps every Fable 5.2 request for 30 days for safety review (a "Covered Model"); the
+    // other three rows fall under its standard terms. PRIVACY.md says so. Replaces Fable 5.1, and is
+    // cheaper than it was ($8/$40 against $10/$50; cache reads still 0.025× of input).
+    id: 'claude-fable-5-2',
     provider: 'anthropic',
-    pricing: { input: 10, cachedInput: 0.25, output: 50 },
-    label: 'Claude Fable 5.1 (Anthropic)',
-    descriptor: 'highest agentic score, priciest',
+    pricing: { input: 8, cachedInput: 0.2, output: 40 },
+    label: 'Claude Fable 5.2 (Anthropic)',
+    descriptor: 'highest intelligence score, priciest',
     temperature: null,
-    intelligence: 53.4,
-    agentic: 57.9,
+    intelligence: 64.6,
     vision: true,
     planTool: false,
     contextTokens: 1000000,
@@ -138,8 +136,7 @@ export const DIRECT_MODELS: AiModel[] = [
     label: 'Claude Haiku 5.5 (Anthropic)',
     descriptor: 'cheapest, strongest at that price',
     temperature: null,
-    intelligence: 43.4,
-    agentic: null,
+    intelligence: 36.5,
     vision: true,
     planTool: true,
     contextTokens: 1000000,
@@ -170,7 +167,7 @@ export const DIRECT_MODELS: AiModel[] = [
   // duplicate, it is the other route to them, and the table only ever shows the active provider's
   // half.
   //
-  // `intelligence`/`agentic` come from the Artificial Analysis pull like every other row (see the
+  // `intelligence` comes from the Artificial Analysis pull like every other row (see the
   // ratings block in the header), not from a separate reading.
   {
     id: 'gpt-6-astra',
@@ -180,8 +177,7 @@ export const DIRECT_MODELS: AiModel[] = [
     label: 'GPT-6 Astra (OpenAI)',
     descriptor: 'strongest (OpenAI), priciest',
     temperature: null,
-    intelligence: 52.7,
-    agentic: 51,
+    intelligence: 56.9,
     vision: true,
     planTool: false,
     contextTokens: 1050000,
@@ -195,8 +191,7 @@ export const DIRECT_MODELS: AiModel[] = [
     label: 'GPT-6.1 Sol (OpenAI)',
     descriptor: 'strong, mid price (default)',
     temperature: null,
-    intelligence: 51.8,
-    agentic: null,
+    intelligence: 54.6,
     vision: true,
     planTool: false,
     contextTokens: 1050000,
@@ -210,8 +205,7 @@ export const DIRECT_MODELS: AiModel[] = [
     label: 'GPT-6 Luna (OpenAI)',
     descriptor: 'cheapest',
     temperature: null,
-    intelligence: 38.1,
-    agentic: null,
+    intelligence: 27.9,
     vision: true,
     planTool: true,
     contextTokens: 1050000,
@@ -227,7 +221,7 @@ export const DIRECT_MODELS: AiModel[] = [
   // medium, high on both; `minimal` is an error on 3.8 Flash and Argon (OpenRouter maps it, Google
   // direct does not), so it is not offered here.
   //
-  // `intelligence`/`agentic` are the OpenRouter rows' figures: the same model, the same AA reading.
+  // `intelligence` is the OpenRouter rows' figure: the same model, the same AA reading.
   // Prices: Google's paid tier, standard (not batch, not flex). Cached reads are implicit caching;
   // explicit context caching and its storage fee are not used. Both rows double on a date Google has
   // already published — hence `priceChanges`.
@@ -237,10 +231,9 @@ export const DIRECT_MODELS: AiModel[] = [
     pricing: { input: 2, cachedInput: 0.1, output: 10 },
     priceChanges: [{ from: '2026-12-01', input: 4, cachedInput: 0.2, output: 20 }],
     label: 'Gemini 4 Argon (Google)',
-    descriptor: 'top tier (Google), paid keys only',
+    descriptor: 'strongest (Google), paid keys only',
     temperature: null,
-    intelligence: 52.6,
-    agentic: null,
+    intelligence: 50.4,
     vision: true,
     planTool: false,
     contextTokens: 1048576,
@@ -254,8 +247,7 @@ export const DIRECT_MODELS: AiModel[] = [
     label: 'Gemini 3.8 Flash (Google)',
     descriptor: 'fast, cheap (default)',
     temperature: null,
-    intelligence: 40.9,
-    agentic: 40.2,
+    intelligence: 30.8,
     vision: true,
     planTool: true,
     contextTokens: 1048576,
@@ -273,7 +265,6 @@ export const DIRECT_MODELS: AiModel[] = [
     descriptor: 'voice transcription',
     temperature: null,
     intelligence: null,
-    agentic: null,
     vision: false,
     selectable: false
   }

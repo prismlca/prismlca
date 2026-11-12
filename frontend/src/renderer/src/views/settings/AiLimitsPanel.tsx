@@ -214,7 +214,7 @@ export function AiLimitsPanel(): JSX.Element {
       </label>
       {/* The exceptions sit under the switch, the way OpenRouter's own privacy settings arrange
           them, and they are ON by default for a measured reason: without them strict retention
-          takes Fable 5.1 out of the picker on first launch — it has no zero-retention endpoint
+          takes Fable 5.2 out of the picker on first launch — it has no zero-retention endpoint
           anywhere — and, since Google's endpoints log prompts for abuse monitoring,
           every Gemini row with it. Indented so it reads as "…except", not as more independent options. */}
       {zdr ? (
@@ -244,7 +244,7 @@ export function AiLimitsPanel(): JSX.Element {
             An OpenRouter routing rule — Anthropic’s Claude API has no per-request equivalent, so this switch
             has no effect there and PrismLCA says so rather than pretending. What holds instead: Anthropic
             does not use API data for training without your permission and deletes inputs and outputs within
-            30 days; requests to Claude Fable 5.1 are kept for 30 days for safety review, and anything its
+            30 days; requests to Claude Fable 5.2 are kept for 30 days for safety review, and anything its
             systems flag as a usage-policy violation for up to two years. Zero retention is an agreement
             between you and Anthropic at organization level. If the per-request zero-retention guarantee
             matters to your data, use the OpenRouter provider.
@@ -275,7 +275,7 @@ export function AiLimitsPanel(): JSX.Element {
             endpoints that retain nothing at all. Off widens the pool — some models are served solely by
             logging providers and answer “no endpoints” while this is on. The exceptions exist because
             retention is stricter than training: some models have no zero-retention endpoint anywhere — Claude
-            Fable 5.1, and Gemini, whose Google endpoints keep prompts for a limited time for abuse monitoring
+            Fable 5.2, and Gemini, whose Google endpoints keep prompts for a limited time for abuse monitoring
             — and exempting their vendor keeps them usable while everything else stays strict. An exempted
             vendor's models run under that vendor's own retention terms. Voice transcription and embeddings
             always carry the no-data-collection rule, whatever you pick here; the stricter zero-retention rule

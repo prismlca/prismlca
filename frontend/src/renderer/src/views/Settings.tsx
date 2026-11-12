@@ -7,6 +7,7 @@ import PreferredBackgroundField from './PreferredBackground'
 import ExternalAgentsSettings from './ExternalAgentsSettings'
 import { setAS, useAppSettings, useAppSettingsWriteError } from '../lib/appSettings'
 import { SPELLCHECK_CHOICES } from '../../../shared/spellcheck'
+import { PROVIDER_ALLOWLIST_RESET } from '../../../shared/providerAllowlist'
 import {
   GearIcon,
   GlobeIcon,
@@ -461,6 +462,7 @@ export default function Settings({
                     zdrExceptAnthropic: DEFAULT_ZDR_EXCEPT_ANTHROPIC,
                     zdrExceptOpenai: DEFAULT_ZDR_EXCEPT_OPENAI,
                     zdrExceptGoogle: DEFAULT_ZDR_EXCEPT_GOOGLE,
+                    ...PROVIDER_ALLOWLIST_RESET,
                     focusTools: false,
                     chatApproval: 'irreversible',
                     voiceEnabled: true,

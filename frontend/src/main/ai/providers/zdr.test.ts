@@ -11,8 +11,9 @@ import { setZeroDataRetention, zdrForModel } from './openrouter'
  * `zdr: true` is stricter and separate: only endpoints that RETAIN nothing.
  *
  * The exception exists because strictness is not free. Measured against
- * `/api/v1/endpoints/zdr` on 2026-09-10, sixteen of the eighteen catalogue models have at least one
- * zero-retention endpoint — but `anthropic/claude-fable-5.1` has none at all, so a blanket rule
+ * `/api/v1/endpoints/zdr` on 2026-09-10, sixteen of the eighteen catalogue models had at least one
+ * zero-retention endpoint — but Claude Fable had none at all (`anthropic/claude-fable-5.2` still has
+ * none, re-checked 2026-11-12), so a blanket rule
  * would take the strongest model in the catalogue out of the picker on first launch. Google joined on
  * 2026-10-16: its endpoints log prompts for abuse monitoring, and OpenRouter announced (site banner) that
  * Google models require "Safety Retention" from 2026-10-18 — strict, every Gemini row would answer 404.
@@ -29,7 +30,7 @@ describe('zdrForModel', () => {
   it('sends nothing at all when the switch is off', () => {
     setZeroDataRetention(false, { anthropic: false, openai: false, google: false })
     expect(zdrForModel('z-ai/glm-5.3')).toBe(false)
-    expect(zdrForModel('anthropic/claude-fable-5.1')).toBe(false)
+    expect(zdrForModel('anthropic/claude-fable-5.2')).toBe(false)
   })
 
   it('enforces retention for every vendor that is not exempted', () => {
@@ -47,7 +48,7 @@ describe('zdrForModel', () => {
 
   it('exempts the three vendors when their boxes are ticked', () => {
     on(true, true)
-    expect(zdrForModel('anthropic/claude-fable-5.1')).toBe(false)
+    expect(zdrForModel('anthropic/claude-fable-5.2')).toBe(false)
     expect(zdrForModel('openai/gpt-6.1-sol')).toBe(false)
     expect(zdrForModel('google/gemini-4-argon')).toBe(false)
     expect(zdrForModel('google/gemini-3.8-flash')).toBe(false)

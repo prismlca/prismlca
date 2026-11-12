@@ -42,6 +42,7 @@ import {
   sanitiseReasoningEfforts
 } from '../shared/aiDefaults'
 import { DEFAULT_TRANSPORT, sanitiseTransport } from '../shared/distanceDefaults'
+import { PROVIDER_ALLOWLIST_RESET, sanitiseSlugList } from '../shared/providerAllowlist'
 import { ALL_SPELLCHECK_DICTS } from '../shared/spellcheck'
 import type { AppSettings } from '../shared/ipc'
 import { DEFAULT_DISPLAY, sanitiseDisplay } from '../shared/displayDefaults'
@@ -148,6 +149,7 @@ export const DEFAULTS: AppSettings = {
   zdrExceptAnthropic: DEFAULT_ZDR_EXCEPT_ANTHROPIC,
   zdrExceptOpenai: DEFAULT_ZDR_EXCEPT_OPENAI,
   zdrExceptGoogle: DEFAULT_ZDR_EXCEPT_GOOGLE,
+  ...PROVIDER_ALLOWLIST_RESET,
   focusTools: false,
   voiceEnabled: true,
   voiceLanguage: '',
@@ -305,6 +307,11 @@ export function getSettings(): AppSettings {
   out.newsAutoLoad = out.newsAutoLoad === true
   // Only a literal false switches it off; it opens no channel, so a garbled value keeps the default.
   out.keepAwake = out.keepAwake !== false
+  // Same rule for the allowlist: a garbled value keeps the restriction. The two lists were copied
+  // wholesale by the overlay — each entry is checked here, so only slugs reach the request.
+  out.providerAllowlistOn = out.providerAllowlistOn !== false
+  out.providerAllowlistAdded = sanitiseSlugList(stored.providerAllowlistAdded)
+  out.providerAllowlistRemoved = sanitiseSlugList(stored.providerAllowlistRemoved)
   // Same rule again: only a literal true opens the door for external agents.
   out.mcpEnabled = out.mcpEnabled === true
   // Anything but the literal opt-out keeps the card: a hand-edited value must fail towards asking.

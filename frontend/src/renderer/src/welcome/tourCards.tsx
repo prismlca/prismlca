@@ -319,12 +319,12 @@ export const TOUR_CARDS: TourCard[] = [
         </p>
         <p>
           PrismLCA starts you on <b>GPT-6.1 Sol</b>, which is solid in everyday modelling at a moderate cost;{' '}
-          <b>Claude Sonnet 5.5</b> and <b>Gemini 4 Argon</b> are in the same price range. <b>GPT-6 Luna</b>{' '}
+          <b>Claude Sonnet 5.5</b> and <b>Gemini 4 Carbon</b> are in the same price range. <b>GPT-6 Luna</b>{' '}
           and <b>Claude Haiku 5.5</b> cost a fraction of it, enough for simple tasks.
         </p>
         <p>
           <b>If the assistant disappoints you, change the model before you change your plan.</b> The top tier
-          — <b>Claude Opus 5.5</b>, <b>Claude Fable 5.1</b>, <b>GPT-6 Astra</b> — is one dropdown away, and it
+          — <b>Claude Opus 5.5</b>, <b>Claude Fable 5.2</b>, <b>GPT-6 Astra</b> — is one dropdown away, and it
           is usually the difference between an answer you correct line by line and one you only check.
         </p>
       </>
@@ -336,7 +336,7 @@ export const TOUR_CARDS: TourCard[] = [
         <div className="wt-lad-row">
           <span className="wt-lad-bar top" />
           <div>
-            <div className="wt-lad-name">Opus 5.5 · Fable 5.1 · GPT-6 Astra</div>
+            <div className="wt-lad-name">Opus 5.5 · Fable 5.2 · GPT-6 Astra</div>
             <div className="wt-lad-sub">The top tier — highest bill, for when quality decides</div>
           </div>
         </div>

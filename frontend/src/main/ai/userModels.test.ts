@@ -55,7 +55,7 @@ describe('loading models.json', () => {
   it('never takes ratings from the file, however they are written', () => {
     const { models } = one({ id: 'vendor/m', intelligence: 99, agentic: 99 })
     expect(models[0].intelligence).toBeNull()
-    expect(models[0].agentic).toBeNull()
+    expect(models[0]).not.toHaveProperty('agentic')
   })
 
   it('refuses to override a model PrismLCA already carries', () => {

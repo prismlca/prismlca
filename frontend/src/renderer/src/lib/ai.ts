@@ -21,7 +21,6 @@ export interface AiModelInfo {
   descriptor: string
   temperature: number | null // null = vendor default (parameter not sent)
   intelligence: number | null
-  agentic: number | null
   vision: boolean
   pricing: { input: number; output: number; cachedInput?: number } | null
   /** 'list' = hand-maintained list prices from the catalogue (OpenAI has no pricing API);
@@ -159,6 +158,10 @@ export const aiUsage = (): Promise<Record<string, Record<string, UsageEntry>>> =
 
 export const aiModels = (): Promise<AiModelInfo[]> => window.prism.ai.models() as Promise<AiModelInfo[]>
 
+/** OpenRouter's live prices per model id ($/1M) — only for the Models table; empty without a key. */
+export const aiOpenRouterPrices = (): Promise<Record<string, { input: number; output: number }>> =>
+  window.prism.ai.openrouterPrices()
+
 /** One row of OpenRouter's model list, as the "Add model" dialog shows it. */
 export interface OrCatalogueRow {
   id: string
@@ -177,6 +180,17 @@ export interface OrCatalogueRow {
 /** Every model OpenRouter lists, for the picker. Cached an hour in main. */
 export const orCatalogue = (): Promise<OrCatalogueRow[]> =>
   window.prism.ai.openrouterCatalogue() as Promise<OrCatalogueRow[]>
+
+/** One host OpenRouter routes to, for completing a name in the allowlist editor. */
+export interface OrProviderRow {
+  slug: string
+  name: string
+  headquarters: string | null
+}
+
+/** Every host OpenRouter routes to. Cached an hour in main; empty without an OpenRouter key. */
+export const orProviders = (): Promise<OrProviderRow[]> =>
+  window.prism.ai.openrouterProviders() as Promise<OrProviderRow[]>
 
 /** Fired on `window` once a user model was added or removed, so a catalogue cached elsewhere (the
  *  composer's model picker) re-reads instead of resolving the new id to a default. */

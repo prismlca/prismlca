@@ -15,8 +15,9 @@ import { AI_PROVIDERS, PROVIDER_CAPS } from '../../../shared/providerCaps'
 
 /**
  * The model catalogue for the picker beside the mic, fetched once per session. The button has to
- * show a label before anyone opens it, and the call behind it asks OpenRouter for live prices — so
- * the panel must not pay for that on every mount. A failed fetch clears the cache and is retried.
+ * show a label before anyone opens it; the catalogue comes from main without asking anyone (the live
+ * prices are the Models table's own lookup), and one read per session is still all the panel needs. A
+ * failed fetch clears the cache and is retried.
  */
 let MODEL_CATALOGUE: Promise<AiModelInfo[]> | null = null
 export const modelCatalogue = (): Promise<AiModelInfo[]> => {
