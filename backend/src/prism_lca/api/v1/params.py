@@ -262,15 +262,17 @@ class EvaluateFormulaRequest(BaseModel):
 
 
 @router.post("/evaluate", summary="Evaluate a formula without storing it")
-async def evaluate_formula(body: EvaluateFormulaRequest) -> dict:
+def evaluate_formula(body: EvaluateFormulaRequest) -> dict:
     """What a formula would come to, given the model's current parameters. Read-only.
 
     Deliberately outside the command bus: it changes nothing, so it belongs in neither the undo
     stack nor the audit log.
     """
-    # Stays on the loop for the same reason as the group listing: measured 5–8 ms and flat with
-    # model size, because it reads the parameters of one model and evaluates one expression.
-    return params.evaluate_formula(body.database, body.formula, body.overrides)
+    # In the thread pool, not on the event loop: a few milliseconds as a rule, but the expression is the
+    # caller's, and one that computes for long (a tower of powers) must not stop every other request.
+    from prism_lca.engine.formula_preview import evaluate_formula as preview
+
+    return preview(body.database, body.formula, body.overrides)
 
 
 @router.post("/recalculate", summary="Recalculate all parameters and parameterised exchanges")

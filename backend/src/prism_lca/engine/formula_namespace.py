@@ -1,12 +1,13 @@
 """The namespace formulas are evaluated in: asteval's default one, without file access and without output.
 
-Three kinds of interpreter evaluate formulas: ours (``params.evaluate_formula``, ``sensitivity_fast``), bw2data's
+Three kinds of interpreter evaluate formulas: ours (``formula_preview.evaluate_formula``, ``sensitivity_fast``), bw2data's
 recalculation and bw2parameters' ``ParameterSet``. Brightway takes no namespace from us, but every one of them
 builds its own from asteval's module tables when it is created. So the entries that read or write files, print,
 or change numpy's settings for the whole process are taken out of those tables, once, before anything evaluates a
 formula: the same tables with fewer entries, no function of asteval or Brightway replaced. ``params`` does it when
 it is imported, and every formula the backend evaluates is evaluated through that module or through
-``sensitivity_fast``, which imports it; ``bootstrap.get_bd`` does it too, before Brightway is first used.
+``sensitivity_fast`` and ``formula_preview``, which import it; ``bootstrap.get_bd`` does it too, before Brightway
+is first used.
 
 The asteval and bw2parameters versions these tables were reviewed for are pinned in
 ``tests/test_formula_namespace.py``.

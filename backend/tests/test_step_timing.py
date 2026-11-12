@@ -34,12 +34,12 @@ def test_a_rename_logs_every_step_and_no_model_name(client, token, project, capl
     line = lines[0]
     assert caplog.records[-1].levelno == logging.INFO
     for step in (
-        "parameters saved",
-        "database rewritten",
-        "parameters loaded",
+        "inventory rows renamed",
+        "parameters renamed",
+        "registry updated",
+        "arrays processed",
         "store chats",
         "store reports",
-        "parameter groups registered",
         "calculation caches cleared",
     ):
         assert f"{step} " in line, line

@@ -17,7 +17,7 @@
   {
     "date": "2026-11-12",
     "title": "Fewer surprises in assistant runs",
-    "details": "The run bar warns when the prompt cache stops working, an answer that ended in an error keeps the reason after a reload, and canvas actions work from any page. Renaming a model shows its progress, and a parameter that formulas or scenarios still use is not deleted."
+    "details": "The run bar warns when the prompt cache stops working, an answer that ended in an error keeps the reason after a reload, and canvas actions work from any page. Renaming a model takes about a second instead of half a minute, and a parameter that formulas or scenarios still use is not deleted."
   },
   {
     "date": "2026-11-12",

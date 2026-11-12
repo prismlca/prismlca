@@ -1,10 +1,10 @@
 """Wall-clock time per step of a long write, logged as one INFO line when it is done.
 
-A model rename rewrites the whole database under the new name and then every store that keys data by
-it; on a large model that takes long enough to notice, and which step it is cannot be told from the
-outside. :class:`StepTimer` records each step as it finishes and logs them together, so the next slow
-operation says where its time went without a separate measurement. Only step names and seconds go into
-the line — no model names, no content.
+A model rename rewrites its name in the inventory, the parameters and every store that keys data by it;
+when that takes long enough to notice, which step it is cannot be told from the outside.
+:class:`StepTimer` records each step as it finishes and logs them together, so the next slow operation
+says where its time went without a separate measurement. Only step names and seconds go into the line —
+no model names, no content.
 """
 from __future__ import annotations
 

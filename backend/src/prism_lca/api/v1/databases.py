@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import commands, model_folders, model_names, model_scope
+from prism_lca.engine import commands, lca, model_folders, model_names, model_scope
 from prism_lca.repository.base import DatabaseInfo
 
 router = APIRouter(prefix="/databases", tags=["databases"], dependencies=[Depends(require_token)])
@@ -119,15 +119,22 @@ async def duplicate_foreground(request: Request, body: DuplicateForegroundReques
     return info
 
 
+# `def`, not `async def`: a rename rewrites rows in both SQLite files and moves every per-model store,
+# and on the event loop that held up every other request — a health poll, a calculation abort — for its
+# whole duration. In the threadpool it can wait for the calculation lock without stalling anyone else.
 @router.post("/foreground/rename", response_model=DatabaseInfo, summary="Rename a foreground model")
-async def rename_foreground(request: Request, body: RenameForegroundRequest) -> DatabaseInfo:
+def rename_foreground(request: Request, body: RenameForegroundRequest) -> DatabaseInfo:
     # The chat may rename its own model; the cascade that follows (other models' comparison lists and
     # views point at the new name) keeps the workspace consistent and writes no content.
     model_scope.assert_model_write(body.database)
     # Only a new name is checked, so an existing name keeps working.
     if body.name.strip() != body.database:
         model_names.assert_one_line(body.name)
-    with commands.project_guard():
+    # Under the lock a scenario window holds while it writes its overrides into the model's parameters and
+    # restores them: a rename in between carried the overrides off under the new name, and the restore,
+    # looking under the old one, found nothing to put back. The order is the parameter routes': the
+    # calculation lock, then the project's.
+    with lca._LCA_LOCK, commands.project_guard():
         info = request.app.state.repository.rename_foreground_database(body.database, body.name)
     # The search index is keyed by database name — drop the old one or a future database reusing
     # the old name would serve stale results.

@@ -2767,6 +2767,15 @@ def _scenario_of(store, scenario_id: str, database: str) -> dict:
     entry = store.get(scenario_id)
     owner = entry.get("database")
     if owner and owner != database:
+        if model_scope.fence() is not None and owner not in model_scope.visible_names([owner]):
+            # Behind the fence: no other model's name, and no "open it" — that is the other chat's work.
+            raise PrismError(
+                f"The scenario belongs to another model, not to ‘{database}’.",
+                code="scenario_other_model",
+                status_code=409,
+                hint=f"Use a scenario of ‘{database}’ (list_scenarios); another model's scenarios are changed "
+                "in that model's own chat.",
+            )
         raise PrismError(
             f"The scenario belongs to ‘{owner}’, not to ‘{database}’.",
             code="scenario_other_model",
@@ -3289,9 +3298,15 @@ class CommandBus:
             return
         if not open_window:
             return
-        models = ", ".join(f"‘{d}’" for d in open_window["databases"] if d) or "this model"
+        named = [d for d in open_window["databases"] if d]
+        shown = model_scope.visible_names(named)
+        label = open_window["label"]
+        if len(shown) < len(named):
+            # Behind the fence: another model's calculation is a calculation, unnamed and undescribed (V502).
+            shown, label = shown + ["another model"], "a calculation"
+        models = ", ".join(m if m == "another model" else f"‘{m}’" for m in shown) or "this model"
         raise PrismError(
-            f"Cannot {verb} while {open_window['label']} is applied to {models}.",
+            f"Cannot {verb} while {label} is applied to {models}.",
             code="param_window_open",
             status_code=409,
             hint=(
@@ -3455,12 +3470,17 @@ class CommandBus:
         newest = stack[view[-1]]
         blocker = newest if not self._belongs(newest, database) else stack[-1]
         where = self._owner(blocker) or "another model"
+        fenced = model_scope.fence() is not None
+        if fenced and where not in model_scope.visible_names([where]):
+            # Behind the fence the other model stays unnamed, and so does what was changed there (V502).
+            where = "another model"
+        shown = where if where == "another model" else f"‘{where}’"
         # An assistant reads this too, and "open the other model and undo it there" would send it off to
         # take back somebody else's work. It may only do that with its own change.
         hint = (
             (
                 f"{verb.capitalize()} only takes back changes to ‘{database}’, the model this chat works on, "
-                f"and that change in ‘{where}’ is not this chat's to take back. Leave it, and tell the user if "
+                f"and that change in {shown} is not this chat's to take back. Leave it, and tell the user if "
                 f"it is in your way."
             )
             if model_scope.fence() is not None
@@ -3479,7 +3499,8 @@ class CommandBus:
             )
         )
         raise PrismError(
-            f"The last change was made in ‘{where}’: {blocker.summary()}.",
+            f"The last change was made in {shown}"
+            + (": " + blocker.summary() + "." if where != "another model" or not fenced else "."),
             code=f"{verb}_elsewhere",
             status_code=409,
             hint=hint,
@@ -3681,6 +3702,10 @@ class CommandBus:
                 newest = stack[view[-1]]
                 blocker = newest if not self._belongs(newest, database or "") else stack[-1]
                 held = {"model": self._owner(blocker), "summary": blocker.summary()}
+                hidden = held["model"] and held["model"] not in model_scope.visible_names([held["model"]])
+                if model_scope.fence() is not None and hidden:
+                    # Behind the fence another model's step is reported, not named or described (V502).
+                    held = {"model": "another model", "summary": None}
             out[f"{verb}_elsewhere"] = held
         return out
 

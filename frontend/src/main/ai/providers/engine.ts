@@ -357,7 +357,10 @@ async function* sendOnce<S>(
 
     if (opts.signal?.aborted) {
       // Stopped by the user: what arrived is theirs, the call is booked, and an unfinished round's tool
-      // calls are not handed out — nothing would run them, and nothing should.
+      // calls are not handed out — nothing would run them, and nothing should. A reply the provider had
+      // already completed (the stop came from a spend ceiling tripping on its own usage report) keeps its
+      // finish: without it a whole answer reads as cut off.
+      if (transport.completed(state, sawDone)) for (const f of finishes) yield f
       if (!sentUsage) yield { type: 'usage', usage: {} }
       return { again: false }
     }

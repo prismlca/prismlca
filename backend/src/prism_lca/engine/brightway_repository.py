@@ -349,43 +349,28 @@ class BrightwayRepository(LcaRepository):
         if name in bd.databases:
             raise PrismError(f"Database '{name}' already exists.", code="database_exists",
                              status_code=409, hint="Choose another name.")
-        from prism_lca.engine import hygiene
-        from prism_lca.engine import params as _params
+        from prism_lca.engine import model_rename
         from prism_lca.engine._store import per_model_stores
         from prism_lca.engine.lca import invalidate_lca_cache
         from prism_lca.engine.step_timing import StepTimer
 
-        # Each step's seconds go to the log as one INFO line (V469): a rename of a large model is slow,
-        # and the line says which step it was.
+        # Each step's seconds go to the log as one INFO line (V469): a rename touches the inventory, the
+        # parameters and every per-model store, and when one of them is slow the line says which.
         timer = StepTimer("model rename")
-        # bw2data's rename deregisters the old database, which DELETES its DatabaseParameter rows
-        # and the activities' parameter groups — so snapshot the parameters first, then recreate
-        # and re-register them under the new name afterwards. Parameters stay an explicit step
-        # beside the registry precisely because of this ordering constraint.
-        param_dump = _params.dump_params(source)
-        timer.done("parameters saved")
         # While the registry still lists `source`: its legacy study file must find it (engine/study.py).
         from prism_lca.engine import study as _study
 
         _study.ensure_migrated(source)
-        stale = hygiene.database_files(source)  # bw2data's rename writes the new name, leaves the old zip
         timer.done("study checked")
-        bd.Database(source).rename(name)
-        timer.done("database rewritten")
-        hygiene.remove_files(stale)
-        set_read_only(name, False)
-        timer.done("old files removed")
-
-        _params.load_params(name, param_dump)
-        timer.done("parameters loaded")
+        # The name is rewritten in bw2data's rows, parameters and registry, not copied: bw2data's own
+        # rename writes the whole model again and vacuums the whole inventory file after it.
+        model_rename.rename(source, name, timer)
         # Model-scoped data must follow the new name, or it strands under the dead old name. One
         # registry instead of a hand-written list per cascade: "forgot to add the new store" has
         # shipped once already (resurrected reports — see report_store.remove_database).
         for store in per_model_stores():
             store.rename(source, name)
             timer.done(f"store {store.name}")
-        _params.reregister_database_groups(name)  # revive the renamed model's exchange formulas
-        timer.done("parameter groups registered")
         invalidate_lca_cache()
         timer.done("calculation caches cleared")
         count = len(bd.Database(name))

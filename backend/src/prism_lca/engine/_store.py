@@ -12,10 +12,10 @@ fix for that class: a per-model store registers ONCE, and every cascade iterates
 
 What deliberately did NOT move here: the JSONL append logs (``gate_journal``, ``audit_store``) have
 a different shape and their own rotation/counting logic; the audit log is additionally *history* and
-must survive a model deletion. ``params`` holds its per-model data in bw2data rows, not JSON, and
-its rename has ordering constraints (dump before Brightway's rename, load after), so it stays an
-explicit step beside the registry. Bundle export/import (``bundle.py``) is per-section IO with
-bespoke logic per store, not a copy of this cascade.
+must survive a model deletion. ``params`` holds its per-model data in bw2data rows, not JSON: a rename
+moves them with the model's other rows (``model_rename``), a deletion is an explicit step beside the
+registry. Bundle export/import (``bundle.py``) is per-section IO with bespoke logic per store, not
+a copy of this cascade.
 
 On-disk format is untouched: same serialisation (``ensure_ascii=False, indent=1``), same paths,
 same keys — only the code sharing changed.

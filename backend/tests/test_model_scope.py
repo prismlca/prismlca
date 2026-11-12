@@ -142,7 +142,10 @@ def test_a_tag_merge_is_refused_while_another_model_carries_the_value(client, to
 
     r = client.post("/api/v1/model/tag-groups/values/merge", json=merge, headers=chat)
     _refused(r)
-    assert "‘B’" in r.json()["error"]["message"]
+    # The other model is refused without being named: the chat is not to learn the names of the
+    # user's other studies from an error (V502).
+    msg = r.json()["error"]["message"]
+    assert "another model" in msg and "‘B’" not in msg
     assert _tags(client, token, "B", b) == [{"dimension": "Phase", "value": "Usage"}]
 
     _tag(client, token, "B", b, "Use")
@@ -205,7 +208,10 @@ def test_a_forced_delete_may_not_cut_another_models_input(client, token, project
     chat = _fenced(token, "A")
     r = client.post("/api/v1/model/activities/delete", json={"database": "A", "code": mine, "force": True}, headers=chat)
     _refused(r)
-    assert "‘B’" in r.json()["error"]["message"]
+    # The other model is refused without being named: the chat is not to learn the names of the
+    # user's other studies from an error (V502).
+    msg = r.json()["error"]["message"]
+    assert "another model" in msg and "‘B’" not in msg
     own = _code(client, token, "A", "unused")
     ok = client.post("/api/v1/model/activities/delete", json={"database": "A", "code": own, "force": True}, headers=chat)
     assert ok.status_code == 200, ok.text
@@ -286,7 +292,8 @@ def test_an_empty_model_name_is_refused_as_blank_not_as_another_model(client, to
     foreign = client.post("/api/v1/model/activities/classification", json={**body, "database": "B"}, headers=chat)
     _refused(foreign)
     assert "is empty" not in foreign.json()["error"]["message"]
-    assert "‘B’" in foreign.json()["error"]["message"]
+    assert "another model" in foreign.json()["error"]["message"]
+    assert "‘B’" not in foreign.json()["error"]["message"]
     # A chat without a model open: nothing to point to, the old refusal stands.
     none_open = client.post(
         "/api/v1/model/activities/classification", json={**body, "database": ""}, headers={**token, "X-Prism-Model": ""}
@@ -322,3 +329,20 @@ def test_every_command_says_which_models_it_writes_before_it_runs():
         and "scope_models" not in vars(cls)
     ]
     assert not undecided, f"Override scope_models() on: {', '.join(sorted(undecided))}"
+
+
+def test_behind_the_fence_an_unknown_database_lists_no_other_models(client, token, project):
+    """The "not found" answer for a database lists the workspace's databases — behind the fence only the
+    chat's own model, the backgrounds and the library (V502)."""
+    _fg(client, token, "A")
+    _fg(client, token, "B")
+
+    def listed(headers) -> list[str]:
+        r = client.get("/api/v1/model/activities/no-such-model", headers=headers)
+        assert r.status_code == 404, r.text
+        hint = r.json()["error"]["hint"]
+        return hint.split(": ", 1)[1].rstrip(".").split(", ")
+
+    fenced = listed({**token, "X-Prism-Model": "A"})
+    assert "A" in fenced and "B" not in fenced
+    assert "B" in listed(token)

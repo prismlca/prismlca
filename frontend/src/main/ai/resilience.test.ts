@@ -290,6 +290,53 @@ describe('a provider that never answers', () => {
   })
 })
 
+describe('a stop that lands on the usage report of a finished reply', () => {
+  /** Run one request, aborting the moment its usage arrives — the spend ceiling tripping on it. */
+  async function stopOnUsage(sse: string): Promise<StreamEvent[]> {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(raw(sse)))
+    const stop = new AbortController()
+    const events: StreamEvent[] = []
+    for await (const ev of streamChat({ model: 'm', messages: [], temperature: null, signal: stop.signal })) {
+      events.push(ev)
+      if (ev.type === 'usage') stop.abort()
+    }
+    return events
+  }
+
+  it('still hands out the finish the provider sent, so a whole reply does not read as cut off', async () => {
+    const events = await stopOnUsage(
+      'data: {"choices":[{"delta":{"content":"Blocking: none."}}]}\n\n' +
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n' +
+        'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":4,"cost":0.5}}\n\n' +
+        'data: [DONE]\n\n'
+    )
+    expect(events.map((e) => e.type)).toContain('finish')
+  })
+
+  it('hands out no finish for a reply that was still being written', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(raw('data: {"choices":[{"delta":{"content":"Blocking: one"}}]}\n\n'))
+    )
+    const stop = new AbortController()
+    const events: StreamEvent[] = []
+    const run = (async () => {
+      for await (const ev of streamChat({
+        model: 'm',
+        messages: [],
+        temperature: null,
+        signal: stop.signal
+      })) {
+        events.push(ev)
+        if (ev.type === 'delta') stop.abort()
+      }
+    })()
+    await vi.runAllTimersAsync()
+    await run.catch(() => undefined)
+    expect(events.map((e) => e.type)).not.toContain('finish')
+  })
+})
+
 describe('a reply the provider never finished', () => {
   it('is an error, not a short answer — and its calls are not handed out', async () => {
     // A tool call fully streamed, then the connection closed cleanly: no finish reason, no [DONE].

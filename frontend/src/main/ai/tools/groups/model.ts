@@ -12,6 +12,7 @@ import { trimUnitNotes } from '../advice/warnings'
 import { IMPL, delegate } from '../impl'
 import { type LinkedInput, UNOPENED_LINKS_SHOWN, unopenedLinks } from '../advice/hotspots'
 import { expandBatch, explainNotFound, ignoredNote } from './exchangeBatch'
+import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
 
 /**
  * What edit_exchange says beside a link to a background dataset nobody has opened. Without it, models
@@ -606,6 +607,7 @@ export const modelTools: Tool[] = [
             throw new Error(
               'action="add" also requires: amount — or a formula, which is evaluated to give one.'
             )
+          if (it.formula) await checkFormulaBeforeAdd(ctx, db, String(it.formula))
           const made: any = await IMPL.add_exchange(
             {
               ...base,
@@ -636,10 +638,12 @@ export const modelTools: Tool[] = [
               if (typeof ex?.amount === 'number') amount = ex.amount
               dimensionCheck = parsedSet?.exchange?.dimension_check ?? parsedSet?.dimension_check
             } catch (e) {
-              // The placeholder existed only to carry the formula. A bad formula must not leave a
-              // silent zero behind pretending to be a real quantity.
-              if (!hasAmount && uid) await IMPL.remove_exchange({ ...base, uid }, ctx).catch(() => {})
-              throw e
+              throw await refusedOnWrite(e, {
+                uid,
+                amount: it.amount,
+                hasAmount,
+                remove: () => IMPL.remove_exchange({ ...base, uid }, ctx)
+              })
             }
           }
           if (uid && it.comment) await IMPL.set_exchange_comment({ ...base, uid, comment: it.comment }, ctx)

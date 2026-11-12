@@ -901,11 +901,42 @@ def test_evaluate_formula_does_not_mistake_syntax_for_parameters(client, token):
     r = client.post(
         "/api/v1/params/evaluate", json={"database": db, "formula": "p if p > 0 else 0"}, headers=token
     )
-    if r.status_code != 200:
-        # The preview interpreter may refuse the conditional itself; it must not blame the keywords.
-        assert "'if'" not in r.text and "Unknown name(s) in the formula: else" not in r.text, r.text
-    else:
-        assert r.json()["value"] == 2
+    # The preview evaluates what the write accepts: the conditional itself is fine, not just its keywords.
+    assert r.status_code == 200, r.text
+    assert r.json()["value"] == 2
+
+
+def test_evaluate_formula_reads_keyword_arguments_as_arguments(client, token):
+    """`clip(p, a_min=0, a_max=1)` is a valid formula: a_min and a_max are no parameters."""
+    db = _fg(client, token)
+    _param(client, token, db, "p", amount=2)
+    r = client.post(
+        "/api/v1/params/evaluate", json={"database": db, "formula": "clip(p, a_min=0, a_max=1)"}, headers=token
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["value"] == 1
+    assert r.json()["used"] == {"p": 2}
+
+
+def test_evaluate_formula_refuses_overlong_and_deeply_nested_input(client, token):
+    """The name check parses before asteval would: the length limit stands in front of it, and a nesting
+    too deep for the parser is a formula error, not a crash."""
+    db = _fg(client, token)
+    long = client.post(
+        "/api/v1/params/evaluate", json={"database": db, "formula": "max(" + "1," * 30_000 + "1)"}, headers=token
+    )
+    assert long.status_code == 400 and "at most 50000" in long.text, long.text
+    deep = client.post(
+        "/api/v1/params/evaluate", json={"database": db, "formula": "(" * 5_000 + "1" + ")" * 5_000}, headers=token
+    )
+    assert 400 <= deep.status_code < 500, deep.text
+
+
+def test_evaluate_formula_refuses_a_loop(client, token):
+    """The preview runs on the API's event loop: a loop is refused, not run."""
+    db = _fg(client, token)
+    r = client.post("/api/v1/params/evaluate", json={"database": db, "formula": "while True: pass"}, headers=token)
+    assert r.status_code >= 400, r.text
 
 
 def test_an_empty_formula_makes_the_parameter_a_plain_value_again(client, token):

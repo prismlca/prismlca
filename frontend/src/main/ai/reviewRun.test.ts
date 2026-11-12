@@ -66,7 +66,12 @@ describe('runReview', () => {
   it('stops the first attempt after ten minutes and restarts once, told its six-minute deadline', async () => {
     const { stream, calls } = fakeStream([
       { events: [{ type: 'reasoning', chars: 50_000 }], hang: true },
-      { events: [{ type: 'delta', text: 'Should fix: the lid.' }] }
+      {
+        events: [
+          { type: 'delta', text: 'Should fix: the lid.' },
+          { type: 'finish', reason: 'stop' }
+        ]
+      }
     ])
     const done = runReview({ ...base, stream })
     await vi.advanceTimersByTimeAsync(FIRST_ATTEMPT_MS - 1)
@@ -241,20 +246,39 @@ describe('restartNote', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('marks text cut off by the spend ceiling, and starts no second attempt', async () => {
+  it('counts a review as whole when the engine hands out its finish after the ceiling tripped on its usage', async () => {
+    // The engine holds `finish` back until the stream ends; when the provider had completed the reply it
+    // hands it out even after the stop — this is that order.
+    const run = new AbortController()
+    const stop = new AbortController()
+    const signal = AbortSignal.any([stop.signal, run.signal])
+    const { stream } = fakeStream([
+      {
+        events: [
+          { type: 'delta', text: 'Blocking: none.' },
+          { type: 'usage', usage: { prompt_tokens: 10, completion_tokens: 10, cost: 0.5 } },
+          { type: 'finish', reason: 'stop' }
+        ]
+      }
+    ])
+    const r = await runReview({ ...base, stream, signal, stop: stop.signal, onCost: () => run.abort() })
+    expect(r).toMatchObject({ outcome: 'ok', text: 'Blocking: none.', attempts: 1 })
+    expect(r.partial).toBeUndefined()
+  })
+
+  it('marks text cut off when the ceiling trips elsewhere mid-review, and starts no second attempt', async () => {
+    // Another call of the run (a research leg, the main loop) spends the last of the budget while the
+    // reviewer is still writing: no usage report of its own, no finish — cut off.
     const run = new AbortController()
     const stop = new AbortController()
     const signal = AbortSignal.any([stop.signal, run.signal])
     const { stream, calls } = fakeStream([
-      {
-        events: [
-          { type: 'delta', text: 'Blocking: one.' },
-          { type: 'usage', usage: { prompt_tokens: 10, completion_tokens: 10, cost: 0.5 } }
-        ],
-        hang: true
-      }
+      { events: [{ type: 'delta', text: 'Blocking: one.' }], hang: true }
     ])
-    const r = await runReview({ ...base, stream, signal, stop: stop.signal, onCost: () => run.abort() })
+    const p = runReview({ ...base, stream, signal, stop: stop.signal })
+    await vi.advanceTimersByTimeAsync(10)
+    run.abort()
+    const r = await p
     expect(r).toMatchObject({ outcome: 'ok', text: 'Blocking: one.', partial: true, attempts: 1 })
     expect(calls).toHaveLength(1)
   })
@@ -266,5 +290,43 @@ describe('restartNote', () => {
     await vi.advanceTimersByTimeAsync(10)
     stop.abort()
     await expect(p).rejects.toThrow(/stopped before it finished/)
+  })
+
+  it('marks a review cut short by the output limit, also when the ceiling tripped on its usage', async () => {
+    const run = new AbortController()
+    const stop = new AbortController()
+    const signal = AbortSignal.any([stop.signal, run.signal])
+    const { stream } = fakeStream([
+      {
+        events: [
+          { type: 'delta', text: 'Blocking: one.' },
+          { type: 'usage', usage: { prompt_tokens: 10, completion_tokens: 10, cost: 0.5 } },
+          { type: 'finish', reason: 'length' }
+        ]
+      }
+    ])
+    const r = await runReview({ ...base, stream, signal, stop: stop.signal, onCost: () => run.abort() })
+    expect(r).toMatchObject({ outcome: 'ok', text: 'Blocking: one.', partial: true })
+  })
+
+  it('marks a first answer that ended on the output limit as cut short', async () => {
+    const { stream, calls } = fakeStream([
+      {
+        events: [
+          { type: 'delta', text: 'Blocking: one.' },
+          { type: 'finish', reason: 'length' }
+        ]
+      }
+    ])
+    const r = await runReview({ ...base, stream })
+    expect(r).toMatchObject({ outcome: 'ok', text: 'Blocking: one.', partial: true, attempts: 1 })
+    expect(calls).toHaveLength(1)
+  })
+
+  it('marks a reply that ended with no reason at all as cut short', async () => {
+    // A stream can close with text and [DONE] but no finish_reason: nothing says the reply was whole.
+    const { stream } = fakeStream([{ events: [{ type: 'delta', text: 'Blocking: one.' }] }])
+    const r = await runReview({ ...base, stream })
+    expect(r).toMatchObject({ outcome: 'ok', text: 'Blocking: one.', partial: true })
   })
 })
