@@ -210,8 +210,14 @@ export function clampResearchQuestions(value: unknown): number {
  * The bounds are not decoration. Below the minimum, legitimate long answers get truncated — the
  * closing summaries of a real model build measured ~7k tokens, and a report chapter can exceed that;
  * above the maximum, a runaway reply gets expensive before anything notices.
+ *
+ * 75 000 rather than the earlier 50 000: reasoning tokens count against this ceiling, and a model that
+ * thinks at length can spend all of it before writing a word. Measured: a reviewer reasoned through
+ * 50 000 tokens (~200k characters), stopped on `length` with an empty answer and needed a second
+ * attempt — a quarter of an hour for one review. The default also reaches the helpers that pass no
+ * limit of their own (review, research, import matching).
  */
-export const DEFAULT_MAX_TOKENS = 50_000
+export const DEFAULT_MAX_TOKENS = 75_000
 export const MIN_MAX_TOKENS = 20_000
 export const MAX_MAX_TOKENS = 250_000
 
@@ -222,7 +228,7 @@ export const MAX_MAX_TOKENS = 250_000
  * Derived from the runs on record, since no ledger keeps single replies: one report run wrote
  * nine chapters in 115 184 output tokens (≈ 13 000 each, ~100 tokens/s), Qwen 3.8 Max averaged
  * 7 200 per call over 576 writer calls and spent up to 250 s on one chapter (≈ 25 000 tokens at that
- * rate), GLM 5.3 Flash averaged 9 900. Twice the chat ceiling is four times the largest chapter
+ * rate), GLM 5.3 Flash averaged 9 900. Above the chat ceiling and four times the largest chapter
  * seen — room for a long annex on a model that thinks at length, while a runaway still stops. A
  * reply that does hit it is continued, not cut (reportWriter, MAX_CONTINUATIONS).
  */

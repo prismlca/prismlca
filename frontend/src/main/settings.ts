@@ -70,13 +70,17 @@ import { getModels } from './ai/models'
  * Schema 4: `maxCostUsd` 2 → 15. Same shape as schema 2 and the same reason: a file written before
  * that raise materialised the old default as a stored value, so the raise would never reach an
  * existing installation — the one case where the stored number means "whatever the default is"
- * rather than a decision. Migrated only when it IS 2; any other figure was typed by someone. */
+ * rather than a decision. Migrated only when it IS 2; any other figure was typed by someone.
+ *
+ * Schema 5: `maxTokens` 50 000 → 75 000. The same once more: reasoning counts against the reply
+ * ceiling, and a materialised 50 000 would keep every existing installation on the old figure.
+ * Migrated only when it IS 50 000. */
 //: The stealth model OpenRouter retired on 2026-08-26, and the id it told us to move to. Kept as
 //: named constants because the migration below and any future note about them should not drift apart.
 const RETIRED_STEALTH_ID = 'stealth/ox-alpha'
 const STEALTH_SUCCESSOR_ID = 'z-ai/glm-5.3-flash'
 
-const SCHEMA = 4
+const SCHEMA = 5
 
 // The shape lives in shared/ipc.ts — the renderer's store shows the same fields, and two copies
 // of this interface had to be kept in step by hand. Re-exported because this module owns the file
@@ -214,6 +218,10 @@ function migrate(data: Stored): Stored {
     // The old default, materialised — see the SCHEMA note. A brake that ends normal work is not a
     // brake, and nobody who never opened the field chose the number that ends it.
     data.maxCostUsd = DEFAULT_MAX_COST_USD
+  }
+  if (from < 5 && data.maxTokens === 50_000) {
+    // The old default, materialised — see the SCHEMA note.
+    data.maxTokens = DEFAULT_MAX_TOKENS
   }
   data.schema = SCHEMA
   save(data)

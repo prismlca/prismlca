@@ -358,6 +358,27 @@ describe('schema 4: the cost brake stops being the thing that ends normal work',
   })
 })
 
+describe('schema 5: the reply ceiling leaves room for reasoning', () => {
+  it('lifts a stored 50 000 to the new default', () => {
+    writeFileSync(FILE, JSON.stringify({ schema: 4, maxTokens: 50_000 }))
+    s.resetSettingsCache()
+    expect(s.getSettings().maxTokens).toBe(75_000)
+    expect(JSON.parse(readFileSync(FILE, 'utf-8')).maxTokens).toBe(75_000) // persisted, so it runs once
+  })
+
+  it('leaves any other figure alone', () => {
+    writeFileSync(FILE, JSON.stringify({ schema: 4, maxTokens: 40_000 }))
+    s.resetSettingsCache()
+    expect(s.getSettings().maxTokens).toBe(40_000)
+  })
+
+  it('never migrates twice: a 50 000 chosen under schema 5 stays', () => {
+    writeFileSync(FILE, JSON.stringify({ schema: 5, maxTokens: 50_000 }))
+    s.resetSettingsCache()
+    expect(s.getSettings().maxTokens).toBe(50_000)
+  })
+})
+
 describe('the transport group', () => {
   // The first nested group in the file: the overlay copies whatever object is stored, so every
   // field must be coerced afterwards — a hand-edited file is the case this pins.
