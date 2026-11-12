@@ -13,7 +13,6 @@ carries a ``database`` argument.
 """
 from __future__ import annotations
 
-import keyword
 import re
 
 from prism_lca import _log
@@ -909,7 +908,8 @@ def clear_group(database: str, group_id: str) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Model lifecycle: parameters travel with the model (duplicate / rename / delete)
+# Model lifecycle: parameters travel with the model (duplicate / delete; a rename rewrites them in
+# place, see engine/model_rename.py)
 # --------------------------------------------------------------------------- #
 def copy_params(src: str, dst: str, group_id_map: dict[str, str] | None = None) -> None:
     """Copy every parameter of model ``src`` into model ``dst`` (used when a model is duplicated).
@@ -944,9 +944,7 @@ def copy_params(src: str, dst: str, group_id_map: dict[str, str] | None = None) 
 
 
 def dump_params(database: str) -> list[dict]:
-    """Full snapshot of a model's parameters (name/amount/formula/data). Used to carry them across
-    a bw2data ``Database.rename``, which deregisters the old database and thereby DELETES its
-    DatabaseParameter rows before any re-key could run."""
+    """Full snapshot of a model's parameters (name/amount/formula/data), as a bundle carries them."""
     DatabaseParameter, _parameters = _DB()
     return [
         {"name": p.name, "amount": p.amount, "formula": p.formula, "data": dict(p.data or {})}
@@ -955,7 +953,7 @@ def dump_params(database: str) -> list[dict]:
 
 
 def load_params(database: str, dump: list[dict]) -> None:
-    """Recreate parameters from :func:`dump_params` under ``database`` (after a rename)."""
+    """Recreate parameters from :func:`dump_params` under ``database`` (a bundle's model)."""
     if not dump:
         return
     DatabaseParameter, parameters = _DB()
@@ -977,8 +975,8 @@ def load_params(database: str, dump: list[dict]) -> None:
 
 def reregister_database_groups(database: str) -> None:
     """Re-register the formula-bearing exchanges of every activity in a model into their parameter
-    groups, then recalculate. A bw2data ``Database.rename`` drops the old ActivityParameter groups,
-    so without this the renamed model's formulas would keep static amounts."""
+    groups, then recalculate. A model whose exchanges were written fresh — a copy, a bundle's model —
+    has no groups yet, so without this its formulas would keep static amounts."""
     bd = get_bd()
     for act in bd.Database(database):
         try:
@@ -987,14 +985,6 @@ def reregister_database_groups(database: str) -> None:
         except Exception as exc:  # noqa: BLE001 - a bad/legacy activity must not block the rename
             _log.swallowed(exc, "reregister_database_groups")
     recalc_database(database)
-
-
-def rename_database(old: str, new: str) -> None:
-    """Re-key any parameters still filed under the old model name. bw2data's ``Database.rename``
-    already deletes them (it deregisters the old database), so this is a best-effort safety net —
-    the real move is done by dump_params(old) before the rename + load_params(new) after."""
-    DatabaseParameter, _parameters = _DB()
-    DatabaseParameter.update(database=new).where(DatabaseParameter.database == old).execute()
 
 
 def remove_database(database: str) -> None:
@@ -1281,82 +1271,3 @@ def restore_exchange_formula(database: str, code: str, uid: str, snap: dict) -> 
             ActivityParameter.recalculate_exchanges(_group_name(database, code))
     except Exception as exc:  # noqa: BLE001
         _log.swallowed(exc, "restore_exchange_formula")
-
-
-#: Identifiers in a formula, so the answer can say which parameters it actually leaned on.
-_IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
-
-
-def evaluate_formula(
-    database: str,
-    formula: str,
-    overrides: dict[str, float] | None = None,
-) -> dict:
-    """Work out what a formula would come to, without touching the model.
-
-    Building a parameterised exchange used to be a one-way step: write the expression, store it,
-    recalculate, and only then see the number. The safe move was therefore to compute it by hand
-    first and check afterwards — exactly the hand-arithmetic the parameters exist to remove. This
-    answers "what would this be worth?" before anything is written, using the same parameter values
-    the engine would.
-
-    ``overrides`` replaces individual parameter values for this evaluation only — nothing is saved —
-    which is what a what-if question needs: "and if the distance were 20 km?".
-
-    A name the formula uses but the model does not define is reported as such: a mistyped parameter
-    is the common case, and being told which name is unknown beats a stack trace.
-    """
-    from asteval import Interpreter
-
-    values: dict[str, float] = {}
-    for p in list_params(database):
-        amount = p.get("amount")
-        if isinstance(amount, (int, float)):
-            values[str(p["name"])] = float(amount)
-
-    unknown_overrides = sorted(set(overrides or {}) - set(values))
-    values.update({k: float(v) for k, v in (overrides or {}).items()})
-
-    text = formula or ""
-    referenced = set(_IDENT_RE.findall(text))
-    interp = Interpreter(usersyms=dict(values), minimal=True)
-
-    # Checked before evaluating: asteval reports an undefined name as a generic error, and the one
-    # thing worth saying is WHICH name it was. Anything the interpreter already knows (min, max, abs,
-    # the maths functions) is not a missing parameter — and neither is syntax: `p if p > 0 else 0`
-    # used to be refused with "define 'if' and 'else' as parameters first".
-    missing = sorted(n for n in referenced if n not in interp.symtable and not keyword.iskeyword(n))
-    if missing:
-        raise PrismError(
-            f"Unknown name(s) in the formula: {', '.join(missing)}.",
-            code="formula_error",
-            hint="Define them as parameters first, or check the spelling against list_parameters.",
-        )
-
-    value = interp(text)
-    errors = [err.get_error()[1] for err in getattr(interp, "error", [])]
-    if errors:
-        raise PrismError(
-            f"Formula error: {errors[0]}",
-            code="formula_error",
-            hint="Use valid parameter names and operators.",
-        )
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise PrismError(
-            f"The formula did not produce a number (got {type(value).__name__}).",
-            code="formula_error",
-            hint="A formula must evaluate to a single numeric value.",
-        )
-
-    used = {n: values[n] for n in sorted(referenced & set(values))}
-    out = {
-        "formula": text,
-        "value": float(value),
-        "used": used,
-        "overrides_applied": {k: float(v) for k, v in (overrides or {}).items()},
-    }
-    if unknown_overrides:
-        # Overriding a name the model does not have is almost always a typo, and silently ignoring
-        # it would make the answer look authoritative while it answered a different question.
-        out["unknown_overrides"] = unknown_overrides
-    return out

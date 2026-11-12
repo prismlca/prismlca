@@ -192,20 +192,28 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
     ...(outcome === 'error' && last.error ? { error: last.error } : {})
   })
 
+  /** Only a reply the provider ended on its natural end is whole; every transport names that end "stop".
+   *  The output-token limit ("length"), a refusal, a filter — or no reason at all — leave it cut short,
+   *  even with text: its last findings may be missing. */
+  const cutShort = (a: Attempt): boolean => a.finish !== 'stop'
+
   /** The spend ceiling ended an attempt: what was received is the review, marked cut off; nothing at all
    *  is the same stop as the user's. */
   const budgetEnd = (last: Attempt, attempts: number, earlier = ''): ReviewResult => {
     const text = last.text || earlier
     if (!text)
       throw new Error('The review was stopped before it finished: the spend limit of this run was reached.')
-    return result('ok', last, attempts, text, !(last.text && last.finish))
+    // Only a finish of "stop" is the provider's word that the reply is whole; the engine hands it out even
+    // when the ceiling stopped the stream on the reply's own usage report.
+    return result('ok', last, attempts, text, !(last.text && last.finish === 'stop'))
   }
 
   const first = await attempt({ user: opts.dossier, budgetMs: FIRST_ATTEMPT_MS, label: '' })
   // Only a stream that ended on its own counts as a whole review: text from one that was stopped or
   // broke off is kept below as a last resort, marked as cut off.
   if (first.budgetStopped) return budgetEnd(first, 1)
-  if (first.text && !first.timedOut && !first.error) return result('ok', first, 1)
+  if (first.text && !first.timedOut && !first.error)
+    return result('ok', first, 1, first.text, cutShort(first))
 
   const cause: RestartCause = first.timedOut ? 'timeout' : first.error ? 'error' : 'empty'
   const effort = restartEffort(opts.model)
@@ -226,7 +234,8 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
   })
 
   if (second.budgetStopped) return budgetEnd(second, 2, first.text)
-  if (second.text) return result('ok', second, 2, second.text, second.timedOut || !!second.error)
+  if (second.text)
+    return result('ok', second, 2, second.text, second.timedOut || !!second.error || cutShort(second))
   // The first attempt's own words, when it was stopped mid-way and the restart wrote nothing.
   if (first.text) return result('ok', second, 2, first.text, true)
   aiLog(

@@ -54,8 +54,27 @@ def _canonical(name: str | None) -> str:
     return resolve_db_name(name) if name else ""
 
 
+def visible_names(names: Iterable[str]) -> list[str]:
+    """The databases a request may be told about. Unfenced, all of them. Behind the fence only the
+    backgrounds, the library and the fenced model: the names of the user's other models say what else they
+    study, and the chat is not to learn them from an error message (V502)."""
+    fenced = fence()
+    names = list(names)
+    if fenced is None:
+        return names
+    return [n for n in names if n == fenced or is_read_only(n) or is_library(n)]
+
+
 def _named(models: Iterable[str]) -> str:
-    return ", ".join(f"‘{m}’" if m else "a model the request does not name" for m in models)
+    # Only ever said behind the fence: other models stay unnamed, whether the request named them or the
+    # change reached them through a link (a process another model consumes).
+    models = list(models)
+    blank = any(not m for m in models)
+    others = len([m for m in models if m])
+    parts = (["another model" if others == 1 else f"{others} other models"] if others else []) + (
+        ["a model the request does not name"] if blank else []
+    )
+    return " and ".join(parts)
 
 
 def outside_error(models: Iterable[str], fenced: str) -> PrismError:
@@ -112,7 +131,7 @@ def assert_suppliers(databases: Iterable[str | None]) -> None:
     if foreign:
         raise PrismError(
             f"Outside this chat's model: an input can come from the background databases, the library and "
-            f"‘{fenced}’ itself — not from another model ({_named(foreign)}), a comparison model included. "
+            f"‘{fenced}’ itself — not from another model, a comparison model included. "
             "A link would make this model depend on the other one.",
             code="outside_model_scope",
             status_code=403,

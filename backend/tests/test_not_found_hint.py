@@ -43,6 +43,20 @@ def test_a_code_from_another_model_is_named_as_such_without_a_suggestion_to_act_
     assert hint == "That code is a process in 'glass', not in 'pet'."
 
 
+def test_behind_the_fence_another_model_is_not_named_but_a_background_still_is(project):
+    from prism_lca.engine.model_scope import CURRENT_MODEL_SCOPE
+
+    _two_databases(get_bd())
+    token = CURRENT_MODEL_SCOPE.set("pet")
+    try:
+        assert _hint("pet", "transport-1") == "Check the activity code and database."
+        assert "'bg'" in _hint("pet", "pet-granulate")
+    finally:
+        CURRENT_MODEL_SCOPE.reset(token)
+    # Unfenced (MCP, the app itself) the hint names the other model as before.
+    assert _hint("pet", "transport-1") == "That code is a process in 'glass', not in 'pet'."
+
+
 def test_a_code_found_nowhere_keeps_the_plain_hint_and_a_batch_keeps_its_own(project):
     _two_databases(get_bd())
     assert _hint("pet", "no-such-code") == "Check the activity code and database."

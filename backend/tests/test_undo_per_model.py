@@ -205,6 +205,33 @@ def test_a_scenario_of_another_model_cannot_be_changed_under_this_ones_name(two_
     assert any(s["id"] == sid for s in client.get("/api/v1/scenarios?database=B", headers=token).json())
 
 
+def test_behind_the_fence_a_blocked_undo_and_a_foreign_scenario_name_no_other_model(two_models):
+    """A chat bound to A learns neither B's name nor what was changed there (V502); unfenced, as before."""
+    client, token = two_models
+    fenced = {**token, "X-Prism-Model": "A"}
+    _set(client, token, "A", 1.0)
+    _new_process(client, token, "B", "secret study step")
+    r = client.post("/api/v1/model/undo", json={"database": "A"}, headers=fenced)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "undo_elsewhere"
+    said = r.text
+    assert "B" not in said.replace("Bottle", "") and "secret study step" not in said
+    assert "another model" in r.json()["error"]["message"]
+    # The history the chat reads says the same: a step elsewhere, not whose or what.
+    h = client.get("/api/v1/model/history?database=A", headers=fenced).json()
+    assert h["undo_elsewhere"] == {"model": "another model", "summary": None}
+    assert client.get("/api/v1/model/history?database=A", headers=token).json()["undo_elsewhere"]["model"] == "B"
+
+    _set(client, token, "B", 1.0)
+    sid = client.post(
+        "/api/v1/scenarios", json={"database": "B", "name": "s", "overrides": {"p": 2.0}}, headers=token
+    ).json()["scenario"]["id"]
+    r = client.post("/api/v1/scenarios/delete", json={"database": "A", "id": sid}, headers=fenced)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "scenario_other_model"
+    assert "‘B’" not in r.text and "Open" not in r.json()["error"].get("hint", "")
+    open_ = client.post("/api/v1/scenarios/delete", json={"database": "A", "id": sid}, headers=token)
+    assert "‘B’" in open_.json()["error"]["message"]
+
+
 def test_a_tag_selection_across_models_belongs_to_those_models_only(two_models):
     """Spanning A and B, the step named no model and counted as workspace-wide — offered in C."""
     client, token = two_models

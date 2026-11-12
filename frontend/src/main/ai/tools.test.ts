@@ -1189,6 +1189,77 @@ describe('answers that must say what they mean', () => {
 })
 
 describe('the wall-paint run findings', () => {
+  it('refuses an add whose formula cannot be evaluated before anything is written', async () => {
+    // An add with amount and a bad formula used to keep the link and report the refusal; the model read
+    // "refused", sent the add again, and the input was booked twice. Taking the link back afterwards left
+    // an undo step that would bring it back — so the formula is checked first.
+    const calls: any[] = []
+    const r = await TOOL_BY_NAME.edit_exchange
+      .run(
+        {
+          action: 'add',
+          activity_code: 'p',
+          input_database: 'ei',
+          input_code: 'x',
+          amount: 2,
+          formula: 'no_such_param * 2'
+        },
+        {
+          api: async (m: string, path: string, body: any) => {
+            calls.push([m, path, body])
+            if (path === '/api/v1/params/evaluate')
+              throw new Error("The following variables aren't defined: no_such_param")
+            if (path.includes('/api/v1/model/activities/') && m === 'GET') return { exchanges: [] }
+            return { exchange: { uid: 'u1', amount: body?.amount ?? 1 } }
+          },
+          ui: async () => ({}),
+          activeDb: 'm'
+        }
+      )
+      .then(
+        (out: unknown) => (typeof out === 'string' ? out : JSON.stringify(out)),
+        (e: Error) => e.message
+      )
+    expect(r).toMatch(/aren't defined: no_such_param — nothing was added/)
+    expect(
+      calls.some(
+        ([m, path]) => m === 'POST' && /exchanges(\/|$)|exchange-formula|exchanges\/remove/.test(path)
+      )
+    ).toBe(false)
+  })
+
+  it('keeps an add whose formula is refused only on writing, and says it was added', async () => {
+    const calls: any[] = []
+    const r = await TOOL_BY_NAME.edit_exchange
+      .run(
+        {
+          action: 'add',
+          activity_code: 'p',
+          input_database: 'ei',
+          input_code: 'x',
+          amount: 2,
+          formula: 'mass * 2'
+        },
+        {
+          api: async (m: string, path: string, body: any) => {
+            calls.push([m, path, body])
+            if (path.includes('/exchange-formula')) throw new Error('result outside the allowed range')
+            if (path.includes('/api/v1/model/activities/') && m === 'GET') return { exchanges: [] }
+            if (path === '/api/v1/params/evaluate') return { value: 4 }
+            return { exchange: { uid: 'u1', amount: body?.amount ?? 1 } }
+          },
+          ui: async () => ({}),
+          activeDb: 'm'
+        }
+      )
+      .then(
+        (out: unknown) => (typeof out === 'string' ? out : JSON.stringify(out)),
+        (e: Error) => e.message
+      )
+    expect(r).toMatch(/the input WAS added \(uid u1, amount 2\).*action=\\?"set_formula/)
+    expect(calls.some(([, path]) => path === '/api/v1/model/exchanges/remove')).toBe(false)
+  })
+
   it('infers action="add" for an item that carries a formula instead of an amount (V86)', async () => {
     // The tool tells the model a formula IS the amount, then refused every item that took it at its
     // word: 21 exchanges in one call, the 3 with a number went through, the 18 with a formula did not.
@@ -1427,6 +1498,8 @@ describe('the solar-lamp run findings', () => {
         Object.assign(store.get(body.uid), { amount: body.amount, formula: null })
         return { exchange: snap(body.uid) }
       }
+      // The add path checks a formula before it writes anything; the fake accepts every formula.
+      if (path === '/api/v1/params/evaluate') return { value: 42 }
       if (path === '/api/v1/params/exchange-formula') {
         // The fake "evaluates" every formula to 42 — what matters is that the ANSWER carries the
         // evaluated state, not which number it is.

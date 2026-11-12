@@ -71,6 +71,9 @@ def _db_or_404(bd, database: str) -> str:
     hits = [n for n in names if _fold_db(n) == wanted] if wanted else []
     if len(hits) == 1:
         return hits[0]
+    from prism_lca.engine.model_scope import visible_names
+
+    hits, names = visible_names(hits), visible_names(names)
     raise PrismError(
         f"Database '{database}' not found in the active workspace."
         + (f" Did you mean one of: {', '.join(hits)}?" if hits else ""),

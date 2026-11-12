@@ -43,6 +43,8 @@ LAZY_IMPORTS: tuple[str, ...] = (
     "bw2data.configuration",
     "bw2data.parameters",
     "bw2data.project",
+    "bw2data.search",
+    "bw2data.signals",
     "bw2data.utils",
     "bw2io",
     "bw2io.backup",

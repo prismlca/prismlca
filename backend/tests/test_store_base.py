@@ -187,9 +187,6 @@ class TestPerModelRegistry:
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef) and node.name == "rename_database":
                     offering.add(path.stem)
-        # params is bw2data-backed and stays an explicit cascade step (ordering constraints around
-        # Brightway's own rename); everything else with a rename_database must be in the registry.
-        offering.discard("params")
         registered_modules = {
             "tags", "chat_store", "parameter_groups", "scenarios", "study",
             "report_store", "research_log", "review_log", "view_store", "model_folders",

@@ -12,6 +12,10 @@ hint states facts and names only the one use that is safe in all of them. It nev
 elsewhere: a background database is read-only and the hint says so, and a code from another of the user's
 models or the library is named as such, without a suggestion to act on that database.
 
+Behind the model fence (a chat bound to one model, V502) the hint names no other of the user's models: their
+names say what else the user studies and steer the assistant's assumptions. Background databases and the
+library stay named — the chat reads and links them anyway.
+
 A READ may go one step further (V470): when the code is not in the database named but in exactly one
 background database, the reader can be given that dataset instead of a refusal — reading changes nothing,
 and the answer says where it came from. Two backgrounds holding the code is a choice for the caller, so
@@ -36,7 +40,7 @@ def not_found_hint(bd, code: str, database: str) -> str:
     batch = batch_hint(code)
     if batch:
         return batch
-    holders = _holders(bd, code, database)
+    holders = _visible(_holders(bd, code, database))
     if not holders:
         return _CHECK
     if len(holders) > 1:
@@ -49,6 +53,12 @@ def not_found_hint(bd, code: str, database: str) -> str:
             f"input, give '{holder}' as the input's database; the dataset itself cannot be changed."
         )
     return f"That code is a process in '{holder}', not in '{database}'."
+
+
+def _visible(holders: list[str]) -> list[str]:
+    from prism_lca.engine.model_scope import visible_names
+
+    return visible_names(holders)
 
 
 def background_holder(bd, code: str, database: str) -> str | None:

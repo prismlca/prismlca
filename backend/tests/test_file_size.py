@@ -42,7 +42,7 @@ CEILINGS: dict[str, int] = {
     # 1564 — raised by 5 for the exchange notes in `sources_of`, the one function that fingerprints every text a
     # chapter read; a second home for one of those sources would split the list it exists to keep whole.
     "prism_lca/engine/report_staleness.py": 1594,
-    "prism_lca/engine/params.py": 1362,  # 1337
+    "prism_lca/engine/params.py": 1298,  # 1273
     "prism_lca/search/service.py": 1215,  # 1190, after the filter diagnosis moved to facets.py
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
     # 1274 — raised by 11 for release_cached: closing the files of cached factorisations needs the cache,
