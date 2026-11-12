@@ -521,6 +521,26 @@ describe('runAgent — prompt caching', () => {
     await runAgent(request({ model: 'z-ai/glm-5.3' }), deps().deps)
     expect(typeof chat.seen[0].messages[0].content).toBe('string')
   })
+
+  it('asks for the automatic tail breakpoint when the rounds carry no text to roll onto', async () => {
+    // Measured: a model that only called tools kept its cache read at the system block for a whole run,
+    // because the rolling breakpoint needs an assistant message with text. The tail one does not.
+    chat.rounds = [
+      { calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] },
+      { calls: [{ id: 'b', name: 'get_model_graph', arguments: '{"database":"demo-model"}' }] },
+      { text: 'done' }
+    ]
+    await runAgent(request({ model: 'anthropic/claude-sonnet-5.5' }), deps().deps)
+    expect(chat.seen.map((c) => c.cacheTail)).toEqual([true, true, true])
+    // Explicit ones stay within three, so the tail keeps Anthropic's limit of four.
+    for (const { messages: sent } of chat.seen) expect(bps(sent)).toBeLessThanOrEqual(3)
+  })
+
+  it('leaves the tail breakpoint out for models that cache on their own', async () => {
+    chat.rounds = [{ calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] }, { text: 'done' }]
+    await runAgent(request({ model: 'z-ai/glm-5.3' }), deps().deps)
+    expect(chat.seen.map((c) => !!c.cacheTail)).toEqual([false, false])
+  })
 })
 
 describe('runAgent — long-run robustness', () => {

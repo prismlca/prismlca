@@ -1339,6 +1339,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             webSearch: inlineWeb,
             webLookupsCap: req.webLookupsCap,
             reasoningEffort,
+            // The rolling breakpoint can only hang on an assistant message with text; a model that calls
+            // tools without writing a word pins it to the task and pays every round in full. The
+            // automatic one follows the last block instead (the fourth slot; markCacheBreakpoints uses 3).
+            cacheTail: !!model.explicitCache && specs.length > 0,
             // One routing key per chat, so its rounds stay with one provider's cache (routingSession.ts).
             sessionId: routingSession(`chat:${req.chatId}`),
             signal: req.signal,
