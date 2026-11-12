@@ -1,6 +1,8 @@
 """Parameter / variable endpoints (model-scoped; all mutations via the command bus)."""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
@@ -121,6 +123,9 @@ class ParamItem(BaseModel):
     description: str | None = None
     unit: str | None = None
     rule: dict | None = None
+    #: "delete" removes the parameter in the same transaction — refused while a formula or scenario outside
+    #: this call still names it, so the call can rewrite those and delete beside them. Anything else sets.
+    action: Literal["set", "delete", ""] | None = None
 
 
 @router.get("", summary="List a model's parameters")
@@ -138,7 +143,7 @@ async def list_params(database: str, with_usage: bool = False) -> list[dict]:
 class BulkParamRequest(BaseModel):
     database: str
     #: Each item takes the same fields as a single write: name, amount|formula, group_id|group,
-    #: description, unit, rule. Formulas may name parameters created in this same call.
+    #: description, unit, rule — or action "delete". Formulas may name parameters created in this same call.
     parameters: list[ParamItem]
     source: str = "user"
 

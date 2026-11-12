@@ -60,6 +60,8 @@ export interface Graph {
   // The direct (tier-1) background inputs, so the canvas can always show the first
   // ecoinvent tier on open (whoever added the input — user or AI). Absent from older backends.
   bg_nodes?: GraphNode[]
+  /** Changes with every exchange of the model, drawn or not (an emission, a production amount). */
+  revision?: string
 }
 
 export interface AuditEntry {

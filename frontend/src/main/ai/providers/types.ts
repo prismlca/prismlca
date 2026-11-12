@@ -40,6 +40,9 @@ export class AiProviderError extends Error {
    *  or a stream cut short): the engine re-sends while nothing of the reply has reached the caller
    *  (engine.ts). A refused request is judged by its HTTP status (`ChatTransport.retryable`) instead. */
   retryable: boolean
+  /** The HTTP status the provider answered with, where it was one (a refused request, or the status
+   *  an error inside the stream names). Read by the log line of a failed request. */
+  status?: number
   constructor(message: string, code: ProviderErrorCode, retryable = false) {
     super(message)
     this.code = code

@@ -91,7 +91,10 @@ def graph(database: str) -> dict:
     input's effective tags follow the calculation per dimension: its own tag, else the own tag of a supplier
     in another model, else the value its process passes down (:func:`inherited_values`). A box's tag carries
     ``inherited: True`` when none of its inputs holds it itself — tagging the box writes onto the inputs, so
-    only their own tags are editable there."""
+    only their own tags are editable there.
+
+    ``revision`` changes with every exchange of the model, drawn or not — an emission, a production amount —
+    so the canvas can tell whether a calculation still describes the model (see :func:`_revision`)."""
     from prism_lca.engine.tag_scope import MODEL, kind_checker
     from prism_lca.engine.tags import TagStore
 
@@ -108,10 +111,13 @@ def graph(database: str) -> dict:
     outside: list[tuple[dict, object]] = []  # (edge, the supplying activity) of every input from outside
     own: dict[str, dict[str, str]] = {}
     consumers: dict[str, set[str]] = {}
+    every: list[tuple] = []  # every exchange of the model, for `revision`
     for act in acts:
         target = node_id(act)
         own[target] = {t["dimension"]: t["value"] for t in tag_map.get(f"{act.key[0]}/{act.key[1]}", [])}
         for ex in act.exchanges():
+            # The input's key, not `ex.input`: that would load every biosphere flow just to name it.
+            every.append((target, ex.get("type"), ex.get("input"), ex.get("amount"), ex.get("prism_uid")))
             if ex.get("type") != "technosphere":
                 continue
             uid = ex.get("prism_uid")
@@ -179,5 +185,14 @@ def graph(database: str) -> dict:
         box["tags"] = [t if t["inherited"] else {"dimension": t["dimension"], "value": t["value"]} for t in box["tags"]]
     return {
         "database": database, "nodes": nodes, "edges": edges,
-        "bg_edges": bg_edges, "bg_nodes": list(bg_nodes.values()),
+        "bg_edges": bg_edges, "bg_nodes": list(bg_nodes.values()), "revision": _revision(every),
     }
+
+
+def _revision(exchanges: list[tuple]) -> str:
+    """A short fingerprint of what a calculation of the model reads from it: every exchange with its type,
+    input and amount. Order-free, because the order the database hands exchanges out is not part of it."""
+    import hashlib
+
+    canon = "\n".join(sorted(repr(e) for e in exchanges))
+    return hashlib.sha1(canon.encode("utf-8")).hexdigest()[:16]

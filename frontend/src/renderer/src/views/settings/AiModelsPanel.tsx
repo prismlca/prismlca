@@ -13,6 +13,8 @@ import {
   AA_INDEX_VERSION,
   AA_RATINGS_PULLED,
   ANTHROPIC_PRICES_CHECKED,
+  chatEffort,
+  chatEffortLevels,
   defaultChatModelFor,
   GOOGLE_PRICES_CHECKED,
   planToolOn,
@@ -206,8 +208,11 @@ export function AiModelsPanel(): JSX.Element {
           unsupported level is a 400 that costs a run (the loop then falls back to the default once). */}
       {(() => {
         const current = providerModels.find((m) => m.id === (shownValue(model) || defaultChatId))
-        const levels = current?.reasoningEfforts ?? []
-        const chosen = efforts[current?.id ?? ''] ?? ''
+        // A chat floor (`minChatEffort`) cuts the levels below it and the Default step; the value shown
+        // is the one main sends (shared/aiDefaults.ts `chatEffort`).
+        const floor = current?.minChatEffort
+        const levels = chatEffortLevels(current)
+        const chosen = chatEffort(efforts[current?.id ?? ''], current)
         return (
           <>
             <label className="settings-field settings-role">
@@ -225,6 +230,8 @@ export function AiModelsPanel(): JSX.Element {
                 label="Reasoning effort"
                 levels={levels}
                 value={chosen}
+                apiDefault={current?.defaultEffort}
+                noDefault={!!floor}
                 onChange={(v) => {
                   if (!current) return
                   const next = { ...efforts }
@@ -234,6 +241,9 @@ export function AiModelsPanel(): JSX.Element {
                 }}
               />
             </label>
+            {floor && current?.minChatEffortNote ? (
+              <p className="settings-hint">{current.minChatEffortNote}</p>
+            ) : null}
             {/* The plan checklist, per model like the dial above: the catalogue's choice is the default,
                 and only a deviation is stored. The tool and its prompt rule follow together. */}
             {current ? (

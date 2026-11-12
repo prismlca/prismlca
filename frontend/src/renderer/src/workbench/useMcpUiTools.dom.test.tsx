@@ -27,8 +27,7 @@ function setup(databases: McpUiToolsDeps['databases'], fresh: McpUiToolsDeps['da
       openModel,
       refreshDatabases,
       selected: [],
-      resultsTab: 'overview',
-      chatUi: {} as never
+      resultsTab: 'overview'
     })
   )
   const open = (name: string): void =>

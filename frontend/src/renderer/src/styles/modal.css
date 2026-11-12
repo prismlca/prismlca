@@ -291,3 +291,9 @@
 
 /* The inspector's chip for an inherited value (see .pnode-tag.inherited): outlined instead of filled. */
 .tag.inherited { background: transparent; border: 1px dashed var(--green); padding: 2px 7px; font-weight: 500; font-style: italic; }
+
+/* Model info: the rename's status under the title — a spinner and clock while chats, reports and
+   parameters move to the new name, then a short "Renamed". */
+.mi-title-status { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; font-size: var(--fs-body);
+  color: var(--muted); }
+.mi-title-status.done { color: var(--green-ink); }

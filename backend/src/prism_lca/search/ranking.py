@@ -9,13 +9,15 @@ file used to claim geography was "a ranking signal, not a hard filter". That des
 below, which adds a bonus; but `search_hybrid` is on by default, and `finalize_hybrid` sorts by the
 geography chain FIRST and by score only within it. So with one region asked for, EVERY hit in that
 region precedes every hit outside it, however badly it fits — a weak German neighbour comes before
-the dataset you meant in RER. Nothing is dropped, it is a queue rather than a filter; with two or
-more regions it is a real filter and the rest is dropped.
+the dataset you meant in RER. It is a queue rather than a filter, but the limit cuts the queue, and a
+short list then holds nothing beyond the region; with two or more regions it is a real filter and the
+rest is dropped.
 
 Kept that way on purpose: naming a region should decide, not merely nudge. The
-cost is that a query whose answer lives one region over reads as "nothing fits" unless you look
-past the requested region — which is why every description of this behaviour has to state it, and
-why the answer carries `outside_geography_filter`.
+cost is that a query whose answer lives one region over reads as "nothing fits" — which is why every
+description of this behaviour has to state it, why the answer carries `outside_geography_filter`, and
+why the assistant's search appends the best hits outside the region (`outside_region`,
+search/left_out.py).
 """
 from __future__ import annotations
 

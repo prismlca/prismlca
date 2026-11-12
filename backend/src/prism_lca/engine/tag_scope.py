@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.uid_hint import is_near, uid_not_found
 from prism_lca.errors import PrismError
 
 MODEL, LIBRARY, BACKGROUND, BIOSPHERE = "model", "library", "background", "biosphere"
@@ -79,7 +80,10 @@ def find_input(uid: str, database: str | None = None):
     if not uid or not isinstance(uid, str):
         raise PrismError("An input key needs the exchange uid.", code="tag_target_no_uid")
     names = [database] if database else [n for n in bd.databases if tag_kind(n) == MODEL]
-    hits = []
+    # A near uid is named with its input, so in a fenced chat it is looked for in the chat's own model only:
+    # a near miss must not show another model's exchanges to a chat that may not read them.
+    near_in = _fenced_model()
+    hits, near = [], []
     for name in names:
         if name not in bd.databases:
             raise PrismError(f"Database '{name}' does not exist.", code="database_not_found", status_code=404)
@@ -87,16 +91,29 @@ def find_input(uid: str, database: str | None = None):
             for ex in act.exchanges():
                 if ex.get("prism_uid") == uid:
                     hits.append((act, ex))
+                elif (near_in is None or name == near_in) and is_near(uid, ex.get("prism_uid")):
+                    near.append(ex)
     if not hits:
-        raise PrismError(
-            f"No input with uid '{uid}'.",
-            code="exchange_not_found",
-            status_code=404,
-            hint="Take the uid from the edges of get_model_graph or from get_process_details.",
+        raise uid_not_found(
+            uid, near, f"No input with uid '{uid}'.",
+            "Take the uid from the edges of get_model_graph or from get_process_details.",
         )
     if len(hits) > 1:
         raise PrismError(f"The uid '{uid}' occurs {len(hits)} times.", code="exchange_uid_ambiguous", status_code=409)
     return hits[0]
+
+
+def _fenced_model() -> str | None:
+    """The model a fenced request works on (its name as the databases spell it; '' = none), or None when
+    the request is not fenced."""
+    from prism_lca.engine.model_scope import fence
+
+    fenced = fence()
+    if fenced is None:
+        return None
+    from prism_lca.engine.model import resolve_db_name
+
+    return resolve_db_name(fenced) if fenced else ""
 
 
 def check_input_target(consumer, exchange) -> None:

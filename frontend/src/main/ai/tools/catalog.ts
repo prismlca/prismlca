@@ -340,7 +340,7 @@ export const TOOL_META: Record<string, { label: string; hint: string; group: str
   },
   review_model: {
     label: 'Review the model critically',
-    hint: 'Independent second opinion on a finished system: boundaries, proxies, method choice, hotspots.',
+    hint: 'A second opinion from a separate AI reviewer on a finished system: boundaries, proxies, method choice, hotspots.',
     group: 'Research'
   },
   // scenarios

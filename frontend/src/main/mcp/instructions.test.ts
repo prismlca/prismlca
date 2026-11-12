@@ -80,4 +80,11 @@ describe('buildOrientation', () => {
     expect(none).toContain('none open')
     expect(none).toContain('No study metadata recorded yet')
   })
+
+  it("says today's date, so a client model dating the study does not guess it", () => {
+    expect(buildOrientation({ activeDb: 'Shampoo', skills: [], today: '2026-11-14' })).toContain(
+      '# This session\n- Today: 2026-11-14\n- Model: `Shampoo`'
+    )
+    expect(text).toMatch(/- Today: \d{4}-\d{2}-\d{2}\n/)
+  })
 })

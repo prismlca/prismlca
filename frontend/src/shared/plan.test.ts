@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatPlanForModel, planProgress, validatePlanUpdate, type ChatPlan } from './plan'
+import {
+  PLAN_LIMITS,
+  derivePlanTitle,
+  formatPlanForModel,
+  planProgress,
+  validatePlanUpdate,
+  type ChatPlan
+} from './plan'
 
 const plan = (steps: ChatPlan['steps'], revision = 1): ChatPlan => ({
   title: 'PET bottle model',
@@ -22,12 +29,15 @@ describe('validatePlanUpdate', () => {
     if (v.ok) expect(v.input.steps).toHaveLength(2)
   })
 
-  it('refuses the shapes a weak model sends: a string, one step, a missing title', () => {
+  it('refuses the shapes a weak model sends: a string, one step', () => {
     expect(validatePlanUpdate(null, 'do the thing')).toMatchObject({ ok: false })
     expect(validatePlanUpdate(null, { steps: 'Record goal' })).toMatchObject({ ok: false })
+  })
+
+  it('accepts a first plan without a title — the tool fills one in', () => {
     const noTitle = validatePlanUpdate(null, { steps: [{ step: 'Record goal', status: 'in_progress' }] })
-    expect(noTitle).toMatchObject({ ok: false })
-    if (!noTitle.ok) expect(noTitle.error).toContain('title')
+    expect(noTitle).toMatchObject({ ok: true })
+    if (noTitle.ok) expect(noTitle.input.title).toBeUndefined()
   })
 
   it('refuses two in_progress steps and names them', () => {
@@ -164,6 +174,28 @@ describe('validatePlanUpdate — status written as a key (V364)', () => {
       ]
     })
     if (!missing.ok) expect(missing.error).toContain('steps[1].status "undefined" is not one of')
+  })
+})
+
+describe('derivePlanTitle', () => {
+  const steps = (first: string): ChatPlan['steps'] => [{ step: first, status: 'in_progress' }]
+
+  it('takes the chat title first, tidied and kept under the title limit', () => {
+    expect(derivePlanTitle(steps('Record goal and scope'), '  Widget   bottle footprint ')).toBe(
+      'Widget bottle footprint'
+    )
+    const long = derivePlanTitle(steps('Record goal'), `${'widget '.repeat(12)}end`)
+    expect(long.length).toBeLessThanOrEqual(PLAN_LIMITS.titleChars)
+    expect(long.endsWith('widget…')).toBe(true)
+  })
+
+  it('falls back to the first step, cut to six words', () => {
+    expect(derivePlanTitle(steps('Record goal and scope.'))).toBe('Record goal and scope')
+    expect(derivePlanTitle(steps('Build the widget body process with its mass parameters'), '  ')).toBe(
+      'Build the widget body process with…'
+    )
+    const wide = derivePlanTitle(steps(`${'x'.repeat(40)} ${'y'.repeat(40)}`))
+    expect(wide.length).toBeLessThanOrEqual(PLAN_LIMITS.titleChars)
   })
 })
 

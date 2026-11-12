@@ -48,7 +48,8 @@
             "description": "Several searches in ONE call, at most six, as plain strings — results are returned per query, in order, all under the call-level geographies/limit/activity_types. For a query that needs its OWN filter use \"filtered_queries\" instead. Pass ONE of \"query\", \"queries\" or \"filtered_queries\" — never two, and never an empty list.",
             "items": {
               "type": "string"
-            }
+            },
+            "maxItems": 6
           },
           "filtered_queries": {
             "type": "array",
@@ -78,7 +79,8 @@
               "required": [
                 "query"
               ]
-            }
+            },
+            "maxItems": 6
           },
           "database": {
             "type": "string",
@@ -96,11 +98,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional geography codes, and they OUTRANK how well a dataset matches. ONE code (e.g. [\"DE\"]) puts every hit in that region first, then RER / Europe without Switzerland / GLO / RoW, then the rest — so a poor match in the region you asked for is listed above a much better one outside it. Nothing is dropped: keep reading past the requested region before concluding that nothing fits. TWO OR MORE codes are a real filter — other regions are dropped, and \"outside_geography_filter\" says when a dataset named exactly like your query exists only outside them. When something you expect is missing, search once without geographies."
+            "description": "Optional geography codes, and they OUTRANK how well a dataset matches. ONE code (e.g. [\"DE\"]) puts every hit in that region first, then RER / Europe without Switzerland / GLO / RoW, then the rest — so a poor match in the region you asked for is listed above a much better one outside it. The limit cuts this queue; the 2 best hits outside come back under outside_region. TWO OR MORE codes are a real filter — other regions are dropped (outside_region still shows the 2 best), and \"outside_geography_filter\" says when a dataset named exactly like your query exists only outside them. When something you expect is missing, search once without geographies."
           },
           "limit": {
             "type": "number",
-            "description": "Max results per query (default 25, or 8 when several queries are given). Without it the answer gets LONGER when several background databases are searched, so that a second one adds datasets instead of crowding out the first. Set it only when you want a specific number: your value is the total and is not scaled."
+            "description": "Max results per query (default 25, or 8 when several queries are given). Minimum 8. Without it the answer gets LONGER when several background databases are searched, so that a second one adds datasets instead of crowding out the first. Set it only when you want a specific number: your value is the total and is not scaled."
           },
           "activity_types": {
             "type": "array",
@@ -133,7 +135,7 @@
         "properties": {
           "database": {
             "type": "string",
-            "description": "Database/model name; omit for the model open on the canvas."
+            "description": "Where to look: a model (omit for the one open on the canvas). With consumes_code, where the CONSUMERS are searched."
           },
           "with_exchanges": {
             "type": "boolean",
@@ -141,11 +143,15 @@
           },
           "consumes_database": {
             "type": "string",
-            "description": "With consumes_code: list only processes consuming THIS dataset."
+            "description": "The dataset whose consumers you want: its database (default: the same as \"database\")."
           },
           "consumes_code": {
             "type": "string",
-            "description": "Code of the dataset to find the consumers of."
+            "description": "The dataset whose consumers you want: its code."
+          },
+          "whole_database": {
+            "type": "boolean",
+            "description": "With consumes_code, when \"database\" is a background database: true = search ALL its processes — e.g. for the waste market that mixes a treatment (capped list). Without it that search is refused; to see where YOUR model uses a dataset, keep \"database\" on your model."
           }
         },
         "required": []
@@ -318,7 +324,7 @@
       "name": "list_tags",
       "label": "List tags",
       "group": "Read & search",
-      "description": "List tag groups (dimensions) and their allowed values, or one activity's assigned tags.",
+      "description": "List tag groups (dimensions) and their allowed values, or one activity's assigned tags. Each group says whether this model uses it, and in how many other models it is used.",
       "surface": "api",
       "mutating": false,
       "parameters": {
@@ -1255,7 +1261,7 @@
       "name": "review_model",
       "label": "Review the model critically",
       "group": "Research",
-      "description": "Get an independent, critical second opinion on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model's review log, stamped against the model state, so the report can state that a review happened and whether the model changed afterwards. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with \"resolutions\" to record each finding's outcome — fixed things are visible in the model, but \"rejected, because …\" and \"still open\" exist nowhere else, and the report prints the open ones in its Limitations chapter. With \"resolutions\" present nothing is re-reviewed; the call only records.",
+      "description": "Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model's review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with \"resolutions\" to record each finding's outcome — fixed things are visible in the model, but \"rejected, because …\" and \"still open\" exist nowhere else, and the report prints the open ones in its Limitations chapter. With \"resolutions\" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.",
       "surface": "subagent",
       "mutating": false,
       "parameters": {
@@ -1381,7 +1387,7 @@
           "questions": {
             "type": "array",
             "maxItems": 4,
-            "description": "Up to 4 questions asked TOGETHER as one form. Use this whenever you already know you need more than one answer before you can start — each extra call is another wait on a human. FOUR SLOTS, SO SPEND THEM ON WHAT CANNOT BE CHANGED LATER: what the study is measured PER (the functional unit) and where the numbers will COME FROM outrank any question about scope, because a scope decision can be revisited on a finished model and these two cannot. Measured 2026-08-13: a wall-paint study spent all its questions on scope details, silently made itself \"one bucket\" instead of a painted area, and estimated a recipe it could have researched.",
+            "description": "Up to 4 questions asked TOGETHER as one form. Use this whenever you already know you need more than one answer before you can start — each extra call is another wait on a human. FOUR SLOTS, SO SPEND THEM ON WHAT CANNOT BE CHANGED LATER: what the study is measured PER (the functional unit) and where the numbers will COME FROM (the data source and the market they describe) outrank any question about scope — except whether the use phase is included, which can decide the result on its own, unless the brief settles it (cradle-to-gate does) — because a scope decision can be revisited on a finished model and these two cannot. Measured 2026-08-13: a wall-paint study spent all its questions on scope details, silently made itself \"one bucket\" instead of a painted area, and estimated a recipe it could have researched.",
             "items": {
               "type": "object",
               "properties": {
@@ -1774,7 +1780,7 @@
       "name": "edit_parameter",
       "label": "Create / change parameter",
       "group": "Parameters",
-      "description": "Create, update or delete parameters of the active model. action=\"set\" (the default — omit it and you get \"set\") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and \"A if cond else B\"), plus optional unit, group and comment. action=\"delete\" removes it (fails if a formula still references it). Pass \"parameters\" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read \"allowed\" rather than discovering the rule from a refusal. When you CREATE a parameter whose meaning fixes what it may be, give it a rule in the same call: a share, rate, efficiency or loss → range 0 to 1; a mass, distance, count or duration → positive; an on/off switch → switch. Leave it out when the meaning does not fix one (a factor that can exceed 1, a value that can be negative) and on every parameter that already exists: its rule is the modeller's decision, so if a number you were given breaks one, say which parameter and what it allows, and ask.",
+      "description": "Create, update or delete parameters of the active model. action=\"set\" (the default — omit it and you get \"set\") creates/updates by name: give EITHER value OR formula (a formula may reference other parameter names and use + - * / **, sqrt/exp/log/min/max/clip/round/abs and \"A if cond else B\"), plus optional unit, group and comment. action=\"delete\" removes it — refused while a formula or scenario still uses it. Pass \"parameters\" to set a whole batch in ONE call, and prefer it: a batch is a single transaction with a single recalculation, and inside it a formula MAY reference a parameter created in the same call, so you do not have to order them. An item with action=\"delete\" deletes in that same call, so the formulas that used it can be rewritten beside it. All or nothing — if one item is refused, none of them is written, and the answer says which. Changing a parameter recomputes every dependent exchange. A parameter may carry a rule — only positive, only negative, a range, or one of a list — and a value outside it is refused, naming the parameter and what it allows; the same holds for what a formula computes. Call list_parameters first and read \"allowed\" rather than discovering the rule from a refusal. When you CREATE a parameter whose meaning fixes what it may be, give it a rule in the same call: a share, rate, efficiency or loss → range 0 to 1; a mass, distance, count or duration → positive; an on/off switch → switch. Leave it out when the meaning does not fix one (a factor that can exceed 1, a value that can be negative) and on every parameter that already exists: its rule is the modeller's decision, so if a number you were given breaks one, say which parameter and what it allows, and ask.",
       "surface": "api",
       "mutating": true,
       "parameters": {
@@ -1843,6 +1849,10 @@
             "items": {
               "type": "object",
               "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "set (default) | delete."
+                },
                 "name": {
                   "type": "string",
                   "description": "Parameter name."
@@ -1899,7 +1909,7 @@
                 }
               }
             },
-            "description": "Several parameters at once (all are \"set\"); each item takes the fields above."
+            "description": "Several parameters at once; each item takes the fields above."
           }
         },
         "required": []
@@ -2212,11 +2222,11 @@
           },
           "author": {
             "type": "string",
-            "description": "Who wrote the study."
+            "description": "The person or team responsible for the study. Leave it empty unless the user names someone — the report cover then uses the name and company from Settings. Never yourself (the model that worked is recorded in ai_model)."
           },
           "organisation": {
             "type": "string",
-            "description": "The organisation carrying out the study."
+            "description": "The organisation carrying out the study. Leave it empty unless the user names one — the report cover then uses the company from Settings. Never your AI vendor."
           },
           "commissioner": {
             "type": "string",
@@ -2276,7 +2286,7 @@
           },
           "critical_review": {
             "type": "string",
-            "description": "Who reviewed the study and when. Leaving it empty is meaningful: a public comparative assertion without a recorded review has to say so (ISO 14044 §7.3.3)."
+            "description": "The critical review by independent experts (ISO 14044 §7.3.3): who reviewed the study and when. review_model is an AI second opinion, not such a review — never record it here. Leaving it empty is meaningful: a public comparative assertion without a recorded review has to say so."
           },
           "notes": {
             "type": "string",
@@ -2507,7 +2517,7 @@
       "name": "plan",
       "label": "Task plan",
       "group": "Plan",
-      "description": "Keep the task plan the user sees beside the chat. Send the WHOLE list every time — it replaces the previous one. Each step is an object with exactly the fields \"step\" (a short imperative sentence), \"status\" (pending | in_progress | blocked | completed | skipped) and optionally \"note\". Exactly one step is in_progress while work remains; a step that cannot proceed is blocked (with a note); a dropped step is skipped (with a note). Mark steps completed the moment they are done — never before, and never because you meant to do them. Several steps may be completed in one call. Close the last step together with your final answer, not before it. If the plan changes or an unfinished step is dropped, say why in explanation. The user sees the list beside the chat, so do not repeat it in prose.",
+      "description": "Keep the task plan the user sees beside the chat. Send the WHOLE list every time — it replaces the previous one. Each step is an object with exactly the fields \"step\" (a short imperative sentence), \"status\" (pending | in_progress | blocked | completed | skipped) and optionally \"note\". Exactly one step is in_progress while work remains; a step that cannot proceed is blocked (with a note); a dropped step is skipped (with a note). Mark steps completed the moment they are done — never before, and never because you meant to do them. Tick each step off as it finishes, not all at the end. Close the last step together with your final answer, not before it. If the plan changes or an unfinished step is dropped, say why in explanation. The user sees the list beside the chat, so do not repeat it in prose.",
       "surface": "api",
       "mutating": false,
       "parameters": {
@@ -2515,7 +2525,7 @@
         "properties": {
           "title": {
             "type": "string",
-            "description": "3–6 words naming the task; required on the first call of a chat (max 60 characters)."
+            "description": "3–6 words naming the task; send it on the first call (max 60 characters)."
           },
           "explanation": {
             "type": "string",

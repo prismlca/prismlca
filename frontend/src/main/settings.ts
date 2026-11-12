@@ -48,6 +48,7 @@ import type { AppSettings } from '../shared/ipc'
 import { DEFAULT_DISPLAY, sanitiseDisplay } from '../shared/displayDefaults'
 import { sanitiseRecentModels } from '../shared/startPage'
 import { getModels } from './ai/models'
+import { liftChatEffortFloors } from './ai/chatEffort'
 
 /** Bumped only for a change that cannot be read additively. A new setting is a new key.
  *
@@ -74,13 +75,18 @@ import { getModels } from './ai/models'
  *
  * Schema 5: `maxTokens` 50 000 → 75 000. The same once more: reasoning counts against the reply
  * ceiling, and a materialised 50 000 would keep every existing installation on the old figure.
- * Migrated only when it IS 50 000. */
+ * Migrated only when it IS 50 000.
+ *
+ * Schema 6: GPT-6 Luna chats only from `high` up (`minChatEffort`, V486). The run lifts a lower choice
+ * on its own; the migration writes the lift into the file once and leaves a sentence in
+ * `chatEffortNotice`, which the chat shows once — the stored choice changes what a run costs, so it is
+ * said, not done silently. */
 //: The stealth model OpenRouter retired on 2026-08-26, and the id it told us to move to. Kept as
 //: named constants because the migration below and any future note about them should not drift apart.
 const RETIRED_STEALTH_ID = 'stealth/ox-alpha'
 const STEALTH_SUCCESSOR_ID = 'z-ai/glm-5.3-flash'
 
-const SCHEMA = 5
+const SCHEMA = 6
 
 // The shape lives in shared/ipc.ts — the renderer's store shows the same fields, and two copies
 // of this interface had to be kept in step by hand. Re-exported because this module owns the file
@@ -178,8 +184,10 @@ export const DEFAULTS: AppSettings = {
   mcpEnabled: false,
   // On: the chat asks on a card before an irreversible tool action (main/ai/approval.ts).
   chatApproval: 'irreversible',
-  // Nothing chosen: every model runs on its API's own reasoning default.
+  // Nothing chosen: every model runs on its API's own reasoning default (or its chat floor).
   reasoningEffort: {},
+  // Nothing to say: only the schema-6 migration writes a sentence here, and the chat clears it once shown.
+  chatEffortNotice: '',
   // Nothing chosen: every model gets the plan tool as its catalogue row says.
   planToolByModel: {}
 }
@@ -222,6 +230,14 @@ function migrate(data: Stored): Stored {
   if (from < 5 && data.maxTokens === 50_000) {
     // The old default, materialised — see the SCHEMA note.
     data.maxTokens = DEFAULT_MAX_TOKENS
+  }
+  if (from < 6) {
+    // A choice below a model's new chat floor — see the SCHEMA note.
+    const { efforts, notice } = liftChatEffortFloors(data.reasoningEffort, data.model, getModels())
+    if (notice) {
+      data.reasoningEffort = efforts as AppSettings['reasoningEffort']
+      data.chatEffortNotice = notice
+    }
   }
   data.schema = SCHEMA
   save(data)
@@ -326,6 +342,7 @@ export function getSettings(): AppSettings {
   out.chatApproval = out.chatApproval === 'never' ? 'never' : 'irreversible'
   // A map the overlay copied whole: only known levels under non-empty ids survive.
   out.reasoningEffort = sanitiseReasoningEfforts(stored.reasoningEffort)
+  out.chatEffortNotice = typeof out.chatEffortNotice === 'string' ? out.chatEffortNotice : ''
   out.planToolByModel = sanitisePlanToolOverrides(stored.planToolByModel)
   // A list the overlay copied wholesale — every entry checked, deduped, ordered and capped here.
   out.recentModels = sanitiseRecentModels(stored.recentModels)

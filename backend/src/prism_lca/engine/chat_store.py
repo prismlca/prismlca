@@ -119,6 +119,8 @@ RUN_OUTCOMES = (
     "interrupted",
 )
 _ID_CHARS = 60
+#: The reason a failed turn failed, as main writes it ("HTTP 404 — …"); main cuts it to 600 itself.
+_ERROR_CHARS = 600
 
 
 def _is_int(value: object) -> bool:
@@ -306,6 +308,11 @@ class ChatStore(JsonFileStore):
                             entry["turn_id"] = turn_id.strip()[:_ID_CHARS]
                         if m.get("outcome") in RUN_OUTCOMES:
                             entry["outcome"] = m["outcome"]
+                        # Why a failed turn failed: the window shows it once, a reload loses it, and
+                        # afterwards nobody could say why the run ended. Declared on ChatMessage too.
+                        error = m.get("error")
+                        if isinstance(error, str) and error.strip():
+                            entry["error"] = error.strip()[:_ERROR_CHARS]
                         traces = _cap_traces(m.get("tools"))
                         if traces:
                             entry["tools"] = traces

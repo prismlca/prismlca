@@ -220,10 +220,38 @@ describe('one country', () => {
     expect(r.other_years_in_answer).toEqual([2020, 2018])
   })
 
-  it('takes the latest year when none is given', async () => {
+  it('takes the latest year when none is given, and says so', async () => {
     const r = await ask({ dataset: 'env_wasoper', country: 'FR' }, fakeFetch())
     expect(r.year).toBe(2022)
     expect(r.year_note).toBeUndefined()
+    expect(r.notes[0]).toBe('No year given (0 counts as none): 2022 is the latest year with data.')
+  })
+
+  it('reads year 0 as no year — the latest — instead of refusing it (V464)', async () => {
+    // GPT-6 Luna pads every optional field: three identical refusals of `year: 0` in one run.
+    expect(normaliseQuery({ dataset: 'env_wasmun', year: 0 }).year).toBeUndefined()
+    const r = await ask({ dataset: 'env_wasoper', country: 'FR', year: 0 }, fakeFetch())
+    expect(r.year).toBe(2022)
+    expect(r.notes[0]).toMatch(/No year given \(0 counts as none\): 2022/)
+  })
+
+  it('refuses a wrong year with the way out and the current latest year, no example year (V464)', async () => {
+    const err = await ask({ dataset: 'env_wasoper', country: 'FR', year: 24 }, fakeFetch()).catch((e) => e)
+    expect(err).toBeInstanceOf(Error)
+    expect(err.message).toBe(
+      'year must be a four-digit year, not "24" — leave year out for the latest available year ' +
+        '(currently 2022 for env_wasoper).'
+    )
+    // "such as 2022" was copied word for word and fetched the wrong year.
+    expect(err.message).not.toMatch(/such as/)
+  })
+
+  it('still refuses a wrong year when the latest one cannot be read', async () => {
+    const down = vi.fn(async () => new Response('down', { status: 503 }))
+    const err = await ask({ dataset: 'env_wasmun', year: 'latest' }, down).catch((e) => e)
+    expect(err.message).toBe(
+      'year must be a four-digit year, not "latest" — leave year out for the latest available year.'
+    )
   })
 
   it('prefers a complete year over a published stub, and says so', async () => {

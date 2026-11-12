@@ -35,7 +35,12 @@ State it in `system_boundaries`:
 - **Capital goods / infrastructure**: the background databases include them (ecoinvent in its
   datasets, BAFU:20XY through its infrastructure datasets); your foreground usually does not. Say so
   rather than leaving it implicit.
-- **Use phase**: often dominates for energy-using products and is often forgotten for packaging.
+- **Use phase**: often dominates — for energy-using products and for products whose use draws energy or
+  water (detergents, cosmetics rinsed off with hot water, food that is cooked) — and is often forgotten for
+  packaging. Whether it is in, and what it covers (water, hot water or energy, wastewater, emissions during
+  use), is the user's call: when the brief leaves it open, ask with options (product only / product + direct
+  use / incl. water and energy). "Product only" takes out the use phase and nothing else: distribution and
+  end of life stay in unless the user takes them out too.
 - **Geography and time**: where the product is made and sold, and which year the data should
   represent — the fields `geography` and `reference_year`. They drive every dataset choice afterwards
   (see the proxy-dataset skill). The language of the conversation says nothing about the market: when
@@ -65,7 +70,7 @@ figure, and, where the result rests on it, as an entry in `limitations` (kind `d
 
 ## Checklist before you build
 1. FU stated with function + amount + reference flow.
-2. Phases in/out listed in `system_boundaries`; use phase decided.
+2. Phases in/out listed in `system_boundaries`; use phase decided by the user and recorded there.
 3. `geography` and `reference_year` recorded.
 4. Cut-off rule written in `cutoff_criteria`.
 5. `allocation` and `system_allocation` named.

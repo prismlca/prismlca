@@ -1273,6 +1273,8 @@ describe('runAgent — the stall guard (rounds that only hear "no")', () => {
       (m) => m.role === 'user' && String(m.content).includes('produced only rejected or failed tool calls')
     )
     expect(nudge).toBeGreaterThan(0)
+    // Unknown tools write nothing, so here the nudge may say so.
+    expect(String(fourth[nudge].content)).toMatch(/nothing in the model changed/)
     expect(chat.seen[2].messages.some((m) => String(m.content).includes('produced only rejected'))).toBe(
       false
     )
@@ -1556,6 +1558,27 @@ describe('runAgent — reasoning effort', () => {
     expect(chat.seen.map((c) => c.reasoningEffort)).toEqual(['xhigh', undefined])
     expect(res.text).toMatch(/rejected the reasoning effort "xhigh"/)
     expect(res.text).toContain('fine without it')
+  })
+
+  // A model with a chat floor (V486) falls back to the floor first: GPT-6 Luna must not end up on its
+  // medium default because a higher level was refused.
+  it('falls back to the chat floor before the default when the model has one', async () => {
+    const refused = (level: string): { throws: FakeOpenRouterError } => ({
+      throws: new FakeOpenRouterError(
+        `OpenRouter error (HTTP 400) — reasoning.effort "${level}" is not supported.`,
+        'http'
+      )
+    })
+    chat.rounds = [refused('max'), { text: 'on high' }]
+    let res = await runAgent(request({ model: 'openai/gpt-6-luna', reasoningEffort: 'max' }), deps().deps)
+    expect(chat.seen.map((c) => c.reasoningEffort)).toEqual(['max', 'high'])
+    expect(res.text).toMatch(/rejected the reasoning effort "max" — continuing on "high"/)
+
+    chat.seen.length = 0
+    chat.rounds = [refused('max'), refused('high'), { text: 'on the default' }]
+    res = await runAgent(request({ model: 'openai/gpt-6-luna', reasoningEffort: 'max' }), deps().deps)
+    expect(chat.seen.map((c) => c.reasoningEffort)).toEqual(['max', 'high', undefined])
+    expect(res.text).toContain('on the default')
   })
 })
 

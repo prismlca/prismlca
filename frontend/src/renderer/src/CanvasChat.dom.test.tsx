@@ -274,21 +274,14 @@ describe('formatArgs', () => {
  * z-index. Both halves of that are what this describes.
  */
 describe('the dock above the input pill', () => {
-  const ui = {
-    jumpToProcess: vi.fn(),
-    autoLayout: vi.fn(),
-    screenshotRect: () => null,
-    calculateInCanvas: vi.fn(),
-    setupResults: vi.fn(),
-    getCanvas: vi.fn(),
-    clearCanvas: vi.fn(),
-    removeFromCanvas: vi.fn(),
-    refresh: vi.fn()
-  }
+  const onJump = vi.fn()
   const mount = (): ReturnType<typeof renderWithPrism> =>
-    renderWithPrism(<CanvasChat activeDb="m" ui={ui} aboveBar={<div data-testid="minimap">map</div>} />, {
-      routes: { 'GET /api/v1/ai/chats/m': { chats: [] } }
-    })
+    renderWithPrism(
+      <CanvasChat activeDb="m" onJump={onJump} aboveBar={<div data-testid="minimap">map</div>} />,
+      {
+        routes: { 'GET /api/v1/ai/chats/m': { chats: [] } }
+      }
+    )
 
   it('puts the slot in the same column as the input pill, directly above it', async () => {
     const { container } = mount()
@@ -327,7 +320,7 @@ describe('the dock above the input pill', () => {
     const { container } = renderWithPrism(
       <CanvasChat
         activeDb="m"
-        ui={ui}
+        onJump={onJump}
         aboveBar={<div data-testid="minimap">map</div>}
         onDatasetDrop={onDatasetDrop}
       />,
@@ -355,7 +348,7 @@ describe('the dock above the input pill', () => {
           nodes={[{ id: 'a', position: { x: 0, y: 0 }, width: 210, height: 60, data: {} }]}
           edges={[]}
         />
-        <CanvasChat activeDb="m" ui={ui} aboveBar={<CanvasMinimap />} />
+        <CanvasChat activeDb="m" onJump={onJump} aboveBar={<CanvasMinimap />} />
       </ReactFlowProvider>,
       { routes: { 'GET /api/v1/ai/chats/m': { chats: [] } } }
     )
@@ -383,7 +376,7 @@ describe('the dock above the input pill', () => {
 
   it('leaves the corner to the chat alone when there is no map to show', async () => {
     // An empty model passes no slot (see showMinimap); the pill must not grow a stray empty box.
-    const { container } = renderWithPrism(<CanvasChat activeDb="m" ui={ui} />, {
+    const { container } = renderWithPrism(<CanvasChat activeDb="m" onJump={onJump} />, {
       routes: { 'GET /api/v1/ai/chats/m': { chats: [] } }
     })
     expect(await screen.findByPlaceholderText(/Ask or instruct the assistant/)).toBeInTheDocument()
@@ -395,17 +388,7 @@ describe('the Skills flyout in the "+" menu', () => {
   // A second way to the switches in Settings → AI → Skills, without leaving the chat. The list is
   // the server's, a flip is written straight through, and "Add skill" hands over to the one place a
   // skill can actually be written.
-  const ui = {
-    jumpToProcess: vi.fn(),
-    autoLayout: vi.fn(),
-    screenshotRect: () => null,
-    calculateInCanvas: vi.fn(),
-    setupResults: vi.fn(),
-    getCanvas: vi.fn(),
-    clearCanvas: vi.fn(),
-    removeFromCanvas: vi.fn(),
-    refresh: vi.fn()
-  }
+  const onJump = vi.fn()
   const SKILLS = [
     {
       id: 'lci',
@@ -427,7 +410,7 @@ describe('the Skills flyout in the "+" menu', () => {
     onOpenSettings = vi.fn()
   ): ReturnType<typeof renderWithPrism> & { onOpenSettings: typeof onOpenSettings } => {
     let skills = SKILLS.map((s) => ({ ...s }))
-    const r = renderWithPrism(<CanvasChat activeDb="m" ui={ui} onOpenSettings={onOpenSettings} />, {
+    const r = renderWithPrism(<CanvasChat activeDb="m" onJump={onJump} onOpenSettings={onOpenSettings} />, {
       routes: {
         'GET /api/v1/ai/chats/m': { chats: [] },
         'GET /api/v1/ai/skills': () => ({ skills }),
@@ -509,17 +492,7 @@ describe('the Skills flyout in the "+" menu', () => {
  * on their own model's canvas or not at all, and Stop stops only what is on screen.
  */
 describe('two assistants working on two models', () => {
-  const ui = {
-    jumpToProcess: vi.fn(),
-    autoLayout: vi.fn(),
-    screenshotRect: () => null,
-    calculateInCanvas: vi.fn(),
-    setupResults: vi.fn(),
-    getCanvas: vi.fn(() => ({ nodes: [] })),
-    clearCanvas: vi.fn(),
-    removeFromCanvas: vi.fn(),
-    refresh: vi.fn()
-  }
+  const onJump = vi.fn()
   const routes = {
     'GET /api/v1/ai/chats/a': { chats: [] },
     'GET /api/v1/ai/chats/b': { chats: [] },
@@ -537,7 +510,7 @@ describe('two assistants working on two models', () => {
     const send = vi.fn((_req: unknown) => pending())
     const cancel = vi.fn(async () => undefined)
     const uiResult = vi.fn()
-    const r = renderWithPrism(<CanvasChat activeDb="a" ui={ui} />, {
+    const r = renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} />, {
       routes,
       overrides: { ai: { send, cancel, uiResult } }
     })
@@ -558,7 +531,7 @@ describe('two assistants working on two models', () => {
     expect(send.mock.calls[0][0]).toMatchObject({ chatId: 'chat-a', activeDb: 'a' })
 
     // Switch to model B: its chat is not running, so it can be sent to.
-    rerender(<CanvasChat activeDb="b" ui={ui} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} />)
     expect(await screen.findByTitle('Send')).toBeInTheDocument()
     expect(screen.queryByTitle('Stop')).toBeNull()
     // …and the header says the other run is still going, naming its model.
@@ -582,7 +555,7 @@ describe('two assistants working on two models', () => {
     const user = userEvent.setup()
     const { rerender, cancel } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" ui={ui} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} />)
     await type(user, 'build B')
     await user.click(await screen.findByTitle('Stop'))
     expect(cancel).toHaveBeenCalledTimes(1)
@@ -597,7 +570,7 @@ describe('two assistants working on two models', () => {
     const goTo = vi.fn()
     const { rerender } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" ui={ui} onGoToChat={goTo} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} onGoToChat={goTo} />)
     await user.click(await screen.findByRole('button', { name: '1 other run' }))
     expect(goTo).toHaveBeenCalledWith('a', 'chat-a')
   })
@@ -607,12 +580,12 @@ describe('two assistants working on two models', () => {
     const goTo = vi.fn()
     const { rerender, prism } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" ui={ui} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} />)
     await type(user, 'build B')
     prism.setRoute('GET /api/v1/ai/chats/c', { chats: [] })
     prism.setRoute('GET /api/v1/ai/chats/a', { chats: [{ id: 'chat-a', title: 'Steel bottle' }] })
     prism.setRoute('GET /api/v1/ai/chats/b', { chats: [{ id: 'chat-b', title: 'PET bottle' }] })
-    rerender(<CanvasChat activeDb="c" ui={ui} onGoToChat={goTo} />)
+    rerender(<CanvasChat activeDb="c" onJump={onJump} onGoToChat={goTo} />)
     await user.click(await screen.findByRole('button', { name: '2 other runs' }))
     expect(goTo).not.toHaveBeenCalled()
     expect(await screen.findByRole('button', { name: 'a · Steel bottle' })).toBeInTheDocument()
@@ -625,7 +598,7 @@ describe('two assistants working on two models', () => {
     const user = userEvent.setup()
     const goTo = vi.fn()
     const { rerender, prism } = mount()
-    rerender(<CanvasChat activeDb="a" ui={ui} onGoToChat={goTo} />)
+    rerender(<CanvasChat activeDb="a" onJump={onJump} onGoToChat={goTo} />)
     await type(user, 'build A')
     prism.setRoute('POST /api/v1/ai/chats/a', { id: 'chat-a2', title: '', messages: [] })
     prism.setRoute('GET /api/v1/ai/chats/a/chat-a', { id: 'chat-a', title: '', messages: [] })
@@ -660,13 +633,13 @@ describe('two assistants working on two models', () => {
       await type(user, 'build A')
       act(() => prism.emit(tool('search', 'start')))
       act(() => prism.emit(tool('search', 'done')))
-      rerender(<CanvasChat activeDb="b" ui={ui} />)
+      rerender(<CanvasChat activeDb="b" onJump={onJump} />)
       await screen.findByTitle('Send')
       // Out of sight, the run goes on.
       act(() => prism.emit(tool('calculate', 'start')))
       act(() => vi.advanceTimersByTime(95_000))
       chatARoutes(prism)
-      rerender(<CanvasChat activeDb="a" ui={ui} />)
+      rerender(<CanvasChat activeDb="a" onJump={onJump} />)
       expect(await screen.findByTitle('Stop')).toBeInTheDocument()
       expect(screen.getByText('search')).toBeInTheDocument()
       expect(screen.getAllByText('calculate')).toHaveLength(2) // the run bar and its row
@@ -680,7 +653,7 @@ describe('two assistants working on two models', () => {
   it('keeps recording a run while the panel is unmounted, as on the Results view', async () => {
     function Host({ show }: { show: boolean }): JSX.Element | null {
       useTurnFeed()
-      return show ? <CanvasChat activeDb="a" ui={ui} /> : null
+      return show ? <CanvasChat activeDb="a" onJump={onJump} /> : null
     }
     const user = userEvent.setup()
     const { rerender, prism } = renderWithPrism(<Host show />, {
@@ -715,7 +688,7 @@ describe('two assistants working on two models', () => {
 
   it('times a run adopted without any event from when it is shown, not from the epoch', async () => {
     // After a window reload: main says the chat is running, and nothing has arrived for it yet.
-    renderWithPrism(<CanvasChat activeDb="a" ui={ui} />, {
+    renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} />, {
       routes: {
         ...routes,
         'GET /api/v1/ai/chats/a': { chats: [{ id: 'chat-a', title: 'A' }] },
@@ -728,34 +701,22 @@ describe('two assistants working on two models', () => {
     expect(screen.getByText('0 s')).toBeInTheDocument()
   })
 
-  it("refuses a canvas tool for a model that is not on screen, and serves the shown model's", async () => {
+  it('leaves the canvas requests to the Workbench, which answers them on every page', async () => {
     const user = userEvent.setup()
-    const { rerender, uiResult, prism } = mount()
+    const { uiResult, prism } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" ui={ui} />)
-    await screen.findByTitle('Send')
-
     act(() =>
       prism.emitUiTool({ reqId: 'u1', name: 'get_canvas', args: {}, chatId: 'chat-a', database: 'a' })
     )
-    await vi.waitFor(() => expect(uiResult).toHaveBeenCalledWith('u1', true, expect.anything(), undefined))
-    expect(ui.getCanvas).not.toHaveBeenCalled()
-    const refusal = uiResult.mock.calls[0][2] as { error: string }
-    expect(refusal.error).toMatch(/"a" is not on screen/)
-    expect(refusal.error).toMatch(/modelling tools keep working/)
-
-    act(() =>
-      prism.emitUiTool({ reqId: 'u2', name: 'get_canvas', args: {}, chatId: 'chat-b', database: 'b' })
-    )
-    await vi.waitFor(() => expect(uiResult).toHaveBeenCalledWith('u2', true, { nodes: [] }, undefined))
-    expect(ui.getCanvas).toHaveBeenCalledTimes(1)
+    await act(() => new Promise((r) => setTimeout(r, 50)))
+    expect(uiResult).not.toHaveBeenCalled()
   })
 
   it("titles the run's own chat, not the chat on screen", async () => {
     const user = userEvent.setup()
     const { rerender, prism } = mount()
     await type(user, 'build A')
-    rerender(<CanvasChat activeDb="b" ui={ui} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} />)
     await screen.findByTitle('Send')
 
     act(() =>
@@ -787,24 +748,14 @@ describe('two assistants working on two models', () => {
  * rest), restores the card when the chat is opened, and opens on a chat the banner points to.
  */
 describe('a question asked while the chat was not on screen', () => {
-  const ui = {
-    jumpToProcess: vi.fn(),
-    autoLayout: vi.fn(),
-    screenshotRect: () => null,
-    calculateInCanvas: vi.fn(),
-    setupResults: vi.fn(),
-    getCanvas: vi.fn(),
-    clearCanvas: vi.fn(),
-    removeFromCanvas: vi.fn(),
-    refresh: vi.fn()
-  }
+  const onJump = vi.fn()
   const QUESTION = { questions: [{ question: 'Which PET?', options: ['virgin', 'recycled'] }] }
   const pending = (): Promise<unknown> => new Promise(() => {})
 
   it('reports the card it shows, and null once the panel is collapsed', async () => {
     const user = userEvent.setup()
     const onAskShown = vi.fn()
-    const { prism } = renderWithPrism(<CanvasChat activeDb="a" ui={ui} onAskShown={onAskShown} />, {
+    const { prism } = renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} onAskShown={onAskShown} />, {
       routes: {
         'GET /api/v1/ai/chats/a': { chats: [] },
         'POST /api/v1/ai/chats/a': { id: 'chat-a', title: '', messages: [] },
@@ -830,7 +781,7 @@ describe('a question asked while the chat was not on screen', () => {
   it('shows the confirmation card for approve_tool and answers it with Allow / Decline', async () => {
     const user = userEvent.setup()
     const uiResult = vi.fn()
-    const { prism } = renderWithPrism(<CanvasChat activeDb="a" ui={ui} />, {
+    const { prism } = renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} />, {
       routes: {
         'GET /api/v1/ai/chats/a': { chats: [] },
         'POST /api/v1/ai/chats/a': { id: 'chat-a', title: '', messages: [] },
@@ -863,7 +814,7 @@ describe('a question asked while the chat was not on screen', () => {
     const user = userEvent.setup()
     const steer = vi.fn(async () => ({ queued: true }))
     const unsteer = vi.fn(async () => ({ queued: [] }))
-    const { prism } = renderWithPrism(<CanvasChat activeDb="a" ui={ui} />, {
+    const { prism } = renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} />, {
       routes: {
         'GET /api/v1/ai/chats/a': { chats: [] },
         'POST /api/v1/ai/chats/a': { id: 'chat-a', title: '', messages: [] },
@@ -889,7 +840,7 @@ describe('a question asked while the chat was not on screen', () => {
   it('restores the card from main when the chat is opened after the question arrived', async () => {
     const user = userEvent.setup()
     const onAskShown = vi.fn()
-    renderWithPrism(<CanvasChat activeDb="a" ui={ui} onAskShown={onAskShown} />, {
+    renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} onAskShown={onAskShown} />, {
       routes: {
         'GET /api/v1/ai/chats/a': { chats: [{ id: 'chat-a', title: 'Bottle' }] },
         'GET /api/v1/ai/chats/a/chat-a': { id: 'chat-a', title: 'Bottle', messages: [] }
@@ -927,14 +878,14 @@ describe('a question asked while the chat was not on screen', () => {
       'GET /api/v1/ai/chats/b/b1': { id: 'b1', title: 'First', messages: [] },
       'GET /api/v1/ai/chats/b/b2': { id: 'b2', title: 'Second', messages: [] }
     }
-    const { rerender } = renderWithPrism(<CanvasChat activeDb="a" ui={ui} />, { routes })
+    const { rerender } = renderWithPrism(<CanvasChat activeDb="a" onJump={onJump} />, { routes })
     await screen.findByPlaceholderText(/Ask or instruct the assistant/)
     // Model switch and focus request in one render — the order the banner's button produces.
-    rerender(<CanvasChat activeDb="b" ui={ui} focusChat={{ chatId: 'b2', nonce: 1 }} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} focusChat={{ chatId: 'b2', nonce: 1 }} />)
     expect(await screen.findByTitle('Switch chat')).toHaveTextContent('Second')
 
     // Same model, another chat: opened directly.
-    rerender(<CanvasChat activeDb="b" ui={ui} focusChat={{ chatId: 'b1', nonce: 2 }} />)
+    rerender(<CanvasChat activeDb="b" onJump={onJump} focusChat={{ chatId: 'b1', nonce: 2 }} />)
     await vi.waitFor(() => expect(screen.getByTitle('Switch chat')).toHaveTextContent('First'))
   })
 })

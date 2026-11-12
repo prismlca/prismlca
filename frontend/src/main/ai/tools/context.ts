@@ -113,6 +113,11 @@ export interface ToolCtx {
     update: (next: ChatPlan | null, explanation?: string) => Promise<void>
   }
   /**
+   * The title `set_chat_title` gave this chat during the run. MUTABLE: set by that tool once the
+   * renderer accepted it, read by `plan` as the title of a first plan sent without one.
+   */
+  chatTitle?: string
+  /**
    * Run the web-research sub-agent (injected by the agent, which binds the run's abort signal).
    * Absent outside a real run — the tool then reports that research is unavailable.
    */
@@ -133,18 +138,26 @@ export interface ToolCtx {
     total?: number
     domains?: string[]
   }) => Promise<unknown>
-  /** Have a prepared dossier judged by the reviewer (injected; one toolless model pass, retried once
-   *  when it comes back empty). The outcome travels with the text so "found nothing" and "said
-   *  nothing" stay different answers — see `reviewDossier`. */
+  /** Have a prepared dossier judged by the reviewer (injected; one toolless model pass with a clock and
+   *  one restart, see reviewRun.ts). The outcome travels with the text so "found nothing", "said
+   *  nothing" and "ran out of time" stay different answers — see `reviewDossier`. */
   review?: (opts: { dossier: string }) => Promise<{
     text: string
-    outcome: 'ok' | 'empty' | 'error'
+    outcome: 'ok' | 'empty' | 'error' | 'timeout'
+    /** Cut off at a deadline: what the reviewer wrote by then, findings it had not reached missing. */
+    partial?: boolean
     finish_reason?: string
     reasoning_chars: number
     attempts: number
     ms: number
     error?: string
   }>
+  /**
+   * The in-app chat this run belongs to; absent in an MCP session. A review is logged with it, and a
+   * later review in the SAME chat is shown that one's findings and outcomes — never another chat's,
+   * whose reasons this conversation has not seen.
+   */
+  chatId?: string
 }
 
 export interface Tool {
@@ -162,7 +175,8 @@ export interface Tool {
    */
   surface?: 'ui' | 'subagent'
   /**
-   * Returns a string result, {image} for a vision screenshot, {result, transcript} where
+   * Returns a string result, {image} for a vision screenshot (with `result` when the text beside it says
+   * more than that it was taken), {result, transcript} where
    * `transcript` is Markdown appended to the assistant's visible text (used by ask_user so the
    * question + answer survive in the chat history), or {result, notice} where `notice` is a line
    * the chat shows on the tool-call row itself — the attribution a data provider requires to be
@@ -172,6 +186,9 @@ export interface Tool {
     args: any,
     ctx: ToolCtx
   ) => Promise<
-    string | { image: string } | { result: string; transcript: string } | { result: string; notice: string }
+    | string
+    | { image: string; result?: string }
+    | { result: string; transcript: string }
+    | { result: string; notice: string }
   >
 }

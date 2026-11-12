@@ -57,7 +57,10 @@ def write_lcia_workbook(path, cf_rows, indicator_rows):
 def test_setup_status_is_reportable(client, token):
     r = client.get("/api/v1/setup/status", headers=token)
     assert r.status_code == 200
-    assert r.json()["state"] in {"idle", "running", "done", "error"}
+    # Every state the job knows: an import another test cancelled in this worker leaves "cancelled" behind.
+    from prism_lca.engine.ecoinvent import JobState
+
+    assert r.json()["state"] in {s.value for s in JobState}
     assert "progress" in r.json()  # 0–1 while measurable, null otherwise — the wizard's bar
 
 

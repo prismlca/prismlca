@@ -11,24 +11,14 @@ import { DEFAULT_MODEL_ID } from '../../shared/aiDefaults'
  * 2026). Its own file because the model catalogue is cached per module registry (see
  * CanvasChat.model.dom.test.tsx), and the context meter needs a row with a window.
  */
-const ui = {
-  jumpToProcess: vi.fn(),
-  autoLayout: vi.fn(),
-  screenshotRect: () => null,
-  calculateInCanvas: vi.fn(),
-  setupResults: vi.fn(),
-  getCanvas: vi.fn(),
-  clearCanvas: vi.fn(),
-  removeFromCanvas: vi.fn(),
-  refresh: vi.fn()
-}
+const onJump = vi.fn()
 const CATALOGUE = [
   { id: DEFAULT_MODEL_ID, provider: 'openrouter', label: 'Default', descriptor: '', contextTokens: 200_000 }
 ]
 
 /** Mount on a stored chat and open the panel — the head with the usage line shows only expanded. */
 const mount = async (messages: Array<Record<string, unknown>>): Promise<void> => {
-  const { prism } = renderWithPrism(<CanvasChat activeDb="m" ui={ui} />, {
+  const { prism } = renderWithPrism(<CanvasChat activeDb="m" onJump={onJump} />, {
     routes: {
       'GET /api/v1/ai/chats/m': {
         chats: [{ id: 'c1', title: 'Bottle', created: '', updated: '', message_count: messages.length }]

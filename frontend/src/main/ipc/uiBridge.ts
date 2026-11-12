@@ -163,7 +163,9 @@ export class UiBridge {
     // can access webContents.capturePage) and hands back a data URL for vision models.
     if (name === 'screenshot_canvas' && result?.rect) {
       const img = await win.webContents.capturePage(result.rect)
-      return { image: `data:image/png;base64,${img.toPNG().toString('base64')}` }
+      const image = `data:image/png;base64,${img.toPNG().toString('base64')}`
+      // The renderer opened the model view for it (from another page): the answer says so.
+      return result.switched_to ? { image, switched_to: result.switched_to } : { image }
     }
     return result
   }

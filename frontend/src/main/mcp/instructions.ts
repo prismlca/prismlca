@@ -7,6 +7,7 @@
  * available does not mean it was read.
  */
 import { buildSystemPrompt, type Skill } from '../ai/systemPrompt'
+import { localDate } from '../ai/localTime'
 import { MCP_EXCLUDED_TOOLS } from './catalog'
 
 /** Claude Code's documented cut-off for server instructions; the text below stays under it. */
@@ -55,6 +56,8 @@ export interface OrientationOpts {
   clientName?: string
   /** Full descriptions of tools whose MCP description was shortened (catalog.ts). */
   toolNotes?: Record<string, string>
+  /** Today's local date (YYYY-MM-DD); absent = taken from the clock. The chat has it on every turn. */
+  today?: string
 }
 
 /**
@@ -122,6 +125,7 @@ export function buildOrientation(o: OrientationOpts): string {
     `are written to it, so read "you" as yourself and "this chat" as this session.\n\n`
   const session =
     `\n\n# This session\n` +
+    `- Today: ${o.today ?? localDate()}\n` +
     `- Model: ${o.activeDb ? `\`${o.activeDb}\`` : 'none open — create one with `manage_model` action="create" or open one with `canvas_view` action="open_model"'}\n` +
     // The chat's database switches are the chat's; an external session gets every installed database
     // and chooses per call (V383).

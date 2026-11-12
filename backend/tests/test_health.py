@@ -442,6 +442,25 @@ def test_a_chain_of_phases_is_fine_and_an_untagged_step_is_named(client, token, 
     assert h["ok"] is True  # a hint, not an error
 
 
+def test_a_second_tag_group_is_not_read_as_phases(client, token, project):
+    """A `Component` group on processes divides the result by part, not by phase: an untagged step under
+    a tagged part gets no phase advice, while the same shape in the phase group still does."""
+    db = _fg(client, token)
+    main = _create(client, token, db, "bottled liquid")
+    bottle = _create(client, token, db, "bottle")
+    cap = _create(client, token, db, "cap")
+    moulding = _create(client, token, db, "moulding")
+    for act, part in ((bottle, "Bottle"), (cap, "Closure")):
+        _tag(client, token, db, act, "Component", part)
+        _tag(client, token, db, act, "Life-cycle phase", "Raw materials")
+    _edge(client, token, db, main, bottle)
+    _edge(client, token, db, main, cap)
+    _edge(client, token, db, bottle, moulding)
+
+    h = client.get(f"/api/v1/model/health/{db}", headers=token).json()
+    assert [f for f in h["findings"] if f["code"] == "untagged_step"] == []
+
+
 def test_an_untagged_helper_between_phases_is_not_a_chain(client, token, project):
     """A shared intermediate is meant to stay untagged and inherit its consumer's phase."""
     db = _fg(client, token)
@@ -493,6 +512,43 @@ def test_a_single_valued_dimension_is_not_a_phase_split(client, token, project):
     codes = _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
     assert "chained_phases" not in codes
     assert "phase_tag_on_reference_process" not in codes
+
+
+def test_a_model_with_no_phase_tag_at_all_is_reported(client, token, project):
+    """Five processes, not one tag: no dimension, so the phase checks above had nothing to look at and the
+    model passed while its results could not be split by phase (V489). Counted, never guessed."""
+    db = _fg(client, token)
+    main = _create(client, token, db, "widget, cradle-to-grave")
+    steps = [_create(client, token, db, name) for name in ("granulate", "moulding", "transport", "disposal")]
+    for code in steps:
+        _edge(client, token, db, main, code)
+
+    h = client.get(f"/api/v1/model/health/{db}", headers=token).json()
+    flagged = [f for f in h["findings"] if f["code"] == "no_phase_tags"]
+    assert len(flagged) == 1 and flagged[0]["severity"] == "warning", h["findings"]
+    assert flagged[0]["activity"] is None
+    assert "cannot be broken down by phase" in flagged[0]["message"]
+
+    # A tag of another dimension is no phase; a phase dimension under another spelling is.
+    _tag(client, token, db, main, "Owner", "Team A")
+    assert "no_phase_tags" in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
+    _tag(client, token, db, steps[0], "Phase", "Raw materials")
+    assert "no_phase_tags" not in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
+
+
+def test_no_phase_tag_is_fine_on_a_small_model_and_on_tagged_inputs(client, token, project):
+    """Two processes are a screening with nothing to split; and a phase on an input is a phase."""
+    from prism_lca.engine.tags import TagStore
+
+    db = _fg(client, token)
+    main = _create(client, token, db, "widget, screening")
+    _edge(client, token, db, main, _create(client, token, db, "granulate"))
+    assert "no_phase_tags" not in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
+
+    uid = _edge(client, token, db, main, _create(client, token, db, "moulding"))
+    assert "no_phase_tags" in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
+    TagStore().set_tag(db, f"{main}#{uid}", "Life-cycle phase", "Manufacturing")
+    assert "no_phase_tags" not in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
 
 
 def test_a_mistagged_reference_process_is_reported_once(client, token, project):
@@ -756,6 +812,36 @@ def test_a_parameter_the_model_does_not_have_is_not_guessed_at():
     from prism_lca.engine.health import frozen_parameter_figures
 
     assert frozen_parameter_figures("Something, 42 g (parameter gone_away).", {}, {}) == []
+
+
+def test_a_rate_beside_a_quantity_is_not_read_as_the_quantity():
+    """V474: a density in the note of a mass parameter was reported as the mass gone stale, and the
+    model rewrote a correct sentence to quiet it. A figure followed by "per" or "/" and a unit the
+    table places is a rate; beside a parameter that is not one, it is skipped — and only then."""
+    from prism_lca.engine.health import frozen_parameter_figures
+
+    values, units = {"liquid_mass": 0.52}, {"liquid_mass": "kg"}
+    note = ("0.52 kg of liquid per filled bottle (500 ml at a density of 1040 g per litre) "
+            "(parameter liquid_mass)")
+    assert frozen_parameter_figures(note, values, units) == []
+    assert frozen_parameter_figures("Density 1040 g/L (parameter liquid_mass).", values, units) == []
+    # Skipped, not stopped: the quantity in front of the rate is still the one compared.
+    note = "0.48 kg of liquid at 1040 g per litre (parameter liquid_mass)"
+    assert frozen_parameter_figures(note, values, units) == [("liquid_mass", "0.48 kg", 0.52)]
+
+    # "per bottle" names no unit: the figure is the quantity per functional unit, and it is wrong.
+    note = "0.48 kg per bottle (parameter liquid_mass)"
+    assert frozen_parameter_figures(note, values, units) == [("liquid_mass", "0.48 kg", 0.52)]
+    note = "0.48 kg of liquid (parameter liquid_mass)"
+    assert frozen_parameter_figures(note, values, units) == [("liquid_mass", "0.48 kg", 0.52)]
+    # A unit the table cannot place after the slash is no unit either ("kg/unit" is how masses are kept).
+    assert frozen_parameter_figures("0.48 kg/unit (parameter liquid_mass)", values, {"liquid_mass": "kg/unit"}) \
+        == [("liquid_mass", "0.48 kg", 0.52)]
+
+    # A parameter that IS a rate is written as one, and a stale rate still has to be reported.
+    values, units = {"density": 1.04}, {"density": "kg/L"}
+    assert frozen_parameter_figures("1040 g per litre (parameter density)", values, units) == []
+    assert frozen_parameter_figures("1.2 kg/L (parameter density)", values, units) == [("density", "1.2 kg", 1.04)]
 
 
 def test_the_linter_really_reads_the_parameters(client, token, project):

@@ -126,6 +126,35 @@ def test_review_endpoints_stamp_the_generation(client, token, project):
     assert r.json()["open"] == 1
 
 
+def test_review_log_keeps_the_chat_and_marks_each_entry_stale_or_not(project):
+    """A re-review in the same chat is shown the previous one; the chat id is how the tool finds it."""
+    store = ReviewLogStore()
+    store.record_review("m6", "Should fix: the lid.", generation=3, chat="a1b2c3d4e5f6", partial=True)
+    store.record_review("m6", "Blocking: none.", generation=5)
+    first, second = store.history("m6", current_generation=5)
+    assert first["chat"] == "a1b2c3d4e5f6" and first["stale"] is True and first["partial"] is True
+    assert "chat" not in second and "partial" not in second and second["stale"] is False
+    assert all(r["stale"] is None for r in store.history("m6"))
+
+
+def test_a_review_from_an_earlier_backend_session_is_neither_stale_nor_fresh(project):
+    """The generation counter restarts with the backend: an equal number then proves nothing."""
+    store = ReviewLogStore()
+    store.record_review("m8", "Should fix: the lid.", generation=4)
+    stored = store.list("m8")
+    stored[0]["session"] = "an-older-run"
+    store.restore_database("m8", stored)
+    assert store.history("m8", current_generation=4)[0]["stale"] is None
+
+
+def test_review_endpoint_records_the_chat(client, token, project):
+    client.post("/api/v1/provenance/review",
+                json={"database": "m7", "review": "Should fix: a point", "chat": "c0ffee"}, headers=token)
+    entry = client.get("/api/v1/provenance/review", params={"database": "m7"}, headers=token).json()[-1]
+    assert entry["chat"] == "c0ffee"
+    assert entry["stale"] is False  # nothing was edited between the review and the read
+
+
 # --- what the report makes of them -------------------------------------------
 
 

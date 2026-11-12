@@ -285,14 +285,15 @@ export const DEFAULT_ZDR_EXCEPT_OPENAI = true
 export const DEFAULT_ZDR_EXCEPT_GOOGLE = true
 
 /**
- * The reasoning-effort levels a request may ask for — OpenRouter's unified `reasoning.effort` and
- * OpenAI's Responses `reasoning.effort` share this vocabulary (checked 03.10.2026). Which of them a
- * MODEL accepts is per catalogue row (`reasoningEfforts` in main/ai/models.ts): Anthropic answers 400
- * to `none`, GPT-6 Astra has no `none`, GLM maps anything above `high` to its own `max`, and so on.
+ * The reasoning-effort levels a request may ask for, in ascending order — OpenRouter's unified
+ * `reasoning.effort` and OpenAI's Responses `reasoning.effort` share this vocabulary, `max` included
+ * (checked 2026-11-12). Which of them a MODEL accepts is per catalogue row (`reasoningEfforts` in
+ * main/ai/models.ts): Anthropic answers 400 to `none`, GPT-6 Astra and 6.1 Sol have no `none`, GLM maps
+ * anything above `high` to its own `max`, and so on.
  * The setting stores one choice per model id; absent or '' = send nothing, the API's own default —
  * which for several models is well below the top row the catalogue's ratings were measured at.
  */
-export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 export type ReasoningEffort = (typeof REASONING_EFFORTS)[number]
 
 export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
@@ -301,18 +302,55 @@ export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
-  xhigh: 'Extra high'
+  xhigh: 'Extra high',
+  max: 'Max — the most the model will think'
 }
 
-/** The same levels as one word each — the tick labels of the effort scale, where seven of them share
- *  one row. */
+/** The same levels as one word each — the tick labels of the effort scale, where up to seven of them
+ *  share one row. */
 export const REASONING_EFFORT_SHORT: Record<ReasoningEffort, string> = {
   none: 'None',
   minimal: 'Minimal',
   low: 'Low',
   medium: 'Medium',
   high: 'High',
-  xhigh: 'X-high'
+  xhigh: 'X-high',
+  max: 'Max'
+}
+
+const effortRank = (e: ReasoningEffort): number => REASONING_EFFORTS.indexOf(e)
+
+/** What the chat-effort rule reads of a catalogue row — main's `AiModel` and the renderer's copy both fit. */
+export interface EffortRow {
+  reasoningEfforts?: readonly ReasoningEffort[]
+  minChatEffort?: ReasoningEffort
+}
+
+/**
+ * The levels a model offers in the CHAT role: its documented levels from its `minChatEffort` up, or all
+ * of them without a floor. The floor is the chat's alone — the other roles never send the stored choice.
+ */
+export function chatEffortLevels(row: EffortRow | undefined): ReasoningEffort[] {
+  const all = [...(row?.reasoningEfforts ?? [])]
+  const floor = row?.minChatEffort
+  return floor ? all.filter((l) => effortRank(l) >= effortRank(floor)) : all
+}
+
+/**
+ * The level a chat run sends for a model: the stored choice, or the model's floor when the choice is
+ * below it or is Default (absent / ''); '' = send nothing. A stored level the row does not offer — one a
+ * catalogue update took away, such as 6.1 Sol's old `minimal` — counts as Default, so the picker never
+ * shows Default while main sends the old level. One rule for main (which sends it) and the pickers
+ * (which show it), so the two cannot disagree.
+ */
+export function chatEffort(
+  stored: ReasoningEffort | '' | undefined,
+  row: EffortRow | undefined
+): ReasoningEffort | '' {
+  const offered = stored && row?.reasoningEfforts?.includes(stored) ? stored : ''
+  const floor = row?.minChatEffort
+  if (!floor) return offered
+  return offered && effortRank(offered) >= effortRank(floor) ? offered : floor
 }
 
 /**
@@ -338,6 +376,13 @@ export function planToolOn(
 ): boolean {
   const chosen = overrides?.[id]
   return typeof chosen === 'boolean' ? chosen : catalogueDefault !== false
+}
+
+/** The name of a scale step: a level's short name, or "Default" — with the level the API then uses in
+ *  brackets where the vendor documents it ("Default (medium)"). */
+export function effortStepName(step: ReasoningEffort | '', apiDefault?: ReasoningEffort): string {
+  if (step) return REASONING_EFFORT_SHORT[step]
+  return apiDefault ? `Default (${REASONING_EFFORT_SHORT[apiDefault].toLowerCase()})` : 'Default'
 }
 
 /** The stored per-model choices, cleaned: only known levels, keyed by a non-empty model id. */

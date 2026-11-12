@@ -37,6 +37,9 @@ export const MessageRow = memo(function MessageRow({
         <ToolTraceList traces={m.tools} labels={labels} summary cost={m.cost} provider={m.provider} />
       ) : null}
       {m.role === 'assistant' ? <Markdown text={m.content} onJump={onJump} /> : m.content}
+      {/* The reason a run failed, as stored with its answer: the message the window showed at the time
+          is gone after a reload, and "why did this not work yesterday" was unanswerable. */}
+      {m.role === 'assistant' && m.error ? <div className="chat-error">Error: {m.error}</div> : null}
       {/* The files that travelled with this turn. They are content parts beside the prose, so they
           leave no trace in `content` — without this row a reloaded chat looks as if nothing had been
           attached at all. */}

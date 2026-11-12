@@ -399,6 +399,22 @@ describe('waiting out a busy provider or a lost network', () => {
     expect(events.findIndex((e) => e.type === 'delta')).toBeGreaterThan(events.indexOf(retries[1]))
   })
 
+  it('logs every failed attempt it sends again, with status and the provider’s words', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(fail(503)).mockResolvedValueOnce(ok('back')))
+    const run = collect()
+    await vi.runAllTimersAsync()
+    const { error } = await run
+    const lines = warn.mock.calls.map((c) => String(c[0]))
+    vi.restoreAllMocks()
+    expect(error).toBeUndefined()
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(
+      /^\d{4}-\d{2}-\d{2} [\d:.]+ \[prism-ai\] provider error, retrying: openrouter m — HTTP 503 \(unavailable \(503\)\) — .*nope.* — attempt 1, next in 2000 ms$/
+    )
+  })
+
   it('lets the chat wait a lost network out for minutes', async () => {
     const start = Date.now()
     const fetchMock = vi.fn(async () => {

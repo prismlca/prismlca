@@ -57,17 +57,7 @@ beforeEach(async () => {
   storeMessage = () => ({})
 })
 
-const ui = {
-  jumpToProcess: vi.fn(),
-  autoLayout: vi.fn(),
-  screenshotRect: () => null,
-  calculateInCanvas: vi.fn(),
-  setupResults: vi.fn(),
-  getCanvas: vi.fn(),
-  clearCanvas: vi.fn(),
-  removeFromCanvas: vi.fn(),
-  refresh: vi.fn()
-}
+const onJump = vi.fn()
 
 const chatRoutes = (db: string): Record<string, unknown> => ({
   [`GET /api/v1/ai/chats/${db}`]: () => ({ chats }),
@@ -102,12 +92,12 @@ const DEFAULT_PROPS = {
 const mount = ({ props = {}, overrides = {} }: MountOpts = {}) => {
   const send = vi.fn(async (_req: Record<string, unknown>) => ({ ok: true }))
   const all = { ...DEFAULT_PROPS, ...props }
-  const r = renderWithPrism(<CanvasChat ui={ui} {...all} />, {
+  const r = renderWithPrism(<CanvasChat onJump={onJump} {...all} />, {
     routes: routes(),
     overrides: { ...overrides, ai: { send, ...(overrides.ai ?? {}) } }
   })
   const rerender = (p: Partial<Parameters<CanvasChatT>[0]> = {}): void =>
-    r.rerender(<CanvasChat ui={ui} {...all} {...p} />)
+    r.rerender(<CanvasChat onJump={onJump} {...all} {...p} />)
   return { ...r, send, rerender }
 }
 

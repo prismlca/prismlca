@@ -18,6 +18,7 @@ import { S } from '../format'
 import {
   PLAN_LIMITS,
   PLAN_STATUSES,
+  derivePlanTitle,
   formatPlanForModel,
   planProgress,
   validatePlanUpdate
@@ -29,11 +30,11 @@ export const planTools: Tool[] = [
       type: 'function',
       function: {
         name: 'plan',
-        description: `Keep the task plan the user sees beside the chat. Send the WHOLE list every time — it replaces the previous one. Each step is an object with exactly the fields "step" (a short imperative sentence), "status" (${PLAN_STATUSES.join(' | ')}) and optionally "note". Exactly one step is in_progress while work remains; a step that cannot proceed is blocked (with a note); a dropped step is skipped (with a note). Mark steps completed the moment they are done — never before, and never because you meant to do them. Several steps may be completed in one call. Close the last step together with your final answer, not before it. If the plan changes or an unfinished step is dropped, say why in explanation. The user sees the list beside the chat, so do not repeat it in prose.`,
+        description: `Keep the task plan the user sees beside the chat. Send the WHOLE list every time — it replaces the previous one. Each step is an object with exactly the fields "step" (a short imperative sentence), "status" (${PLAN_STATUSES.join(' | ')}) and optionally "note". Exactly one step is in_progress while work remains; a step that cannot proceed is blocked (with a note); a dropped step is skipped (with a note). Mark steps completed the moment they are done — never before, and never because you meant to do them. Tick each step off as it finishes, not all at the end. Close the last step together with your final answer, not before it. If the plan changes or an unfinished step is dropped, say why in explanation. The user sees the list beside the chat, so do not repeat it in prose.`,
         parameters: obj(
           {
             title: str(
-              `3–6 words naming the task; required on the first call of a chat (max ${PLAN_LIMITS.titleChars} characters).`
+              `3–6 words naming the task; send it on the first call (max ${PLAN_LIMITS.titleChars} characters).`
             ),
             explanation: str(
               `Why the plan changed. Required when a step that was not completed/skipped disappears or is reworded, and when the list is emptied to withdraw the plan (max ${PLAN_LIMITS.explanationChars} characters).`
@@ -79,7 +80,7 @@ export const planTools: Tool[] = [
         return 'Plan withdrawn.'
       }
       const next = {
-        title: v.input.title || prev?.title || 'Plan',
+        title: v.input.title || prev?.title || derivePlanTitle(v.input.steps, ctx.chatTitle),
         steps: v.input.steps,
         revision: (prev?.revision ?? 0) + 1,
         updated: new Date().toISOString()

@@ -449,7 +449,7 @@ export default function Parameters({
   const del = (name: string): void =>
     setConfirm({
       title: 'Delete parameter',
-      message: `Delete the parameter “${name}”? Formulas that reference it will error until you fix them.`,
+      message: `Delete the parameter “${name}”? A parameter that a formula or scenario still uses is not deleted — the message names what uses it.`,
       confirmLabel: 'Delete',
       danger: true,
       onConfirm: () =>

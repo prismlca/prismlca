@@ -1,11 +1,10 @@
 /**
- * The handlers the in-app assistant uses to drive the canvas and the results UI (invoked from
- * CanvasChat), plus the deferred cross-page jump. Extracted from Workbench.tsx (wave 4.1, stage 6):
- * the ~150-line `chatUi` memo consumed almost nothing but the canvas API, and the Workbench only
- * ever handed it through to the chat dock.
+ * The handlers the assistant and external agents use to drive the canvas and the results UI (answered by
+ * workbench/useCanvasUiTools.ts), the wait for the Model view to draw, and the jump into it from another
+ * page. The handlers act on the canvas state, which the Workbench holds whichever page is shown.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatUiHandlers } from '../CanvasChat'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { canvasDrawn } from './canvasDrawn'
 import { isBox, shownTags, type BoxData, type Tag } from '../lib/occurrences'
 import { splitId } from '../lib/canvas'
 import { viewLoaded, viewSet, viewSync } from '../lib/modelView'
@@ -18,6 +17,27 @@ import type { ResultsTab } from '../views/results/ResultsTabs'
 import type { useCanvasModel } from './useCanvasModel'
 
 type Canvas = ReturnType<typeof useCanvasModel>
+
+/** Handlers for the UI tools of the assistant and of external agents, executed in the renderer. */
+export interface ChatUiHandlers {
+  jumpToProcess: (code: string) => void
+  autoLayout: () => void
+  screenshotRect: () => { x: number; y: number; width: number; height: number } | null
+  calculateInCanvas: (method: string[], code?: string) => Promise<unknown>
+  setupResults: (args: Record<string, unknown>) => Promise<unknown> | unknown
+  /** What is actually on the canvas (foreground + read-only reference boxes). */
+  getCanvas: () => unknown
+  /** Remove all read-only background reference boxes from the canvas view. */
+  clearCanvas: () => unknown
+  /** Remove one background reference box (by code) from the canvas view. */
+  removeFromCanvas: (code: string) => Promise<unknown> | unknown
+  /**
+   * Reload after an AI edit: audit + databases + tags always, the canvas only when `canvas` is not
+   * false — a run editing another model must not rebuild the graph on screen. `fit` fits the canvas
+   * to the view once the graph is rebuilt (the end of a turn that added or removed boxes).
+   */
+  refresh: (opts?: { canvas?: boolean; fit?: boolean }) => void
+}
 
 export interface AiCanvasToolsDeps {
   activeDb: string | null
@@ -35,7 +55,6 @@ export interface AiCanvasToolsDeps {
   reloadTagGroups: () => Promise<void>
   canvas: Pick<
     Canvas,
-    | 'nodes'
     | 'setNodes'
     | 'setEdges'
     | 'selected'
@@ -48,6 +67,7 @@ export interface AiCanvasToolsDeps {
     | 'autoLayout'
     | 'deleteRef'
     | 'reloadGraph'
+    | 'history'
   >
 }
 
@@ -69,7 +89,6 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
     canvas
   } = deps
   const {
-    nodes,
     setNodes,
     setEdges,
     selected,
@@ -81,37 +100,46 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
     rfRef,
     autoLayout,
     deleteRef,
-    reloadGraph
+    reloadGraph,
+    history: { ready: graphReady }
   } = canvas
   // Read inside AI tool handlers, which are created once and would otherwise close over a stale view.
   const viewRef = useRef<ViewKey>(view)
   viewRef.current = view
+  const activeDbRef = useRef(activeDb)
+  activeDbRef.current = activeDb
+
+  // The React Flow instance belongs to the mounted Model view. Kept after it unmounts, it would act on a
+  // canvas nobody sees, and a wait for the drawn canvas could not tell it from the new one.
+  useEffect(() => {
+    if (view !== 'model') rfRef.current = null
+  }, [view, rfRef])
 
   /**
-   * Jump to a process from a page that is not the canvas.
-   *
-   * `chatUi.jumpToProcess` needs the ReactFlow instance, and that only exists while the Model view is
-   * mounted — so from Parameters the code is parked, the view switches, and the effect below performs the
-   * jump once the node is actually there. Parked in state rather than done immediately because the graph
-   * of a model that was never opened arrives a request later.
+   * Resolves once the Model view shows this model's canvas, drawn: React Flow has handed over its
+   * instance, the graph of the model is in (a model never opened loads it on the way), and every box
+   * has been measured — React Flow hides a box until it has. False when that did not happen in time.
    */
-  const [pendingJump, setPendingJump] = useState<string | null>(null)
-  const jumpFromAnyPage = useCallback(
-    (code: string) => {
-      setPendingJump(code)
-      setView('model')
-    },
-    [setView]
+  const whenDrawn = useCallback(
+    (): Promise<boolean> =>
+      canvasDrawn(() => {
+        const inst = rfRef.current
+        if (!inst || viewRef.current !== 'model' || !graphReady(activeDbRef.current)) return false
+        return inst.getNodes().every((n) => n.hidden || !!n.measured?.width)
+      }),
+    [rfRef, graphReady]
   )
 
-  useEffect(() => {
-    if (!pendingJump || view !== 'model' || !activeDb) return
-    if (!nodesRef.current.some((n) => n.id === `${activeDb}/${pendingJump}`)) return
-    chatUiRef.current?.jumpToProcess(pendingJump)
-    setPendingJump(null)
-  }, [pendingJump, view, activeDb, nodes, nodesRef])
+  /** Jump to a process from any page: open the Model view, wait until it is drawn, then centre it. */
+  const jumpFromAnyPage = useCallback(
+    (code: string) => {
+      setView('model')
+      void whenDrawn().then(() => chatUiRef.current?.jumpToProcess(code))
+    },
+    [setView, whenDrawn]
+  )
 
-  // Handlers the assistant uses to drive the canvas/results UI (invoked from CanvasChat).
+  // Handlers the assistant uses to drive the canvas/results UI (answered by useCanvasUiTools).
   const chatUi: ChatUiHandlers = useMemo(
     () => ({
       jumpToProcess: (code) => {
@@ -414,5 +442,5 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
   const chatUiRef = useRef<ChatUiHandlers | null>(null)
   chatUiRef.current = chatUi
 
-  return { chatUi, jumpFromAnyPage }
+  return { chatUi, jumpFromAnyPage, whenDrawn }
 }

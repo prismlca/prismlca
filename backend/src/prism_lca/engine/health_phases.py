@@ -2,10 +2,15 @@
 breakdown, as opposed to the inventory checks of ``health``, which reads these findings into its rules."""
 from __future__ import annotations
 
+from prism_lca.engine.tag_groups import same_dimension
 from prism_lca.engine.tags import TagStore
 
+#: From this many processes on, a model is a chain of steps whose result is read per phase; one or two
+#: processes are a screening, where a breakdown by phase has nothing to split.
+_PHASED_FROM = 3
 
-def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[str, str, str, tuple]]:
+
+def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[str, str, str, tuple | None]]:
     """Structural checks on how the tagged life-cycle phases hang together.
 
     The breakdown by tag (``phase_attribution``) follows the nearest tag on the path: a process
@@ -13,7 +18,8 @@ def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[st
     is below it. A tag on the reference process therefore becomes every untagged process's value, and
     a step left untagged quietly counts under the phase above it.
 
-    Returns ``(severity, code, message, activity_key)`` tuples; the caller resolves the key.
+    Returns ``(severity, code, message, activity_key)`` tuples; the caller resolves the key, and a key of
+    None is a finding about the model as a whole.
     """
     tag_map = TagStore().load_map()
     # Only dimensions this database actually uses, and only those with more than one value in it —
@@ -25,7 +31,25 @@ def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[st
             continue
         for t in tags:
             tagged.setdefault(t["dimension"], {})[(db, code)] = t["value"]
-    out: list[tuple[str, str, str, tuple]] = []
+    out: list[tuple[str, str, str, tuple | None]] = []
+    # No phase tag at all — on no process and no input — gives no dimension to check below, so the model
+    # passed silently while its results could not be split by phase. Counted, never guessed (V489).
+    phased = any(
+        same_dimension(t["dimension"], "Life-cycle phase")
+        for key, tags in tag_map.items()
+        if key.rpartition("/")[0] == database
+        for t in tags
+    )
+    if len(adjacency) >= _PHASED_FROM and not phased:
+        out.append(
+            (
+                "warning",
+                "no_phase_tags",
+                f"No process carries a Life-cycle phase tag ({len(adjacency)} processes) — the results cannot "
+                "be broken down by phase. Tag each process with its phase.",
+                None,
+            )
+        )
 
     # Who consumes whom, restricted to the foreground graph the linter already walked.
     consumers: dict[tuple, set] = {}
@@ -34,7 +58,9 @@ def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[st
             consumers.setdefault(provider, set()).add(consumer)
 
     for dimension, values in tagged.items():
-        if len(set(values.values())) < 2:
+        # Only the phase split: another group (a `Component` per part, a supplier) divides the result
+        # differently, and "a step of its own needs its own phase" is no advice for it.
+        if not same_dimension(dimension, "Life-cycle phase") or len(set(values.values())) < 2:
             continue
 
         # A node nothing else consumes is the reference process. Its tag is the fallback every

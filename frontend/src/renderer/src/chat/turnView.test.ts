@@ -92,6 +92,45 @@ describe('the turn view of one chat', () => {
     expect(foldTurn(named, run('r2', 'idle'), 7)).toBeUndefined()
   })
 
+  it('closes each of two parallel calls of one tool in its own row when they end in reverse order', () => {
+    // The second call is refused at once and ends first; by name it used to land in the first row.
+    const v = fold([
+      [tool('search_background', 'start', { callId: '2.0', args: '{"query":"widget"}' }), 1_000],
+      [tool('search_background', 'start', { callId: '2.1', args: '{}' }), 1_000],
+      [tool('search_background', 'done', { callId: '2.1', soft: 'Pass query.', ms: 0 }), 1_001],
+      [tool('search_background', 'done', { callId: '2.0', preview: '8 hits', ms: 466 }), 1_466]
+    ])!
+    expect(v.live.map((t) => [t.args, t.status, t.detail ?? t.preview])).toEqual([
+      ['{"query":"widget"}', 'ok', '8 hits'],
+      ['{}', 'rejected', 'Pass query.']
+    ])
+    expect(v.ids).toEqual(['2.0', '2.1'])
+  })
+
+  it('falls back to the newest open row of the tool for an event without a call key', () => {
+    const v = fold([
+      [tool('research_web', 'start', { callId: '0.0' }), 1],
+      [tool('research_web', 'start', { callId: '0.1' }), 1],
+      [tool('research_web', 'progress', { detail: 'leg 2 of 3' }), 2]
+    ])!
+    expect(v.live.map((t) => t.detail)).toEqual([undefined, 'leg 2 of 3'])
+    // A key nobody started under closes nothing — never a row of another call.
+    expect(
+      foldTurn(v, tool('research_web', 'done', { callId: '9.9' }), 3)!.live.every((t) => !t.status)
+    ).toBe(true)
+  })
+
+  it('keeps the first cache warning of the run until the run ends', () => {
+    const warn = (pattern: 'dropped' | 'stuck'): AiEvent => ({ chatId: 'c', type: 'cache-warning', pattern })
+    const v = fold([
+      [warn('stuck'), 1],
+      [{ chatId: 'c', type: 'delta', text: 'Linking.' }, 2],
+      [warn('dropped'), 3]
+    ])!
+    expect(v.cacheWarning).toBe('stuck')
+    expect(foldTurn(v, { chatId: 'c', type: 'done', text: 'Linking.' }, 4)).toBeUndefined()
+  })
+
   it('leaves the view alone for events that are not the turn', () => {
     const v = fold([[tool('search', 'start'), 1]])!
     expect(foldTurn(v, { chatId: 'c', type: 'steer', queued: ['kg'] }, 2)).toBe(v)

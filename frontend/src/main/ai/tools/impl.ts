@@ -294,7 +294,9 @@ export const IMPL: Record<string, Tool['run']> = {
   find_consumers: async (a, ctx) => {
     const db = a.database ?? ctx.activeDb
     if (!db) return S({ error: 'No model open — pass a database name.' })
-    const q = `input_database=${encodeURIComponent(a.consumes_database)}&input_code=${encodeURIComponent(a.consumes_code)}`
+    const q =
+      `input_database=${encodeURIComponent(a.consumes_database)}&input_code=${encodeURIComponent(a.consumes_code)}` +
+      (a.whole_database === true ? '&whole_database=true' : '')
     return S(await ctx.api('GET', `/api/v1/model/consumers/${encodeURIComponent(db)}?${q}`))
   },
   create_model: async (a, ctx) => {

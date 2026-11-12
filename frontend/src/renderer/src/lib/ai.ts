@@ -37,6 +37,11 @@ export interface AiModelInfo {
   contextTokens?: number
   /** The reasoning-effort levels the model's API accepts (main/ai/models.ts); absent = default only. */
   reasoningEfforts?: ReasoningEffort[]
+  /** The level the API uses when none is sent, where documented — "Default (medium)". */
+  defaultEffort?: ReasoningEffort
+  /** The lowest level as the CHAT model, and the line that says why (main/ai/models.ts). */
+  minChatEffort?: ReasoningEffort
+  minChatEffortNote?: string
 }
 
 // The event union lives in shared/ipc.ts — one definition for main, preload and renderer. The old
@@ -98,6 +103,8 @@ export interface ChatMessage {
   /** How a stopped turn ended; absent on an answered one. Structured, so nothing reads the italic
    *  stop note in `content` to decide whether "Continue" is offered. */
   outcome?: RunOutcome
+  /** Why a failed turn failed, `<Status> — <Text>` as main stored it; only with outcome 'error'. */
+  error?: string
 }
 export interface FullChat {
   id: string

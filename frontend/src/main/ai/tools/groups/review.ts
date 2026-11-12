@@ -7,6 +7,7 @@ import type { Tool } from '../context'
 import { num, obj, str, strArr } from '../schema'
 import { S, capText } from '../format'
 import { linkedHotspots, needsALook, unopenedLinkedHotspots } from '../advice/hotspots'
+import { previousReviewOf, previousReviewSection } from './reviewHistory'
 
 export const reviewTools: Tool[] = [
   {
@@ -15,7 +16,7 @@ export const reviewTools: Tool[] = [
       function: {
         name: 'review_model',
         description:
-          'Get an independent, critical second opinion on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model\'s review log, stamped against the model state, so the report can state that a review happened and whether the model changed afterwards. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with "resolutions" to record each finding\'s outcome — fixed things are visible in the model, but "rejected, because …" and "still open" exist nowhere else, and the report prints the open ones in its Limitations chapter. With "resolutions" present nothing is re-reviewed; the call only records.',
+          'Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model\'s review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with "resolutions" to record each finding\'s outcome — fixed things are visible in the model, but "rejected, because …" and "still open" exist nowhere else, and the report prints the open ones in its Limitations chapter. With "resolutions" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.',
         parameters: obj(
           {
             database: str('Model to review; defaults to the open model.'),
@@ -158,6 +159,16 @@ export const reviewTools: Tool[] = [
         )
       }
 
+      // This chat's own previous review of the model, if it ran one (reviewHistory.ts).
+      const previous = ctx.chatId
+        ? previousReviewOf(
+            await part('previous review', () =>
+              ctx.api('GET', `/api/v1/provenance/review?database=${encodeURIComponent(db)}`)
+            ),
+            ctx.chatId
+          )
+        : null
+
       const dossier = [
         `MODEL: ${db}`,
         `GOAL & SCOPE: ${study && Object.values(study).some((v) => v) ? JSON.stringify(study) : '(empty — nothing recorded)'}`,
@@ -193,6 +204,7 @@ export const reviewTools: Tool[] = [
             '. This is a measured fact, not an inference: raise it, and say for each one what reading ' +
             'it could still change.'
           : '',
+        previous ? previousReviewSection(previous) : '',
         gaps.length ? `GAPS IN THIS DOSSIER: ${gaps.join('; ')}` : ''
       ]
         .filter(Boolean)
@@ -207,7 +219,9 @@ export const reviewTools: Tool[] = [
           logged = await ctx.api('POST', '/api/v1/provenance/review', {
             database: db,
             review: review.text,
-            gaps
+            gaps,
+            ...(ctx.chatId ? { chat: ctx.chatId } : {}),
+            ...(review.partial ? { partial: true } : {})
           })
         } catch {
           /* the review still reaches the model; only the log entry is lost */
@@ -217,17 +231,43 @@ export const reviewTools: Tool[] = [
           gaps,
           review: review.text,
           review_id: logged.id,
+          ...(review.partial
+            ? {
+                cut_off:
+                  'The reviewer ran out of time and was stopped; this is what it had written by then, so ' +
+                  'findings it had not reached are missing.'
+              }
+            : {}),
           note:
             'When a finding makes you change the inventory, a formula or the cut-off: re-read the ' +
             'process comments and study fields that describe the old state and bring them up to date ' +
             '— prose written before a fix otherwise contradicts the model it describes. Afterwards, ' +
             'record each finding\'s outcome by calling review_model again with "resolutions" ' +
-            '([{finding, resolution: fixed|rejected|open, reason}]); the report prints the open ones.'
+            '([{finding, resolution: fixed|rejected|open, reason}]); the report prints the open ones. ' +
+            'After a structural change (new phase, swapped dataset that carries the result, changed ' +
+            'allocation) run the review again — it sees its previous findings. This is a second opinion ' +
+            'from an AI reviewer, not a critical review in the ISO 14044 sense: it does not go into ' +
+            'critical_review.'
         })
       }
       // Not a review. This branch once returned the single sentence "The reviewer returned
       // nothing.", the model read it as "no findings" and shipped the study unreviewed. Say which of
       // the two it is, and say plainly that the model system has NOT been reviewed.
+      const stats =
+        `${Math.round(review.ms / 1000)} s, ${Math.round(review.reasoning_chars / 1000)}k characters of ` +
+        `reasoning, finish_reason=${review.finish_reason ?? 'not stated'}`
+      // Out of time: asking again would cost the same quarter of an hour, so the model goes on without it.
+      if (review.outcome === 'timeout')
+        return S({
+          database: db,
+          gaps,
+          review: null,
+          review_failed: 'timeout',
+          detail: `The reviewer wrote nothing before its deadline in ${review.attempts} attempts (${stats}).`,
+          note:
+            'The review timed out — continue without it and tell the user. Nothing was judged, so do ' +
+            'not present the study as reviewed.'
+        })
       return S({
         database: db,
         gaps,
@@ -236,9 +276,7 @@ export const reviewTools: Tool[] = [
         detail:
           review.outcome === 'error'
             ? `The reviewer could not be reached (${review.error ?? 'stream failed'}).`
-            : `The reviewer produced no text in ${review.attempts} attempts ` +
-              `(${Math.round(review.ms / 1000)} s, ${Math.round(review.reasoning_chars / 1000)}k characters of ` +
-              `reasoning, finish_reason=${review.finish_reason ?? 'not stated'}).`,
+            : `The reviewer produced no text in ${review.attempts} attempts (${stats}).`,
         note:
           'This is a FAILED review, not a clean one: nothing was judged, so no conclusion about the ' +
           'model may be drawn from it. Either call review_model again, or record in the study ' +

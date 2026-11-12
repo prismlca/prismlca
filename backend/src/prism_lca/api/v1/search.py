@@ -49,6 +49,9 @@ class SearchRequest(BaseModel):
     #: Search only the text as typed: no spelled-out variant for an abbreviation ("PET" → polyethylene
     #: terephthalate). The panel's "Search only for …" link and the assistant's `literal`.
     literal: bool = False
+    #: Also say what the limit left out: ``more`` (similar activities beyond it) and, with a region,
+    #: ``outside_region`` (the best hits outside it). The assistant's search sets it; the panel does not.
+    beyond_limit: bool = False
 
 
 # (database, code) -> reference-product amount. The sign of that amount decides whether an exchange
@@ -316,8 +319,27 @@ def search_activities(request: Request, body: SearchRequest) -> dict:
         reserve=max(0, body.reserve),
         variants_cap=body.variants_cap,
         literal=body.literal,
+        beyond_limit=body.beyond_limit,
     )
     hits = result.get("hits")
     if isinstance(hits, list) and _annotate_reference_sign(hits):
         result["suppliers_note"] = SUPPLIERS_NOTE
+    _mark_treatment(result.get("outside_region") or [])
     return result
+
+
+def _mark_treatment(rows: list[dict]) -> None:
+    """``treatment: true`` on the compact rows whose reference product is negative — only then, unlike a hit.
+
+    Those rows are there to be linked, and the sign is what a name like "treatment of waste …, sanitary
+    landfill" does not say reliably."""
+    try:
+        bd = get_bd()
+    except Exception as exc:  # noqa: BLE001 - no project open, nothing to mark
+        _log.swallowed(exc, "_mark_treatment")
+        return
+    for row in rows:
+        if row.get("code") and row.get("database"):
+            amount = _reference_amount(bd, row["database"], row["code"])
+            if amount is not None and amount < 0:
+                row["treatment"] = True

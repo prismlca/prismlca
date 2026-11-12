@@ -51,9 +51,10 @@
  * Where a model is rated per reasoning effort, the HIGHEST variant is taken, consistently — on AA
  * that is the bare slug (`gpt-6-sol` = "GPT-6 Sol (Max)"; the lower efforts carry their own
  * `-high`/`-medium`/… slugs). It is the only choice that compares like with like, but note that
- * without a choice under Settings → AI → Models PrismLCA sends no `reasoning_effort`, so what you
- * get is the provider default, which for several models is far below the max row (GPT-6 Luna: 27.9
- * at max, 18.5 at medium, 9.4 non-reasoning). `reasoningEfforts` per row lists what the setting may
+ * without a choice under Settings → AI → Models PrismLCA sends no `reasoning_effort` (a chat model
+ * with a `minChatEffort` gets that floor instead), so what you get is the provider default, which for
+ * several models is far below the max row (GPT-6 Luna: 27.9 at max, 18.5 at medium, 9.4
+ * non-reasoning). `reasoningEfforts` per row lists what the setting may
  * offer — the levels the model's API documents (OpenRouter's reasoning-tokens guide and
  * the vendors' pages); a row without it offers only the default, because an unsupported level is a
  * 400 that costs a run. The loop falls back to the default once if the API rejects a level.
@@ -80,7 +81,7 @@ import {
   type ReasoningEffort
 } from '../../shared/aiDefaults'
 import { labKey } from '../../shared/labKey'
-import { DIRECT_MODELS } from './directModels'
+import { DIRECT_MODELS, LUNA_CHAT_EFFORT_NOTE } from './directModels'
 import { loadUserModelsFromUserData } from './userModels'
 
 export interface AiModel {
@@ -163,6 +164,20 @@ export interface AiModel {
    * default. Hand-set per row from the vendors' docs, see the ratings block above for the sources.
    */
   reasoningEfforts?: ReasoningEffort[]
+  /**
+   * The level the API uses when no effort is sent, where the vendor documents it — the pickers then read
+   * "Default (medium)" instead of a bare "Default". Absent = undocumented, and the picker says no more.
+   */
+  defaultEffort?: ReasoningEffort
+  /**
+   * The lowest effort this model may run at AS THE CHAT MODEL: the pickers offer nothing below it and no
+   * "Default", and the chat run lifts a lower or absent choice to it (shared/aiDefaults.ts `chatEffort`).
+   * For models that measurably drop whole parts of a study below that level. The other roles — research,
+   * review, writer, import matching — are not affected. `minChatEffortNote` is the line shown at the
+   * picker to say why.
+   */
+  minChatEffort?: ReasoningEffort
+  minChatEffortNote?: string
 }
 
 /**
@@ -240,7 +255,7 @@ const CATALOGUE: AiModel[] = [
     contextTokens: 1000000,
     explicitCache: true,
     // Anthropic's effort levels through OpenRouter; `none` is answered with 400 and `minimal` is sent as low.
-    // OpenRouter also lists `max`, which our effort vocabulary does not have.
+    // OpenRouter also lists `max`; only the OpenAI rows have been checked for it so far, so it is not offered.
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
@@ -275,9 +290,11 @@ const CATALOGUE: AiModel[] = [
     vision: true,
     planTool: false,
     contextTokens: 1050000,
-    // The GPT-6 vocabulary minus `none`: Astra has no non-reasoning mode (requests asking for it are
-    // moved to `low` by OpenRouter; the direct API answers 400).
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+    // OpenAI's model page: low | medium | high | xhigh | max — no `none` (the direct API answers 400)
+    // and no `minimal`. OpenRouter's listing (`reasoning.supported_efforts`) has the same five and
+    // names `medium` as the default, which OpenAI's page leaves unsaid (both checked 2026-11-12).
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultEffort: 'medium'
     // No `explicitCache`: that applies only to Anthropic, OpenAI caches the prefix itself
     // (agent.test.ts checks exactly this — the entry had inherited it from its template).
   },
@@ -405,7 +422,7 @@ const CATALOGUE: AiModel[] = [
     // what the card states, so that is the figure taken.
     contextTokens: 1000000,
     // The card: low | medium | high | xhigh | max, reasoning always on. OpenRouter's default is max,
-    // which "Default" keeps; our scale stops at xhigh.
+    // which "Default" keeps; `max` itself is not offered — only the OpenAI rows have been checked for it.
     reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
   },
   {
@@ -542,8 +559,10 @@ const CATALOGUE: AiModel[] = [
     vision: true,
     planTool: false,
     contextTokens: 1050000,
-    // The full GPT-6 vocabulary; `none` answers without reasoning (not available on Astra).
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+    // OpenAI's model page and OpenRouter's listing agree: low | medium (the default) | high | xhigh |
+    // max. 6.1 Sol has neither `none` nor `minimal` (checked 2026-11-12).
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultEffort: 'medium'
   },
   {
     id: 'openai/gpt-6-luna',
@@ -554,7 +573,15 @@ const CATALOGUE: AiModel[] = [
     vision: true,
     planTool: true,
     contextTokens: 1050000,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+    // OpenAI's model page and OpenRouter's listing agree: none | low | medium (the default) | high |
+    // xhigh | max — no `minimal` (checked 2026-11-12).
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    defaultEffort: 'medium',
+    // As the chat model only from `high` up. Measured on one study: at medium it built one to five
+    // processes and no scenarios, at high six processes, four scenarios and its own reviews (V486).
+    // Research, review, writer and matching keep every level.
+    minChatEffort: 'high',
+    minChatEffortNote: LUNA_CHAT_EFFORT_NOTE
   },
   {
     // Speech-to-text only (voice input) — listed for cost transparency, no chat ratings apply.

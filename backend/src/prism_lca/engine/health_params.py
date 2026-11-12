@@ -1,6 +1,8 @@
-"""Health checks on the model's parameters themselves — what a value may be — as opposed to the inventory
-checks of ``health``, which turns these into findings."""
+"""Health checks on the model's parameters themselves — what a value may be, and what a formula or a scenario
+may name — as opposed to the inventory checks of ``health``, which turns these into findings."""
 from __future__ import annotations
+
+from prism_lca import _log
 
 #: Units a share or a rate is written with when it is written with one at all.
 _UNITLESS = {"", "-", "1", "fraction", "share", "ratio"}
@@ -45,3 +47,43 @@ def unruled_message(found: list[tuple[str, float]]) -> str:
         "parameter is the modeller's to set there by hand, not the assistant's. Without it, a scenario or a "
         "sensitivity step can push the value past 1."
     )
+
+
+def dead_references(database: str) -> list[tuple[str, str, str, tuple | None, str | None]]:
+    """Formulas and scenario overrides that name a parameter the model does not have (V499).
+
+    What a deleted parameter leaves behind: every parameter write fails with "variables aren't defined" while the
+    values that used it stay frozen, so a formula of a parameter or an exchange naming nothing is an error. A
+    scenario naming nothing is a warning: the override cannot take effect, but the baseline still computes.
+    Exact — the names the formula reads against the parameters the model has (engine/param_references.py).
+
+    Returns ``(severity, code, message, activity_key, exchange_uid)``; the caller resolves the key.
+    """
+    from prism_lca.engine import param_references, params
+
+    try:
+        found = param_references.uses(database)
+        data, project = params.parameter_namespace(database)
+    except Exception as exc:  # noqa: BLE001 — an optional signal, never a reason to fail the linter
+        _log.swallowed(exc, "dead_references")
+        return []
+    defined = set(data) | set(project)
+    out: list[tuple[str, str, str, tuple | None, str | None]] = []
+    for use in found:
+        missing = sorted(use.names - defined)
+        if not missing:
+            continue
+        listed = ", ".join(f"'{n}'" for n in missing)
+        which = "is not a parameter" if len(missing) == 1 else "are not parameters"
+        if use.kind == "scenario":
+            out.append(("warning", "scenario_names_missing_parameter",
+                        f"{use.label[0].upper()}{use.label[1:]} names {listed}, which {which} of this model, so "
+                        "that override cannot take effect. Take it out of the scenario or create the parameter.",
+                        None, None))
+            continue
+        held, tool = (f"'{use.owner}'", "edit_parameter") if use.kind == "parameter" else ("the amount", "edit_exchange")
+        out.append(("error", "formula_names_missing_parameter",
+                    f"The formula of {use.label} uses {listed}, which {which} of this model: every parameter write "
+                    f"fails until it is fixed, and {held} keeps its last value. Give it a formula or value without "
+                    f"it ({tool}), or create the parameter.", use.key, use.uid))
+    return out

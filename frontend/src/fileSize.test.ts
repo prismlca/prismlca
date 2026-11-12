@@ -33,11 +33,11 @@ const SHRINK = 50
 /** Paths relative to frontend/src. `<count + HEADROOM>` — the comment keeps the count. */
 const CEILINGS: Record<string, number> = {
   'main/ai/agent.ts': 1845, // 1820 — context budget and compaction moved to contextBudget.ts
-  'renderer/src/Workbench.tsx': 1828, // 1803
+  'renderer/src/Workbench.tsx': 1751, // 1726, after the canvas calculation (workbench/useCanvasCalc.ts) moved out
   'renderer/src/views/ReportSections.tsx': 1403, // 1378, after the correction path and the remark lists went (one state per chapter)
-  'renderer/src/CanvasChat.tsx': 1277, // 1252
+  'renderer/src/CanvasChat.tsx': 1196, // 1171, after the canvas requests moved to the Workbench (workbench/useCanvasUiTools.ts)
   'renderer/src/views/report/useChapterWriter.ts': 900, // 875, after the correction path went (Update report replaces it)
-  'main/ai/subagent.ts': 1235, // 1210 — the evidence book moved to citationBook.ts
+  'main/ai/subagent.ts': 1159, // 1134 — the review's clock and restart moved to reviewRun.ts
   'renderer/src/workbench/useCanvasModel.ts': 1141, // 1116
   'renderer/src/views/DetailedResults.tsx': 1237, // 1212
   'renderer/src/views/Report.tsx': 1202, // 1177

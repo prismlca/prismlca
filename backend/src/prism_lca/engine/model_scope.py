@@ -69,15 +69,30 @@ def outside_error(models: Iterable[str], fenced: str) -> PrismError:
     )
 
 
-def assert_writes(models: Iterable[str | None]) -> None:
+def empty_name_error(fenced: str) -> PrismError:
+    """An empty model name in a fenced request is a field left blank, not a reach into another model —
+    telling the assistant to send the user elsewhere would be the wrong instruction (V483)."""
+    return PrismError(
+        f"\"database\" is empty — pass ‘{fenced}’ (this chat's model) and send the call again.",
+        code="outside_model_scope",
+        status_code=403,
+    )
+
+
+def assert_writes(models: Iterable[str | None], *, empty_is_blank: bool = True) -> None:
     """Refuse when a fenced request would write into any model but its own. An empty or missing name
-    counts as outside: a fence fails closed."""
+    counts as outside: a fence fails closed. When every name outside is empty, the refusal says to pass
+    the chat's own model — unless ``empty_is_blank`` is False: a command that names no model on purpose
+    (an import picks its name while running) is not a field the request left blank."""
     fenced = fence()
     if fenced is None:
         return
     outside = sorted({c for c in (_canonical(m) for m in models) if c != fenced or not fenced})
-    if outside:
-        raise outside_error(outside, fenced)
+    if not outside:
+        return
+    if fenced and empty_is_blank and not any(m.strip() for m in outside):
+        raise empty_name_error(fenced)
+    raise outside_error(outside, fenced)
 
 
 def assert_model_write(database: str | None) -> None:
@@ -137,7 +152,7 @@ def fence_undo(command) -> None:  # noqa: ANN001 - see fence_command
         return
     models = command.scope_models()
     if models is not None:
-        assert_writes(models)
+        assert_writes(models, empty_is_blank=False)
 
 
 def fence_step(attribution: dict) -> None:

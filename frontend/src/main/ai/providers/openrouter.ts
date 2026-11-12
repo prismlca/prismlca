@@ -406,6 +406,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
             'http'
           )
       e.retryable = RETRYABLE.has(status)
+      if (status) e.status = status
       throw e
     }
     // Which endpoint actually served this request. OpenRouter puts it on every chunk; it used to

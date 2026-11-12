@@ -144,6 +144,17 @@ describe('createToolSession', () => {
     expect(ask.ok && JSON.parse(ask.result).answer).toEqual(['Option A'])
   })
 
+  it('says beside the screenshot that the app opened the model view for it', async () => {
+    const ui = vi.fn(async () => ({ image: 'data:image/png;base64,AAAA', switched_to: 'model view' }))
+    const { s } = session({ ui })
+    const shot = await s.run('screenshot_canvas', {})
+    expect(shot.ok && shot.image).toBe('data:image/png;base64,AAAA')
+    expect(shot.ok && JSON.parse(shot.result)).toEqual({
+      switched_to: 'model view',
+      screenshot: 'see the image in the next message'
+    })
+  })
+
   it('lets the caller refuse a call before it runs, with the effect in hand', async () => {
     const seen: Array<[string, string]> = []
     const { s } = session({
@@ -240,5 +251,158 @@ describe('batch shapes the models actually send', () => {
       expect(r.error).toContain('</arg_key>')
       expect(r.error).not.toMatch(/steps must be an ARRAY/)
     }
+  })
+})
+
+describe('empty optional arguments (V464)', () => {
+  const body = (calls: unknown[][], path: string): any => calls.find(([, p]) => p === path)?.[2]
+
+  it('reach the tool, the gate and the backend already dropped — not just the schema check', async () => {
+    const seen: Record<string, unknown>[] = []
+    const { s, calls } = session({
+      beforeRun: async (_name, args) => {
+        seen.push(args)
+      }
+    })
+    const oc = await s.run('set_classification', {
+      database: 'Shampoo',
+      code: 'p1',
+      isic: 'C',
+      cpc: '',
+      cpc_name: null
+    })
+    expect(oc.ok).toBe(true)
+    expect(seen).toEqual([{ database: 'Shampoo', code: 'p1', isic: 'C' }])
+    const sent = body(calls, '/api/v1/model/activities/classification')
+    expect(sent).toMatchObject({ database: 'Shampoo', code: 'p1', isic: 'C' })
+    expect(sent).not.toHaveProperty('cpc')
+    expect(sent).not.toHaveProperty('cpc_name')
+  })
+
+  it('an all-empty phase is no phase: no filter reaches the backend (V480)', async () => {
+    const { s, calls } = session()
+    await s.run('explain_result', {
+      mode: 'flows',
+      code: 'p1',
+      phase: { dimension: '', value: '' },
+      top_n: 0
+    })
+    const sent = body(calls, '/api/v1/calc/elementary-flows')
+    expect(sent).toBeTruthy()
+    expect(sent).not.toHaveProperty('phase')
+    // top_n 0 is "not given": the tool's own default applies.
+    expect(sent.top_n).toBe(15)
+  })
+
+  it('edit_tags: value "" still clears, and empty keys are refused as missing', async () => {
+    const { s, calls } = session()
+    await s.run('edit_tags', {
+      action: 'assign',
+      group: 'G',
+      keys: [{ database: 'Shampoo', code: 'p1' }],
+      value: ''
+    })
+    const sent = body(calls, '/api/v1/model/tags/set')
+    expect(sent.keys).toEqual([{ database: 'Shampoo', code: 'p1' }])
+    expect(sent.value ?? null).toBeNull() // null/absent = clear (backend TagSetRequest)
+    const none = await s.run('edit_tags', { action: 'assign', group: 'G', keys: [], value: 'Use' })
+    expect(none.ok && none.soft).toMatch(/action="assign" also requires: keys/)
+  })
+
+  it('a batch where every item failed comes back refused, not as a success', async () => {
+    const { s, calls } = session()
+    const batch = {
+      assignments: [
+        { keys: [], value: 'Use' },
+        { keys: [], value: 'End of life' }
+      ]
+    }
+    const oc = await s.run('edit_tags', batch)
+    expect(oc.ok).toBe(true)
+    if (!oc.ok) return
+    expect(oc.soft).toMatch(/^All 2 items failed — none succeeded/)
+    expect(oc.itemsFailed).toBe(2)
+    expect(calls).toEqual([])
+    // An item of a writing batch can fail after part of it was written (an exchange added before its
+    // formula was refused): the caches are refreshed as after a write …
+    expect(oc.mutated).toBe(true)
+    // … but the refusal does not lift the repeat block.
+    await s.run('edit_tags', batch)
+    await s.run('edit_tags', batch)
+    const blocked = await s.run('edit_tags', batch)
+    expect(!blocked.ok && blocked.error).toMatch(/^Blocked: .*Its last answer was: "All 2 items failed/)
+  })
+
+  it('a read batch where every item failed changes nothing', async () => {
+    const { s } = session({ apiRaw: async () => ({ status: 404, body: { detail: 'not found' } }) })
+    const oc = await s.run('explain_result', { mode: 'tree', code: 'p1', methods: [['A'], ['B']] })
+    expect(oc.ok && oc.soft).toMatch(/^All 2 items failed/)
+    expect(oc.ok && oc.mutated).toBe(false)
+  })
+
+  it('eurostat_eol: year 0 and an empty country reach the service as left out', async () => {
+    const asked: unknown[] = []
+    const { s } = session({
+      eurostatAvailable: true,
+      eurostat: async (q) => {
+        asked.push(q)
+        return {
+          dataset: 'env_waspac',
+          scope: 'DE',
+          year: 2024,
+          values: { rows: [], count: 0 },
+          flags_and_status: { warning: null, flagged_values: 0, total_values: 0 },
+          dataset_metadata: { table: 't', api_query: 'q', attribution: 'Eurostat', last_update: null }
+        } as never
+      }
+    })
+    const oc = await s.run('eurostat_eol', { dataset: 'env_waspac', country: '', year: 0, waste_code: '' })
+    expect(oc.ok && !oc.soft).toBe(true)
+    expect(asked).toEqual([{ dataset: 'env_waspac' }])
+  })
+
+  it('a session without a fence (MCP) runs the same rule, its exceptions included', async () => {
+    const { s, calls } = session({ modelScope: undefined })
+    await s.run('edit_exchange', {
+      action: 'set_comment',
+      activity_code: 'p1',
+      uid: 'u1',
+      comment: ''
+    })
+    // "" is an instruction here (clear the comment), kept as sent.
+    expect(body(calls, '/api/v1/model/exchanges/comment')).toMatchObject({ uid: 'u1', comment: '' })
+  })
+})
+
+describe('an empty required "database" in the fenced chat (V483)', () => {
+  it('is the chat\'s own model, not a write into "a model the request does not name"', async () => {
+    const { s, calls } = session({ modelScope: { readable: [] } })
+    const oc = await s.run('set_classification', { database: '', code: 'p1', isic: 'C' })
+    expect(oc.ok && !oc.soft).toBe(true)
+    const sent = calls.find(([, p]) => p === '/api/v1/model/activities/classification')
+    expect((sent?.[2] as { database: string }).database).toBe('Shampoo')
+    expect((sent?.[3] as Record<string, string>)['X-Prism-Model']).toBe('Shampoo')
+  })
+
+  it('stays as sent outside the chat: an MCP session has no model to assume', async () => {
+    const { s, calls } = session()
+    await s.run('set_classification', { database: '', code: 'p1', isic: 'C' })
+    const sent = calls.find(([, p]) => p === '/api/v1/model/activities/classification')
+    expect((sent?.[2] as { database: string }).database).toBe('')
+  })
+})
+
+describe('the repeat block quotes what the call was told (V464)', () => {
+  it('names the last refusal instead of guessing at a missing argument', async () => {
+    const { s } = session()
+    for (let i = 0; i < 3; i++) await s.run('history', { action: 'explode' })
+    const blocked = await s.run('history', { action: 'explode' })
+    expect(blocked.ok).toBe(false)
+    if (blocked.ok) return
+    expect(blocked.error).toContain('Its last answer was: "Unknown action "explode".')
+    expect(blocked.error).not.toMatch(/may be missing/)
+    // The block itself is not an answer worth quoting: a fifth try still quotes the tool.
+    const again = await s.run('history', { action: 'explode' })
+    expect(!again.ok && again.error).toContain('Its last answer was: "Unknown action')
   })
 })

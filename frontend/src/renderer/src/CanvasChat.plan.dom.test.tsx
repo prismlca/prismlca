@@ -13,17 +13,7 @@ import { DEFAULT_MAX_COST_USD } from '../../shared/aiDefaults'
  * Its own file because the model catalogue is cached per module registry (see
  * CanvasChat.model.dom.test.tsx): the frozen case needs a catalogue row with `planTool: false`.
  */
-const ui = {
-  jumpToProcess: vi.fn(),
-  autoLayout: vi.fn(),
-  screenshotRect: () => null,
-  calculateInCanvas: vi.fn(),
-  setupResults: vi.fn(),
-  getCanvas: vi.fn(),
-  clearCanvas: vi.fn(),
-  removeFromCanvas: vi.fn(),
-  refresh: vi.fn()
-}
+const onJump = vi.fn()
 
 const CATALOGUE = [
   {
@@ -56,7 +46,7 @@ const stopped = (over: Partial<ChatRun> = {}): ChatRun => ({
 
 const mount = (stored: { plan?: ChatPlan | null; run?: ChatRun | null } = {}) => {
   const send = vi.fn(async (_req: Record<string, unknown>) => ({ ok: true }))
-  const r = renderWithPrism(<CanvasChat activeDb="m" ui={ui} />, {
+  const r = renderWithPrism(<CanvasChat activeDb="m" onJump={onJump} />, {
     routes: {
       'GET /api/v1/ai/chats/m': {
         chats: [{ id: 'c1', title: 'Bike', created: '', updated: '', message_count: 1 }]

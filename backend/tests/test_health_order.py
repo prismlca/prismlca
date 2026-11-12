@@ -80,6 +80,8 @@ PINNED = [
     # (A and C consume each other), so one of them is what the model is calculated from and the other
     # is outside the result.
     ("warning", "disconnected_process"),
+    # Added with the check for a model of three or more processes that carries no phase tag at all.
+    ("warning", "no_phase_tags"),
     ("warning", "circular_reference"),
     ("info", "unrecorded_scope"),
     ("info", "unused_parameter"),

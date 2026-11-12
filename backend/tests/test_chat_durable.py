@@ -146,6 +146,26 @@ def test_an_empty_assistant_turn_is_stored_with_turn_id_and_outcome(client, toke
     assert "turn_id" not in msgs[0]
 
 
+def test_a_failed_turn_keeps_its_error(client, token, project):
+    db = "fg-durable-error"
+    cid = _chat(client, token, db)
+    r = client.post(
+        f"{API}/{db}/{cid}/messages",
+        json={"messages": [
+            {"role": "assistant", "content": "", "outcome": "error",
+             "error": "  HTTP 404 — No endpoints found for widget-model.  "},
+            {"role": "assistant", "content": "", "outcome": "error", "error": "x" * 900},
+            {"role": "assistant", "content": "Done.", "error": "   "},
+        ]},
+        headers=token,
+    )
+    assert r.status_code == 200, r.text
+    msgs = client.get(f"{API}/{db}/{cid}", headers=token).json()["messages"]
+    assert msgs[0]["error"] == "HTTP 404 — No endpoints found for widget-model."
+    assert msgs[1]["error"] == "x" * 600
+    assert "error" not in msgs[2]
+
+
 # --- the transcript file ----------------------------------------------------------------------
 
 
