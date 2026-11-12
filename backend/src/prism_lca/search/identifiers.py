@@ -30,6 +30,7 @@ from pathlib import Path
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.search.abbrev import _WASTE_INTENT
+from prism_lca.search.facets import NO_FILTERS, Filters
 from prism_lca.search.geography import geo_rank
 
 #: How many collapsed rows the block may take; the ranked list fills the rest of the limit.
@@ -76,8 +77,8 @@ class Found:
         ranking found in its order, then the others, each shown in the chosen region or else the broadest), and
         the ranked list behind them — all within the list's length, every database keeping ``keep`` rows (the
         pinned ones count) as the reserve promised."""
-        def key(h):
-            return h.get("database"), h.get("name"), h.get("product"), h.get("atype")
+        def key(h):  # the collapse's identity: an activity in another unit is another hit
+            return h.get("database"), h.get("name"), h.get("product"), h.get("atype"), h.get("unit")
 
         def region(geo):
             if target_geo:
@@ -137,10 +138,10 @@ class Identifiers:
         with PROJECT_LOCK:
             return Path(get_bd().projects.dir) / "lci" / "databases.db"
 
-    def find(self, query: str, entries, types: set | None = None, geos: set | None = None) -> Found | None:
+    def find(self, query: str, entries, filters: Filters = NO_FILTERS) -> Found | None:
         """The first valid number in ``query`` that a searched database carries, with its rows — filtered like
-        the ranking (activity types, a multi-region filter) and without treatment rows unless the query asks
-        for waste. None when there is no such number."""
+        the ranking (`facets.Filters`) and without treatment rows unless the query asks for waste. None when
+        there is no such number."""
         waste = bool(_WASTE_INTENT.search(query or ""))
         valid = [m for m in _NUMBER.finditer(query or "") if _valid(m)]
         numbers = tuple(f"{m.group(1)}-{m.group(2)}-{m.group(3)}" for m in valid)
@@ -151,8 +152,7 @@ class Identifiers:
                 meta = index.meta
                 for i, code, treatment in (table or {}).get(number, ()):
                     row = meta[i] if i < len(meta) else {}
-                    if row.get("code") != code or (treatment and not waste) or (
-                            types and row.get("atype") not in types) or (geos and row.get("geo") not in geos):
+                    if row.get("code") != code or (treatment and not waste) or not filters.passes(row):
                         continue  # (a row moved since the table was read: skipped, not mistaken)
                     rows.append({**row, "database": name})
             if rows:

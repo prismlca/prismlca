@@ -270,14 +270,7 @@ export default function SearchPanel({
           ].join(' ')}
         </div>
       ) : null}
-      <SearchFilters
-        typeSel={s.typeSel}
-        toggleType={s.toggleType}
-        regionSel={s.regionSel}
-        addRegion={s.addRegion}
-        removeRegion={s.removeRegion}
-        regionOptions={s.regionOptions}
-      />
+      <SearchFilters s={s} />
       <div className="panel-b">
         {/* Says what is on screen when it did not come from a query — without it a list of
             everything looks like a search result for whatever is still in the field. */}

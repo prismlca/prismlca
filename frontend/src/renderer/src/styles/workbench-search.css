@@ -150,8 +150,11 @@
 .tchip { border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--muted);
   border-radius: 999px; padding: 3px 10px; font-size: var(--fs-sec); cursor: pointer; }
 .tchip.on { background: var(--prism-green, #93c120); border-color: var(--prism-green, #93c120); color: #fff; font-weight: 600; }
-.region-box input { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--border-strong);
-  border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: var(--fs-body); }
+/* The unit field takes the region field's measures (.geocombo > input below), so the two stacked filter fields
+   are one size. */
+.region-box input { width: 100%; box-sizing: border-box; padding: 4px 7px; border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: var(--fs-sec); }
+.region-box input:focus { outline: none; border-color: var(--green); }
 .region-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .rchip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-3); color: var(--ink);
   border-radius: 999px; padding: 2px 4px 2px 9px; font-size: var(--fs-sec); }

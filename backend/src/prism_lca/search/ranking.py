@@ -23,6 +23,7 @@ import re
 import unicodedata
 
 from prism_lca.search import transport_modes, vocabulary
+from prism_lca.search.facets import NO_FILTERS, Filters
 from prism_lca.search.geography import geo_chain, geo_rank
 
 TYPE_BOOST = {"P": 1.0, "M": 1.20, "G": 1.25}
@@ -292,34 +293,23 @@ def _weak(hits: list[dict], field: str) -> bool:
     return not any(h.get(field, 0.0) >= WEAK_TRIGGER for h in hits)
 
 
-def _passes(meta: dict, types: set | None, geos: set | None) -> bool:
-    """Multi-select filters: keep the item if its type / geography is among the selected ones
-    (empty selection = no filter on that facet)."""
-    if types and meta.get("atype") not in types:
-        return False
-    if geos and (meta.get("geo") or "") not in geos:
-        return False
-    return True
-
-
 def finalize_hybrid(
     candidates: list[dict],
     *,
     target_geo: str | None = None,
-    types: set | None = None,
-    geos: set | None = None,
+    filters: Filters = NO_FILTERS,
     limit: int = 50,
 ) -> tuple[list[dict], bool]:
     """Order fused (dense+BM25) hybrid candidates. Each candidate carries ``fused`` (RRF score),
-    ``dense`` (cosine, for weak-match + display) and ``atype``/``geo``. ``types``/``geos`` are
-    multi-select hard filters; the type boost applies on the rest.
+    ``dense`` (cosine, for weak-match + display) and ``atype``/``geo``/``unit``. ``filters`` are
+    the hard filters (`facets.Filters`); the type boost applies on the rest.
 
     **``target_geo`` is the primary sort key, ahead of the score.** Everything in the requested
     region comes first, then the proxy chain (RER / Europe without Switzerland / GLO / RoW), then
     the rest — and only within each of those bands does the score decide. A hit that barely matches
     but sits in the right region therefore outranks a much better one outside it. See the module
     docstring: deliberate, and to be stated wherever this is described."""
-    items = [c for c in candidates if _passes(c, types, geos)]
+    items = [c for c in candidates if filters.passes(c)]
     for c in items:
         c["final"] = c.get("fused", 0.0) * TYPE_BOOST.get(c.get("atype"), 1.0)
     if target_geo:
@@ -334,11 +324,10 @@ def rank(
     raw: list[tuple[float, dict]],
     *,
     target_geo: str | None = None,
-    types: set | None = None,
-    geos: set | None = None,
+    filters: Filters = NO_FILTERS,
     limit: int = 50,
 ) -> tuple[list[dict], bool]:
-    items = [{"score": score, **meta} for score, meta in raw if _passes(meta, types, geos)]
+    items = [{"score": score, **meta} for score, meta in raw if filters.passes(meta)]
 
     # Two different questions, and conflating them is what made `weak_match` useless. THIS one is
     # "did the retrieval find anything at all", and it gates the cutoff below: when nothing in the

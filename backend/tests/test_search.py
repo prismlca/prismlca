@@ -4,6 +4,7 @@ import time
 import uuid
 
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.search.facets import NO_FILTERS
 from prism_lca.search.service import SearchService
 
 
@@ -731,10 +732,10 @@ def test_every_database_reaches_the_candidate_pool(client, token, project):
     qvec = search._provider_().embed(["electricity"], is_query=True)[0]
 
     # A pool of one: without the floor, only the single best hit of the whole union survives.
-    tight = search._union_candidates("electricity", qvec, entries, None, None, 1, floor=0)
+    tight = search._union_candidates("electricity", qvec, entries, NO_FILTERS, 1, floor=0)
     assert {c["database"] for c in tight} == {background}
 
-    floored = search._union_candidates("electricity", qvec, entries, None, None, 1, floor=1)
+    floored = search._union_candidates("electricity", qvec, entries, NO_FILTERS, 1, floor=1)
     assert {c["database"] for c in floored} == {background, library}
 
 

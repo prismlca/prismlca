@@ -42,11 +42,11 @@ const open = () => {
 describe('the flow-properties sheet', () => {
   it('lists the whole vocabulary and adds the property chosen from it', async () => {
     const { written, onChanged } = open()
-    const field = await screen.findByRole('textbox', { name: 'Add property' })
+    const field = await screen.findByRole('combobox', { name: 'Add property' })
     act(() => field.focus())
     // All of it, not the first eight: the list scrolls rather than stopping short.
-    expect(screen.getAllByRole('button', { name: /^property \d+ · kg$/ })).toHaveLength(40)
-    fireEvent.mouseDown(screen.getByRole('button', { name: 'property 33 · kg' }))
+    expect(screen.getAllByRole('option', { name: /^property \d+ · kg$/ })).toHaveLength(40)
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'property 33 · kg' }))
     await waitFor(() => expect(written()).toEqual([['property 33']]))
     expect(onChanged).toHaveBeenCalled()
     expect(field).toHaveValue('')
@@ -54,7 +54,7 @@ describe('the flow-properties sheet', () => {
 
   it('adds the one match left on Enter', async () => {
     const { written } = open()
-    const field = await screen.findByRole('textbox', { name: 'Add property' })
+    const field = await screen.findByRole('combobox', { name: 'Add property' })
     act(() => field.focus())
     fireEvent.change(field, { target: { value: 'erty 07' } })
     fireEvent.keyDown(field, { key: 'Enter' })
@@ -63,7 +63,7 @@ describe('the flow-properties sheet', () => {
 
   it('adds the property marked with the arrow keys on Enter', async () => {
     const { written } = open()
-    const field = await screen.findByRole('textbox', { name: 'Add property' })
+    const field = await screen.findByRole('combobox', { name: 'Add property' })
     act(() => field.focus())
     fireEvent.keyDown(field, { key: 'ArrowDown' })
     fireEvent.keyDown(field, { key: 'ArrowDown' })
@@ -73,10 +73,10 @@ describe('the flow-properties sheet', () => {
 
   it('closes an open list on Escape and keeps the sheet', async () => {
     const { onClose } = open()
-    const field = await screen.findByRole('textbox', { name: 'Add property' })
+    const field = await screen.findByRole('combobox', { name: 'Add property' })
     act(() => field.focus())
     fireEvent.keyDown(field, { key: 'Escape' })
-    expect(screen.queryByRole('button', { name: 'property 00 · kg' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'property 00 · kg' })).toBeNull()
     expect(onClose).not.toHaveBeenCalled()
     // The next Escape is the sheet's.
     fireEvent.keyDown(field, { key: 'Escape' })

@@ -51,3 +51,10 @@ export const shortUnit = (unit?: string | null): string | null => {
   if (mapped) return mapped
   return unit.length > 7 ? `${unit.slice(0, 7)}…` : unit
 }
+
+/** A unit as a filter or a note names it: the short form if there is one, otherwise the unit as written —
+ *  never trimmed, because here it is the whole label, not a decoration on an arrow. */
+export const unitSymbol = (unit: string): string => {
+  const key = unit.trim().toLowerCase()
+  return Object.prototype.hasOwnProperty.call(UNIT_SHORT, key) ? UNIT_SHORT[key] : unit
+}

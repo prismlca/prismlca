@@ -235,6 +235,7 @@ function LocationField({
           value={v}
           units={codes}
           describe={describe}
+          ariaLabel="Location"
           max={12}
           onFocus={load}
           onChange={setV}

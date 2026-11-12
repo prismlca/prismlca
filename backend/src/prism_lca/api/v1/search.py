@@ -29,6 +29,10 @@ class SearchRequest(BaseModel):
     databases: list[str] | None = None
     activity_types: list[str] | None = None  # any of P / M / G (empty = all)
     geographies: list[str] | None = None  # region filter, multi-select (empty = all)
+    #: Unit filter: only datasets in one of these units (empty = all). Always a hard filter, also for one unit —
+    #: unlike a single region there is no proxy to rank behind it. Set by the search panel; the assistant's
+    #: tool does not offer it.
+    units: list[str] | None = None
     collapse_geo: bool = True  # group geo-variants of one activity into a single result
     #: Hits for ONE background database. The backend multiplies it by how many of the searched
     #: databases are not the user's library, so ticking a second background lengthens the list
@@ -217,6 +221,12 @@ def geographies(request: Request, database: str) -> list[str]:
     return request.app.state.search.geographies(database)
 
 
+@router.get("/units/{database}", summary="Units in a database, most frequent first (for filtering)")
+def units(request: Request, database: str) -> list[dict]:
+    """``[{"unit": "kilogram", "count": 14210}, …]`` from the search index — the rows the unit filter acts on."""
+    return request.app.state.search.units(database)
+
+
 @router.get("/geography-names", summary="Names of the location codes, from the workspace's own release")
 def geography_name_map() -> dict:
     """``{"names": {code: name}}`` — read from the user's ecoinvent release (engine/geography_names.py);
@@ -299,6 +309,7 @@ def search_activities(request: Request, body: SearchRequest) -> dict:
         body.databases or ([body.database] if body.database else _workspace_backgrounds()),
         activity_types=body.activity_types,
         geographies=body.geographies,
+        units=body.units,
         collapse_geo=body.collapse_geo,
         limit=limit,
         limit_cap=max(1, min(body.limit_cap, 150)) if body.limit_cap else None,

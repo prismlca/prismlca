@@ -15,13 +15,16 @@ export default function GeoCombo({
   selected,
   placeholder,
   pinned,
-  onPick
+  onPick,
+  onFocus
 }: {
   items: GeoItem[]
   selected?: string | null
   placeholder?: string
   pinned?: readonly string[]
   onPick: (value: string) => void
+  /** Called when the list opens — a caller whose options can change loads them afresh here. */
+  onFocus?: () => void
 }): JSX.Element {
   const names = useGeographyNames()
   const [open, setOpen] = useState(false)
@@ -49,6 +52,7 @@ export default function GeoCombo({
     if (r) setAnchor({ left: r.left, top: r.top, bottom: r.bottom, width: r.width })
     setOpen(true)
     setQ('')
+    onFocus?.()
   }
 
   const ql = q.trim().toLowerCase()

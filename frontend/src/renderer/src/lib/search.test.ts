@@ -66,6 +66,28 @@ describe('variantFor', () => {
   })
 })
 
+describe('groupKey', () => {
+  it('keeps an activity in two units apart, so each keeps its own picked region', () => {
+    const base = {
+      code: 'c0',
+      name: 'steel bracket',
+      database: 'My processes',
+      geography: 'DE',
+      activity_type: 'P'
+    }
+    const inKg = groupKey({ ...base, unit: 'kilogram' })
+    const inUnits = groupKey({ ...base, unit: 'unit' })
+    expect(inKg).not.toBe(inUnits)
+    const picked = { [inKg]: 'c-de' }
+    const vs = [
+      { code: 'c-de', geography: 'DE', database: 'My processes' },
+      { code: 'c-fr', geography: 'FR', database: 'My processes' }
+    ]
+    expect(variantFor({ ...base, unit: 'kilogram', variants: vs }, picked)?.code).toBe('c-de')
+    expect(variantFor({ ...base, unit: 'unit', variants: vs }, picked)).toBeUndefined()
+  })
+})
+
 describe('clipName', () => {
   it('leaves ordinary names alone and cuts a very long one after 100 characters with an ellipsis', async () => {
     const { clipName, NAME_CLIP } = await import('./search')

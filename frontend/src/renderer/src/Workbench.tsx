@@ -1178,7 +1178,10 @@ export default function Workbench(): JSX.Element {
 
         {view === 'model' ? (
           <div className="work">
+            {/* Keyed by the workspace: a switch starts the search afresh — query, hits and every filter. A
+                filter carried into another background explained nothing there and read as a weak search. */}
             <SearchPanel
+              key={project}
               databases={databases}
               searchDbs={searchDbs}
               onSearchDbs={setSearchDbs}

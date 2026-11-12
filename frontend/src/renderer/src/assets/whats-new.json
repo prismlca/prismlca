@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-12",
+    "title": "Filter the dataset search by unit",
+    "details": "The search beside the canvas and in the Results has a unit filter under the regions: it suggests the units of the ticked databases (kg, kWh, MJ …) and shows only datasets in the chosen ones. Every filter now applies at once — a type, region or unit repeats the last search without pressing Enter — and switching workspaces clears them."
+  },
+  {
     "date": "2026-11-08",
     "title": "Runs wait out a busy provider",
     "details": "When the AI provider is overloaded, rate-limits a request or cannot be reached, the chat now keeps trying instead of failing after a few seconds: up to two minutes for a busy provider, up to 15 minutes without a connection. The run bar says why it waits and counts down to the next attempt; Stop ends the wait."

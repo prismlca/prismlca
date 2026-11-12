@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DatabaseInfo } from './api'
 import { errMsg } from './errors'
 import { fmtInt } from './format'
+import { unitSymbol } from './units'
+import { useFilterOptions } from './useFilterOptions'
 
 /** Shared semantic-search machinery used by the canvas search panel and the
  * add-background-dataset dialog: result types, database pickers and the search
@@ -34,6 +36,10 @@ interface SearchAnswer {
   weak_match?: boolean
   terms_not_in_results?: string[]
   outside_geography_filter?: string
+  /** A dataset the query names exactly that only the unit filter kept out. */
+  outside_unit_filter?: string
+  /** Chosen units no searched database has a dataset in — the reason a list can come back empty. */
+  units_not_in_databases?: string[]
   /** Set when the query carried an abbreviation the backend also searched spelled out ("PET" →
    *  "polyethylene terephthalate", derived from the database's own synonyms). */
   searched_as?: { query: string; replaced: Record<string, string> }
@@ -63,6 +69,11 @@ export function searchNotes(res: SearchAnswer): string[] {
         'It may be listed under another name.'
     )
   if (res.outside_geography_filter) notes.push(res.outside_geography_filter)
+  if (res.outside_unit_filter) notes.push(res.outside_unit_filter)
+  if (res.units_not_in_databases?.length)
+    notes.push(
+      `No dataset in the searched databases is in ${res.units_not_in_databases.map(unitSymbol).join(', ')}.`
+    )
   return notes
 }
 
@@ -139,10 +150,11 @@ export function secondaryBackgrounds(dbs: DatabaseInfo[]): string[] {
 export const VARIANT_PICKER_PINS = ['GLO', 'RoW'] as const
 
 /** One collapsed result groups an activity's geo-variants under this key. Mirrors the backend's
- * collapse key (name + reference product + type): without the product, two multi-output twins
- * (e.g. co-generation producing heat vs. electricity) would share one picked-geo state. */
+ * collapse key (name + reference product + type + unit): without the product, two multi-output twins
+ * (e.g. co-generation producing heat vs. electricity) would share one picked-geo state, and without the
+ * unit a library activity kept in two units would. */
 export function groupKey(h: SearchHit): string {
-  return `${h.database}|${h.name}|${h.product ?? ''}|${h.activity_type}`
+  return `${h.database}|${h.name}|${h.product ?? ''}|${h.activity_type}|${h.unit ?? ''}`
 }
 
 /** The concrete region variant to use — undefined for a multi-region result until the user picks
@@ -176,6 +188,15 @@ export function useActivitySearch(
   addRegion: (r: string) => void
   removeRegion: (r: string) => void
   regionOptions: string[]
+  /** Reload the region suggestions — when the field opens, so they match the indexes as they are now. */
+  loadRegions: () => void
+  /** Units chosen in the unit filter, as the index writes them ("kilogram"); empty = all. */
+  unitSel: string[]
+  addUnit: (u: string) => void
+  removeUnit: (u: string) => void
+  /** The units the ticked databases hold, most frequent first. */
+  unitOptions: string[]
+  loadUnits: () => void
   pickedGeo: Record<string, string>
   pickGeo: (key: string, code: string) => void
   pickedVariant: (h: SearchHit) => GeoVariant | undefined
@@ -192,13 +213,12 @@ export function useActivitySearch(
   /** What is on screen when it did not come from a query ("all 42 in My processes"). */
   listing: string | null
 } {
-  // JSON, not join: a database name may contain any character, and this only feeds effect deps.
   const dbs = useMemo(() => (Array.isArray(searchDb) ? searchDb : [searchDb]).filter(Boolean), [searchDb])
-  const dbKey = JSON.stringify(dbs)
   const [query, setQuery] = useState('')
   const [typeSel, setTypeSel] = useState<string[]>([]) // P/M/G, empty = all
   const [regionSel, setRegionSel] = useState<string[]>([])
-  const [regionOptions, setRegionOptions] = useState<string[]>([])
+  const [unitSel, setUnitSel] = useState<string[]>([])
+  const { regionOptions, unitOptions, loadRegions, loadUnits } = useFilterOptions(dbs)
   const [hits, setHits] = useState<SearchHit[]>([])
   const [notes, setNotes] = useState<string[]>([])
   const [pickedGeo, setPickedGeo] = useState<Record<string, string>>({}) // group key → chosen variant code
@@ -211,25 +231,19 @@ export function useActivitySearch(
   const [alsoSearchedAs, setAlsoSearchedAs] = useState<string | null>(null)
   const [searchedLiterally, setSearchedLiterally] = useState<string | null>(null)
 
-  // Region autocomplete for whatever is being searched (silent if not indexed). The union across
-  // the ticked databases: a region the library uses is worth offering even when ecoinvent has more.
-  useEffect(() => {
-    const names = JSON.parse(dbKey) as string[]
-    if (!names.length) return
-    void (async () => {
-      const lists = await Promise.all(
-        names.map((db) =>
-          api<string[]>('GET', `/api/v1/search/geographies/${encodeURIComponent(db)}`).catch(() => [])
-        )
-      )
-      setRegionOptions([...new Set(lists.flat())].sort())
-    })()
-  }, [dbKey])
+  // Every answer gets a number; only the newest may change what is on screen. A filter change searches
+  // again while the previous search may still be running, and its late answer must not win.
+  const answerSeq = useRef(0)
+  // The last query search (text, and whether it was literal) — what a changed filter repeats. A listing
+  // clears it: it answers no query, so there is nothing to repeat.
+  const lastRun = useRef<{ text: string; literal: boolean } | null>(null)
 
   /** Everything in one database, no query. "What have I actually got in there" is a question
    *  with no search term, and making somebody invent one is how a library stays unused. */
   const listAll = (database: string): void => {
     if (searching) return
+    const seq = ++answerSeq.current
+    lastRun.current = null
     setSearching(true)
     setSearched(true)
     setQuery('')
@@ -243,6 +257,7 @@ export function useActivitySearch(
           'GET',
           `/api/v1/search/list?database=${encodeURIComponent(database)}`
         )
+        if (seq !== answerSeq.current) return
         setHits(res.hits)
         setListing(
           res.count < res.total
@@ -250,17 +265,29 @@ export function useActivitySearch(
             : `All ${fmtInt(res.count)} in ${database}`
         )
       } catch (e) {
-        onError?.(errMsg(e))
+        if (seq === answerSeq.current) onError?.(errMsg(e))
       } finally {
-        setSearching(false)
+        if (seq === answerSeq.current) setSearching(false)
       }
     })()
   }
 
-  const run = (text: string, literal: boolean): void => {
+  /** `again`: a changed filter repeating the last search — it may start while that search still runs. */
+  const run = (text: string, literal: boolean, again = false): void => {
+    if (again && !dbs.length) {
+      // A filter changed with nothing ticked: there is no search to repeat, and the hits on screen were
+      // found with other filters — they go, together with any answer still on its way.
+      ++answerSeq.current
+      setHits([])
+      setNotes([])
+      setSearching(false)
+      return
+    }
     // An empty list is not "everything": the backend reads it as its default ecoinvent, and Enter
     // searched a database the user had just unticked. The button was disabled.
-    if (searching || !text.trim() || !dbs.length) return
+    if ((searching && !again) || !text.trim() || !dbs.length) return
+    const seq = ++answerSeq.current
+    lastRun.current = { text, literal }
     setSearching(true)
     setSearched(true)
     setSentQuery(text)
@@ -275,6 +302,8 @@ export function useActivitySearch(
           databases: dbs,
           activity_types: typeSel.length ? typeSel : undefined,
           geographies: regionSel.length ? regionSel : undefined,
+          // Always a hard filter, one unit as much as several — there is no proxy to rank behind a unit.
+          units: unitSel.length ? unitSel : undefined,
           // Per BACKGROUND database: the backend lengthens the list when a second one is ticked, so
           // a second box adds datasets instead of crowding out the first. 150 is where it stops.
           limit: 50,
@@ -284,20 +313,47 @@ export function useActivitySearch(
           // twelve — which left Germany out of the electricity market's list (V347) — does not apply.
           variants_cap: 0
         })
+        if (seq !== answerSeq.current) return
         setHits(res.hits)
         setNotes(searchNotes(res))
         setAlsoSearchedAs(res.searched_as?.query ?? null)
         setSearchedLiterally(literal ? text : null)
       } catch (e) {
+        if (seq !== answerSeq.current) return
         onError?.(errMsg(e))
+        // A repeat under changed filters that failed: the hits on screen were found with the old ones,
+        // and the filter lines would describe a list they are not.
+        if (again) {
+          setHits([])
+          setNotes([])
+        }
       } finally {
-        setSearching(false)
+        if (seq === answerSeq.current) setSearching(false)
       }
     })()
   }
 
   const doSearch = (): void => run(query, false)
   const searchLiteral = (): void => run(sentQuery, true)
+
+  // Filters act at once: changing one repeats the last search with it. Waiting for Enter left the old
+  // hits under a filter line that already described the new choice. Through a ref, so the effect sees
+  // this render's `run` (and with it the new filters) without listing it as a dependency.
+  const runRef = useRef(run)
+  runRef.current = run
+  useEffect(() => {
+    const last = lastRun.current
+    if (last) runRef.current(last.text, last.literal, true)
+  }, [typeSel, regionSel, unitSel])
+
+  // Taken down (a workspace switch remounts the panel), the hook drops whatever answer is still on its
+  // way: an error from the old workspace's search would otherwise land in the new one's error line.
+  useEffect(
+    () => () => {
+      answerSeq.current += 1
+    },
+    []
+  )
 
   const toggleType = (t: string): void =>
     setTypeSel((s) => (s.includes(t) ? s.filter((x) => x !== t) : [...s, t]))
@@ -306,6 +362,10 @@ export function useActivitySearch(
     if (v && !regionSel.includes(v)) setRegionSel((s) => [...s, v])
   }
   const removeRegion = (r: string): void => setRegionSel((s) => s.filter((x) => x !== r))
+  const addUnit = (u: string): void => {
+    if (u && !unitSel.includes(u)) setUnitSel((s) => [...s, u])
+  }
+  const removeUnit = (u: string): void => setUnitSel((s) => s.filter((x) => x !== u))
   const pickGeo = (key: string, code: string): void => setPickedGeo((s) => ({ ...s, [key]: code }))
 
   const pickedVariant = (h: SearchHit): GeoVariant | undefined => variantFor(h, pickedGeo)
@@ -328,6 +388,12 @@ export function useActivitySearch(
     addRegion,
     removeRegion,
     regionOptions,
+    loadRegions,
+    unitSel,
+    addUnit,
+    removeUnit,
+    unitOptions,
+    loadUnits,
     pickedGeo,
     pickGeo,
     pickedVariant,

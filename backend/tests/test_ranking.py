@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from prism_lca.search.facets import Filters
 from prism_lca.search.indexer import build_embed_text, classify_type
 from prism_lca.search.ranking import rank, unanchored_terms, unmatched_terms
 
@@ -31,7 +32,7 @@ def test_geography_boost_prefers_target():
 
 def test_type_filter_keeps_only_requested():
     raw = [(0.6, {"atype": "M", "geo": "x"}), (0.5, {"atype": "P", "geo": "x"})]
-    ranked, _ = rank(raw, types={"M"})
+    ranked, _ = rank(raw, filters=Filters(types=frozenset({"M"})))
     assert [x["atype"] for x in ranked] == ["M"]
 
 

@@ -1,6 +1,7 @@
 """Search orchestration: build/load a per-database index and answer queries."""
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import threading
@@ -15,6 +16,7 @@ from prism_lca.errors import PrismError
 from prism_lca.search import abbrev
 from prism_lca.search.builds import IndexBuilds
 from prism_lca.search.embeddings import EmbeddingProvider, get_embedding_provider
+from prism_lca.search.facets import Filters, filter_notes, unit_counts
 from prism_lca.search.fusion import RRF_K, reciprocal_rank_fusion
 from prism_lca.search.geography import geo_rank
 from prism_lca.search.identifiers import Identifiers
@@ -42,12 +44,6 @@ logger = logging.getLogger(__name__)
 #: Hard ceiling on the hits one answer may carry, whatever the scaling below computes. Mirrors the
 #: cap the API applies to the requested limit, so a scaled request cannot quietly exceed it.
 MAX_HITS = 150
-
-
-
-def _fold(s: object) -> str:
-    """Case and whitespace folded, for exact-name comparisons."""
-    return " ".join(str(s or "").lower().split())
 
 #: How many geo-variants a collapsed hit carries when nothing narrowed the request. Enough to see
 #: that a dataset is regionalised and to recognise the usual suspects (GLO, RoW, RER, a country or
@@ -591,17 +587,17 @@ class SearchService:
             except Exception as exc:  # noqa: BLE001 - best-effort cleanup
                 _log.swallowed(exc, "invalidate")
 
-    def _fused_candidates(self, query, qvec, variant, entries, types, geos, pool, floor: int = 0):
+    def _fused_candidates(self, query, qvec, variant, entries, filters: Filters, pool, floor: int = 0):
         """Candidates for the query as typed — and, when it carries an abbreviation, for its spelled-out
         form, ranked over the same union and fused (`variants.fuse`)."""
         if variant is None:
-            return self._union_candidates(query, qvec, entries, types, geos, pool, floor=floor)
+            return self._union_candidates(query, qvec, entries, filters, pool, floor=floor)
         text, vec, w_raw, w_exp = variant
-        raw = self._union_candidates(query, qvec, entries, types, geos, pool, floor=floor, also=vec)
-        alt = self._union_candidates(text, vec, entries, types, geos, pool, floor=floor, also=qvec)
+        raw = self._union_candidates(query, qvec, entries, filters, pool, floor=floor, also=vec)
+        alt = self._union_candidates(text, vec, entries, filters, pool, floor=floor, also=qvec)
         return fuse(raw, alt, w_raw, w_exp)
 
-    def _union_candidates(self, query, qvec, entries, types, geos, pool, floor: int = 0, also=None):
+    def _union_candidates(self, query, qvec, entries, filters: Filters, pool, floor: int = 0, also=None):
         """Candidates from ALL selected databases in ONE ranking space.
 
         This replaces the per-database retrieval whose results were then merged. Merging was the
@@ -640,15 +636,11 @@ class SearchService:
         dense = np.concatenate(dense_parts)
         cosine = np.concatenate(cos_parts)
 
-        # Multi-select filters are applied to the WHOLE corpus before the pool is taken, so a
-        # filtered region or type surfaces even when it would not rank in the unfiltered top-N.
+        # The filters are applied to the WHOLE corpus before the pool is taken, so a filtered
+        # region, type or unit surfaces even when it would not rank in the unfiltered top-N.
         allowed: set | None = None
-        if types or geos:
-            allowed = {
-                i for i, m in enumerate(metas)
-                if (not types or m.get("atype") in types)
-                and (not geos or (m.get("geo") or "") in geos)
-            }
+        if filters:
+            allowed = {i for i, m in enumerate(metas) if filters.passes(m)}
             if not allowed:
                 return []
 
@@ -677,16 +669,17 @@ class SearchService:
         if floor:
             present = set(dense_rank)
             for _, _, lo, hi in bounds:
-                local = dense[lo:hi]
-                if local.shape[0] == 0:
-                    continue
-                k = min(max(floor * 4, floor), local.shape[0])
-                idx = np.argpartition(-local, k - 1)[:k]
+                if allowed is None:
+                    local = dense[lo:hi]
+                    k = min(max(floor * 4, floor), local.shape[0])
+                    idx = np.argpartition(-local, k - 1)[:k]
+                    own = [lo + int(j) for j in idx[np.argsort(-local[idx])]]
+                else:
+                    # The best of what the filters admit. Taking the database's best rows first and
+                    # filtering them afterwards left nothing when a narrow filter excluded all of them.
+                    own = heapq.nlargest(floor, (i for i in allowed if lo <= i < hi), key=lambda i: dense[i])
                 added = 0
-                for j in idx[np.argsort(-local[idx])]:
-                    flat = lo + int(j)
-                    if allowed is not None and flat not in allowed:
-                        continue
+                for flat in own:
                     if flat not in present:
                         present.add(flat)
                         extras.append(flat)
@@ -840,8 +833,19 @@ class SearchService:
         index = self._require_index(db_name)
         return sorted({(m.get("geo") or "") for m in index.meta} - {""})
 
+    def units(self, db_name: str) -> list[dict]:
+        """The units in the index with their row counts, most frequent first, for the unit filter."""
+        return unit_counts(self._require_index(db_name).meta)
+
+    @staticmethod
+    def _activity(m: dict) -> tuple:
+        """What makes geo-variants one activity: name, reference product, type — and unit. The unit is the
+        same in every region of an ecoinvent or BAFU product; a library may differ, and a variant picked in
+        another unit than the hit shows would carry the wrong unit into the model."""
+        return m.get("name"), m.get("product"), m.get("atype"), m.get("unit")
+
     def _variants_map(self, index: VectorIndex, db_name: str) -> dict[tuple, list[dict]]:
-        """Map (name, product, type) → ALL of that activity's geo-variants in the database.
+        """Map each activity (see `_activity`) → ALL of its geo-variants in the database.
 
         Built from the full index (not just the ranked pool), so a collapsed result lists every
         region the activity exists in — not only the handful that scored into the top results."""
@@ -850,7 +854,7 @@ class SearchService:
             return cached
         m: dict[tuple, list[dict]] = {}
         for e in index.meta:
-            key = (e.get("name"), e.get("product"), e.get("atype"))
+            key = self._activity(e)
             m.setdefault(key, []).append(
                 {
                     "code": e.get("code"),
@@ -917,12 +921,12 @@ class SearchService:
         order: list[tuple] = []
         for h in ranked:
             db_name = str(h.get("database") or "")
-            key = (db_name, h.get("name"), h.get("product"), h.get("atype"))
+            key = (db_name, *self._activity(h))
             if key in groups:
                 continue
             index = indices.get(db_name)
             vmap = self._variants_map(index, db_name) if index is not None else {}
-            variants = vmap.get((h.get("name"), h.get("product"), h.get("atype"))) or [
+            variants = vmap.get(self._activity(h)) or [
                 {"code": h.get("code"), "geography": h.get("geo"), "database": db_name}
             ]
             if geos:  # a region filter narrows the offered variants to the chosen regions
@@ -969,6 +973,7 @@ class SearchService:
         *,
         activity_types: list[str] | None = None,
         geographies: list[str] | None = None,
+        units: list[str] | None = None,
         collapse_geo: bool = True,
         limit: int = 50,
         variants_cap: int | None = None,
@@ -977,6 +982,9 @@ class SearchService:
         literal: bool = False,
     ) -> dict:
         """One query, several databases, ONE ranked list.
+
+        ``activity_types``, several ``geographies`` and ``units`` are hard filters (`facets.Filters`);
+        one geography is a ranking preference instead.
 
         An abbreviation in the query ("PET", "rPET", "HDPE-Granulat") is also searched spelled out the
         way the background databases name the material, and the two variants are fused (see
@@ -1026,11 +1034,11 @@ class SearchService:
                     hint="Rebuild the index (POST /api/v1/search/index) after changing the backend.",
                 )
 
-        types = set(activity_types) if activity_types else None
+        filters = Filters.of(activity_types, geographies, units)
         # Geography semantics (matches the documented ranking behaviour): ONE selected region
         # is a ranking signal — exact matches first, then the proxy chain (RER/GLO/RoW) as
         # fallbacks. SEVERAL selected regions are an explicit multi-select hard filter.
-        geos = set(geographies) if geographies and len(geographies) > 1 else None
+        geos = filters.geos or None
         target_geo = geographies[0] if geographies and len(geographies) == 1 else None
 
         indices = {name: index for name, index in entries}
@@ -1049,19 +1057,18 @@ class SearchService:
         pool = max(rank_limit * 3, 60)
         corpus = sum(len(index.meta) for _, index in entries)
         while True:
-            candidates = self._fused_candidates(query, qvec, variant, entries, types, geos, pool,
+            candidates = self._fused_candidates(query, qvec, variant, entries, filters, pool,
                                                 floor=reserve_n)
             if intent:
                 adjust_transport_modes(intent, candidates)
             if self._settings.search_hybrid:
-                ranked, _ = finalize_hybrid(candidates, target_geo=target_geo, types=types,
-                                            geos=geos, limit=rank_limit)
+                ranked, _ = finalize_hybrid(candidates, target_geo=target_geo, filters=filters,
+                                            limit=rank_limit)
                 for h in ranked:
                     h["score"] = h.get("dense", 0.0)
             else:
                 raw = [(c.get("dense", 0.0), c) for c in candidates]
-                ranked, _ = rank(raw, target_geo=target_geo, types=types, geos=geos,
-                                 limit=rank_limit)
+                ranked, _ = rank(raw, target_geo=target_geo, filters=filters, limit=rank_limit)
             ensured = self._ensure_each_database(ranked, candidates, entries, reserve_n)
             # The reserve is appended BEHIND the cut list; the collapse below cuts to the same limit
             # again and took exactly those rows off when the front held enough distinct groups —
@@ -1093,7 +1100,7 @@ class SearchService:
             pool = min(pool * 4, corpus)
 
         ranked = self._apply_reserve(groups, total, reserve_n)
-        if found := self._identifiers.find(query, entries, types, geos):
+        if found := self._identifiers.find(query, entries, filters):
             collapse = lambda rows: self._collapse_geo(rows, indices, len(rows), geos, variants_cap,  # noqa: E731
                                                        target_geo) if collapse_geo else rows
             ranked = found.pin(ranked, collapse, target_geo, reserve_n)
@@ -1154,23 +1161,17 @@ class SearchService:
         for name in skipped:
             per_database.append({"database": name, "hits": 0, "not_indexed": True})
 
-        outside = []
-        # What the list shows, by (name, product): a collapsed hit stands for all its geo-variants,
-        # listed or cut (variants_total says so), so a code comparison would misreport a cut variant.
-        shown = {(_fold(h.get("name")), _fold(h.get("product"))) for h in hits}
-        for name, index in entries:
-            note = self._exact_name_outside(query, index, geos, name, shown)
-            if note:
-                outside.append(note)
+        notes = filter_notes(query, entries, filters, hits)
 
         # Over the hits the caller can actually see — see ranking._weak. Read off the per-hit
         # flags, which were decided on the UNROUNDED score: taking `hits[*].score` instead would
         # let a 0.42896 round up to 0.429 and report a strong list whose only row says "weak".
         weak = all(bool(h["weak"]) for h in hits) if hits else True
         out = self._respond(query, ", ".join(name for name, _ in entries), hits, weak, facets,
-                            outside_filter=" ".join(outside) or None,
+                            outside_filter=notes.pop("outside_geography_filter", None),
                             per_database=per_database, aliases=anchors, recyclates=recyclates,
                             honest=found.rest if found else None)
+        out.update(notes)  # the unit filter's notes (facets.filter_notes)
         if found:  # the number is what tells two such searches apart; the signature keeps no digits
             out["content_terms"] = sorted({*out["content_terms"], *found.numbers})
         if expansion:
@@ -1187,56 +1188,3 @@ class SearchService:
         """One database. The same path as :meth:`search_many` with a single member, so a single
         database and a set of them cannot drift apart in what they rank or what they admit."""
         return self.search_many(query, [db_name], **kw)
-
-    @staticmethod
-    def _exact_name_outside(
-        query: str, index: VectorIndex, geos: set | None, db_name: str, shown: set | None = None,
-    ) -> str | None:
-        """Datasets the query NAMES exactly that the answer does not show.
-
-        Two ways to miss one: a multi-select geography filter (`geos`) excludes its regions, or — with
-        one region as a ranking signal, or none — the neighbours of the preferred region outrank it
-        and the limit cuts it. Exact on the folded name or reference product (with or without the
-        market prefix), deliberately not fuzzy: "tap water", "steel, chromium steel 18/8" and
-        "wastewater, average" each named a market exactly and came back without it and without a
-        word (an MCP session). Linear over the index metadata — 26 000 rows is a
-        millisecond."""
-        wanted = _fold(query)
-        if not wanted:
-            return None
-
-        # The datasets a query NAMES: the activity called exactly that, or the market (group) for a
-        # product called exactly that. Not every dataset that merely PRODUCES the product — forty
-        # "tap water production, …" variants are neighbours, not the thing asked for, and a note
-        # about them would fire on every product-word search.
-        canonical = {wanted, f"market for {wanted}", f"market group for {wanted}"}
-        elsewhere: dict[str, int] = {}
-        for m in index.meta:
-            name = _fold(m.get("name"))
-            if name not in canonical:
-                continue
-            geo = m.get("geo") or ""
-            if geos:
-                if geo in geos:
-                    continue
-            elif shown is not None and (name, _fold(m.get("product"))) in shown:
-                continue
-            elsewhere[geo] = elsewhere.get(geo, 0) + 1
-        if not elsewhere:
-            return None
-        n = sum(elsewhere.values())
-        geo_names = sorted(g for g in elsewhere if g)
-        where = ", ".join(geo_names[:8]) + (f" … ({len(geo_names)} regions)" if len(geo_names) > 8 else "")
-        if not geos:
-            return (
-                f"{n} dataset{'s' if n != 1 else ''} named exactly '{query.strip()}' (or its market) "
-                f"exist{'s' if n == 1 else ''} in {db_name} ({where}) but {'is' if n == 1 else 'are'} not in this "
-                "list — outranked by the region preference or cut by the limit. If that is the dataset you meant, "
-                "search its exact name with activity_types=\"M\" or a larger limit, or pass its region in geographies."
-            )
-        return (
-            f"{n} dataset{'s' if n != 1 else ''} named exactly '{query.strip()}' exist{'s' if n == 1 else ''} in "
-            f"{db_name} outside the requested geographies ({', '.join(sorted(geos))}): {where}. The filter "
-            "hid them. If that is the dataset you meant, search again with one of those locations or "
-            "without geographies, and record the geography proxy in the exchange comment."
-        )

@@ -148,14 +148,7 @@ export default function SearchDialog({
               {s.searching ? '…' : 'Search'}
             </button>
           </div>
-          <SearchFilters
-            typeSel={s.typeSel}
-            toggleType={s.toggleType}
-            regionSel={s.regionSel}
-            addRegion={s.addRegion}
-            removeRegion={s.removeRegion}
-            regionOptions={s.regionOptions}
-          />
+          <SearchFilters s={s} />
 
           <div className="search-results">
             <SearchedAs

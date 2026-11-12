@@ -41,7 +41,7 @@ CEILINGS: dict[str, int] = {
     # chapter read; a second home for one of those sources would split the list it exists to keep whole.
     "prism_lca/engine/report_staleness.py": 1594,
     "prism_lca/engine/params.py": 1362,  # 1337
-    "prism_lca/search/service.py": 1242,  # 1217, after the index builds moved to builds.py
+    "prism_lca/search/service.py": 1215,  # 1190, after the filter diagnosis moved to facets.py
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
     # 1274 — raised by 11 for release_cached: closing the files of cached factorisations needs the cache,
     # which is private to this module; another module reaching into it would be the worse cut.
