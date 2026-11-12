@@ -156,6 +156,8 @@ stock-vector-*
 
 # Playwright MCP scratch output (page snapshots, console logs) — tool droppings, never source.
 .playwright-mcp/
+# Images an image-generation tool writes into the working directory — tool droppings, never source.
+/generated_images/
 
 # Local operating documents (hosting contracts, records of processing) — never part of the repository.
 /betrieb/
