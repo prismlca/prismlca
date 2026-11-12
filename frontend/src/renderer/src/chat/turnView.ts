@@ -16,6 +16,9 @@ export interface TurnView {
   live: ToolTrace[]
   /** When each row of `live` started (epoch ms), in the same order — the rows' clocks count from it. */
   started: number[]
+  /** Each row's call key from main (`callId`), in the same order; undefined for a row whose start
+   *  event carried none. */
+  ids: Array<string | undefined>
   /**
    * Characters of reasoning in the round now running; 0 once it writes or calls a tool. A reasoning
    * model can be silent for minutes, and "Thinking" with a clock looks the same whether it is working
@@ -30,6 +33,9 @@ export interface TurnView {
    */
   retry?: RetryState
   context: ContextLevel | null
+  /** The provider's prompt cache stopped working in this run (main's cache watch) — said once, kept
+   *  until the run ends. */
+  cacheWarning?: 'dropped' | 'stuck'
   /**
    * When the current thinking phase began: the turn's start, a restarted round, or the last call's end.
    * Unknown for a run this window has seen nothing of yet (adopted after a reload) — the clock then
@@ -51,15 +57,23 @@ export const emptyTurn = (now?: number): TurnView => ({
   streaming: '',
   live: [],
   started: [],
+  ids: [],
   reasoning: 0,
   restarts: 0,
   context: null,
   thinkingAt: now
 })
 
-/** Index of the newest row of this tool still waiting for its outcome, or -1. */
-const openRow = (live: ToolTrace[], name: string): number =>
-  live.map((t) => !t.status && t.name === name).lastIndexOf(true)
+/**
+ * Index of the open row an event belongs to, or -1. With a call key, the row that started under it —
+ * by name alone, two parallel calls of one tool that finished in reverse order swapped their status
+ * and result (V495). Without one (a research leg's progress note, the provider's web-lookup row), the
+ * newest open row of the tool.
+ */
+const openRow = (v: TurnView, name: string, callId?: string): number =>
+  callId
+    ? v.live.findIndex((t, i) => !t.status && v.ids[i] === callId)
+    : v.live.map((t) => !t.status && t.name === name).lastIndexOf(true)
 
 /**
  * One event folded into the chat's view; `undefined` = no turn in flight. Pure, for the tests.
@@ -80,7 +94,9 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
     const newer = prev && (prev.runId === null || (prev.runId && prev.runId !== ev.run.runId))
     return newer ? prev : undefined
   }
-  const shown = ['delta', 'reasoning', 'context', 'round-restart', 'retry', 'tool'].includes(ev.type)
+  const shown = ['delta', 'reasoning', 'context', 'round-restart', 'retry', 'tool', 'cache-warning'].includes(
+    ev.type
+  )
   if (!shown) return prev
   // A run this window did not see start (a reload): its view begins with what arrives now.
   const v = prev ?? emptyTurn(now)
@@ -95,6 +111,8 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
       return { ...v, reasoning: ev.chars, retry: undefined }
     case 'context':
       return { ...v, context: { tokens: ev.tokens, window: ev.window, budget: ev.budget } }
+    case 'cache-warning':
+      return v.cacheWarning ? v : { ...v, cacheWarning: ev.pattern }
     case 'round-restart':
       // The round is starting over, so the clock has to as well — otherwise it keeps timing an attempt
       // whose reasoning has already been discarded, and the two numbers on that line stop describing
@@ -118,9 +136,10 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
           restarts: 0,
           retry: undefined,
           live: [...v.live, { name: ev.name, args: ev.args }],
-          started: [...v.started, now]
+          started: [...v.started, now],
+          ids: [...v.ids, ev.callId]
         }
-      const idx = openRow(v.live, ev.name)
+      const idx = openRow(v, ev.name, ev.callId)
       if (idx < 0) return { ...v, reasoning: 0 }
       const live = [...v.live]
       if (ev.phase === 'progress') {
@@ -129,7 +148,7 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
         live[idx] = { ...live[idx], detail: ev.detail }
         return { ...v, reasoning: 0, live }
       }
-      // Close the newest still-open row for this tool. A returned refusal ('soft') counts as rejected —
+      // Close the call's row. A returned refusal ('soft') counts as rejected —
       // the model was told no, which is precisely what should be visible. Duration and result land here,
       // not only in the turn's closing trace: on a long run the finished rows are the only place to read
       // what a call returned while the rest of the turn is still going.

@@ -189,3 +189,57 @@ describe('the order the catalogue is shown in', () => {
     expect(openai.at(-1)?.id).toBe('openai/whisper-large-v3')
   })
 })
+
+describe('reasoning effort per row', () => {
+  const VOCAB = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+
+  it('lists only known levels, in ascending order, and names a default or a floor only among them', () => {
+    for (const m of AI_MODELS) {
+      const levels = m.reasoningEfforts ?? []
+      const ranks = levels.map((l) => VOCAB.indexOf(l))
+      expect(
+        ranks.every((r) => r >= 0),
+        m.id
+      ).toBe(true)
+      expect(ranks, m.id).toEqual([...ranks].sort((a, b) => a - b))
+      expect(new Set(levels).size, m.id).toBe(levels.length)
+      if (m.defaultEffort) expect(levels, m.id).toContain(m.defaultEffort)
+      if (m.minChatEffort) {
+        expect(levels, m.id).toContain(m.minChatEffort)
+        // A floor without its reason would cut the picker short with nothing to say why.
+        expect(m.minChatEffortNote, m.id).toBeTruthy()
+      }
+    }
+  })
+
+  // OpenAI's model pages and reasoning guide, and OpenRouter's listing for the same models: 6.1 Sol and
+  // Astra take neither `none` nor `minimal`, Luna takes `none` but not `minimal`, all three take `max`;
+  // 6.1 Sol and Luna default to medium. The two routes to one model offer the same levels.
+  it.each([
+    ['gpt-6.1-sol', ['low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
+    ['gpt-6-luna', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
+    ['gpt-6-astra', ['low', 'medium', 'high', 'xhigh', 'max'], undefined]
+  ] as const)('%s offers the documented levels on both routes', (id, levels, dflt) => {
+    const direct = findModel(id, 'openai')
+    const routed = findModel(`openai/${id}`, 'openrouter')
+    expect(direct.id).toBe(id)
+    expect(routed.id).toBe(`openai/${id}`)
+    expect(direct.reasoningEfforts).toEqual(levels)
+    expect(routed.reasoningEfforts).toEqual(levels)
+    expect(direct.defaultEffort).toBe(dflt)
+  })
+
+  it('puts the chat floor on GPT-6 Luna alone, on both routes, and leaves it the cheap roles', () => {
+    expect(
+      AI_MODELS.filter((m) => m.minChatEffort)
+        .map((m) => m.id)
+        .sort()
+    ).toEqual(['gpt-6-luna', 'openai/gpt-6-luna'])
+    expect(findModel('gpt-6-luna', 'openai').minChatEffort).toBe('high')
+    expect(findModel('openai/gpt-6-luna', 'openrouter').minChatEffort).toBe('high')
+    // The floor is the chat's: Luna stays the default for research, review, writer fallback and matching.
+    const { research, review, writerFallback, match } = providerDefaults('openai')
+    expect([research, review, writerFallback, match]).toEqual(Array(4).fill('gpt-6-luna'))
+    expect(providerDefaults('openrouter').match).toBe('openai/gpt-6-luna')
+  })
+})

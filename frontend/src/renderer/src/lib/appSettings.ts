@@ -95,6 +95,7 @@ function legacy(): AppSettings {
     // Newer than the move to a file; the default stands until main answers.
     chatApproval: 'irreversible',
     reasoningEffort: {},
+    chatEffortNotice: '',
     planToolByModel: {}
   }
 }

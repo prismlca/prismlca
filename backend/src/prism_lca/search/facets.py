@@ -69,11 +69,14 @@ def unit_counts(meta: Iterable[dict]) -> list[dict]:
     return [{"unit": u, "count": n} for u, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
-def filter_notes(query: str, entries, filters: Filters, hits: list[dict]) -> dict:
+def filter_notes(
+    query: str, entries, filters: Filters, hits: list[dict], target_geo: str | None = None, listed: Iterable[dict] = (),
+) -> dict:
     """What the filters kept out of this answer, as the answer's keys; empty when there is nothing to say.
 
     - ``outside_geography_filter``: a dataset the query names exactly that a region filter hid, or that the
-      region preference and the limit pushed out of the list.
+      region preference (``target_geo``), a type filter or the limit pushed out of the list — unless it is
+      among the ``listed`` rows already (``outside_region``, search/left_out.py), which say it better.
     - ``outside_unit_filter``: one that only the unit filter hid. Said apart from the regions, because
       "outranked by the region preference" would be the wrong reason for someone who chose a unit.
     - ``units_not_in_databases``: selected units no searched database has a row in. A selection survives a
@@ -83,9 +86,10 @@ def filter_notes(query: str, entries, filters: Filters, hits: list[dict]) -> dic
     # listed or cut (variants_total says so), so a code comparison would misreport a cut variant. With the
     # database, a hit from one background does not silence the note about the other.
     shown = {(h.get("database"), fold(h.get("name")), fold(h.get("product"))) for h in hits}
+    outside = {(h.get("database"), fold(h.get("name")), fold(h.get("product"))) for h in listed}
     regions, units = [], []
     for name, index in entries:
-        region_note, unit_note = _named_but_hidden(query, index.meta, filters, name, shown)
+        region_note, unit_note = _named_but_hidden(query, index.meta, filters, name, shown, target_geo, outside)
         if region_note:
             regions.append(region_note)
         if unit_note:
@@ -104,12 +108,14 @@ def filter_notes(query: str, entries, filters: Filters, hits: list[dict]) -> dic
 
 def _named_but_hidden(
     query: str, meta: list[dict], filters: Filters, db_name: str, shown: set | None = None,
+    target_geo: str | None = None, outside: set | None = None,
 ) -> tuple[str | None, str | None]:
     """Datasets the query NAMES exactly that the answer does not show, as (note about regions, note about units).
 
-    Three ways to miss one: a multi-select geography filter excludes its regions; a unit filter excludes its
-    unit; or (with one region as a ranking signal, or none) the neighbours of the preferred region outrank it
-    and the limit cuts it. Exact on the folded name or reference product (with or without the market prefix),
+    Four ways to miss one: a multi-select geography filter excludes its regions; a unit filter excludes its
+    unit; a type filter excludes its type; or (with one region as a ranking signal, or none) the neighbours of
+    the preferred region outrank it, or the limit cuts it. The note names the way it actually happened, so its
+    advice fits. Exact on the folded name or reference product (with or without the market prefix),
     deliberately not fuzzy: "tap water", "steel, chromium steel 18/8" and "wastewater, average" each named a
     market exactly and came back without it and without a word (an MCP session). Linear over the index
     metadata: 26 000 rows is a millisecond."""
@@ -125,14 +131,19 @@ def _named_but_hidden(
     geos = filters.geos
     elsewhere: dict[str, int] = {}
     in_other_units: dict[str, int] = {}
+    why: set[str] = set()  # "type", "region", "limit" — see _region_note
+    cut_markets = True  # every dataset the limit cut is a market, so activity_types="M" would make room
     for m in meta:
         name = fold(m.get("name"))
         if name not in canonical:
             continue
-        if filters.excluded_by(m) == "unit":  # type and region would have let it in
+        excluded = filters.excluded_by(m)
+        if excluded == "unit":  # type and region would have let it in
             unit = m.get("unit") or "no unit"
             in_other_units[unit] = in_other_units.get(unit, 0) + 1
             continue
+        if outside and (db_name, name, fold(m.get("product"))) in outside:
+            continue  # the answer lists it under outside_region
         geo = m.get("geo") or ""
         if geos:
             if geo in geos:
@@ -140,21 +151,41 @@ def _named_but_hidden(
         elif shown is not None and (db_name, name, fold(m.get("product"))) in shown:
             continue
         elsewhere[geo] = elsewhere.get(geo, 0) + 1
-    return _region_note(query, db_name, geos, elsewhere), _unit_note(query, db_name, in_other_units)
+        reason = "type" if excluded == "type" else "region" if target_geo and geo != target_geo else "limit"
+        why.add(reason)
+        cut_markets = cut_markets and (reason != "limit" or m.get("atype") == "M")
+    region_note = _region_note(query, db_name, geos, elsewhere, why, cut_markets and not filters.types)
+    return region_note, _unit_note(query, db_name, in_other_units)
 
 
-def _region_note(query: str, db_name: str, geos: frozenset[str], elsewhere: dict[str, int]) -> str | None:
+#: Why a dataset named exactly like the query is not in a list without a region filter, and what helps.
+_HIDDEN_BECAUSE = {
+    "type": ("kept out by activity_types", "search again without activity_types"),
+    "region": ("outranked by the region preference", "pass its region in geographies"),
+    "limit": ("cut by the limit", "search its exact name with a larger limit"),
+}
+
+
+def _region_note(
+    query: str, db_name: str, geos: frozenset[str], elsewhere: dict[str, int],
+    why: Iterable[str] = ("region", "limit"), markets: bool = False,
+) -> str | None:
     if not elsewhere:
         return None
     n = sum(elsewhere.values())
     geo_names = sorted(g for g in elsewhere if g)
     where = ", ".join(geo_names[:8]) + (f" … ({len(geo_names)} regions)" if len(geo_names) > 8 else "")
     if not geos:
+        reasons = [_HIDDEN_BECAUSE[k] for k in _HIDDEN_BECAUSE if k in set(why)]
+        advice = [
+            f"{do} or with activity_types=\"M\"" if markets and do == _HIDDEN_BECAUSE["limit"][1] else do
+            for _, do in reasons
+        ]
         return (
             f"{n} dataset{'s' if n != 1 else ''} named exactly '{query.strip()}' (or its market) "
             f"exist{'s' if n == 1 else ''} in {db_name} ({where}) but {'is' if n == 1 else 'are'} not in this "
-            "list — outranked by the region preference or cut by the limit. If that is the dataset you meant, "
-            "search its exact name with activity_types=\"M\" or a larger limit, or pass its region in geographies."
+            f"list — {' or '.join(r for r, _ in reasons)}. If that is the dataset you meant, "
+            f"{', or '.join(advice)}."
         )
     return (
         f"{n} dataset{'s' if n != 1 else ''} named exactly '{query.strip()}' exist{'s' if n == 1 else ''} in "

@@ -479,3 +479,52 @@ describe('the external-agents bar', () => {
     )
   })
 })
+
+/**
+ * The assistant's canvas requests while the user is on another page (V481). The chat panel that used to
+ * answer them is mounted on the Model view only, so each one waited 30 s for nobody. The Workbench answers
+ * them now, on the canvas state it holds — without taking the user off the page they are on.
+ */
+describe('canvas requests on a page without the canvas', () => {
+  const FG = { name: 'pet-bottle', node_count: 3, read_only: false, kind: 'foreground' }
+  const routes = (): Routes => ({
+    ...baseRoutes([FG, { name: 'ecoinvent-3.12', node_count: 26000, read_only: true, kind: 'background' }]),
+    'GET /api/v1/model/graph/pet-bottle': { database: 'pet-bottle', nodes: [], edges: [] },
+    'GET /api/v1/views/pet-bottle': { view: {} },
+    'GET /api/v1/study': {},
+    'GET /api/v1/model/reference/pet-bottle': { candidates: [] }
+  })
+
+  it('answers the six that need no screen at once, and the Overview stays', async () => {
+    const answers = new Map<string, { ok: boolean; result: unknown }>()
+    const { prism } = renderWithPrism(<Workbench />, {
+      routes: routes(),
+      overrides: {
+        ai: {
+          uiResult: (reqId: string, ok: boolean, result: unknown) => answers.set(reqId, { ok, result })
+        }
+      }
+    })
+    await screen.findByText(/pet-bottle/)
+    const asks: Array<[string, Record<string, unknown>]> = [
+      ['auto_layout', {}],
+      ['clear_canvas', {}],
+      ['remove_from_canvas', { code: 'x' }],
+      ['calculate_in_canvas', { method: ['m'], code: 'a' }],
+      ['get_canvas', {}],
+      ['setup_results', { tab: 'overview' }]
+    ]
+    act(() =>
+      asks.forEach(([name, args], i) =>
+        prism.emitUiTool({ reqId: `c${i}`, name, args, chatId: 'c1', database: 'pet-bottle' })
+      )
+    )
+    await waitFor(() => expect(answers.size).toBe(asks.length), { timeout: 3000 })
+    expect([...answers.values()].every((a) => a.ok)).toBe(true)
+    expect(answers.get('c4')?.result).toEqual({
+      nodes: [],
+      visible_in: 'model view (the user is on another page)'
+    })
+    expect(document.querySelector('.navitem.on')).toHaveTextContent('Overview')
+  })
+})

@@ -55,6 +55,10 @@ export type AgentEvent =
       chatId: string
       type: 'tool'
       name: string
+      /** The call's key in this run (round and position). The renderer closes the row with this key,
+       *  so parallel calls of one tool that finish out of order keep their own rows; events without
+       *  it (a research leg's progress note) fall back to the newest open row of the name. */
+      callId?: string
       // 'progress' is a note from a call still in flight — a research leg saying which component it is
       // on. Without it a sub-agent that runs for minutes shows a pulse and a seconds counter and
       // nothing else, which is indistinguishable from a hang.
@@ -106,6 +110,12 @@ export type AgentEvent =
   | { chatId: string; type: 'context'; tokens: number; window?: number; budget: number }
   /** Which OpenRouter endpoint served this turn. Sent once, as soon as the first chunk names it. */
   | { chatId: string; type: 'provider'; name: string }
+  /**
+   * The provider's prompt cache stopped working in this run (main/ai/cacheWatch.ts): a round read
+   * nothing from it after earlier rounds did (`dropped`), or its share has stopped growing with the
+   * conversation (`stuck`). Sent once per run; the run bar says so until the run ends.
+   */
+  | { chatId: string; type: 'cache-warning'; pattern: 'dropped' | 'stuck' }
   // A mutating tool ran — the renderer should reload the canvas. `database` names the model the run
   // edits, so a canvas showing ANOTHER model (two assistants working in parallel) is left alone.
   /** A write happened; `graph === false` says the canvas graph itself did not change (study
@@ -508,8 +518,12 @@ export interface AppSettings {
    *  'irreversible' (default) shows it, 'never' lets the model act and tells it to confirm itself. */
   chatApproval: 'irreversible' | 'never'
   /** Reasoning effort per chat model id (shared/aiDefaults.ts); a model not listed sends nothing,
-   *  i.e. runs on its API's default. Offered levels come from the catalogue row (`reasoningEfforts`). */
+   *  i.e. runs on its API's default — or its chat floor (`minChatEffort`), which a run never goes below.
+   *  Offered levels come from the catalogue row (`reasoningEfforts`). */
   reasoningEffort: Record<string, ReasoningEffort>
+  /** A sentence the chat shows once, then clears: written when a stored effort was raised to a model's
+   *  new chat floor. '' = nothing to say. */
+  chatEffortNotice: string
   /** Per chat model id: the user's choice about the `plan` tool where it differs from the catalogue
    *  (`planTool` in main/ai/models.ts). Absent = the catalogue decides; see `planToolOn`. */
   planToolByModel: Record<string, boolean>

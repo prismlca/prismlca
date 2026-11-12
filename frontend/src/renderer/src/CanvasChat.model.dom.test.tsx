@@ -16,17 +16,7 @@ import { DEFAULT_MODEL_ID } from '../../shared/aiDefaults'
  * used to hang in the placeholder), it is changeable from where it is read, and the provider is NOT
  * changeable there — that decision comes with a key and a catalogue of its own and stays in Settings.
  */
-const ui = {
-  jumpToProcess: vi.fn(),
-  autoLayout: vi.fn(),
-  screenshotRect: () => null,
-  calculateInCanvas: vi.fn(),
-  setupResults: vi.fn(),
-  getCanvas: vi.fn(),
-  clearCanvas: vi.fn(),
-  removeFromCanvas: vi.fn(),
-  refresh: vi.fn()
-}
+const onJump = vi.fn()
 
 const CATALOGUE = [
   { id: DEFAULT_MODEL_ID, provider: 'openrouter', label: 'Cheap', descriptor: 'the everyday one' },
@@ -36,7 +26,7 @@ const CATALOGUE = [
 ]
 
 const mount = (): ReturnType<typeof renderWithPrism> =>
-  renderWithPrism(<CanvasChat activeDb="m" ui={ui} />, {
+  renderWithPrism(<CanvasChat activeDb="m" onJump={onJump} />, {
     routes: { 'GET /api/v1/ai/chats/m': { chats: [] } },
     overrides: { ai: { models: async () => CATALOGUE } }
   })

@@ -8,6 +8,7 @@
  * The API key never reaches the renderer — it is read here in the main process only.
  */
 import { resolve, type Provider } from '../secrets'
+import { aiWarn } from './aiLog'
 import { isDirectOnlyId, modelBelongsTo, providerDefaults } from './models'
 import { anthropicTransport } from './providers/anthropic'
 import { runChatStream } from './providers/engine'
@@ -79,7 +80,7 @@ function requestModelFor(id: string, p: ProviderId): string {
   if (p === 'openrouter' && !isDirectOnlyId(id)) return id
   if (p !== 'openrouter' && modelBelongsTo(id, p)) return id
   const fallback = providerDefaults(p).chat
-  console.warn(`[prism-ai] model "${id}" is not available under the ${p} provider — using ${fallback}`)
+  aiWarn(`model "${id}" is not available under the ${p} provider — using ${fallback}`)
   return fallback
 }
 

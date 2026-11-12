@@ -278,6 +278,24 @@ export async function scopeRefusal(
 }
 
 /**
+ * An empty `database` in the fenced chat means the chat's own model: there is no other model it could
+ * name. Optional `database` fields are already dropped when empty (emptyArgs.ts) and the tool takes the
+ * open model; this covers the tools where `database` is REQUIRED (set_classification, delete_process),
+ * which the backend's fence would otherwise refuse as a write into "a model the request does not name"
+ * (V483). Returns the arguments unchanged when there is nothing to fill.
+ */
+export function ownModelForEmptyDatabase(
+  args: Record<string, unknown>,
+  schema: Record<string, unknown> | undefined,
+  own: string | null
+): Record<string, unknown> {
+  const props = (schema?.properties ?? {}) as Record<string, unknown>
+  if (!own || !('database' in props)) return args
+  if (typeof args.database !== 'string' || args.database.trim()) return args
+  return { ...args, database: own }
+}
+
+/**
  * A `database` the tool would silently ignore — it has no such argument and works on the open model.
  * The answer would then be this model's while the chat believes it read the other one ("same distance
  * as the comparison model"), and with `open_model` closed to the chat that is where it goes looking.

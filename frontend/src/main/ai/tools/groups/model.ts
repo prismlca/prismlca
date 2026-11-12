@@ -7,6 +7,7 @@ import type { Tool } from '../context'
 import { num, obj, objArr, str } from '../schema'
 import { AI, NO_MODEL, S, batchResult, fgDb, runItem } from '../format'
 import { resolveCode } from '../resolve'
+import { uidMiss } from '../uidHint'
 import { trimUnitNotes } from '../advice/warnings'
 import { IMPL, delegate } from '../impl'
 import { type LinkedInput, UNOPENED_LINKS_SHOWN, unopenedLinks } from '../advice/hotspots'
@@ -345,8 +346,15 @@ export const modelTools: Tool[] = [
             system_allocation: str(
               'System allocation: how end-of-life burdens and credits are handled (cut-off, avoided burden, 50/50, circular footprint formula).'
             ),
-            author: str('Who wrote the study.'),
-            organisation: str('The organisation carrying out the study.'),
+            author: str(
+              'The person or team responsible for the study. Leave it empty unless the user names ' +
+                'someone — the report cover then uses the name and company from Settings. Never ' +
+                'yourself (the model that worked is recorded in ai_model).'
+            ),
+            organisation: str(
+              'The organisation carrying out the study. Leave it empty unless the user names one — the ' +
+                'report cover then uses the company from Settings. Never your AI vendor.'
+            ),
             commissioner: str('Who the study was carried out for.'),
             date: str('Study date, ISO format.'),
             limitations: {
@@ -380,8 +388,10 @@ export const modelTools: Tool[] = [
               )
             },
             critical_review: str(
-              'Who reviewed the study and when. Leaving it empty is meaningful: a public comparative ' +
-                'assertion without a recorded review has to say so (ISO 14044 §7.3.3).'
+              'The critical review by independent experts (ISO 14044 §7.3.3): who reviewed the study and ' +
+                'when. review_model is an AI second opinion, not such a review — never record it here. ' +
+                'Leaving it empty is meaningful: a public comparative assertion without a recorded review ' +
+                'has to say so.'
             ),
             notes: str('Any other study notes.')
           },
@@ -569,7 +579,8 @@ export const modelTools: Tool[] = [
           if (!found)
             throw new Error(
               `No exchange with uid "${it.uid.trim()}" in "${db}" — it may have been removed, or replaced: ` +
-                'replace_input gives the exchange a NEW uid (in its answer). Read the process (get_process_details) for the current one.'
+                'replace_input gives the exchange a NEW uid (in its answer). Read the process (get_process_details) for the current one.' +
+                uidMiss(it.uid.trim(), await foreground)
             )
           activityCode = found
         }

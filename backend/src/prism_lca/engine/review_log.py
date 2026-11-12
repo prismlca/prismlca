@@ -26,6 +26,11 @@ MAX_RESOLUTIONS = 40
 
 RESOLUTIONS = ("fixed", "rejected", "open")
 
+#: This backend process. The generation counter starts again at every start and counts the edits of
+#: every model, so a stored generation says something about the current state only while the same
+#: process runs — `history` compares it only then.
+_SESSION = uuid.uuid4().hex[:12]
+
 
 def clean_resolutions(items: object) -> list[dict]:
     """Normalise ``[{finding, resolution, reason}]``; unknown resolutions become ``open``."""
@@ -62,12 +67,36 @@ class ReviewLogStore(JsonFileStore):
     def list(self, database: str) -> list[dict]:
         return list(self._load().get(database) or [])
 
+    def history(self, database: str, current_generation: int | None = None) -> list[dict]:
+        """The reviews, each with ``stale``: whether anything was edited after it — in this model or
+        another, the counter is shared — or None when that cannot be said (another backend session,
+        no generation recorded)."""
+        return [
+            {
+                **r,
+                "stale": (
+                    None
+                    if r.get("generation") is None
+                    or current_generation is None
+                    or r.get("session") != _SESSION
+                    else r.get("generation") != current_generation
+                ),
+            }
+            for r in self.list(database)
+        ]
+
     def latest(self, database: str) -> dict | None:
         reviews = self.list(database)
         return reviews[-1] if reviews else None
 
     def record_review(
-        self, database: str, review: str, gaps: list | None = None, generation: int | None = None
+        self,
+        database: str,
+        review: str,
+        gaps: list | None = None,
+        generation: int | None = None,
+        chat: str | None = None,
+        partial: bool = False,
     ) -> dict:
         with self._lock:
             text = str(review or "").strip()
@@ -85,6 +114,14 @@ class ReviewLogStore(JsonFileStore):
                 "generation": generation,
                 "resolutions": [],
             }
+            # The chat that ran it: a later review in the same chat is shown this one's findings and
+            # outcomes, a review in another chat is not — that chat never saw the reasons.
+            if chat and str(chat).strip():
+                entry["chat"] = str(chat).strip()[:64]
+            entry["session"] = _SESSION
+            # Cut off at the reviewer's deadline: findings it had not reached are missing.
+            if partial:
+                entry["partial"] = True
             stored.append(entry)
             data[database] = stored[-MAX_REVIEWS:]
             self._save(data)

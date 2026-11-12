@@ -106,13 +106,17 @@ export function alreadyAsked(
  * the object, is the salience fix. The fields themselves stay untouched — they are the source of
  * truth, and existing readers (tests, the renderer) keep working.
  */
-export function withSearchWarnings(result: any): any {
+export function withSearchWarnings(result: any, geographies?: unknown): any {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result
+  // With a region the list is that region's queue, and a warning about it must not read as one about
+  // the whole database (V462): the better dataset may sit one region over, under `outside_region`.
+  const regions = Array.isArray(geographies) ? [...new Set(geographies.map(String).filter(Boolean))] : []
+  const label = regions.join('/')
   const w: string[] = []
   if (result.weak_match === true)
     w.push(
-      'Nothing in this list truly resembles the query — treat every hit as a non-match, not as a ' +
-        'weak candidate.'
+      `Nothing in ${label ? `the ${label}` : 'this'} list truly resembles the query — treat every hit as a ` +
+        'non-match, not as a weak candidate.'
     )
   if (Array.isArray(result.unmatched_terms) && result.unmatched_terms.length)
     w.push(
@@ -120,7 +124,11 @@ export function withSearchWarnings(result: any): any {
         'the exact variant may not exist here. Do not accept a neighbouring variant (EURO 5 for ' +
         'EURO 6) without saying so.'
     )
-  if (typeof result.proxy_warning === 'string' && result.proxy_warning) w.push(result.proxy_warning)
+  // When it fires it takes the proxy warning's place: two long warnings pulling in different directions
+  // get neither followed.
+  const outside = outsideRegionWarning(result, regions, label)
+  if (outside) w.push(outside)
+  else if (typeof result.proxy_warning === 'string' && result.proxy_warning) w.push(result.proxy_warning)
   if (typeof result.split_match_warning === 'string' && result.split_match_warning)
     w.push(result.split_match_warning)
   // The hard geography filter hid a dataset named exactly like the query (V333): the one signal that
@@ -132,4 +140,44 @@ export function withSearchWarnings(result: any): any {
   if (typeof result.hint === 'string' && result.hint) w.push(result.hint)
   // Insertion order puts `warnings` first in the serialised object — that placement is the point.
   return w.length ? { warnings: w, ...result } : result
+}
+
+/**
+ * How far an `outside_region` row must score above the best region hit before the line speaks up. On the
+ * displayed score (the cosine): measured over sixteen real searches, scores within a few thousandths of
+ * each other were neighbours of the right regional dataset (a steel grade, a film, a lorry class), while
+ * every outside hit that was the better dataset led by at least 0.008.
+ */
+export const OUTSIDE_REGION_LEAD = 0.005
+
+/**
+ * The line that makes `outside_region` impossible to read past — only when an outside hit scores above
+ * the best region hit shown, by at least OUTSIDE_REGION_LEAD (V462). The rows are always in the answer; most of the time
+ * the region holds the material, and a warning on every regional search would teach the model to skip it.
+ * Both scores are named, because a higher similarity is evidence, not a verdict: an outside neighbour of the
+ * right regional dataset can score higher too, and the wording leaves that call to the reader.
+ */
+function outsideRegionWarning(result: any, regions: string[], label: string): string | null {
+  const rows = Array.isArray(result.outside_region) ? result.outside_region : []
+  if (!rows.length || !regions.length) return null
+  const scoreOf = (h: any): number => (typeof h?.score === 'number' ? h.score : Number.NaN)
+  const best = rows.reduce((a: any, b: any) => (scoreOf(b) > scoreOf(a) ? b : a))
+  if (!Number.isFinite(scoreOf(best))) return null
+  const hits: any[] = Array.isArray(result.hits) ? result.hits : []
+  const scored = (list: any[]): number[] => list.map(scoreOf).filter(Number.isFinite)
+  const inRegion = scored(hits.filter((h) => regions.includes(String(h?.geography ?? ''))))
+  const shown = inRegion.length ? inRegion : scored(hits)
+  const ref = shown.length ? Math.max(...shown) : undefined
+  // Slack for float noise only: 0.455 against 0.45 is exactly the lead and must count.
+  if (ref !== undefined && scoreOf(best) < ref + OUTSIDE_REGION_LEAD - 1e-9) return null
+  const f = (n: number): string => n.toFixed(2)
+  const against = inRegion.length
+    ? `best ${label} hit ${f(ref!)}`
+    : ref !== undefined
+      ? `best hit shown ${f(ref)}, none in ${label}`
+      : `no hit in ${label}`
+  return (
+    `Outside ${label}: ${best.name} [${best.geography}] scores ${f(scoreOf(best))} (${against}). ` +
+    `Use it only if no ${label} hit is the material itself; then note the region proxy in the exchange comment.`
+  )
 }

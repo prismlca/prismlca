@@ -4,9 +4,11 @@ import { EffortIcon, SwapIcon } from '../components/icons'
 import { setAS, useAppSettings } from '../lib/appSettings'
 import {
   asAiProvider,
+  chatEffort,
+  chatEffortLevels,
   DEFAULT_MODEL_ID,
   defaultChatModelFor,
-  REASONING_EFFORT_SHORT,
+  effortStepName,
   type AiProviderId,
   type ReasoningEffort
 } from '../../../shared/aiDefaults'
@@ -76,15 +78,24 @@ export default function ModelPicker(): JSX.Element {
   // default that is shown and ticked — not a name the current key cannot serve.
   const currentModelLabel =
     effective?.label ?? modelList.find((m) => m.id === currentModel)?.label ?? currentModel
-  const levels: readonly ReasoningEffort[] = effective?.reasoningEfforts ?? []
+  // A model with a chat floor (`minChatEffort`) offers only the levels from it up and no Default; what
+  // is shown is what main sends (`chatEffort`, the same rule on both sides).
+  const floor = effective?.minChatEffort
+  const levels: readonly ReasoningEffort[] = chatEffortLevels(effective)
   const efforts = settings.reasoningEffort ?? {}
-  const effort: ReasoningEffort | '' = efforts[effectiveId] ?? ''
-  const effortShown = effort ? REASONING_EFFORT_SHORT[effort] : 'Default'
+  const effort: ReasoningEffort | '' = chatEffort(efforts[effectiveId], effective)
+  const effortShown = effortStepName(effort, effective?.defaultEffort)
   const pickEffort = (v: ReasoningEffort | ''): void => {
     const next = { ...efforts }
     if (v) next[effectiveId] = v
     else delete next[effectiveId]
     setAS({ reasoningEffort: next })
+  }
+  // Said once after an upgrade raised a stored effort to a model's new floor (main/settings.ts, schema 6):
+  // shown above the button until dismissed or until the menu is opened, then cleared for good.
+  const notice = settings.chatEffortNotice ?? ''
+  const dismissNotice = (): void => {
+    if (notice) setAS({ chatEffortNotice: '' })
   }
 
   useEffect(() => {
@@ -197,7 +208,10 @@ export default function ModelPicker(): JSX.Element {
         aria-expanded={modelMenuOpen}
         aria-label={`Chat model: ${currentModelLabel}${levels.length ? `, reasoning effort ${effortShown}` : ''}`}
         title="The model for this chat and its reasoning effort — click to change."
-        onClick={() => setModelMenuOpen((v) => !v)}
+        onClick={() => {
+          dismissNotice()
+          setModelMenuOpen((v) => !v)
+        }}
       >
         <span className="chat-model-name">
           {currentModelLabel}
@@ -221,6 +235,16 @@ export default function ModelPicker(): JSX.Element {
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
+      {notice && !modelMenuOpen ? (
+        // Where the menu opens, so the sentence sits beside the setting it is about.
+        <div className="chat-plus-menu chat-model-menu" role="status">
+          <div className="chat-menu-empty">{notice}</div>
+          <button className="chat-menu-item" onClick={dismissNotice}>
+            <span className="chat-model-tick" aria-hidden="true" />
+            <span className="chat-menu-label">OK</span>
+          </button>
+        </div>
+      ) : null}
       {modelMenuOpen ? (
         <div className="chat-plus-menu chat-model-menu" role="menu" aria-label="Chat model">
           {/* Pinned above the list, outside its scroll box, so it stays put however long the list is —
@@ -321,10 +345,15 @@ export default function ModelPicker(): JSX.Element {
                   value={effort}
                   onChange={pickEffort}
                   onDragging={onEffortDrag}
+                  apiDefault={effective?.defaultEffort}
+                  noDefault={!!floor}
                 />
               </div>
             ) : null}
           </div>
+          {floor && effective?.minChatEffortNote ? (
+            <div className="chat-menu-empty">{effective.minChatEffortNote}</div>
+          ) : null}
           <div className="chat-menu-divider" />
           <div className="chat-model-list">
             {pickableModels.length === 0 ? (

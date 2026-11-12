@@ -12,12 +12,12 @@
  *   - per-item questions run in PARALLEL;
  *   - the answer is verifiable (mass balance + mandatory sources).
  */
-import { streamChat } from './client'
 import { CitationBook, isProviderLink, type Evidence } from './citationBook'
 import { AiProviderError, type ChatMessage, type Citation } from './providers/types'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
-import { collectText, costOf } from './stream'
+import { collectText } from './stream'
+import { runReview, type ReviewResult } from './reviewRun'
 
 /**
  * Default for the research legs when Settings → AI → Models leaves "Research model" empty.
@@ -1104,113 +1104,32 @@ Rules:
 - Be terse. No praise, no restating the dossier, no closing summary.`
 
 /**
- * Judge a prepared dossier: ONE model pass, no tools, no web search.
+ * Judge a prepared dossier: one model pass, no tools, no web search.
  *
  * Deliberately not an agent with its own read-only tools. The dossier is gathered deterministically
  * by the caller, which keeps the cost of a review fixed and predictable, makes it impossible for the
  * critic to touch anything, and means every finding is anchored to a figure we know we handed over.
  * The price is that it only sees what the caller collected.
- */
-/** What became of a review pass. `empty` is a failure of the reviewer, not a clean bill of health. */
-export type ReviewOutcome = 'ok' | 'empty' | 'error'
-
-export interface ReviewResult {
-  text: string
-  outcome: ReviewOutcome
-  /** Why the model stopped, when the provider said so — `stop`, `length`, `error`, … */
-  finish_reason?: string
-  /** Characters of reasoning it produced. High with empty text = it thought and wrote nothing. */
-  reasoning_chars: number
-  attempts: number
-  ms: number
-  /** Set when the stream itself failed. */
-  error?: string
-}
-
-/**
- * Judge a prepared dossier: one model pass, no tools, no web search — and now, when that pass comes
- * back empty, a second one.
  *
- * A live picture-frame run is the reason for every field above. `review_model` ran for
- * **113.976 seconds** — the longest tool call of that run, longer than either web research — and
- * returned `"The reviewer returned nothing."`, 94 characters, with an empty `gaps` list saying the
- * dossier had been complete. The model read that as "no findings" and shipped a study whose headline
- * was wrong by a factor of two. Three things were missing and all three are here now:
- *
- *  - **A retry.** Every sibling had one: `researchWeb` takes two attempts, `researchBom` three since
- *    V69, and the main loop has caught empty completions since V66. The reviewer, alone, had none.
- *  - **A reason.** Nothing recorded `finish_reason` or how much reasoning was produced, so afterwards
- *    it was impossible to tell a model that thought and wrote nothing from one cut off at `length`.
- *    That question is now answerable while it happens rather than never.
- *  - **A distinguishable answer.** "Returned nothing" reads like a verdict. `outcome` says which it is.
+ * How the pass runs — its clock, the one restart, what survives a deadline — is reviewRun.ts. That a
+ * pass can fail at all, and must say so, comes from a live picture-frame run: `review_model` ran for
+ * 114 seconds, returned "The reviewer returned nothing.", and the model read that as "no findings" and
+ * shipped a study whose headline was wrong by a factor of two. Hence the restart, the recorded
+ * `finish_reason` and reasoning count, and an `outcome` that tells "found nothing" from "said nothing".
  */
 export async function reviewDossier(opts: {
   dossier: string
   model?: string
   signal?: AbortSignal
+  stop?: AbortSignal
   onCost?: CostSink
+  onProgress?: (note: string) => void
 }): Promise<ReviewResult> {
-  const model = opts.model ?? providerDefaults(getActiveProvider()).review
-  const startedAt = Date.now()
-  let reasoningChars = 0
-  let finishReason: string | undefined
-  let lastError: string | undefined
-
-  // The second attempt says the quiet part out loud. A reasoning model that spends its whole budget
-  // thinking and emits no visible token is the failure being guarded against, so the nudge asks for
-  // plain text and gives it a first line to write.
-  const NUDGE =
-    '\n\nYour previous answer contained no text at all. Answer in PLAIN TEXT, starting with the ' +
-    'line "Blocking:" — if you have nothing to raise, write "Blocking: none" and then the ' +
-    '"Should fix" and "Worth a look" sections. Do not answer with an empty message.'
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const messages: ChatMessage[] = [
-      { role: 'system', content: REVIEW_SYSTEM },
-      { role: 'user', content: attempt === 0 ? opts.dossier : opts.dossier + NUDGE }
-    ]
-    let text = ''
-    try {
-      for await (const ev of streamChat({ model, messages, temperature: null, signal: opts.signal })) {
-        if (ev.type === 'delta') text += ev.text
-        else if (ev.type === 'reasoning') reasoningChars += ev.chars
-        else if (ev.type === 'finish') finishReason = ev.reason
-        else if (ev.type === 'usage') opts.onCost?.(model, costOf(ev.usage))
-      }
-    } catch (e) {
-      // A stop from the user must end everything at once; anything else is worth one more try.
-      if (opts.signal?.aborted) throw e
-      lastError = e instanceof Error ? e.message : String(e)
-      console.log(`[prism-ai] review_model: stream failed (${lastError}) on attempt ${attempt + 1}`)
-      continue
-    }
-    const trimmed = text.trim()
-    if (trimmed) {
-      return {
-        text: trimmed,
-        outcome: 'ok',
-        finish_reason: finishReason,
-        reasoning_chars: reasoningChars,
-        attempts: attempt + 1,
-        ms: Date.now() - startedAt
-      }
-    }
-    console.log(
-      `[prism-ai] review_model: empty answer on attempt ${attempt + 1} after ` +
-        `${Math.round((Date.now() - startedAt) / 1000)} s, ${Math.round(reasoningChars / 1000)}k characters of ` +
-        `reasoning, finish_reason=${finishReason ?? 'none'}, dossier ${opts.dossier.length} chars`
-    )
-  }
-
-  return {
-    text: '',
-    outcome: lastError ? 'error' : 'empty',
-    finish_reason: finishReason,
-    reasoning_chars: reasoningChars,
-    attempts: 2,
-    ms: Date.now() - startedAt,
-    error: lastError
-  }
+  return runReview({
+    ...opts,
+    system: REVIEW_SYSTEM,
+    model: opts.model ?? providerDefaults(getActiveProvider()).review
+  })
 }
 
 export { AiProviderError }

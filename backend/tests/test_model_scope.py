@@ -269,6 +269,32 @@ def test_undo_may_take_back_a_link_to_another_model(client, token, project):
     assert r.status_code == 200, r.text
 
 
+def test_an_empty_model_name_is_refused_as_blank_not_as_another_model(client, token, project):
+    """V483: a field left blank names no model. Still refused (fail closed), but the answer says to pass
+    the chat's own model — not to tell the user that the work belongs in another model's chat."""
+    _fg(client, token, "A")
+    _fg(client, token, "B")
+    code = _code(client, token, "A", "bottle")
+    chat = _fenced(token, "A")
+    body = {"code": code, "isic": "C"}
+    blank = client.post("/api/v1/model/activities/classification", json={**body, "database": ""}, headers=chat)
+    _refused(blank)
+    msg = blank.json()["error"]["message"]
+    assert '"database" is empty' in msg and "‘A’" in msg
+    assert "another" not in msg and "own chat" not in str(blank.json()["error"].get("hint"))
+    # A name that does reach another model keeps the refusal that sends the work there.
+    foreign = client.post("/api/v1/model/activities/classification", json={**body, "database": "B"}, headers=chat)
+    _refused(foreign)
+    assert "is empty" not in foreign.json()["error"]["message"]
+    assert "‘B’" in foreign.json()["error"]["message"]
+    # A chat without a model open: nothing to point to, the old refusal stands.
+    none_open = client.post(
+        "/api/v1/model/activities/classification", json={**body, "database": ""}, headers={**token, "X-Prism-Model": ""}
+    )
+    _refused(none_open)
+    assert "is empty" not in none_open.json()["error"]["message"]
+
+
 def test_parameters_and_scenarios_are_listed_under_a_loose_spelling_too(client, token, project):
     _fg(client, token, "Bottle Glass")
     p = client.post("/api/v1/params", json={"database": "Bottle Glass", "name": "km", "amount": 300}, headers=token)

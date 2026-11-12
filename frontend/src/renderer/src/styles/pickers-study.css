@@ -513,3 +513,7 @@
 .tagmenu { max-width: 360px; }
 .tagmenu-group { display: flex; align-items: center; gap: 4px; flex-basis: 146px; }
 .tagmenu-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* An outdated canvas result: the model changed after it was calculated, the Sankey is off. */
+.result-bar.stale b { color: var(--muted); }
+.rb-stale { margin-left: 10px; color: var(--prism-warning); font-weight: 600; white-space: nowrap; cursor: help; }

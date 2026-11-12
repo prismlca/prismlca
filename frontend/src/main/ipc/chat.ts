@@ -6,7 +6,9 @@
 import { ipcMain } from 'electron'
 
 import { runAgent, type AgentEvent, type StoredTranscript } from '../ai/agent'
+import { aiLog } from '../ai/aiLog'
 import { findModel } from '../ai/models'
+import { chatRunEffort } from '../ai/chatEffort'
 import { getActiveProvider } from '../ai/providers/state'
 import { RESUMABLE_OUTCOMES, type ChatPlan, type ChatRun, type RunOutcome } from '../../shared/plan'
 import { addAttachments } from '../ai/attachments'
@@ -183,12 +185,14 @@ export function registerChatIpc(
       // when the transcript has to be rebuilt, a stopped run becomes the "verify before you continue"
       // note — whatever the user typed; nothing here matches on the word "continue".
       let storedPlan: ChatPlan | null = null
+      let storedTitle: string | undefined
       let resumeFrom: RunOutcome | undefined
       if (chatBase) {
         const { status, body } = await safe('GET', chatBase)
         if (status > 0 && status < 400 && body && typeof body === 'object') {
-          const chat = body as { plan?: ChatPlan | null; run?: ChatRun | null }
+          const chat = body as { plan?: ChatPlan | null; run?: ChatRun | null; title?: unknown }
           storedPlan = chat.plan ?? null
+          if (typeof chat.title === 'string' && chat.title.trim()) storedTitle = chat.title.trim()
           const run = chat.run
           if (
             run &&
@@ -206,8 +210,7 @@ export function registerChatIpc(
         const base = chatPath()
         if (base) {
           const r = await safe('PUT', `${base}/run`, run)
-          if (r.status === 0 || r.status >= 400)
-            console.log(`[prism-ai] run state not saved (HTTP ${r.status})`)
+          if (r.status === 0 || r.status >= 400) aiLog(`run state not saved (HTTP ${r.status})`)
         }
         emit({ chatId: req.chatId, type: 'run', run })
       }
@@ -216,7 +219,7 @@ export function registerChatIpc(
         const base = chatPath()
         if (!base) return
         const r = await safe('PUT', `${base}/plan`, { plan })
-        if (r.status === 0 || r.status >= 400) console.log(`[prism-ai] plan not saved (HTTP ${r.status})`)
+        if (r.status === 0 || r.status >= 400) aiLog(`plan not saved (HTTP ${r.status})`)
       }
       // The transcript on disk, through the backend (snake_case on the wire, like every chat field).
       const transcriptStore = chatBase
@@ -291,13 +294,17 @@ export function registerChatIpc(
             // The run decides the plan tool against the model it resolves itself (agent.ts).
             planToolOverrides: getSettings().planToolByModel,
             plan: storedPlan,
+            chatTitle: storedTitle,
             resumeFrom,
             // The store's, never the caller's: whether the card is shown is a guardrail.
             approval: getSettings().chatApproval,
             // Per EFFECTIVE model id — the one runAgent resolves and sends (a stored id from the other
-            // provider falls back to the active provider's default, and so must its effort).
-            reasoningEffort:
-              getSettings().reasoningEffort[findModel(req.model, getActiveProvider()).id] || undefined,
+            // provider falls back to the active provider's default, and so must its effort). Never
+            // below the model's chat floor, whatever is stored (V486).
+            reasoningEffort: chatRunEffort(
+              findModel(req.model, getActiveProvider()),
+              getSettings().reasoningEffort
+            ),
             signal: controller.signal
           },
           {
@@ -359,7 +366,9 @@ export function registerChatIpc(
                   // The run's turn id — the key its transcript is stored under — and, when it did
                   // not finish, why (the renderer puts Continue next to that message).
                   turn_id: result.turnId,
-                  outcome: result.outcome !== 'answered' ? result.outcome : undefined
+                  outcome: result.outcome !== 'answered' ? result.outcome : undefined,
+                  // Why a failed run failed — the window's message is gone after a reload, this stays.
+                  error: result.error
                 }
               ]
             }
@@ -461,11 +470,11 @@ export function registerChatIpc(
         .apiRequest('POST', '/api/v1/ai/chats/mark-interrupted')
         .catch((e: unknown) => ({ status: 0, body: String(e) }))
       if (status === 0 || status >= 400) {
-        console.log(`[prism-ai] interrupted-run sweep failed (HTTP ${status})`)
+        aiLog(`interrupted-run sweep failed (HTTP ${status})`)
         return
       }
       const count = (body as { count?: number } | null)?.count ?? 0
-      if (count) console.log(`[prism-ai] ${count} chat run(s) marked interrupted from the previous session`)
+      if (count) aiLog(`${count} chat run(s) marked interrupted from the previous session`)
     }
   }
 }

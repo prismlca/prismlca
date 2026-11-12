@@ -19,23 +19,14 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { api, isSuperseded, type AuditEntry, type UndoState } from './lib/api'
+import { api, type AuditEntry, type UndoState } from './lib/api'
 import { fetchQuery, invalidate, useQuery } from './lib/server/useQuery'
 
 import { getFolders, subscribeFolders } from './lib/modelFolders'
-import {
-  ARROW_COLOR,
-  arrowMarker,
-  collectShares,
-  HAND_PAN_BUTTONS,
-  highlightEdges,
-  PAN_BUTTONS,
-  splitId,
-  type ShareTreeNode
-} from './lib/canvas'
+import { HAND_PAN_BUTTONS, highlightEdges, PAN_BUTTONS, splitId } from './lib/canvas'
 import { addTarget, drawnGroups, groupLabel, groupOf, nodeBoxes } from './lib/groups'
 import { showMinimap } from './lib/minimap'
-import { connectBody, edgeShareFor, shareFor, type CalcMeta } from './lib/occurrences'
+import { connectBody } from './lib/occurrences'
 import { NODE_COLORS } from './lib/palette'
 import { type SearchHit, secondaryBackgrounds } from './lib/search'
 import SearchPanel from './components/SearchPanel'
@@ -78,6 +69,9 @@ import WorkbenchModals, { type ModalState } from './workbench/WorkbenchModals'
 import { exchangeFacts } from './workbench/exchangeFacts'
 import { useProjectModels } from './workbench/useProjectModels'
 import { useAiCanvasTools } from './workbench/useAiCanvasTools'
+import { useCanvasCalc } from './workbench/useCanvasCalc'
+import { useCanvasUiTools } from './workbench/useCanvasUiTools'
+import ResultBar from './workbench/ResultBar'
 import { useTagging } from './workbench/useTagging'
 import { useCanvasModel } from './workbench/useCanvasModel'
 import { useSearchIndexStatus } from './workbench/useSearchIndexStatus'
@@ -178,18 +172,9 @@ export default function Workbench(): JSX.Element {
   useEffect(() => {
     if (methods.length) setChosen((prev) => prev || '0')
   }, [methods.length])
-  const [result, setResult] = useState<{
-    total: number
-    unit: string
-    method: string
-    fu: string
-    seconds: number
-    nodes: number
-  } | null>(null)
   const [calcBusy, setCalcBusy] = useState<'calc' | 'mc' | null>(null)
-  // The bar is one model's result. Switching models left it standing over the next canvas as if it were
-  // that one's; the Sankey shares live on the nodes, which the switch rebuilds anyway.
-  const resultDb = useRef<string | null>(null)
+  // The Monte Carlo bar is one model's result, like the canvas calculation's (workbench/useCanvasCalc.ts).
+  const mcDb = useRef<string | null>(null)
   const [view, setView] = useState<ViewKey>('overview') // every app start lands on the Overview
   // Questions the assistant is waiting on, and which of them the chat panel has on screen. Every other
   // one gets a banner under the toolbar with the way to its chat — the question would otherwise wait
@@ -484,9 +469,8 @@ export default function Workbench(): JSX.Element {
     iterations: number
   } | null>(null)
   useEffect(() => {
-    if (resultDb.current === activeDb) return
-    resultDb.current = activeDb
-    setResult(null)
+    if (mcDb.current === activeDb) return
+    mcDb.current = activeDb
     setMc(null)
   }, [activeDb])
 
@@ -747,75 +731,22 @@ export default function Workbench(): JSX.Element {
     setConfirm
   })
 
-  const calculate = (methodOverride?: string[], codeOverride?: string) => {
-    // Normally computes the single selected process with the chosen method; the assistant can pass
-    // an explicit method + process code to trigger the same canvas calculation + Sankey overlay.
-    if (calcBusy || !activeDb || !methods.length) return
-    if (!codeOverride && selected.length !== 1) return
-    setCalcBusy('calc')
-    void run(async () => {
-      try {
-        const [db, code] = codeOverride ? [activeDb, codeOverride] : splitId(selected[0])
-        const method = methodOverride ?? methods[Number(chosen) || 0].method
-        const t0 = Date.now()
-        const c = await api<{ meta: CalcMeta; tree: unknown }>('POST', '/api/v1/calc/contribution', {
-          database: db,
-          code,
-          method,
-          amount: 1
-        })
-        const seconds = (Date.now() - t0) / 1000
-        // Shares keyed by the full `db/code` canvas id — codes alone can collide between the
-        // foreground model and a background database.
-        const shares = collectShares(c.tree as ShareTreeNode, db)
-        // The bar names the functional unit by its process name; the code was what it printed, an id nobody reads.
-        const fuNode = nodes.find((n) => n.id === `${db}/${code}`)
-        const fuLabel = (fuNode?.data as { label?: string } | undefined)?.label
-        setResult({
-          total: c.meta.total,
-          unit: c.meta.unit,
-          method: c.meta.method.join(' · '),
-          fu: fuLabel || code,
-          seconds,
-          nodes: c.meta.n_nodes
-        })
-        // A box's share is its own inputs' exact impact, not its dataset's flow through the whole tree.
-        setNodes((ns) => ns.map((n) => ({ ...n, data: { ...n.data, share: shareFor(n, shares, c.meta) } })))
-        setEdges((es) =>
-          es.map((e) => {
-            const s = edgeShareFor(e, shares, c.meta)
-            const w = s ? 1 + 12 * Math.min(1, s) : 1.6
-            return {
-              ...e,
-              style: { stroke: ARROW_COLOR, strokeWidth: w },
-              markerEnd: arrowMarker(w) // keep the arrowhead constant despite the thicker flow
-            }
-          })
-        )
-      } catch (e) {
-        if (!isSuperseded(e)) throw e // let `run` surface real errors; ignore superseded ones
-      } finally {
-        setCalcBusy(null)
-      }
-    })
-  }
+  // The canvas calculation: the result bar and the Sankey overlay, kept in step across graph rebuilds.
+  const { result, stale, calculate, clearResult } = useCanvasCalc({
+    run,
+    activeDb,
+    methods,
+    chosen,
+    selected,
+    nodes,
+    setNodes,
+    setEdges,
+    calcBusy,
+    setCalcBusy,
+    graphBuiltRef: canvas.graphBuiltRef
+  })
 
-  const clearResult = () => {
-    setResult(null)
-    // Drop the Sankey overlay: reset every edge to uniform thickness and clear node shares.
-    setEdges((es) =>
-      es.map((e) => ({ ...e, style: { stroke: ARROW_COLOR, strokeWidth: 1.6 }, markerEnd: arrowMarker(1.6) }))
-    )
-    setNodes((ns) =>
-      ns.map((n) =>
-        (n.data as { share?: number }).share === undefined
-          ? n
-          : { ...n, data: { ...n.data, share: undefined } }
-      )
-    )
-  }
-
-  const { chatUi, jumpFromAnyPage } = useAiCanvasTools({
+  const { chatUi, jumpFromAnyPage, whenDrawn } = useAiCanvasTools({
     activeDb,
     methods,
     chosen,
@@ -846,9 +777,10 @@ export default function Workbench(): JSX.Element {
     openModel,
     refreshDatabases,
     selected,
-    resultsTab,
-    chatUi
+    resultsTab
   })
+  // The canvas requests of the assistant and of external agents, answered on every page.
+  useCanvasUiTools({ activeDb, view, setView, ui: chatUi, whenDrawn })
   const xaSessions = external?.sessions ?? []
   // A card nobody sees is a session waiting fifteen minutes for nothing: open the drawer on arrival.
   const mcpAskCount = mcpAsks.length
@@ -1148,19 +1080,7 @@ export default function Workbench(): JSX.Element {
 
         {/* The calc result / Monte-Carlo bars belong to the canvas — only show them on the Model view. */}
         {view === 'model' && result ? (
-          <div className="result-bar">
-            <b>
-              {result.total} {result.unit}
-            </b>
-            {' · '}
-            {result.method} · FU: {result.fu}
-            <span className="rb-meta">
-              {result.nodes} nodes · {result.seconds.toFixed(1)} s
-            </span>
-            <span className="rb-clear" onClick={clearResult}>
-              clear
-            </span>
-          </div>
+          <ResultBar result={result} stale={stale} onClear={clearResult} />
         ) : null}
 
         {view === 'model' && mc ? (
@@ -1622,7 +1542,7 @@ export default function Workbench(): JSX.Element {
                     backgroundDbs={databases.filter((d) => d.kind === 'background').map((d) => d.name)}
                     secondaryBackgroundDbs={secondaryBackgrounds(databases)}
                     libraryDbs={databases.filter((d) => d.kind === 'library').map((d) => d.name)}
-                    ui={chatUi}
+                    onJump={chatUi.jumpToProcess}
                     aboveBar={
                       showMinimap(nodes.length) ? <CanvasMinimap onDropDataset={onMinimapDrop} /> : null
                     }

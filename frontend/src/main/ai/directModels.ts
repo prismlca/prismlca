@@ -70,6 +70,11 @@ export const ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH = 0.01
  *  five-minute cache, the only one PrismLCA asks for); a later read costs the row's `cachedInput`. */
 export const ANTHROPIC_CACHE_WRITE_FACTOR = 1.25
 
+/** Shown at the chat-model pickers beside GPT-6 Luna's effort floor (`minChatEffort`), on both its
+ *  rows — here rather than in models.ts because that file imports this one, not the other way round. */
+export const LUNA_CHAT_EFFORT_NOTE =
+  'Luna models reliably only at high effort or above — at lower settings it can miss whole parts of a model.'
+
 export const DIRECT_MODELS: AiModel[] = [
   // --- Direct-Anthropic catalogue (Settings → AI → provider 'Anthropic') --------------------------
   //
@@ -81,8 +86,8 @@ export const DIRECT_MODELS: AiModel[] = [
   // Prices: standard tier, global inference. Cache reads differ by model (Fable 0.025×, Opus and Sonnet
   // 0.05×, Haiku 0.1× of input); cache writes cost ANTHROPIC_CACHE_WRITE_FACTOR × input. Haiku 5.5 is the
   // one row priced by prompt length (`longPrompt`). `intelligence`, `planTool` and the effort
-  // levels are their OpenRouter rows' — the same models, the same readings; our effort vocabulary ends at
-  // xhigh, so Anthropic's `max` is not offered.
+  // levels are their OpenRouter rows' — the same models, the same readings; Anthropic's `max` is not
+  // offered, since only the OpenAI rows have been checked for it so far.
   {
     id: 'claude-sonnet-5-5',
     provider: 'anthropic',
@@ -169,6 +174,11 @@ export const DIRECT_MODELS: AiModel[] = [
   //
   // `intelligence` comes from the Artificial Analysis pull like every other row (see the
   // ratings block in the header), not from a separate reading.
+  //
+  // Effort levels and defaults per model page and reasoning guide (developers.openai.com/api/docs/models/…,
+  // …/guides/reasoning; checked 2026-11-12): all three take `max`, none takes `minimal`, only Luna
+  // takes `none`. The default without a parameter is `medium` for 6.1 Sol and Luna; for Astra the
+  // docs name none, so its row carries no `defaultEffort`.
   {
     id: 'gpt-6-astra',
     provider: 'openai',
@@ -181,7 +191,7 @@ export const DIRECT_MODELS: AiModel[] = [
     vision: true,
     planTool: false,
     contextTokens: 1050000,
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max']
   },
   {
     id: 'gpt-6.1-sol',
@@ -195,7 +205,8 @@ export const DIRECT_MODELS: AiModel[] = [
     vision: true,
     planTool: false,
     contextTokens: 1050000,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultEffort: 'medium'
   },
   {
     id: 'gpt-6-luna',
@@ -209,7 +220,11 @@ export const DIRECT_MODELS: AiModel[] = [
     vision: true,
     planTool: true,
     contextTokens: 1050000,
-    reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    defaultEffort: 'medium',
+    // The chat floor of its OpenRouter row, for the same measured reason (models.ts).
+    minChatEffort: 'high',
+    minChatEffortNote: LUNA_CHAT_EFFORT_NOTE
   },
 
   // --- Direct-Google catalogue (Settings → AI → provider 'Google') ------------------------------

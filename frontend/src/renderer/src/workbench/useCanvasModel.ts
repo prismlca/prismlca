@@ -106,6 +106,8 @@ export function useCanvasModel(deps: CanvasModelDeps) {
   const tagColorRef = useRef<Map<string, string>>(new Map()) // group name → colour, for node chips
   const hlTagRef = useRef<{ dimension: string; value: string } | null>(null)
   const onTagRef = useRef<(id: string, x: number, y: number) => void>(() => {})
+  // Told every graph buildGraph has just drawn — the canvas calculation lays its Sankey again from it.
+  const graphBuiltRef = useRef<(g: Graph) => void>(() => {})
   const rfRef = useRef<{
     screenToFlowPosition: (p: { x: number; y: number }) => { x: number; y: number }
     fitView: (opts?: { padding?: number; duration?: number; nodes?: { id: string }[] }) => void
@@ -501,6 +503,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
         ...keptNodes
       ])
       setEdges([...edgeObjs, ...bgEdges, ...tierEdges])
+      graphBuiltRef.current(raw)
     },
 
     [setNodes, setEdges, prepareGraph]
@@ -1077,6 +1080,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
     prevDbRef,
     onTagRef,
     dropGroupsRef,
+    graphBuiltRef,
     // colours
     nodeColors,
     setNodeColor,

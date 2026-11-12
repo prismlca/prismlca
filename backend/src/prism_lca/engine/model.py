@@ -20,6 +20,7 @@ from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
 from prism_lca.engine.notfound import not_found_hint
 from prism_lca.engine.pedigree import gsd_from_pedigree
+from prism_lca.engine.uid_hint import is_near, uid_not_found
 from prism_lca.errors import PrismError
 
 # Exchange keys touched by uncertainty (for snapshot/restore and clearing).
@@ -109,14 +110,17 @@ def get_activity(database: str, code: str):
 
 
 def find_exchange(act, uid: str):
+    near = []
     for ex in act.exchanges():
         if ex.get("prism_uid") == uid:
             return ex
-    raise PrismError(
+        if is_near(uid, ex.get("prism_uid")):
+            near.append(ex)
+    raise uid_not_found(
+        uid,
+        near,
         f"Exchange '{uid}' not found.",
-        code="exchange_not_found",
-        status_code=404,
-        hint="The exchange may have been removed; reload the activity.",
+        "The exchange may have been removed; reload the activity.",
     )
 
 
@@ -1377,39 +1381,6 @@ def restore_activity(database: str, code: str, snap: dict) -> None:
 def delete_activity(database: str, code: str) -> None:
     assert_writable(database)
     get_activity(database, code).delete()
-
-
-def consumers(database: str, input_database: str, input_code: str) -> dict:
-    """Which activities of ``database`` consume a given dataset, with their amounts.
-
-    The reverse of every other read: the model is stored as "what does this process buy", so
-    answering "where is this dataset used" meant listing every process and scanning it. Replacing a
-    background dataset after a review — the commonest repair there is — therefore started with the
-    assistant recalling from memory where it had linked the thing.
-    """
-    bd = get_bd()
-    database = _db_or_404(bd, database)
-    target = (input_database, input_code)
-    out: list[dict] = []
-    for act in bd.Database(database):
-        for ex in act.exchanges():
-            if ex.get("type") == "production":
-                continue
-            key = ex.input.key if ex.input else None
-            if key and tuple(key) == target:
-                out.append(
-                    {
-                        "database": act.key[0],
-                        "code": act.key[1],
-                        "name": act.get("name") or "",
-                        "uid": ex.get("prism_uid"),
-                        "amount": ex.get("amount"),
-                        "formula": ex.get("formula"),
-                        "comment": ex.get("comment") or None,
-                    }
-                )
-    out.sort(key=lambda r: r["name"])
-    return {"input": {"database": input_database, "code": input_code}, "count": len(out), "consumers": out}
 
 
 #: Marks the small process that divides a model by a parameter, so a second call finds it instead of

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.metadata as _md
+import logging
 
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
@@ -11,6 +12,8 @@ from prism_lca.errors import PrismError
 from prism_lca.repository.base import BackendInfo, DatabaseInfo, LcaRepository, ProjectInfo
 
 BIOSPHERE_DB = "biosphere3"
+
+_logger = logging.getLogger(__name__)
 
 
 def _bw_version() -> str:
@@ -350,31 +353,45 @@ class BrightwayRepository(LcaRepository):
         from prism_lca.engine import params as _params
         from prism_lca.engine._store import per_model_stores
         from prism_lca.engine.lca import invalidate_lca_cache
+        from prism_lca.engine.step_timing import StepTimer
 
+        # Each step's seconds go to the log as one INFO line (V469): a rename of a large model is slow,
+        # and the line says which step it was.
+        timer = StepTimer("model rename")
         # bw2data's rename deregisters the old database, which DELETES its DatabaseParameter rows
         # and the activities' parameter groups — so snapshot the parameters first, then recreate
         # and re-register them under the new name afterwards. Parameters stay an explicit step
         # beside the registry precisely because of this ordering constraint.
         param_dump = _params.dump_params(source)
+        timer.done("parameters saved")
         # While the registry still lists `source`: its legacy study file must find it (engine/study.py).
         from prism_lca.engine import study as _study
 
         _study.ensure_migrated(source)
         stale = hygiene.database_files(source)  # bw2data's rename writes the new name, leaves the old zip
+        timer.done("study checked")
         bd.Database(source).rename(name)
+        timer.done("database rewritten")
         hygiene.remove_files(stale)
         set_read_only(name, False)
+        timer.done("old files removed")
 
         _params.load_params(name, param_dump)
+        timer.done("parameters loaded")
         # Model-scoped data must follow the new name, or it strands under the dead old name. One
         # registry instead of a hand-written list per cascade: "forgot to add the new store" has
         # shipped once already (resurrected reports — see report_store.remove_database).
         for store in per_model_stores():
             store.rename(source, name)
+            timer.done(f"store {store.name}")
         _params.reregister_database_groups(name)  # revive the renamed model's exchange formulas
+        timer.done("parameter groups registered")
         invalidate_lca_cache()
-        return DatabaseInfo(name=name, node_count=len(bd.Database(name)),
-                            read_only=False, kind="foreground")
+        timer.done("calculation caches cleared")
+        count = len(bd.Database(name))
+        timer.operation = f"model rename ({count} processes)"
+        timer.log(_logger)
+        return DatabaseInfo(name=name, node_count=count, read_only=False, kind="foreground")
 
     def delete_foreground_database(self, name: str) -> dict:
         """Delete a whole foreground model and its processes. Tags + chat history are cleaned up."""

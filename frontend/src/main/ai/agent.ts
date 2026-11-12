@@ -21,6 +21,8 @@ import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } f
 import { buildSystemPrompt, LANGUAGE_NAMES, type Skill } from './systemPrompt'
 import { offeredSkills } from './skillRender'
 import { findModel } from './models'
+import { effortRejectionRetry } from './chatEffort'
+import { stallNudge } from './toolGuards'
 import { getActiveProvider } from './providers/state'
 import { researchBom, researchWeb, reviewDossier } from './subagent'
 import { capToolResult } from './resultBudget'
@@ -39,6 +41,10 @@ import { costOf } from './stream'
 import { summariseDropped, summaryTask } from './compactionSummary'
 import { CHAT_OFFLINE_MS } from './providers/retryPolicy'
 import { refusalNote } from './stopNotes'
+import { aiLog } from './aiLog'
+import { localDate } from './localTime'
+import { createRunTelemetry } from './roundLog'
+import { logProviderError, storedError } from './providerErrorLog'
 
 import {
   DEFAULT_MAX_ROUNDS,
@@ -207,10 +213,11 @@ export function runawayRepetition(text: string): { unit: string; repeats: number
 
 /**
  * True when a reply announces work it then did not do — "Let me batch all these:" with no tool call
- * following. The loop ends whenever a round produces no tool calls, which normally means "answered";
- * in this shape it means the opposite, and the run stops with the model half-applied and the user told
- * nothing. Deliberately narrow: only the trailing sentence counts, and only announcements of an
- * action about to be taken.
+ * following. The loop ends whenever a round produces no tool calls; a run that ends on such a sentence
+ * may have stopped half-way. Only written to the log: the model is not asked to go on — a nudge here
+ * fired on offers to the user as well ("give me the recipe and I will …") and cost the prompt cache,
+ * and the user's "continue" does the same job when it is really needed. Deliberately narrow: only the
+ * trailing sentence counts, and only announcements of an action about to be taken.
  */
 export function announcesUnfinishedWork(text: string): boolean {
   const tail = text
@@ -424,9 +431,7 @@ async function takeTranscript(
   const trailing = historyTail(disk.historyAfter, history)
   if (!trailing) return null
   if (!wellPaired(disk.messages)) {
-    console.log(
-      `[prism-ai] stored transcript of chat ${chatId} has unpaired tool calls — rebuilding from prose`
-    )
+    aiLog(`stored transcript of chat ${chatId} has unpaired tool calls — rebuilding from prose`)
     return null
   }
   transcripts.set(chatId, disk)
@@ -518,8 +523,8 @@ async function keepTranscript(
     Buffer.byteLength(JSON.stringify({ turn_id: turnId, history_after: historyAfter }), 'utf8') + 4096
   const bounded = boundTranscript(body, Math.max(0, TRANSCRIPT_MAX_BYTES - overhead), plan)
   if (!bounded) {
-    console.log(
-      `[prism-ai] transcript of chat ${chatId} does not fit ${TRANSCRIPT_MAX_BYTES} bytes even as rounds — not written`
+    aiLog(
+      `transcript of chat ${chatId} does not fit ${TRANSCRIPT_MAX_BYTES} bytes even as rounds — not written`
     )
     return
   }
@@ -527,9 +532,7 @@ async function keepTranscript(
     await store.save(chatId, { turnId, historyAfter, messages: bounded })
   } catch (e) {
     // Said, not swallowed — but never fatal: the memory map still has it for this process.
-    console.log(
-      `[prism-ai] transcript of chat ${chatId} could not be written: ${e instanceof Error ? e.message : String(e)}`
-    )
+    aiLog(`transcript of chat ${chatId} could not be written: ${e instanceof Error ? e.message : String(e)}`)
   }
 }
 
@@ -612,6 +615,8 @@ export interface AgentRequest {
   planToolOverrides?: Record<string, boolean>
   /** The chat's accepted plan at turn start (the store's), or null. */
   plan?: ChatPlan | null
+  /** The chat's stored title, so a first plan in a later turn is titled after it (shared/plan.ts). */
+  chatTitle?: string
   /**
    * The chat's previous run stopped with this outcome and the user is coming back to it: the model is
    * told so, and told to verify the model state before it continues — a step marked completed may have
@@ -675,6 +680,9 @@ export interface AgentResult {
   /** The prompt size of the turn's LAST round — how full the model's context was when it answered.
    *  Unlike `promptTokens` (a sum over rounds, the bill) this is a level, the context meter's figure. */
   contextTokens?: number
+  /** Why a failed run failed, `<Status> — <Text>` (providerErrorLog.ts) — stored with the answer, so the
+   *  reason is still there after the window's message is gone. Only on outcome 'error'. */
+  error?: string
 }
 
 export { withUnknownFields } from './execute'
@@ -844,7 +852,16 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       })
       return { ...r, cost: { requests: tally.requests, usd: Number(tally.usd.toFixed(4)) } }
     },
-    review: (o) => reviewDossier({ ...o, model: req.reviewModel || undefined, signal: spendSignal, onCost }),
+    review: (o) =>
+      reviewDossier({
+        ...o,
+        model: req.reviewModel || undefined,
+        signal: spendSignal,
+        stop: req.signal,
+        onCost,
+        onProgress: (detail) =>
+          deps.emit({ chatId: req.chatId, type: 'tool', name: 'review_model', phase: 'progress', detail })
+      }),
     // The confirmation card before an irreversible action — the MCP sessions' card (approve_tool,
     // uiBridge), on the same effects table, with the chat's own rule (approval.ts). The answer sets
     // `preApproved`, so a tool with a question of its own (the custom-method deletes) asks once, not
@@ -876,6 +893,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     }
   })
   const ctx = session.ctx
+  ctx.chatId = req.chatId
+  if (req.chatTitle) ctx.chatTitle = req.chatTitle
 
   // The chat's plan: the tool reads and writes it here, the IPC persists it, the renderer draws it.
   let currentPlan: ChatPlan | null = req.plan ?? null
@@ -957,8 +976,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // question of a long chat paid the whole context uncached (0.82 $ / 263k tokens, twice measured).
   // Here it sits behind the cached prefix and costs a few tokens. The renderer shows `userText`.
   const langName = studyLanguage ? (LANGUAGE_NAMES[studyLanguage] ?? studyLanguage) : undefined
+  // Today's date rides here too: no model knows it, and one guessed a study date three months back.
   const turnNote = [
     langName ? `[Study language: ${langName}]` : '[No study language recorded yet]',
+    `[Today: ${localDate()}]`,
     req.history.length === 0
       ? 'This is a NEW chat: your first action must be to call `set_chat_title` with a short, punchy title (3–6 words) for the conversation. Do not mention the title to the user.'
       : ''
@@ -1032,9 +1053,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     webOn
   )
   if (groups)
-    console.log(
-      `[prism-ai] focused tools: ${specs.length} of ${toolSpecs(model.vision).length} (${[...groups].join(', ')})`
-    )
+    aiLog(`focused tools: ${specs.length} of ${toolSpecs(model.vision).length} (${[...groups].join(', ')})`)
   let finalText = ''
   // The leftover lines stay visible where they took effect, as a delivered steer does.
   for (const t of leftover) {
@@ -1055,10 +1074,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const spendSignal = AbortSignal.any([req.signal, costStop.signal])
   /** Set when the stream collapsed into repeating itself; ends the run with a note. */
   let repetitionLoop: { unit: string; repeats: number } | null = null
-  /** One nudge per run when a round announces work and then makes no tool call. */
-  let nudged = false
   /** Rounds in a row without a single successful tool call (see STALL_NUDGE_AT). */
   let stalledRounds = 0
+  /** Whether one of those refused calls may still have written something (stallNudge). */
+  let stallWrote = false
   /** The last request's size as the provider counted it, with the characters it was counted on
    *  (projectTokens). Null until the first count, and again after every compaction. */
   let measured: { promptTokens: number; chars: number } | null = null
@@ -1069,6 +1088,12 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const budgetTokens = contextBudgetTokens(model.contextTokens)
   /** The effort sent with each round; dropped for the rest of the run if the API refuses it. */
   let reasoningEffort = req.reasoningEffort
+  /** One log line per round, and the cache watch: the run bar hears of a failing cache once. */
+  const telemetry = createRunTelemetry({
+    model: model.id,
+    provider,
+    onCacheAlarm: (pattern) => deps.emit({ chatId: req.chatId, type: 'cache-warning', pattern })
+  })
 
   /**
    * Account spend for ANY model this turn used — the main loop plus the side runs it spawns (the
@@ -1103,13 +1128,14 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // Declared before `onUsage`: the usage handler appends the provider-side web lookups to it.
   const trace: ToolTrace[] = []
 
-  /** Account a round's spend, trip the cost circuit breaker, and log prefix-cache effectiveness. */
+  /** Account a round's spend, trip the cost circuit breaker, and hand the figures to the round's log line. */
   const onUsage = (usage: {
     cost?: number
     prompt_tokens?: number
     completion_tokens?: number
     prompt_tokens_details?: { cached_tokens?: number }
     cache_discount?: number
+    estimated?: boolean
     generation_id?: string
     server_tool_use?: Record<string, number>
   }): void => {
@@ -1155,30 +1181,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         budget: budgetTokens
       })
     }
-    // Prefix-cache telemetry: how much of the (large, constant) tool+system block came from cache.
-    // Logged rather than surfaced in the UI for now — enough to verify the breakpoint works and to
-    // see which providers cache without being asked.
-    const cached = usage.prompt_tokens_details?.cached_tokens
-    if (typeof cached === 'number' && cached > 0) {
-      const prompt = usage.prompt_tokens ?? 0
-      const pct = prompt ? Math.round((cached / prompt) * 100) : 0
-      const saved = usage.cache_discount
-      // The provider's own charge for THIS round beside the token counts: in one run the second
-      // round of two identical runs reported 211k and 227k prompt tokens (181k "cached") where the
-      // neighbouring rounds held 42k and 68k — reproducible, unexplained, on the route OpenRouter labels
-      // "OpenAI" (V398). Whether such a round is also billed that way is what this figure answers.
-      const cost = typeof usage.cost === 'number' ? `, $${usage.cost.toFixed(4)}` : ''
-      // What WE sent, in characters, beside what the provider says it read — the two figures that tell
-      // a real prompt from a misreported one — and the generation id to ask OpenRouter about the round.
-      const sent = charsAtRequest ? `, sent ≈${Math.round(charsAtRequest / 1000)}k chars` : ''
-      const gen = usage.generation_id ? `, gen ${usage.generation_id}` : ''
-      const lookups = web ? `, web: ${web.short}` : ''
-      console.log(
-        `[prism-ai] cache: ${cached}/${prompt} prompt tokens (${pct}%)` +
-          (typeof saved === 'number' ? `, saved $${saved.toFixed(5)}` : '') +
-          `${cost}${sent}${gen}${lookups} — ${model.id}`
-      )
-    }
+    // The round's log line (roundLog.ts) is written when its stream ends; it takes the figures from here.
+    telemetry.usage(usage, web?.short)
   }
 
   const maxRounds = Math.max(1, req.maxRounds ?? DEFAULT_MAX_ROUNDS)
@@ -1302,7 +1306,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         const n = compactMessages(messages, KEEP_ROUNDS, dropped)
         if (n) {
           measured = null // the count described messages that no longer exist
-          console.log(`[prism-ai] compacted ${n} older message(s) to stay inside the context window`)
+          telemetry.compacted()
+          aiLog(`compacted ${n} older message(s) to stay inside the context window`)
           // Summarise what we dropped so the agent does not re-fetch what it already learned.
           const summary = await summariseDropped(summaryOpts(dropped))
           if (summary) {
@@ -1330,6 +1335,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           let reasoningChars = 0
           let reasoningSent = 0
           charsAtRequest = estimateChars(messages)
+          telemetry.begin(round, charsAtRequest)
           for await (const ev of streamChat({
             model: model.id,
             messages,
@@ -1358,6 +1364,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               continue
             }
             if (ev.type === 'delta') {
+              telemetry.output()
               roundText += ev.text
               finalText += ev.text
               deps.emit({ chatId: req.chatId, type: 'delta', text: ev.text })
@@ -1375,6 +1382,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               // Throttled: a reasoning stream arrives in hundreds of small frames, and the renderer
               // only needs a number that visibly moves. Emitting each one would spend IPC on
               // redrawing the same second.
+              telemetry.output()
               reasoningChars += ev.chars
               roundReasoningChars = reasoningChars
               if (reasoningChars - reasoningSent >= REASONING_TICK_CHARS) {
@@ -1382,17 +1390,20 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
                 deps.emit({ chatId: req.chatId, type: 'reasoning', chars: reasoningChars })
               }
             } else if (ev.type === 'provider') {
+              telemetry.servedBy(ev.name)
               // Report a change, not every round: routing normally sticks to one endpoint for a
-              // turn, and repeating the same name would just be noise in the trace.
+              // turn, and repeating the same name would just be noise in the trace. (The round's own
+              // log line names the endpoint every round.)
               if (ev.name !== servedBy) {
                 servedBy = ev.name
-                console.log(`[prism-ai] served by ${ev.name} — ${model.id}`)
+                aiLog(`served by ${ev.name} — ${model.id}`)
                 deps.emit({ chatId: req.chatId, type: 'provider', name: ev.name })
               }
             } else if (ev.type === 'retry') {
               // The provider refused or could not be reached before the round's first word. The run bar
               // counts down to the next attempt and says when it starts — the wait used to read as thinking.
               if (ev.phase === 'send') {
+                telemetry.resend()
                 reasoningChars = 0
                 reasoningSent = 0
                 roundReasoningChars = 0
@@ -1415,23 +1426,22 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               replay = ev.replay
             }
           }
+          telemetry.end()
           break
         } catch (e) {
-          // A reasoning level this model's API does not take (a 400 naming it): once, drop the level
-          // and send the round again on the default — a lost run is the wrong price for a setting.
-          if (
-            reasoningEffort &&
-            e instanceof AiProviderError &&
-            e.code === 'http' &&
-            /reason|effort|thinking/i.test(e.message)
-          ) {
-            console.log(
-              `[prism-ai] ${model.id} rejected reasoning effort "${reasoningEffort}" — retrying on the default`
-            )
-            const note = `\n\n_The model's API rejected the reasoning effort "${reasoningEffort}" — continuing on its default. Pick another level under Settings → AI → Models._`
-            finalText += note
-            deps.emit({ chatId: req.chatId, type: 'delta', text: note })
-            reasoningEffort = undefined
+          // Said in the log before anything else decides about it — also when the round recovers — and
+          // the round's own line closed, with what it billed before it failed. Not Stop, and not the
+          // spend ceiling refusing to send: neither is the provider's error.
+          if (!req.signal.aborted && !(e instanceof AiProviderError && e.code === 'aborted')) {
+            logProviderError(e, { provider, model: model.id, servedBy: telemetry.servedNow() })
+            telemetry.end({ failed: true })
+          }
+          // A reasoning level this model's API does not take: retry on the floor or the default (chatEffort.ts).
+          const retry = effortRejectionRetry(e, reasoningEffort, model)
+          if (retry) {
+            finalText += retry.note
+            deps.emit({ chatId: req.chatId, type: 'delta', text: retry.note })
+            reasoningEffort = retry.next
             continue
           }
           // The spend ceiling tripped while the request failed or waited for its next attempt: the run
@@ -1446,9 +1456,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           // The last round's results are kept by default; when they ARE the bulk (ten large reads in
           // one round on a small window), keeping them makes the rescue impossible.
           if (!n) n = compactMessages(messages, 0, dropped)
-          console.log(`[prism-ai] context overflow — compacted ${n} message(s) and retrying the round`)
+          aiLog(`context overflow — compacted ${n} message(s) and retrying the round`)
           if (!n) throw e // nothing left to shrink: the request is hopeless, surface the error
           measured = null
+          telemetry.compacted()
           const summary = await summariseDropped(summaryOpts(dropped))
           if (summary) {
             messages.push({
@@ -1495,9 +1506,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         // A round with NO tool call and NO text is not an answer — it is a dead round, and it was
         // indistinguishable from a finished one: `answered = true` below, no note, no error, not a
         // line in the log. Measured: a run reasoned 19:43 min, returned an empty
-        // completion, and the chat stayed empty while the turn was reported as done. The guard that
-        // should have caught it (announcesUnfinishedWork) reads the round's last line and returns
-        // false for the empty string — it can never see this case.
+        // completion, and the chat stayed empty while the turn was reported as done.
         if (!roundText.trim()) {
           if (emptyRounds < MAX_EMPTY_ROUNDS) {
             emptyRounds++
@@ -1506,8 +1515,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             // on the response it threw away, 23 % of all the thinking in that turn. Nothing said so:
             // no log line (unlike the compaction paths above), and in the UI the round timer simply
             // kept climbing, so twelve minutes looked like one long thought. Both halves are said now.
-            console.log(
-              `[prism-ai] empty response after ${Math.round(roundReasoningChars / 1000)}k characters ` +
+            aiLog(
+              `empty response after ${Math.round(roundReasoningChars / 1000)}k characters ` +
                 `of reasoning — nudging and retrying the round (${emptyRounds}/${MAX_EMPTY_ROUNDS})`
             )
             // Zero resets the renderer's counter, which is what makes the restart visible: the number
@@ -1534,21 +1543,6 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           deps.emit({ chatId: req.chatId, type: 'delta', text: note })
           break
         }
-        // No tool calls normally means "answered". But a round whose closing sentence announces work
-        // ("Let me execute everything now in parallel batches:") and then makes no call means the
-        // opposite: the run is about to end mid-task, silently, with the model half-changed. Nudge
-        // once — and only once, so a model that simply talks that way cannot spin here.
-        if (!nudged && announcesUnfinishedWork(roundText)) {
-          nudged = true
-          messages.push({ role: 'assistant', content: roundText })
-          messages.push({
-            role: 'user',
-            content:
-              'You announced work but made no tool call, so nothing happened. Carry it out now with ' +
-              'tool calls, or say plainly that you are done and what is left.'
-          })
-          continue
-        }
         // The model is done — but the user said something meanwhile. Their words become the next
         // round instead of waiting for a turn that would start without the tool transcript in view.
         if (deps.takeSteering && finishReason !== 'length') {
@@ -1563,6 +1557,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           finalText += note
           deps.emit({ chatId: req.chatId, type: 'delta', text: note })
           outcome = 'output_limit'
+        } else if (announcesUnfinishedWork(roundText)) {
+          // A note for whoever reads the log, nothing more (see announcesUnfinishedWork).
+          aiLog(`the run ended on an announcement of further work, with no tool call after it — ${model.id}`)
         }
         answered = true
         break // model answered — done
@@ -1578,6 +1575,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       messages.push(assistantToolTurn(roundText || null, toolCalls, replay))
 
       const imageParts: ChatMessage[] = []
+      /** Each call's key on its live events — round and position, unique in the run even where a host
+       *  repeats or leaves out the call ids. The renderer closes a row by it: two parallel calls of
+       *  the same tool that finish in reverse order land in their own rows, not in each other's. */
+      const callIds = new Map(toolCalls.map((tc, i) => [tc, `${round}.${i}`]))
       /** One call, executed and reported live; the ORDERED bookkeeping (trace, transcript message,
        *  mutation follow-up) happens at the caller, so a parallel group stays deterministic. The
        *  rules of running a tool live in execute.ts, shared with the MCP server. */
@@ -1592,10 +1593,12 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         graph: boolean
         structure: boolean
       }> => {
+        const callId = callIds.get(tc)
         deps.emit({
           chatId: req.chatId,
           type: 'tool',
           name: tc.name,
+          callId,
           phase: 'start',
           args: (tc.arguments ?? '').slice(0, TRACE_ARGS_CHARS)
         })
@@ -1629,6 +1632,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             chatId: req.chatId,
             type: 'tool',
             name: tc.name,
+            callId,
             phase: 'done',
             soft: oc.soft,
             itemsFailed: oc.itemsFailed,
@@ -1654,6 +1658,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             chatId: req.chatId,
             type: 'tool',
             name: tc.name,
+            callId,
             phase: 'error',
             detail: oc.error,
             args: (tc.arguments ?? '').slice(0, TRACE_ARGS_CHARS),
@@ -1674,8 +1679,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         // apple-sauce run a whole skill and a whole answered research question (resultBudget.ts).
         const capped = capToolResult(resultStr, undefined, compactThreshold(model.contextTokens))
         if (capped.truncated) {
-          console.log(
-            `[prism-ai] ${tc.name}: result trimmed — ${capped.truncated.dropped} ` +
+          aiLog(
+            `${tc.name}: result trimmed — ${capped.truncated.dropped} ` +
               `${capped.truncated.kind} dropped of ${capped.truncated.of}`
           )
         }
@@ -1708,13 +1713,14 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       for (const group of callGroups) {
         if (req.signal.aborted || costStopped) break
         if (group.length > 1)
-          console.log(
-            `[prism-ai] running ${group.length} read-only calls concurrently: ${group.map((c) => c.name).join(', ')}`
+          aiLog(
+            `running ${group.length} read-only calls concurrently: ${group.map((c) => c.name).join(', ')}`
           )
         const outcomes = group.length === 1 ? [await runOne(group[0])] : await Promise.all(group.map(runOne))
         for (const [i, oc] of outcomes.entries()) {
           trace.push(oc.entry)
           if (oc.entry.status === 'ok') roundOk = true
+          else if (oc.mutated) stallWrote = true
           if (oc.mutated) {
             mutated = true
             // Reload after this edit — the canvas only when the graph changed, and only the one
@@ -1735,14 +1741,12 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       // The stall guard: rounds that only ever hear "no". Reset by any call that lands, because a
       // model working through a batch of refusals one by one IS making progress.
       stalledRounds = roundOk || req.signal.aborted ? 0 : stalledRounds + 1
+      if (!stalledRounds) stallWrote = false
       if (stalledRounds === STALL_NUDGE_AT) {
-        console.log(`[prism-ai] ${stalledRounds} rounds without a successful tool call — nudging`)
+        aiLog(`${stalledRounds} rounds without a successful tool call — nudging`)
         messages.push({
           role: 'user',
-          content:
-            `Your last ${STALL_NUDGE_AT} rounds produced only rejected or failed tool calls, and nothing in the ` +
-            'model changed. Read the error messages again and fix exactly what they name; if the same call ' +
-            'keeps failing, take a different route or tell the user what is blocking you.'
+          content: stallNudge(STALL_NUDGE_AT, stallWrote)
         })
       } else if (stalledRounds >= STALL_STOP_AT) {
         const note =
@@ -1787,13 +1791,15 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   } catch (e) {
     if (req.signal.aborted) return await finish('cancelled', true)
     const code = e instanceof AiProviderError ? e.code : undefined
+    // Once in the log (the round's catch may have said it already) and on the stored answer (V493).
+    logProviderError(e, { provider, model: model.id, servedBy: telemetry.servedNow() })
     deps.emit({
       chatId: req.chatId,
       type: 'error',
       message: e instanceof Error ? e.message : String(e),
       code
     })
-    return await finish('error', false)
+    return { ...(await finish('error', false)), error: storedError(e) }
   }
 }
 

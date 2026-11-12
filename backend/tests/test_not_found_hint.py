@@ -76,3 +76,61 @@ def test_an_ambiguous_method_names_the_recommended_one_first_and_still_the_other
     # Never picked for the user — but the recommended one leads, and the fossil variant is there to choose.
     assert hint.startswith("Recommended: IPCC 2021 · climate change · global warming potential (GWP100)")
     assert "Also matching:" in hint and "climate change: fossil" in hint
+
+
+def _backgrounds(bd) -> None:
+    """Two read-only backgrounds sharing one code, each with one of its own, and a model."""
+    bd.Database("bg").write({
+        ("bg", "pet-granulate"): {"name": "widget granulate", "unit": "kg"},
+        ("bg", "shared"): {"name": "widget sheet", "unit": "kg"},
+    })
+    bd.Database("bg2").write({
+        ("bg2", "shared"): {"name": "widget sheet, other source", "unit": "kg"},
+    })
+    bd.Database("pet").write({("pet", "bottle"): {"name": "bottle", "unit": "unit"}})
+    set_read_only("bg", True)
+    set_read_only("bg2", True)
+    set_read_only("pet", False)
+
+
+def test_a_read_is_answered_from_the_one_background_that_has_the_code(client, token, project):
+    """A model whose `database` key arrived mangled read its model by default, was told the code lives in
+    the background — and gave up without opening it (V470). The read now answers from there, and says so."""
+    _backgrounds(get_bd())
+    r = client.get("/api/v1/model/activities/pet/pet-granulate", params={"background_fallback": "true"},
+                   headers=token)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["found_in"] == "bg" and body["activity"]["database"] == "bg"
+    assert "'pet'" in body["found_in_note"] and "'bg'" in body["found_in_note"]
+    # Without the switch — every other caller of the lookup — it stays a refusal: an edit must never land
+    # on a dataset other than the one it named.
+    r = client.get("/api/v1/model/activities/pet/pet-granulate", headers=token)
+    assert r.status_code == 404 and "found_in" not in r.text
+
+
+def test_a_code_in_two_backgrounds_is_not_guessed_and_the_hint_names_both(client, token, project):
+    _backgrounds(get_bd())
+    r = client.get("/api/v1/model/activities/pet/shared", params={"background_fallback": "true"},
+                   headers=token)
+    assert r.status_code == 404
+    hint = r.json()["error"]["hint"]
+    assert "'bg' and 'bg2'" in hint and "Give the database you mean" in hint
+
+
+def test_the_fallback_reads_only_backgrounds_and_only_after_a_miss(client, token, project):
+    _backgrounds(get_bd())
+    get_bd().Database("glass").write({("glass", "transport-1"): {"name": "transport", "unit": "tkm"}})
+    set_read_only("glass", False)
+    # Another model's process is named, never read in its place.
+    r = client.get("/api/v1/model/activities/pet/transport-1", params={"background_fallback": "true"},
+                   headers=token)
+    assert r.status_code == 404 and "'glass'" in r.json()["error"]["hint"]
+    # A code the named database has is read from there, untouched by the switch.
+    r = client.get("/api/v1/model/activities/pet/bottle", params={"background_fallback": "true"},
+                   headers=token)
+    assert r.status_code == 200 and "found_in" not in r.json()
+    # A database that does not exist stays that refusal.
+    r = client.get("/api/v1/model/activities/nope/pet-granulate", params={"background_fallback": "true"},
+                   headers=token)
+    assert r.status_code == 404 and r.json()["error"]["code"] == "database_not_found"

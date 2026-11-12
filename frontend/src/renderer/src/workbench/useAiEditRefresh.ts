@@ -15,7 +15,7 @@
  */
 import { useEffect, useRef } from 'react'
 
-import type { ChatUiHandlers } from '../CanvasChat'
+import type { ChatUiHandlers } from './useAiCanvasTools'
 import { onChatEvent } from '../chat/turnView'
 
 export function useAiEditRefresh(activeDb: string | null, refresh: ChatUiHandlers['refresh']): void {

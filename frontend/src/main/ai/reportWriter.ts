@@ -18,6 +18,7 @@
  * here, so importers keep one address.
  */
 import { streamChat } from './client'
+import { aiLog } from './aiLog'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
 import { assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
@@ -399,7 +400,7 @@ async function writeSectionInner(opts: WriteSectionOpts, draft: Draft): Promise<
       } else if (ev.type === 'provider') {
         // The chat logs this line per turn; the writer did not, so a chapter that hung for ten minutes
         // could not be told apart from a slow provider after the fact (V354).
-        console.log(`[prism-ai] writer served by ${ev.name} — ${model}`)
+        aiLog(`writer served by ${ev.name} — ${model}`)
       } else if (ev.type === 'usage') {
         bill(costOf(ev.usage))
       } else if (ev.type === 'finish') {

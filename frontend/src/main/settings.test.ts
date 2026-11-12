@@ -379,6 +379,53 @@ describe('schema 5: the reply ceiling leaves room for reasoning', () => {
   })
 })
 
+describe('schema 6: GPT-6 Luna chats from high up', () => {
+  it('lifts a stored lower level, writes it back and leaves one sentence to show', () => {
+    writeFileSync(
+      FILE,
+      JSON.stringify({
+        schema: 5,
+        model: 'openai/gpt-6-luna',
+        reasoningEffort: { 'openai/gpt-6-luna': 'medium' }
+      })
+    )
+    s.resetSettingsCache()
+    const got = s.getSettings()
+    expect(got.reasoningEffort).toEqual({ 'openai/gpt-6-luna': 'high' })
+    expect(got.chatEffortNotice).toMatch(
+      /^GPT-6 Luna \(OpenAI\) now chats at High reasoning effort\. Luna models/
+    )
+    const raw = JSON.parse(readFileSync(FILE, 'utf-8'))
+    expect(raw.reasoningEffort).toEqual({ 'openai/gpt-6-luna': 'high' }) // persisted, so it runs once
+    // Shown once: the chat clears it, and nothing brings it back.
+    s.setSettings({ chatEffortNotice: '' })
+    s.resetSettingsCache()
+    expect(s.getSettings().chatEffortNotice).toBe('')
+  })
+
+  it('lifts Default where Luna is the chat model, and touches nothing where it is not', () => {
+    writeFileSync(FILE, JSON.stringify({ schema: 5, model: 'gpt-6-luna', provider: 'openai' }))
+    s.resetSettingsCache()
+    expect(s.getSettings().reasoningEffort).toEqual({ 'gpt-6-luna': 'high' })
+
+    writeFileSync(
+      FILE,
+      JSON.stringify({ schema: 5, model: 'openai/gpt-6.1-sol', reasoningEffort: { x: 'low' } })
+    )
+    s.resetSettingsCache()
+    expect(s.getSettings()).toMatchObject({ reasoningEffort: {}, chatEffortNotice: '' })
+  })
+
+  it('never migrates twice: a low level stored under schema 6 stays stored (the run lifts it)', () => {
+    writeFileSync(FILE, JSON.stringify({ schema: 6, reasoningEffort: { 'openai/gpt-6-luna': 'low' } }))
+    s.resetSettingsCache()
+    expect(s.getSettings()).toMatchObject({
+      reasoningEffort: { 'openai/gpt-6-luna': 'low' },
+      chatEffortNotice: ''
+    })
+  })
+})
+
 describe('the transport group', () => {
   // The first nested group in the file: the overlay copies whatever object is stored, so every
   // field must be coerced afterwards — a hand-edited file is the case this pins.

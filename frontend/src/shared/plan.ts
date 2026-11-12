@@ -224,8 +224,6 @@ export function validatePlanUpdate(prev: ChatPlan | null, raw: unknown): PlanVal
     }
   }
 
-  if (!prev && !title) return { ok: false, error: 'the first plan of a chat needs a `title` (3–6 words).' }
-
   // A non-terminal step of the previous revision that is gone now: allowed, but said.
   if (prev) {
     const now = new Set(steps.map((s) => norm(s.step)))
@@ -240,6 +238,33 @@ export function validatePlanUpdate(prev: ChatPlan | null, raw: unknown): PlanVal
   }
 
   return { ok: true, input: { title, explanation, steps }, cleared: false }
+}
+
+/** How many words a title taken from the first step keeps — the 3–6 words a model is asked for. */
+const TITLE_WORDS = 6
+
+/** Cut to `max` characters at a word boundary, marking the cut with an ellipsis. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.lastIndexOf(' ', max - 1)
+  return `${text.slice(0, cut > 0 ? cut : max - 1).trimEnd()}…`
+}
+
+/**
+ * The title for a first plan sent without one. The title only heads the plan card, so it is filled
+ * in rather than refused — a refusal cost the model a round and protected nothing. The chat's own
+ * title comes first (`set_chat_title` is a new chat's first call), else the first step cut to six words.
+ */
+export function derivePlanTitle(steps: readonly PlanStep[], chatTitle?: string): string {
+  const fromChat = chatTitle?.trim().replace(/\s+/g, ' ')
+  if (fromChat) return clip(fromChat, PLAN_LIMITS.titleChars)
+  const words = (steps[0]?.step ?? '')
+    .replace(/[.!?:;,]+$/, '')
+    .split(' ')
+    .filter(Boolean)
+  if (!words.length) return 'Plan'
+  const head = words.slice(0, TITLE_WORDS).join(' ')
+  return clip(words.length > TITLE_WORDS ? `${head}…` : head, PLAN_LIMITS.titleChars)
 }
 
 export function planProgress(plan: ChatPlan | null | undefined): { completed: number; total: number } {

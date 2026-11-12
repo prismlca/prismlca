@@ -17,7 +17,7 @@ import keyword
 import re
 
 from prism_lca import _log
-from prism_lca.engine import formula_namespace, model, param_rules
+from prism_lca.engine import formula_namespace, model, param_references, param_rules
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable
 from prism_lca.errors import PrismError
@@ -598,7 +598,7 @@ def set_param(
         if "formula" not in entry and existing.formula and not clear_formula:
             entry["formula"] = existing.formula
     try:
-        parameters.new_database_parameters([entry], database, overwrite=True)
+        parameters.new_database_parameters([dict(entry)], database, overwrite=True)  # it pops what it reads
         # new_database_parameters does not persist extra metadata -> set it on the row directly.
         data = dict(prior)
         data.pop("group", None)  # legacy free-text label — superseded by group_id
@@ -622,8 +622,9 @@ def set_param(
     except PrismError:
         raise
     except Exception as e:  # noqa: BLE001
+        reason = param_references.undefined_reason(e, database, {name: entry.get("formula")})
         raise PrismError(
-            f"Parameter update failed: {str(e).strip() or 'the formula could not be evaluated'}",
+            f"Parameter update failed: {reason or str(e).strip() or 'the formula could not be evaluated'}",
             code="param_error",
             hint="Check the formula: only known parameter names, no circular references.",
         ) from e
@@ -673,6 +674,11 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
         return list_params(database)
 
     from prism_lca.engine import parameter_groups
+
+    # An item with action "delete" removes its parameter in this same transaction, so the formulas that used
+    # it can be rewritten beside the deletion; it is refused while anything else still names it (V499).
+    dropped = [(item.get("name") or "").strip() for item in items if item.get("action") == "delete"]
+    items = [item for item in items if item.get("action") != "delete"]
 
     prepared: list[dict] = []
     for item in items:
@@ -736,7 +742,7 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
         )
 
     # A name twice in one call would make the outcome depend on dict ordering inside bw2data.
-    seen = [p["name"] for p in prepared]
+    seen = [p["name"] for p in prepared] + dropped
     if len(set(seen)) != len(seen):
         dupes = sorted({n for n in seen if seen.count(n) > 1})
         raise PrismError(
@@ -745,8 +751,16 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
             hint="Send each parameter once; the last value would silently win otherwise.",
         )
 
+    sent = {p["name"]: p["entry"].get("formula") for p in prepared}
+    param_references.check_deletable(database, set(dropped), sent, whole_state=True)
+    gone = [snapshot(database, name) for name in dropped]
     try:
-        parameters.new_database_parameters([p["entry"] for p in prepared], database, overwrite=True)
+        # One transaction: a deletion is rolled back with a write whose formulas fail to evaluate. With no
+        # write beside it the call still runs, for the recalculation that checks what the deletion left.
+        with parameters.db.atomic():
+            for name in dropped:
+                _get_row(database, name).delete_instance()
+            parameters.new_database_parameters([p["entry"] for p in prepared], database, overwrite=True)
         for p in prepared:
             row = _get_row(database, p["name"])
             row.data = p["data"]
@@ -755,8 +769,9 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
     except PrismError:
         raise
     except Exception as e:  # noqa: BLE001
+        reason = param_references.undefined_reason(e, database, sent, frozenset(dropped))
         raise PrismError(
-            f"Parameter update failed: {str(e).strip() or 'the formula could not be evaluated'}",
+            f"Parameter update failed: {reason or str(e).strip() or 'the formula could not be evaluated'}",
             code="param_error",
             hint="Check the formulas: only known parameter names, no circular references. Names "
             "defined in this same call are allowed to refer to each other.",
@@ -778,8 +793,8 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
         for p in prepared:
             if p["before"] is None:
                 delete_param(database, p["name"], recalc=False)
-        restore_many([p["before"] for p in prepared if p["before"] is not None])
-        if all(p["before"] is None for p in prepared):
+        restore_many([p["before"] for p in prepared if p["before"] is not None] + gone)
+        if all(p["before"] is None for p in prepared) and not gone:
             recalc_database(database)
         first, amount, why = refused[0]
         others = ", ".join(f"'{q['name']}'" for q, _a, _w in refused[1:])
@@ -1200,7 +1215,7 @@ def set_exchange_formula(database: str, code: str, uid: str, formula: str | None
             except Exception as exc:  # noqa: BLE001
                 _log.swallowed(exc, "set_exchange_formula")
         raise PrismError(
-            f"Formula error: {e}",
+            f"Formula error: {param_references.undefined_reason(e, database, {}, fix='first (edit_parameter)') or e}",
             code="formula_error",
             hint="Use valid parameter names; avoid circular references.",
         ) from e

@@ -63,6 +63,9 @@ class ChatMessage(BaseModel):
     #: Why the turn stopped (a RunOutcome from shared/plan.ts); only on a stopped turn. Unknown values
     #: are dropped in the store, not refused here.
     outcome: str | None = None
+    #: Why a failed turn failed, ``<Status> — <Text>`` as main writes it; capped in
+    #: chat_store.append_messages (two places, one field).
+    error: str | None = None
 
 
 class AppendRequest(BaseModel):

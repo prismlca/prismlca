@@ -752,6 +752,31 @@ describe('tool argument affordances', () => {
     expect(JSON.stringify(r.results)).not.toContain('unrelated')
   })
 
+  it('deletes a parameter inside the batch that rewrites its users', async () => {
+    // A parameter a formula still uses is refused on its own; the way out is one call that rewrites the
+    // users and deletes beside them (V499). Only name and action travel with a deletion.
+    const calls: Array<{ path: string; body: unknown }> = []
+    const out = await TOOL_BY_NAME.edit_parameter.run(
+      {
+        parameters: [
+          { name: 'eol_incineration', value: 0.5, clear_formula: true },
+          { name: 'thermal_share', action: 'delete', value: 0 }
+        ]
+      },
+      ctxWith(async (_m, path, body) => {
+        calls.push({ path, body })
+        return { parameters: [{ name: 'eol_incineration', amount: 0.5 }] }
+      })
+    )
+    expect(calls).toHaveLength(1)
+    const sent = (calls[0].body as { parameters: Array<Record<string, unknown>> }).parameters
+    expect(sent[1]).toEqual({ name: 'thermal_share', action: 'delete' })
+    expect(sent[0]).toMatchObject({ name: 'eol_incineration', amount: 0.5, formula: '' })
+    const r = JSON.parse(String(out))
+    expect(r.succeeded).toBe(2)
+    expect(JSON.stringify(r)).toContain('"deleted":"thermal_share"')
+  })
+
   it('says nothing was written when a batch of parameters is refused', async () => {
     const out = await TOOL_BY_NAME.edit_parameter.run(
       {

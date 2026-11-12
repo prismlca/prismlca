@@ -24,6 +24,7 @@
  * already appends them to any failure, and a second sentence about the same keys would be noise.
  */
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv'
+import { aiLog } from './aiLog'
 
 // `strict: false`: the specs carry `description`, `default` and `format` where they help the model,
 // and strict mode would refuse to compile them. `allErrors`: a call with three faults gets one answer
@@ -47,9 +48,7 @@ function validatorFor(name: string, schema: Schema): ValidateFunction | null {
   } catch (e) {
     // A schema this library cannot compile is a defect of the spec, not of the call: log once and
     // let the call through, as it would have gone through before this module existed.
-    console.log(
-      `[prism-ai] schema of ${name} does not compile — not validated: ${e instanceof Error ? e.message : e}`
-    )
+    aiLog(`schema of ${name} does not compile — not validated: ${e instanceof Error ? e.message : e}`)
     compiled.set(name, (() => true) as unknown as ValidateFunction)
     return null
   }

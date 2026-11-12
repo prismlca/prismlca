@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { canonicalArgs, makeRepeatGuard, stripOwnClosingTags, toolNamesInArgs, xmlInArgs } from './toolGuards'
+import {
+  canonicalArgs,
+  makeRepeatGuard,
+  stripOwnClosingTags,
+  toolNamesInArgs,
+  xmlInArgs,
+  stallNudge
+} from './toolGuards'
 
 describe('xmlInArgs — tags glued into JSON strings (V326)', () => {
   it('names the field and the tag for the shape MiniMax M3 sent', () => {
@@ -64,6 +71,48 @@ describe('makeRepeatGuard', () => {
     expect(g.block('t', 'not json')).toMatch(/Blocked/)
     expect(g.block('t', 'not  json')).toBeNull()
   })
+
+  it("quotes the call's last error instead of guessing that an argument is missing (V464)", () => {
+    // Four `year: 0` refusals, then a block that said "a required one … may be missing": the call
+    // had a value too many, and the refusal it kept ignoring said so.
+    const g = makeRepeatGuard('answer the user.')
+    const args = '{"dataset":"env_waspac","year":24}'
+    const refusal = 'year must be a four-digit year, not "24" — leave year out for the latest available year.'
+    for (let i = 0; i < 3; i++) {
+      expect(g.block('eurostat_eol', args)).toBeNull()
+      g.answered('eurostat_eol', args, refusal)
+    }
+    const msg = g.block('eurostat_eol', args)
+    expect(msg).toContain(`Its last answer was: "${refusal}"`)
+    expect(msg).toContain('change the arguments as that answer says, or answer the user.')
+    expect(msg).not.toMatch(/may be missing/)
+    // Another spelling of the same arguments is the same call, and quotes the same answer.
+    expect(g.block('eurostat_eol', '{ "year": 24, "dataset": "env_waspac" }')).toContain(refusal)
+  })
+
+  it('quotes nothing for a call that went through, and forgets an error once the call succeeds', () => {
+    const g = makeRepeatGuard('answer the user.')
+    for (let i = 0; i < 3; i++) g.block('get_canvas', '{}')
+    const plain = g.block('get_canvas', '{}')
+    expect(plain).toContain('Either call it with different arguments, or answer the user.')
+    expect(plain).not.toMatch(/last answer|may be missing/)
+    g.answered('calculate', '{"a":1}', 'boom')
+    g.answered('calculate', '{"a":1}', undefined)
+    for (let i = 0; i < 4; i++) g.block('calculate', '{"a":1}')
+    expect(g.block('calculate', '{"a":1}')).not.toMatch(/boom/)
+  })
+
+  it('cuts a long error, and clear() forgets the errors with the counts', () => {
+    const g = makeRepeatGuard('x')
+    g.answered('t', '{}', 'e'.repeat(1000))
+    for (let i = 0; i < 3; i++) g.block('t', '{}')
+    expect(g.block('t', '{}')).toContain(`"${'e'.repeat(400)}…"`)
+    g.clear()
+    g.answered('u', '{}', 'kept?')
+    g.clear()
+    for (let i = 0; i < 3; i++) g.block('u', '{}')
+    expect(g.block('u', '{}')).not.toMatch(/kept\?/)
+  })
 })
 
 describe('canonicalArgs', () => {
@@ -123,5 +172,13 @@ describe('stripOwnClosingTags — the one leak that is unambiguous (V436)', () =
     expect(stripOwnClosingTags(args)).toEqual(['items[0].comment'])
     expect(args.items[0].comment).toBe('A')
     expect(args.items[1].comment).toBe('mass < 5 kg')
+  })
+})
+
+describe('the stall nudge', () => {
+  it('says nothing changed only when no refused call may have written', () => {
+    expect(stallNudge(3, false)).toMatch(/nothing in the model changed/)
+    expect(stallNudge(3, true)).not.toMatch(/nothing in the model changed/)
+    expect(stallNudge(3, true)).toMatch(/may have written part of its change\. Read the current state/)
   })
 })

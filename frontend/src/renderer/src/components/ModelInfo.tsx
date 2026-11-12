@@ -10,6 +10,7 @@ import { holdForDeparture, renameCachedView, SAVE_NOW_EVENT } from '../lib/model
 import { renameModelKeys } from '../lib/persist'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from './EscapeCloser'
+import RenameStatus from './RenameStatus'
 import { ALL_FIELDS, SECTIONS } from './modelInfoFields'
 
 /** Grow a textarea to its content — a scope of ten lines should not be read through a two-line slot. */
@@ -233,7 +234,8 @@ export default function ModelInfo(props: {
   const [linkErr, setLinkErr] = useState<string | null>(null)
   const [name, setName] = useState(props.database)
   const [renaming, setRenaming] = useState(false)
-  // Only the refusal is worth a line: a rename that worked says so by the title carrying the new name.
+  /** Bumped on every rename that landed — RenameStatus shows "Renamed" for a moment each time. */
+  const [renamedCount, setRenamedCount] = useState(0)
   const [nameErr, setNameErr] = useState<string | null>(null)
   /** The input this session of editing already focused — a ref callback runs on every render. */
   const focusedName = useRef<HTMLInputElement | null>(null)
@@ -340,6 +342,7 @@ export default function ModelInfo(props: {
       setEditingName(false)
       renamedTo.current = next
       finalName = next
+      setRenamedCount((n) => n + 1)
       props.onRenamed?.(next)
     } catch (e) {
       setNameErr(errMsg(e))
@@ -473,6 +476,7 @@ export default function ModelInfo(props: {
                 </>
               )}
             </h3>
+            <RenameStatus busy={renaming} done={renamedCount} />
             {nameErr ? <p className="mi-title-err">{nameErr}</p> : null}
             <p>
               Goal, scope and study metadata for this model. The assistant reads this as its brief and keeps

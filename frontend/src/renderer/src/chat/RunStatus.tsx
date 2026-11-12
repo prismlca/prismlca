@@ -81,6 +81,23 @@ function RetryNote({ retry }: { retry: RetryState }): JSX.Element {
   )
 }
 
+/** What the run bar says when the provider's prompt cache stops working, and the longer word on hover. */
+const CACHE_WARNING: Record<'dropped' | 'stuck', { short: string; title: string }> = {
+  dropped: {
+    short: 'prompt cache is not working — rounds are billed in full',
+    title:
+      "Earlier rounds of this run were served from the provider's prompt cache; a later one was not, " +
+      'and was billed at the full input price. If cost matters, stop the run and pick another model or route.'
+  },
+  stuck: {
+    short: 'prompt cache is not growing — most of every round is billed in full',
+    title:
+      "The share of the prompt served from the provider's cache has stopped growing while the conversation " +
+      'grows, so the new part of every round is billed at the full input price. If cost matters, stop the ' +
+      'run and pick another model or route.'
+  }
+}
+
 /**
  * What the run is doing, pinned to the top of the panel.
  *
@@ -91,7 +108,7 @@ function RetryNote({ retry }: { retry: RetryState }): JSX.Element {
  * calls belong with the message, which is what the collapsed summary below keeps.
  */
 export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<string, string> }): JSX.Element {
-  const { live, reasoning, restarts, context, retry } = turn
+  const { live, reasoning, restarts, context, retry, cacheWarning } = turn
   const idx = live.findIndex((t) => !t.status)
   const pending = idx >= 0 ? live[idx] : undefined
   const waiting = !pending && retry?.phase === 'wait' ? retry : undefined
@@ -118,6 +135,14 @@ export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<str
             silently jumped back to zero while the clock kept climbing. */}
         {!pending && restarts > 0 ? (
           <span className="chat-runbar-note"> · restarted {restarts}× (the model returned nothing)</span>
+        ) : null}
+        {/* Said once per run and kept until it ends: a run whose cache has failed costs several times
+            what it should, and the ledger shows it only afterwards. */}
+        {cacheWarning ? (
+          <span className="chat-runbar-note" title={CACHE_WARNING[cacheWarning].title}>
+            {' '}
+            · {CACHE_WARNING[cacheWarning].short}
+          </span>
         ) : null}
       </span>
       {/* The clock times WHICH call is running, or the thinking phase now under way — never the turn.

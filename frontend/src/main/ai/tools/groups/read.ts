@@ -10,6 +10,7 @@ import { NO_MODEL, S, batchResult, cap, fgDb, runItem } from '../format'
 import { resolveCode } from '../resolve'
 import { scopedDatabaseList } from '../../modelScope'
 import { inspectedKey } from '../advice/hotspots'
+import { detailsBatch } from './detailsBatch'
 import { alreadyAsked, withSearchWarnings, type SearchScope } from '../advice/warnings'
 import type { ToolCtx } from '../context'
 
@@ -27,9 +28,11 @@ export function markOwnDatasets(answer: unknown, ctx: ToolCtx): void {
   // `hits`, which is what the backend returns. It once read `results` — a field that
   // never existed — so the flag the tool description promises the model was never once set, and
   // the tests asserted it against a hand-built shape the API does not produce.
-  const hits = (answer as { hits?: Array<{ database?: string; library?: boolean }> })?.hits
-  if (!Array.isArray(hits)) return
-  for (const hit of hits) {
+  type Row = { database?: string; library?: boolean }
+  const a = answer as { hits?: Row[]; outside_region?: Row[] } | undefined
+  if (!Array.isArray(a?.hits)) return
+  // The rows outside the requested region are candidates too, and the same mark tells the same thing.
+  for (const hit of [...a.hits, ...(Array.isArray(a.outside_region) ? a.outside_region : [])]) {
     if (hit && typeof hit === 'object' && libraries.has(hit.database ?? '')) hit.library = true
   }
 }
@@ -44,6 +47,15 @@ export function markOwnDatasets(answer: unknown, ctx: ToolCtx): void {
  * silence: in one run, 7 of 12.
  */
 export const MAX_BATCH_QUERIES = 6
+
+/** Fewest hits a model search returns: a smaller list can hold nothing beyond the requested region. */
+export const MIN_LIMIT = 8
+
+/** A limit the model actually set — 0, empty or not a number counts as unset. */
+function givenLimit(raw: unknown): number | undefined {
+  const n = raw === null || raw === undefined || raw === '' ? Number.NaN : Number(raw)
+  return Number.isFinite(n) && n !== 0 ? n : undefined
+}
 
 /** Rows per database carried in `also_present` — the backend's reserve is already this small; the
  *  cap only guarantees the field can never become the longest list in the answer, which is the
@@ -62,6 +74,7 @@ const RESERVE_SHOWN = 3
  */
 export function liftReserved(answer: unknown): void {
   const a = answer as {
+    count?: unknown
     hits?: Array<{ database?: string; reserved?: boolean }>
     also_present?: unknown
     also_present_note?: string
@@ -84,6 +97,9 @@ export function liftReserved(answer: unknown): void {
   }
   if (!byDb.size) return
   a.hits = ranked
+  // `count` is what the list shows. It counted the reserve too, so with three databases a limit of 5 came
+  // back as "count": 5 over four hits (V462).
+  if (typeof a.count === 'number') a.count = ranked.length
   a.also_present = [...byDb].map(([database, hits]) => ({ database, hits }))
   a.also_present_note =
     'Not matches. Every searched database contributes its best few rows here even when nothing ' +
@@ -186,7 +202,8 @@ export const readTools: Tool[] = [
                 'query, in order, all under the call-level geographies/limit/activity_types. For a query ' +
                 'that needs its OWN filter use "filtered_queries" instead. Pass ONE of "query", "queries" or ' +
                 '"filtered_queries" — never two, and never an empty list.',
-              items: { type: 'string' }
+              items: { type: 'string' },
+              maxItems: MAX_BATCH_QUERIES
             },
             filtered_queries: {
               type: 'array',
@@ -203,7 +220,8 @@ export const readTools: Tool[] = [
                   activity_types: { type: 'array', items: { type: 'string' } }
                 },
                 required: ['query']
-              }
+              },
+              maxItems: MAX_BATCH_QUERIES
             },
             database: str(
               'One database to search, by name; omit for the default: every background database released to this chat plus, when released, the user\'s own "My processes".'
@@ -215,14 +233,14 @@ export const readTools: Tool[] = [
               'Optional geography codes, and they OUTRANK how well a dataset matches. ONE code (e.g. ' +
                 '["DE"]) puts every hit in that region first, then RER / Europe without Switzerland / ' +
                 'GLO / RoW, then the rest — so a poor match in the region you asked for is listed above ' +
-                'a much better one outside it. Nothing is dropped: keep reading past the requested ' +
-                'region before concluding that nothing fits. TWO OR MORE codes are a real filter — other ' +
-                'regions are dropped, and "outside_geography_filter" says when a dataset named exactly ' +
-                'like your query exists only outside them. When something you expect is missing, search ' +
-                'once without geographies.'
+                'a much better one outside it. The limit cuts this queue; the 2 best hits outside come ' +
+                'back under outside_region. TWO OR MORE codes are a real filter — other regions are dropped ' +
+                '(outside_region still shows the 2 best), and "outside_geography_filter" says when a ' +
+                'dataset named exactly like your query exists only outside them. When something you expect ' +
+                'is missing, search once without geographies.'
             ),
             limit: num(
-              'Max results per query (default 25, or 8 when several queries are given). Without ' +
+              'Max results per query (default 25, or 8 when several queries are given). Minimum 8. Without ' +
                 'it the answer gets LONGER when several background databases are searched, so ' +
                 'that a second one adds datasets instead of crowding out the first. Set it only ' +
                 'when you want a specific number: your value is the total and is not scaled.'
@@ -322,14 +340,19 @@ export const readTools: Tool[] = [
       // and a closure reaching into a temporal dead zone is a footgun for the next reader.
       const filed: Array<{ answer: unknown; geo: unknown; scope?: SearchScope }> = []
       const one = async (q: Q, record = true): Promise<unknown> => {
-        const explicit = q.limit ?? a.limit
+        // 0 is "not set". Below MIN_LIMIT is raised: limits of 5 and 4 held nothing past the requested
+        // region, and four runs read that as "no dataset" (V462).
+        const asked = givenLimit(q.limit) ?? givenLimit(a.limit)
+        const explicit = asked === undefined ? undefined : Math.max(asked, MIN_LIMIT)
         const body: Record<string, unknown> = {
           query: q.query,
           limit: explicit ?? fallback,
           limit_cap: explicit ?? cap,
           // Slots kept for each searched database, so "nothing came from my library" stays
           // distinguishable from "my library has nothing". Two in a batch, where every row counts.
-          reserve: batch ? 2 : 3
+          reserve: batch ? 2 : 3,
+          // `more` and `outside_region`: what the cut left out (backend search/left_out.py).
+          beyond_limit: true
         }
         const chosen = Array.isArray(a.databases)
           ? (a.databases as unknown[]).map((d) => String(d).trim()).filter(Boolean)
@@ -368,6 +391,8 @@ export const readTools: Tool[] = [
         const answer = await ctx.api('POST', '/api/v1/search/activities', body)
         markOwnDatasets(answer, ctx)
         liftReserved(answer)
+        if (asked !== undefined && asked < MIN_LIMIT && answer && typeof answer === 'object')
+          (answer as Record<string, unknown>).limit_raised_to = MIN_LIMIT
         const scope = {
           databases:
             (body.databases as string[] | undefined) ?? (body.database ? [String(body.database)] : []),
@@ -375,7 +400,7 @@ export const readTools: Tool[] = [
           literal: body.literal === true
         }
         if (!record) filed.push({ answer, geo, scope })
-        return withSearchWarnings(alreadyAsked(answer, geo, ctx, record, scope))
+        return withSearchWarnings(alreadyAsked(answer, geo, ctx, record, scope), geo)
       }
       if (list.length === 1) return S(await one(list[0]))
       // A batch judges every query against what stood BEFORE the call, then files them all — see
@@ -393,12 +418,19 @@ export const readTools: Tool[] = [
         description:
           'List the activities (processes) in a database. Use for a foreground model to see its processes, and to get the exact names you can then pass instead of codes. Set with_exchanges=true to read the WHOLE foreground in one call — every process with its exchanges, amounts, formulas and comments. That is the call for a final read-through (are the amounts and signs right?), which otherwise costs one request per process. Pass consumes_database + consumes_code to turn it round and list only the processes that CONSUME a given dataset, with their amounts and exchange uids — the first call of a dataset swap, since the uids feed straight into edit_exchange action="replace_input".',
         parameters: obj({
-          database: str('Database/model name; omit for the model open on the canvas.'),
+          database: str(
+            'Where to look: a model (omit for the one open on the canvas). With consumes_code, where the CONSUMERS are searched.'
+          ),
           with_exchanges: bool(
             "true = include each activity's exchanges. The open foreground model only — never ask this of a background database."
           ),
-          consumes_database: str('With consumes_code: list only processes consuming THIS dataset.'),
-          consumes_code: str('Code of the dataset to find the consumers of.')
+          consumes_database: str(
+            'The dataset whose consumers you want: its database (default: the same as "database").'
+          ),
+          consumes_code: str('The dataset whose consumers you want: its code.'),
+          whole_database: bool(
+            'With consumes_code, when "database" is a background database: true = search ALL its processes — e.g. for the waste market that mixes a treatment (capped list). Without it that search is refused; to see where YOUR model uses a dataset, keep "database" on your model.'
+          )
         })
       }
     },
@@ -410,7 +442,12 @@ export const readTools: Tool[] = [
       // it is — a filtered activity list — and because the answer is what a dataset swap starts from.
       if (a.consumes_code) {
         return IMPL.find_consumers(
-          { database: db, consumes_database: a.consumes_database ?? db, consumes_code: a.consumes_code },
+          {
+            database: db,
+            consumes_database: a.consumes_database ?? db,
+            consumes_code: a.consumes_code,
+            whole_database: a.whole_database === true
+          },
           ctx
         )
       }
@@ -491,6 +528,7 @@ export const readTools: Tool[] = [
             location: e.input?.location
           }))
         return {
+          ...(full.found_in ? { found_in: full.found_in, found_in_note: full.found_in_note } : {}),
           activity: full.activity ?? full,
           exchange_count: ex.length,
           biggest_inputs: inputs,
@@ -501,16 +539,19 @@ export const readTools: Tool[] = [
         }
       }
       const one = async (code: string): Promise<any> => {
+        // A code that is not in `db` but in exactly one background database is read from there, and the
+        // answer says so (`found_in`) — a read changes nothing, and a refusal naming where the code lives
+        // was where one run gave up (V470).
         const full = await ctx.api(
           'GET',
           `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(code)}` +
-            (a.detail === 'review' ? '?detail=review' : '')
+            `?background_fallback=true${a.detail === 'review' ? '&detail=review' : ''}`
         )
         // Remember that this dataset has been read, so the contribution list can say which of the
         // datasets that carry the result never were. Recorded even for `summary=true`: the summary
         // returns the activity header, comment included, which is where a dataset says what it was
         // built for.
-        ctx.inspected?.add(inspectedKey(db, code))
+        ctx.inspected?.add(inspectedKey(typeof full?.found_in === 'string' ? full.found_in : db, code))
         return trim(full)
       }
 
@@ -528,7 +569,8 @@ export const readTools: Tool[] = [
             }
           })
         )
-        return S({ results })
+        const spec = readTools.find((t) => t.spec.function.name === 'get_process_details')?.spec
+        return detailsBatch(results, a, Object.keys((spec?.function.parameters.properties as object) ?? {}))
       }
       const r = await resolveCode(ctx, db, a)
       if ('error' in r) return r.error

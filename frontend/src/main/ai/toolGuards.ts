@@ -17,10 +17,16 @@ export const REPEAT_LIMIT = 3
 export interface RepeatGuard {
   /** Files the call and returns the block message once the same bytes exceed the limit, else null. */
   block(name: string, args: string | undefined): string | null
+  /** What the call was told: its error, or undefined when it went through. The block quotes the last
+   *  error, because a model that sends the same refused call a fourth time has not acted on it. */
+  answered(name: string, args: string | undefined, error: string | undefined): void
   /** Forget everything — after a successful mutation the model state moved on, and re-reading the
    *  same thing is legitimate again. */
   clear(): void
 }
+
+/** How much of the last error the block quotes: enough for the sentence that says what to change. */
+const QUOTED_ERROR_CHARS = 400
 
 /**
  * The arguments in a canonical spelling, so two calls count as the same call when they MEAN the
@@ -50,22 +56,40 @@ function canonical(v: unknown): string {
   return JSON.stringify(v)
 }
 
+/**
+ * The block names the answer the call kept getting instead of guessing at its cause. It used to say
+ * "a required one for this action may be missing" — after four `year: 0` refusals that pointed the wrong
+ * way: the call had a value too many, not one too few, and the refusal it kept ignoring said so (V464).
+ */
 export function makeRepeatGuard(escape: string, limit: number = REPEAT_LIMIT): RepeatGuard {
   const repeats = new Map<string, number>()
+  const errors = new Map<string, string>()
+  const signatureOf = (name: string, args: string | undefined): string => `${name}:${canonicalArgs(args)}`
   return {
     block(name, args) {
-      const signature = `${name}:${canonicalArgs(args)}`
+      const signature = signatureOf(name, args)
       const times = (repeats.get(signature) ?? 0) + 1
       repeats.set(signature, times)
       if (times <= limit) return null
+      const last = errors.get(signature)
+      const quoted = last && last.length > QUOTED_ERROR_CHARS ? `${last.slice(0, QUOTED_ERROR_CHARS)}…` : last
       return (
         `Blocked: you have already called ${name} with these same arguments ${limit} times and the ` +
-        'result will not change. Do not send it again. Either call it with different arguments — a required one ' +
-        `for this action may be missing — or ${escape}`
+        'result will not change. ' +
+        (quoted ? `Its last answer was: "${quoted}" ` : '') +
+        'Do not send it again. Either ' +
+        (quoted ? 'change the arguments as that answer says' : 'call it with different arguments') +
+        `, or ${escape}`
       )
+    },
+    answered(name, args, error) {
+      const signature = signatureOf(name, args)
+      if (error) errors.set(signature, error)
+      else errors.delete(signature)
     },
     clear() {
       repeats.clear()
+      errors.clear()
     }
   }
 }
@@ -210,5 +234,20 @@ export function toolNamesInArgs(args: unknown, toolNames: Iterable<string>): str
     'study chapters, limitations), and a reader there has no tools: write the source or the method ' +
     'instead — the listing, the data sheet, the statistic, the routed distance — never the tool that ' +
     'fetched it. The value was stored; rewrite the text with another call.'
+  )
+}
+
+/**
+ * The stall guard's nudge, after rounds that only heard "no". "Nothing changed" is only true when none of
+ * those refusals wrote anything: a batch whose every item failed can still have written part of an item
+ * (an exchange added before its formula was refused), and a model told nothing changed adds it again.
+ */
+export function stallNudge(rounds: number, mayHaveWritten: boolean): string {
+  return (
+    `Your last ${rounds} rounds produced only rejected or failed tool calls` +
+    (mayHaveWritten
+      ? ', but at least one of them may have written part of its change. Read the current state before you write again, then fix '
+      : ', and nothing in the model changed. Read the error messages again and fix ') +
+    'exactly what they name; if the same call keeps failing, take a different route or tell the user what is blocking you.'
   )
 }

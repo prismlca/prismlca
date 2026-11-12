@@ -40,6 +40,10 @@ class ReviewLogRequest(BaseModel):
     database: str
     review: str
     gaps: list[str] = []
+    #: The in-app chat that ran the review; absent from an external client.
+    chat: str | None = None
+    #: The reviewer was stopped at its deadline and this is what it had written by then.
+    partial: bool = False
 
 
 class ResolutionsRequest(BaseModel):
@@ -50,9 +54,9 @@ class ResolutionsRequest(BaseModel):
     resolutions: list[dict]
 
 
-@router.get("/review", summary="A model's internal reviews (latest last)")
+@router.get("/review", summary="A model's internal reviews (latest last), each marked if stale")
 async def get_reviews(database: str) -> list[dict]:
-    return ReviewLogStore().list(database)
+    return ReviewLogStore().history(database, lca.model_generation())
 
 
 @router.post("/review", summary="Record an internal review, stamped with the current model generation")
@@ -62,7 +66,12 @@ async def record_review(body: ReviewLogRequest) -> dict:
     # and it is what later turns "has the model changed since this review?" into a comparison.
     with commands.project_guard():
         return ReviewLogStore().record_review(
-            body.database, body.review, gaps=body.gaps, generation=lca.model_generation()
+            body.database,
+            body.review,
+            gaps=body.gaps,
+            generation=lca.model_generation(),
+            chat=body.chat,
+            partial=body.partial,
         )
 
 

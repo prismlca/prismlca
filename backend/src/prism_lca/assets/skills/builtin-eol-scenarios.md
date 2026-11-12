@@ -11,8 +11,9 @@ multiplied by the mass of that material only. A remainder the statistics leave o
 "other recovery", a few tenths of a percent) is its own parameter, `eol_other`, with a comment saying what it
 is — never folded into landfill or incineration just to close the sum: the health check reads the group
 and tells you when the shares do not add up. Drive each waste exchange with a formula
-(`edit_exchange`), e.g. `mass * eol_recycling`. Now the split is a single, documented handle instead of
-three magic numbers, and the sum is checkable at a glance.
+(`edit_exchange`), e.g. `mass * eol_incineration` (the recycling share gets no exchange under cut-off —
+see below). Now the split is a single, documented handle instead of three magic numbers, and the sum is
+checkable at a glance.
 
 **Which statistic: the product's function first, then the route it leaves the household by** — never
 its material alone. Whatever contains, protects or carries goods on their way to the user — bottle,

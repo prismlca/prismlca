@@ -13,6 +13,7 @@ import {
   tlsFailure
 } from './retryPolicy'
 import { parseEventData, SseFramer } from './sse'
+import { logRetriedError } from '../providerErrorLog'
 import {
   AiProviderError,
   type ChatTransport,
@@ -172,9 +173,14 @@ export async function* runChatStream<S>(
     if (pauseMs === null) throw outcome.error
     // Said in the log as well as in the event: silent backoff looked exactly like a slow model, and four
     // parallel report lanes hitting a rate limit serialised themselves with nothing anywhere to show why.
-    console.warn(
-      `[${transport.name}] ${outcome.detail} on ${opts.model}, attempt ${attempt}, waiting ${pauseMs}ms`
-    )
+    // With the status and the provider's words, as a final failure is (providerErrorLog.ts).
+    logRetriedError(outcome.error, {
+      transport: transport.name,
+      model: opts.model,
+      attempt,
+      waitMs: pauseMs,
+      detail: outcome.detail
+    })
     yield {
       type: 'retry',
       phase: 'wait',
@@ -233,6 +239,7 @@ async function* sendOnce<S>(
   if (!sent.ok || !sent.body) {
     const text = await errorBody(sent, () => unanswered.abort())
     const refused = transport.translateStatus(sent.status, text, opts)
+    refused.status ??= sent.status
     if (!transport.retryable(sent.status, text)) throw refused
     return {
       again: true,

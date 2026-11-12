@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import logging
 import os
 import socket
 import sys
@@ -103,8 +104,25 @@ def _listening_socket(host: str, port: int) -> socket.socket:
     return sock
 
 
+def _show_own_log_lines() -> None:
+    """Send the app's own INFO lines to stderr, where the shell logs the backend's output.
+
+    uvicorn configures only its own loggers, so everything below WARNING from ``prism_lca`` was dropped —
+    among it the lines that exist to be read, such as the per-step seconds of a model rename. One handler
+    on the package logger, not on the root: third-party libraries stay as quiet as before.
+    """
+    logger = logging.getLogger("prism_lca")
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s: [%(name)s] %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
 def main() -> None:
     _force_utf8()
+    _show_own_log_lines()
     settings = get_settings()
 
     # Our own Brightway directory, whatever the environment inherited from somebody's Brightway

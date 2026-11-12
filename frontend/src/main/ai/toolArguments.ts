@@ -10,6 +10,7 @@
  * transcript keeps what the host really delivered.
  */
 import type { ChatMessage } from './providers/types'
+import { aiLog } from './aiLog'
 
 /** Why a tool-argument string is not a JSON object, or null when it is one. Empty or blank is `syntax`
  *  here: what to make of "no arguments" is the caller's decision (the executor reads it as `{}`). */
@@ -60,8 +61,8 @@ export function logUnsendableArguments(
     if (!c.arguments.trim()) continue
     const problem = argumentsProblem(c.arguments)
     if (problem)
-      console.log(
-        `[prism-ai] ${host} delivered tool arguments that are not a JSON object for ${c.name} ` +
+      aiLog(
+        `${host} delivered tool arguments that are not a JSON object for ${c.name} ` +
           `(${problem}, ${c.arguments.length} chars)`
       )
   }

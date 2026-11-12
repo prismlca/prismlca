@@ -238,6 +238,25 @@ describe('ModelInfo → saves on close', () => {
     release()
   })
 
+  it('says that it is renaming while the rename runs, and that it has renamed after (V469)', async () => {
+    const user = userEvent.setup()
+    let release: () => void = () => {}
+    renderWithPrism(<ModelInfo database="Old" onClose={() => {}} onRenamed={() => {}} />, {
+      routes: {
+        ...ROUTES,
+        'POST /api/v1/databases/foreground/rename': () => new Promise((r) => (release = () => r({})))
+      }
+    })
+    const field = await startRename(user)
+    await user.clear(field)
+    await user.type(field, 'New')
+    await user.click(screen.getByRole('button', { name: 'Rename the model' }))
+    expect(await screen.findByText(/Renaming… moving chats, reports and parameters/)).toBeInTheDocument()
+    release()
+    expect(await screen.findByText('Renamed')).toBeInTheDocument()
+    expect(screen.queryByText(/Renaming…/)).toBeNull()
+  })
+
   it('saves the changed fields when the app is left with the sheet open', async () => {
     const user = userEvent.setup()
     const { prism } = renderWithPrism(<ModelInfo database="M" onClose={() => {}} />, {

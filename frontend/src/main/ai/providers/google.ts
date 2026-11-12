@@ -195,7 +195,7 @@ function streamError(
 export function thinkingLevel(e?: ReasoningEffort): 'low' | 'medium' | 'high' | undefined {
   if (!e) return undefined
   if (e === 'none' || e === 'minimal') return 'low'
-  if (e === 'xhigh') return 'high'
+  if (e === 'xhigh' || e === 'max') return 'high'
   return e
 }
 

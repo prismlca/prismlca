@@ -56,3 +56,37 @@ describe('EffortDial', () => {
     expect(onChange).toHaveBeenLastCalledWith('')
   })
 })
+
+describe('the documented default and the chat floor', () => {
+  it('puts the documented default under the Default tick and into the slider’s value text', () => {
+    render(
+      <EffortScale
+        label="Reasoning effort"
+        levels={['low', 'medium']}
+        value=""
+        apiDefault="medium"
+        onChange={() => {}}
+      />
+    )
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', 'Default (medium)')
+    expect(document.querySelector('.effort-tick-sub')?.textContent).toBe('(medium)')
+  })
+
+  it('drops the Default step for a floor, and shows Default on the floor', () => {
+    const onChange = vi.fn()
+    render(
+      <EffortDial
+        label="Reasoning effort"
+        levels={['high', 'xhigh', 'max']}
+        value=""
+        noDefault
+        onChange={onChange}
+      />
+    )
+    const names = Array.from(document.querySelectorAll('.effort-dial-name'))
+    expect(names.map((e) => e.textContent)).toEqual(['High', 'X-high', 'Max'])
+    expect((screen.getByRole('slider') as HTMLInputElement).value).toBe('0')
+    fireEvent.change(screen.getByRole('slider'), { target: { value: '2' } })
+    expect(onChange).toHaveBeenLastCalledWith('max')
+  })
+})

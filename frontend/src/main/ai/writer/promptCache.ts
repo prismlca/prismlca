@@ -14,6 +14,7 @@
  * draft and the findings of one round are read from the cache by the next. That is three of the four
  * breakpoints Anthropic allows.
  */
+import { aiLog } from '../aiLog'
 import { findModel } from '../models'
 import { getActiveProvider } from '../providers/state'
 import {
@@ -62,8 +63,8 @@ export function logCache(label: string, model: string, usage: CostSample): void 
   const { cached, prompt } = usage
   if (typeof cached !== 'number' || !prompt) return
   const cost = typeof usage.cost === 'number' ? `, $${usage.cost.toFixed(4)}` : ''
-  console.log(
-    `[prism-ai] ${label} cache: ${cached}/${prompt} prompt tokens (${Math.round((cached / prompt) * 100)}%)${cost} — ${model}`
+  aiLog(
+    `${label} cache: ${cached}/${prompt} prompt tokens (${Math.round((cached / prompt) * 100)}%)${cost} — ${model}`
   )
 }
 

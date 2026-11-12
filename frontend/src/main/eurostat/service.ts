@@ -99,6 +99,24 @@ export interface ServiceOpts {
   client?: ClientOpts
 }
 
+/**
+ * A year that is not a four-digit year. Its message names the way out — leave year out — without an
+ * example year: "such as 2022" was copied as it stood and fetched 2022 where 2024 was there (V464).
+ * `queryEurostatEol` adds the table's current latest year, which only the data can say.
+ */
+export class InvalidYearError extends Error {
+  constructor(
+    readonly given: unknown,
+    latest?: { year: number; dataset: string }
+  ) {
+    super(
+      `year must be a four-digit year, not "${String(given)}" — leave year out for the latest available ` +
+        `year${latest ? ` (currently ${latest.year} for ${latest.dataset})` : ''}.`
+    )
+    this.name = 'InvalidYearError'
+  }
+}
+
 export function normaliseQuery(raw: unknown): EolQuery {
   const a = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   if (!isEurostatDataset(a.dataset))
@@ -108,10 +126,10 @@ export function normaliseQuery(raw: unknown): EolQuery {
   const countryRaw = typeof a.country === 'string' ? a.country.trim().toUpperCase() : ''
   const country = countryRaw && countryRaw !== 'ALL' ? (GEO_ALIASES[countryRaw] ?? countryRaw) : undefined
   let year: number | undefined
-  if (a.year !== undefined && a.year !== null && a.year !== '') {
+  // 0 is an empty year, not a wrong one (the executor drops it already; this layer says so in the answer).
+  if (a.year !== undefined && a.year !== null && a.year !== '' && a.year !== 0) {
     const n = Number(a.year)
-    if (!Number.isInteger(n) || n < 1990 || n > 2100)
-      throw new Error(`year must be a four-digit year such as 2022, not "${String(a.year)}".`)
+    if (!Number.isInteger(n) || n < 1990 || n > 2100) throw new InvalidYearError(a.year)
     year = n
   }
   const wasteRaw = a.waste_code ?? a.waste_category
@@ -159,8 +177,38 @@ async function knownCodes(
   return (d.codes[dim] ?? []).map((code) => ({ code, label: d.labels[dim]?.[code] ?? code }))
 }
 
+/** The newest period a table has published, for the way out of an invalid year; undefined when unknown. */
+async function latestYear(dataset: EurostatDataset, opts: ServiceOpts): Promise<number | undefined> {
+  const info = DATASET_INFO[dataset]
+  const filters: Record<string, string> = { ...info.fixedFilters, lastTimePeriod: '1' }
+  if (info.wasteDimension) filters.waste = info.wasteDimension.total
+  try {
+    const d = await fetchSlice(dataset, filters, opts.client)
+    const years = (d.codes.time ?? []).filter(isYear).map(Number)
+    return years.length ? Math.max(...years) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function parseQuery(raw: unknown): EolQuery | InvalidYearError {
+  try {
+    return normaliseQuery(raw)
+  } catch (e) {
+    if (e instanceof InvalidYearError) return e
+    throw e
+  }
+}
+
 export async function queryEurostatEol(raw: unknown, opts: ServiceOpts = {}): Promise<EolResult> {
-  const q = normaliseQuery(raw)
+  const parsed = parseQuery(raw)
+  if (parsed instanceof InvalidYearError) {
+    // Only reached with a valid dataset: normaliseQuery checks it before the year.
+    const dataset = (raw as { dataset: EurostatDataset }).dataset
+    const year = await latestYear(dataset, opts)
+    throw year === undefined ? parsed : new InvalidYearError(parsed.given, { year, dataset })
+  }
+  const q = parsed
   const info = DATASET_INFO[q.dataset]
   const notes: string[] = []
   const given = (raw as { country?: unknown })?.country
@@ -229,9 +277,11 @@ export async function queryEurostatEol(raw: unknown, opts: ServiceOpts = {}): Pr
   const counts = new Map(years.map((y) => [y, filled(y)]))
   const fullest = Math.max(0, ...counts.values())
   let yearWithData = years.find((y) => (counts.get(y) ?? 0) > 0)
+  let thin = false
   if (yearWithData !== undefined && q.year === undefined && fullest > 0) {
     const complete = years.find((y) => (counts.get(y) ?? 0) * 2 >= fullest)
     if (complete !== undefined && complete !== yearWithData) {
+      thin = true
       notes.push(
         `${yearWithData} is published but thin for this selection (${counts.get(yearWithData)} of the ` +
           `${fullest} cells ${complete} has) — ${complete} is shown instead. Pass year=${yearWithData} to read what there is.`
@@ -239,6 +289,10 @@ export async function queryEurostatEol(raw: unknown, opts: ServiceOpts = {}): Pr
       yearWithData = complete
     }
   }
+  // Said every time no year was asked for: an empty one (0) reads as none (V464), and the answer must
+  // not let the model believe it got the year it typed.
+  if (yearWithData !== undefined && q.year === undefined && !thin)
+    notes.unshift(`No year given (0 counts as none): ${yearWithData} is the latest year with data.`)
   if (yearWithData === undefined) {
     throw new Error(
       `${q.dataset} has no values for ${q.country ?? 'any country'}${q.waste_code ? ` / ${q.waste_code}` : ''}${

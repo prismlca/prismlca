@@ -193,7 +193,8 @@ def number_key(number: str) -> str:
     return number.rstrip(".,").replace(",", ".")
 
 
-#: Spellings of a unit that mean the same symbol, for the unit-beside-placeholder comparison only.
+#: Spellings of a unit that mean the same symbol, for the unit-beside-placeholder comparison and for
+#: reading what a rate is per (`per_unit_after`).
 UNIT_ALIASES: dict[str, str] = {
     "percent": "%", "prozent": "%", "pourcent": "%",
     "tonne": "t", "tonnes": "t", "tonnen": "t", "toneladas": "t", "tonnellate": "t",
@@ -216,6 +217,23 @@ def unit_family_after(text: str, end: int) -> int | None:
         return None
     placed = units_of.base(1.0, m.group(1).rstrip(".,;:!?"))
     return placed[0] if placed else None
+
+
+#: "per" or "/" right after a figure's unit, and what follows it — "per litre", "/L", "per 100 km".
+_PER = re.compile(r"\s{0,2}(?:per\s+|/\s*)(?:\d+(?:[.,]\d+)?\s*)?([^\s.,;:)\]]{1,12})", re.IGNORECASE)
+
+
+def places_unit(token: str) -> bool:
+    """Whether the unit table places this token, as a symbol or spelled out ("L", "litre", "kg")."""
+    low = token.strip().rstrip(".,;:!?").lower()
+    return units_of.base(1.0, UNIT_ALIASES.get(low, low)) is not None
+
+
+def per_unit_after(text: str, end: int) -> bool:
+    """Whether the figure ending at ``end`` is a rate: "per" or "/" and a unit the table places follow it
+    directly — "1040 g per litre", "2 kg/L". "per bottle" names no unit, so that figure stays a quantity."""
+    m = _PER.match(text, end)
+    return bool(m) and places_unit(m.group(1))
 
 
 

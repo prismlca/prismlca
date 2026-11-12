@@ -3,10 +3,38 @@
 // the prose description and the handler are edited as a pair, and the description guard in
 // tools.test.ts scans spec text against implementation names.
 
-import type { Tool } from '../context'
+import type { Tool, ToolCtx } from '../context'
 import { obj, str } from '../schema'
 import { AI, S, batchResult, runItem } from '../format'
 import { delegate } from '../impl'
+
+/**
+ * The tag groups as `list_tags` returns them: per group whether THIS model uses it (and which of its
+ * comparison models do), and how many other models — never their names (V492).
+ *
+ * The endpoint lists every database a group is used in, which the app's split-by pickers need. Handed to a
+ * chat, that was the name of every study in the workspace, ~4,000 characters a call — and the names steer:
+ * one run took the market of its study from the brands in its neighbours' titles. A chat works on one model;
+ * an MCP client gets the same view, because the cost and the steer are the same there, and the models
+ * themselves are one `list_models` away when it truly needs them.
+ */
+export function tagGroupsForModel(body: unknown, ctx: Pick<ToolCtx, 'activeDb' | 'scope'>): unknown[] {
+  const groups = (body as { groups?: unknown })?.groups
+  if (!Array.isArray(groups)) return []
+  const compared = new Set((ctx.scope?.readable ?? []).filter((m) => m !== ctx.activeDb))
+  return groups.map((g) => {
+    const { databases, ...group } = (g ?? {}) as { databases?: unknown } & Record<string, unknown>
+    const used = Array.isArray(databases) ? databases.map(String) : []
+    const inCompared = used.filter((d) => compared.has(d))
+    const others = used.filter((d) => d !== ctx.activeDb && !compared.has(d)).length
+    return {
+      ...group,
+      in_this_model: !!ctx.activeDb && used.includes(ctx.activeDb),
+      ...(inCompared.length ? { in_compared_models: inCompared } : {}),
+      ...(others ? { in_other_models: others } : {})
+    }
+  })
+}
 
 export const tagsTools: Tool[] = [
   {
@@ -15,7 +43,7 @@ export const tagsTools: Tool[] = [
       function: {
         name: 'list_tags',
         description:
-          "List tag groups (dimensions) and their allowed values, or one activity's assigned tags.",
+          "List tag groups (dimensions) and their allowed values, or one activity's assigned tags. Each group says whether this model uses it, and in how many other models it is used.",
         parameters: obj({
           database: str("Optional — with code, returns that activity's tags."),
           code: str('Optional activity code.')
@@ -23,7 +51,7 @@ export const tagsTools: Tool[] = [
       }
     },
     run: async (a, ctx) => {
-      const groups = await ctx.api('GET', '/api/v1/model/tag-groups')
+      const groups = tagGroupsForModel(await ctx.api('GET', '/api/v1/model/tag-groups'), ctx)
       if (a.database && a.code) {
         const tags = await ctx.api(
           'GET',

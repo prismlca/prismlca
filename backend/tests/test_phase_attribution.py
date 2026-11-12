@@ -268,6 +268,47 @@ def test_the_flows_of_one_phase_add_up_to_that_phase(client, token, project):
     assert sum(f["impact"] for f in everything["flows"]) == pytest.approx(3.0)
 
 
+def test_a_phase_nothing_carries_is_refused_not_answered_with_zero(client, token, project):
+    """A misspelt value, or a dimension the model does not use, gave `total: 0` and no flows — read as "this
+    phase emits nothing". Every reachable state is booked to its group, so a value missing there is carried by
+    nothing; the answer says so and names what is there instead (V480). "(untagged)" may rightly be empty."""
+    bd = get_bd()
+    _bio(bd)
+    _background(bd, {("bg", "steel"): _proc("steel", "steel", emits=2.0, db="bg")})
+    bd.Database("fg").write(
+        {
+            ("fg", "M"): _proc("M", "Manufacturing", emits=1.0, inputs=[(("bg", "steel"), 1.0, U["u-steel"])]),
+            ("fg", "R"): _proc("R", "R", inputs=[(("fg", "M"), 1.0, U["u-m"])]),
+        }
+    )
+    _tag(client, token, "M", "Production")
+    _tag_input("M", U["u-steel"], "Raw materials")
+
+    def flows(dimension, value):
+        return client.post(
+            "/api/v1/calc/elementary-flows",
+            json={"database": "fg", "code": "R", "method": METHOD,
+                  "phase": {"dimension": dimension, "value": value}},
+            headers=token,
+        )
+
+    r = flows("Phase", "Raw material")
+    assert r.status_code == 400, r.text
+    error = r.json()["error"]
+    assert error["code"] == "phase_value_not_found"
+    assert "Phase = 'Raw material'" in error["message"]
+    assert "Production, Raw materials" in error["hint"]
+
+    r = flows("Life-cycle stage", "Production")
+    assert r.status_code == 400, r.text
+    assert "'Life-cycle stage'" in r.json()["error"]["message"]
+    assert "dimensions tagged here are: Phase" in r.json()["error"]["hint"]
+
+    # What is there still answers, and so does an untagged remainder.
+    assert flows("Phase", "Production").json()["total"] == pytest.approx(1.0)
+    assert flows("Phase", "(untagged)").status_code == 200
+
+
 def test_production_amounts_other_than_one_scale_runs_not_products(client, token, project):
     """M makes 2 units per run and needs 3 units of T, which makes 3 per run: one R needs half a run of M
     and half a run of T."""

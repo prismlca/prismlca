@@ -19,7 +19,15 @@ from contextvars import ContextVar
 from pydantic import BaseModel
 
 from prism_lca import _log
-from prism_lca.engine import audit_store, lca, model, model_names, model_scope, params
+from prism_lca.engine import (
+    audit_store,
+    lca,
+    model,
+    model_names,
+    model_scope,
+    param_references,
+    params,
+)
 from prism_lca.engine._store import now_iso
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, set_read_only
@@ -2432,10 +2440,10 @@ class SetParametersCommand(Command):
         self._before: list[tuple[str, dict | None]] = []
 
     def execute(self) -> dict:
-        self._before = [
-            (item.get("name"), params.snapshot(self.database, item.get("name")))
-            for item in self.items
-        ]
+        # The names as the write reads them (stripped): a snapshot under " mass " found nothing, and the
+        # undo of a batch that changed or deleted mass put nothing back.
+        names = [(item.get("name") or "").strip() for item in self.items]
+        self._before = [(name, params.snapshot(self.database, name)) for name in names]
         out = {"parameters": params.set_params_bulk(self.database, self.items)}
         return _with_stale_notes(out, self.database, self._before)
 
@@ -2455,6 +2463,12 @@ class SetParametersCommand(Command):
             params.recalc_database(self.database)
 
     def summary(self) -> str:
+        dropped = [f"'{i.get('name')}'" for i in self.items if i.get("action") == "delete"]
+        if dropped:
+            kept = len(self.items) - len(dropped)
+            return f"Delete parameter{'s' if len(dropped) > 1 else ''} {', '.join(dropped)}" + (
+                f", set {kept} other{'s' if kept > 1 else ''}" if kept else ""
+            )
         n = len(self.items)
         if n == 1:
             item = self.items[0]
@@ -2484,6 +2498,9 @@ class DeleteParameterCommand(Command):
                 status_code=404,
                 hint="List parameters via GET /api/v1/params.",
             )
+        # A parameter a formula or a scenario still names is not deleted: every later parameter write
+        # would fail on the missing name while the values that used it stay frozen (V499).
+        param_references.check_deletable(self.database, {self.name})
         params.delete_param(self.database, self.name)
         return {"deleted": self.name}
 

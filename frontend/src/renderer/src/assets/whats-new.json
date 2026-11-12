@@ -1,6 +1,26 @@
 [
   {
     "date": "2026-11-12",
+    "title": "Searches keep the best matches outside the region",
+    "details": "When the assistant searches with a region, the answer now also lists the two best datasets outside it and says how many similar ones remain, so a material missing from the region is no longer taken as missing altogether. Every search returns at least eight rows."
+  },
+  {
+    "date": "2026-11-12",
+    "title": "Reviews show progress and stop on time",
+    "details": "While the reviewer works, the run bar shows how far it has got. A review that runs past ten minutes starts once more with a six-minute limit and keeps what it wrote. Reviewing again in the same chat shows the reviewer its earlier findings and your outcomes."
+  },
+  {
+    "date": "2026-11-12",
+    "title": "Max effort for GPT-6, and a floor for Luna",
+    "details": "GPT-6 Astra, 6.1 Sol and Luna offer Max reasoning effort, and the effort picker says which level Default stands for, such as “Default (medium)”. As the chat model, GPT-6 Luna runs at High or above — at lower levels it left out whole parts of a model. Research, review and import matching can still use it at any level."
+  },
+  {
+    "date": "2026-11-12",
+    "title": "Fewer surprises in assistant runs",
+    "details": "The run bar warns when the prompt cache stops working, an answer that ended in an error keeps the reason after a reload, and canvas actions work from any page. Renaming a model shows its progress, and a parameter that formulas or scenarios still use is not deleted."
+  },
+  {
+    "date": "2026-11-12",
     "title": "Only trusted OpenRouter providers",
     "details": "Under Settings → AI → Provider, a switch below the provider cards keeps OpenRouter requests to an allowlist of providers: the labs, the large clouds and established inference hosts. It is on by default, because some hosts dropped tool-call fields or cut answers short in long runs. Edit list removes a provider or adds one by name; Reset defaults brings back our list."
   },

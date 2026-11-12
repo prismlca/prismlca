@@ -20,7 +20,12 @@ export const canvasTools: Tool[] = [
       }
     },
     surface: 'ui',
-    run: async (a, ctx) => S(await ctx.ui('set_chat_title', a))
+    run: async (a, ctx) => {
+      const result = await ctx.ui('set_chat_title', a)
+      // Kept for `plan`: a first plan sent without a title is headed by the chat's title.
+      if (typeof a.title === 'string' && a.title.trim()) ctx.chatTitle = a.title.trim()
+      return S(result)
+    }
   },
   {
     spec: {
@@ -54,7 +59,7 @@ export const canvasTools: Tool[] = [
               type: 'array',
               maxItems: 4,
               description:
-                'Up to 4 questions asked TOGETHER as one form. Use this whenever you already know you need more than one answer before you can start — each extra call is another wait on a human. FOUR SLOTS, SO SPEND THEM ON WHAT CANNOT BE CHANGED LATER: what the study is measured PER (the functional unit) and where the numbers will COME FROM outrank any question about scope, because a scope decision can be revisited on a finished model and these two cannot. Measured 2026-08-13: a wall-paint study spent all its questions on scope details, silently made itself "one bucket" instead of a painted area, and estimated a recipe it could have researched.',
+                'Up to 4 questions asked TOGETHER as one form. Use this whenever you already know you need more than one answer before you can start — each extra call is another wait on a human. FOUR SLOTS, SO SPEND THEM ON WHAT CANNOT BE CHANGED LATER: what the study is measured PER (the functional unit) and where the numbers will COME FROM (the data source and the market they describe) outrank any question about scope — except whether the use phase is included, which can decide the result on its own, unless the brief settles it (cradle-to-gate does) — because a scope decision can be revisited on a finished model and these two cannot. Measured 2026-08-13: a wall-paint study spent all its questions on scope details, silently made itself "one bucket" instead of a painted area, and estimated a recipe it could have researched.',
               items: obj(
                 {
                   question: str('The question — one short sentence.'),
@@ -145,8 +150,16 @@ export const canvasTools: Tool[] = [
     surface: 'ui',
     run: async (_a, ctx) => {
       const r = await ctx.ui('screenshot_canvas', {})
+      // Taken from another page, the app opened the model view for it: the model is told, it may matter
+      // for what it says to the user next.
+      if (r?.image && r.switched_to)
+        return {
+          image: r.image as string,
+          result: S({ switched_to: r.switched_to, screenshot: 'see the image in the next message' })
+        }
       if (r?.image) return { image: r.image as string }
-      return S({ error: 'Screenshot not available.' })
+      // The renderer's own reason (the canvas did not come on screen) says more than a generic one.
+      return S(r?.error ? r : { error: 'Screenshot not available.' })
     }
   },
   {

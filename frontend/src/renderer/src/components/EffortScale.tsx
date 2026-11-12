@@ -1,4 +1,5 @@
 import {
+  effortStepName,
   REASONING_EFFORT_LABELS,
   REASONING_EFFORT_SHORT,
   type ReasoningEffort
@@ -6,6 +7,21 @@ import {
 
 /** The position "send nothing, the API decides" — the first tick of every scale. */
 export const EFFORT_DEFAULT_TITLE = 'Default — the API decides (for several models well below their best)'
+
+/** The Default tick's hover text, naming the level the API then uses where the vendor documents it. */
+const defaultTitle = (apiDefault?: ReasoningEffort): string =>
+  apiDefault
+    ? `Default — nothing is sent, and the API uses ${REASONING_EFFORT_SHORT[apiDefault].toLowerCase()}`
+    : EFFORT_DEFAULT_TITLE
+
+/** The steps both dials draw: Default first, unless the model has a chat floor — then the floor is the
+ *  bottom step, and a value of '' sits on it. */
+function stepsOf(
+  levels: readonly ReasoningEffort[],
+  noDefault: boolean | undefined
+): (ReasoningEffort | '')[] {
+  return noDefault && levels.length ? [...levels] : ['', ...levels]
+}
 
 /**
  * The reasoning-effort dial, drawn as a scale: a range input with one tick per level, Default first.
@@ -19,7 +35,9 @@ export function EffortScale({
   value,
   onChange,
   label,
-  compact
+  compact,
+  apiDefault,
+  noDefault
 }: {
   levels: readonly ReasoningEffort[]
   /** '' = Default (nothing sent). */
@@ -29,12 +47,16 @@ export function EffortScale({
   label: string
   /** Tighter spacing for the composer menu. */
   compact?: boolean
+  /** The level the API uses on Default, where documented: the tick then reads "Default (medium)". */
+  apiDefault?: ReasoningEffort
+  /** No Default step: the model has a chat floor and `levels` start at it. */
+  noDefault?: boolean
 }): JSX.Element {
-  const steps: (ReasoningEffort | '')[] = ['', ...levels]
+  const steps = stepsOf(levels, noDefault)
   const idx = Math.max(0, steps.indexOf(value))
   const locked = levels.length === 0
   const tickTitle = (s: ReasoningEffort | ''): string =>
-    s === '' ? EFFORT_DEFAULT_TITLE : REASONING_EFFORT_LABELS[s]
+    s === '' ? defaultTitle(apiDefault) : REASONING_EFFORT_LABELS[s]
   return (
     <div
       className={`effort-scale${compact ? ' compact' : ''}${locked ? ' locked' : ''}`}
@@ -66,7 +88,7 @@ export function EffortScale({
           value={idx}
           disabled={locked}
           aria-label={label}
-          aria-valuetext={steps[idx] === '' ? 'Default' : REASONING_EFFORT_SHORT[steps[idx]]}
+          aria-valuetext={effortStepName(steps[idx], apiDefault)}
           onChange={(e) => onChange(steps[Number(e.target.value)] ?? '')}
         />
       </div>
@@ -83,7 +105,18 @@ export function EffortScale({
             disabled={locked}
             onClick={() => onChange(s)}
           >
-            {s === '' ? 'Default' : REASONING_EFFORT_SHORT[s]}
+            {/* Up to seven ticks share the row, so the documented default goes on a line of its own
+                under "Default" rather than being cut to "Default (m…". */}
+            {s !== '' ? (
+              REASONING_EFFORT_SHORT[s]
+            ) : apiDefault ? (
+              <>
+                Default
+                <span className="effort-tick-sub">({REASONING_EFFORT_SHORT[apiDefault].toLowerCase()})</span>
+              </>
+            ) : (
+              'Default'
+            )}
           </button>
         ))}
       </div>
@@ -107,18 +140,22 @@ export function EffortDial({
   value,
   onChange,
   label,
-  onDragging
+  onDragging,
+  apiDefault,
+  noDefault
 }: {
   levels: readonly ReasoningEffort[]
   value: ReasoningEffort | ''
   onChange: (v: ReasoningEffort | '') => void
   label: string
   onDragging?: (held: boolean) => void
+  apiDefault?: ReasoningEffort
+  noDefault?: boolean
 }): JSX.Element {
-  const steps: (ReasoningEffort | '')[] = ['', ...levels]
+  const steps = stepsOf(levels, noDefault)
   const idx = Math.max(0, steps.indexOf(value))
   const top = steps.length - 1
-  const name = (s: ReasoningEffort | ''): string => (s === '' ? 'Default' : REASONING_EFFORT_SHORT[s])
+  const name = (s: ReasoningEffort | ''): string => effortStepName(s, apiDefault)
   return (
     <div className="effort-dial" style={{ ['--n' as string]: steps.length }}>
       <div className="effort-dial-track" style={{ ['--frac' as string]: top ? idx / top : 0 }}>
@@ -156,7 +193,7 @@ export function EffortDial({
             tabIndex={-1}
             className={`effort-dial-name${i === idx ? ' on' : ''}`}
             style={{ ['--at' as string]: top ? i / top : 0 }}
-            title={s === '' ? EFFORT_DEFAULT_TITLE : REASONING_EFFORT_LABELS[s]}
+            title={s === '' ? defaultTitle(apiDefault) : REASONING_EFFORT_LABELS[s]}
             onClick={() => onChange(s)}
           >
             {name(s)}

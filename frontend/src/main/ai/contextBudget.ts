@@ -6,6 +6,7 @@
  * The agent loop decides when to call it and what to tell the model; this module decides what goes.
  */
 import { stubForPartText } from './attachments'
+import { aiLog } from './aiLog'
 import { lastUserIndex, replayDroppable, type ChatMessage } from './providers/types'
 
 /** Fallback budget in characters (~4 chars/token, so ≈100k tokens) for models whose context window
@@ -231,7 +232,7 @@ export function compactMessages(
   // Nothing replaceable was left. Keeping the expensive results now would mean returning 0, which
   // the rescue path reads as "hopeless" — a lost run is worse than a lost skill text.
   const forced = sweep(true)
-  if (forced) console.log(`[prism-ai] context still over budget — gave up ${forced} protected tool result(s)`)
+  if (forced) aiLog(`context still over budget — gave up ${forced} protected tool result(s)`)
   return forced
 }
 

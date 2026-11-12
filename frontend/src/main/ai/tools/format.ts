@@ -40,12 +40,28 @@ export const NO_MODEL = S({
   error: 'No model open and no database given. Open a model or pass "database".'
 })
 
-/** Fold a batch of per-item results into one compact tool result. */
+/**
+ * Fold a batch of per-item results into one compact tool result.
+ *
+ * A batch in which EVERY item failed is a refusal, not a partial success: it carries `error` (so the
+ * executor reports it as refused, and an MCP client gets `isError`) and never says "the rest were
+ * applied" — there was no rest. Answered as `ok` with that hint, one model resent the same four-item
+ * batch four times word for word (V464). It does not claim that nothing changed either: an item can
+ * fail after part of it was written (an exchange added before its formula was refused).
+ */
 export function batchResult(
   results: Array<{ ok: boolean; item: unknown; result?: unknown; error?: string }>
 ): string {
   const failed = results.filter((r) => !r.ok)
+  const none = results.length > 0 && failed.length === results.length
   return S({
+    ...(none
+      ? {
+          error:
+            `All ${results.length} item${results.length === 1 ? '' : 's'} failed — none succeeded. ` +
+            "Read each item's error below and fix those items before sending them again."
+        }
+      : {}),
     total: results.length,
     succeeded: results.length - failed.length,
     failed: failed.length,
@@ -54,9 +70,10 @@ export function batchResult(
     results: results.map((r, i) =>
       r.ok ? { i, ok: true, result: r.result } : { i, ok: false, item: r.item, error: r.error }
     ),
-    hint: failed.length
-      ? 'Some items failed; the rest were applied. Fix and retry only the failed ones.'
-      : undefined
+    hint:
+      failed.length && !none
+        ? 'Some items failed; the rest were applied. Fix and retry only the failed ones.'
+        : undefined
   })
 }
 

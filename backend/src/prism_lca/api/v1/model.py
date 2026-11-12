@@ -19,8 +19,12 @@ from prism_lca.engine import (
     step_owner,
     tag_scope,
 )
+from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.consumers import find_consumers
+from prism_lca.engine.notfound import background_holder, read_elsewhere_note
 from prism_lca.engine.tag_groups import TagGroupStore
 from prism_lca.engine.tags import TagStore
+from prism_lca.errors import PrismError
 
 router = APIRouter(prefix="/model", tags=["model"], dependencies=[Depends(require_token)])
 
@@ -166,15 +170,33 @@ def graph(database: str) -> dict:
 
 
 @router.get("/activities/{database}/{code}", summary="Read an activity with its exchanges")
-def get_activity(database: str, code: str, detail: str | None = None) -> dict:
+def get_activity(
+    database: str, code: str, detail: str | None = None, background_fallback: bool = False
+) -> dict:
     """``detail=review`` adds the critical-review fields (system boundary, product information, synonyms,
-    validity, per-exchange production volume and uncertainty) — see ``model.activity_detail``."""
-    return model.activity_detail(model.get_activity(database, code), review=detail == "review")
+    validity, per-exchange production volume and uncertainty) — see ``model.activity_detail``.
+
+    ``background_fallback=true``: a code that is not in ``database`` but in exactly one background
+    database is read from there, and ``found_in`` + ``found_in_note`` say so (see ``engine/notfound.py``)."""
+    found_in = None
+    try:
+        act = model.get_activity(database, code)
+    except PrismError as exc:
+        if background_fallback and exc.code == "activity_not_found":
+            found_in = background_holder(get_bd(), code, database)
+        if found_in is None:
+            raise
+        act = model.get_activity(found_in, code)
+    out = model.activity_detail(act, review=detail == "review")
+    if found_in:
+        out = {"found_in": found_in, "found_in_note": read_elsewhere_note(database, found_in), **out}
+    return out
 
 
 @router.get("/consumers/{database}", summary="Which processes of a model consume a given dataset")
-def consumers(database: str, input_database: str, input_code: str) -> dict:
-    return model.consumers(database, input_database, input_code)
+def consumers(database: str, input_database: str, input_code: str, whole_database: bool = False) -> dict:
+    """In a background database only with ``whole_database=true`` — see ``engine/consumers.py``."""
+    return find_consumers(database, input_database, input_code, whole_database=whole_database)
 
 
 @router.get("/activities/{database}/{code}/metadata", summary="Comments + metadata of an activity")

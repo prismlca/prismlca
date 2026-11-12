@@ -277,6 +277,8 @@ def phase_flows(database: str, code: str, method, dimension: str, value: str, am
         prod_ix = lca.dicts.product
         fg = Foreground(root, lambda nid: unit_all[prod_ix[nid]], _lca._production_amount)
         att = attribute(fg, dimension, amount * _lca._demand_sign(root), 1)
+        if value != UNTAGGED and value not in att.groups:
+            raise _value_not_reached(fg, dimension, value, att.groups)
         phase_total = float(att.groups.get(value, np.zeros(1))[0])
         bio_ix = lca.dicts.biosphere
         rows = np.zeros(len(bio_ix))
@@ -303,3 +305,29 @@ def phase_flows(database: str, code: str, method, dimension: str, value: str, am
         "count": len(flows),
         "flows": flows if top_n <= 0 else flows[:top_n],
     }
+
+
+def _value_not_reached(fg: Foreground, dimension: str, value: str, groups: dict) -> PrismError:
+    """No process or input below the root carries ``dimension = value``. Its flows would be an empty list and a
+    total of 0 — read as "this phase emits nothing", when the tag was misspelt or the dimension is not used here.
+    Every state reachable from the root is booked to its group, so a value missing from ``groups`` is reached by
+    nothing; ``(untagged)`` is exempt, because a model with everything tagged rightly has none of it."""
+    present = sorted(v for v in groups if v != UNTAGGED)
+    if present:
+        return PrismError(
+            f"No process or input in this supply chain carries {dimension} = '{value}', so it has no flows.",
+            code="phase_value_not_found",
+            hint=f"Check the tag value; the values of {dimension} here are: {', '.join(present)}.",
+        )
+    databases = {node.act.key[0] for node in fg.nodes.values()}
+    dimensions = sorted(
+        {t["dimension"] for key, tags in fg.tag_map.items() if key.rpartition("/")[0] in databases for t in tags}
+    )
+    return PrismError(
+        f"No process or input in this supply chain carries a tag of the dimension '{dimension}', so no phase "
+        "of it has flows.",
+        code="phase_value_not_found",
+        hint=(f"Check the dimension name; the dimensions tagged here are: {', '.join(dimensions)}."
+              if dimensions else "Nothing in this supply chain is tagged: leave phase out to get the flows of the "
+              "whole result."),
+    )

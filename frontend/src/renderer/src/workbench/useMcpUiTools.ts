@@ -1,20 +1,20 @@
 /**
- * The Workbench's answer to UI-tool requests that are not a chat's: everything an external-agent
- * session (MCP) asks of the window, plus the three requests that belong to the app rather than to a
- * chat panel whoever asks — open a model, open a page, report the window state.
+ * The Workbench's answer to the UI-tool requests that belong to the app rather than to a chat panel,
+ * whoever asks — open a model, open a page, report the window state — and to whatever else an
+ * external-agent session (MCP) asks of the window that nobody else answers.
  *
- * The chat panel (CanvasChat) answers its own canvas requests and question cards; it ignores
- * requests carrying a `sessionId` and the app-level names below, so every request has exactly one
- * owner. The two human-facing requests of a session — `ask_user`, `approve_tool` — are not answered
- * here at all: main records them as open questions, the External-agents drawer shows the cards, and
- * the card resolves them (`uiResult`). Nothing else must answer them, or the card would go stale.
+ * The canvas requests of chats and sessions alike are useCanvasUiTools'; the chat panel (CanvasChat)
+ * answers its question cards and its title and ignores requests carrying a `sessionId`, so every request
+ * has exactly one owner. The two human-facing requests of a session — `ask_user`, `approve_tool` — are
+ * not answered here at all: main records them as open questions, the External-agents drawer shows the
+ * cards, and the card resolves them (`uiResult`). Nothing else must answer them, or the card would go stale.
  */
 import { useEffect, useRef } from 'react'
-import type { ChatUiHandlers } from '../CanvasChat'
 import { onUiTool, uiResult, type UiToolRequest } from '../lib/ai'
 import { splitId } from '../lib/canvas'
 import type { ViewKey } from './AppSidebar'
 import type { ResultsTab } from '../views/results/ResultsTabs'
+import { CANVAS_UI_TOOLS } from './useCanvasUiTools'
 
 /** Requests the Workbench answers for ANY origin (the chat panel never sees them). */
 export const WORKBENCH_UI_TOOLS: ReadonlySet<string> = new Set(['open_model', 'open_page', 'get_state'])
@@ -27,17 +27,6 @@ const PAGES: ReadonlySet<string> = new Set<ViewKey>([
   'lcia',
   'results',
   'report'
-])
-
-const CANVAS_TOOLS: ReadonlySet<string> = new Set([
-  'jump_to_process',
-  'auto_layout',
-  'screenshot_canvas',
-  'calculate_in_canvas',
-  'setup_results',
-  'get_canvas',
-  'clear_canvas',
-  'remove_from_canvas'
 ])
 
 /** Resolved by the drawer's cards, never here. */
@@ -56,7 +45,6 @@ export interface McpUiToolsDeps {
   /** The canvas selection as node ids (`db/code`). */
   selected: string[]
   resultsTab: ResultsTab
-  chatUi: ChatUiHandlers
 }
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e))
@@ -68,7 +56,7 @@ export function useMcpUiTools(deps: McpUiToolsDeps): void {
   useEffect(() => {
     const off = onUiTool(async (msg: UiToolRequest) => {
       const mine = !!msg.sessionId || WORKBENCH_UI_TOOLS.has(msg.name)
-      if (!mine || HUMAN_TOOLS.has(msg.name)) return
+      if (!mine || HUMAN_TOOLS.has(msg.name) || CANVAS_UI_TOOLS.has(msg.name)) return
       const d = ref.current
       try {
         let result: unknown = { ok: true }
@@ -114,60 +102,8 @@ export function useMcpUiTools(deps: McpUiToolsDeps): void {
             }
             break
           }
-          default: {
-            if (!CANVAS_TOOLS.has(msg.name)) {
-              result = { error: `Unknown UI tool: ${msg.name}` }
-              break
-            }
-            // The canvas handlers act on the model on screen and need the Model page mounted.
-            if (msg.database && d.activeDb && msg.database !== d.activeDb) {
-              result = {
-                error: `The window shows "${d.activeDb}", not "${msg.database}". Call canvas_view action="open_model" first.`
-              }
-              break
-            }
-            // `setup_results` configures the Results page (and may open it): it needs no canvas on
-            // screen — refusing it from the Results page was the one place the guard bit the tool
-            // it was meant to serve (V392).
-            if (d.view !== 'model' && msg.name !== 'setup_results') {
-              result = {
-                error: 'The Model page is not open. Call canvas_view action="open_page" page="model" first.'
-              }
-              break
-            }
-            const u = d.chatUi
-            switch (msg.name) {
-              case 'jump_to_process':
-                u.jumpToProcess(String(msg.args.code))
-                break
-              case 'auto_layout':
-                u.autoLayout()
-                break
-              case 'screenshot_canvas': {
-                const rect = u.screenshotRect()
-                result = rect ? { rect } : { error: 'Canvas not visible.' }
-                break
-              }
-              case 'calculate_in_canvas':
-                result = await u.calculateInCanvas(
-                  (msg.args.method as string[]) ?? [],
-                  msg.args.code ? String(msg.args.code) : undefined
-                )
-                break
-              case 'setup_results':
-                result = await u.setupResults(msg.args)
-                break
-              case 'get_canvas':
-                result = u.getCanvas()
-                break
-              case 'clear_canvas':
-                result = u.clearCanvas()
-                break
-              case 'remove_from_canvas':
-                result = await u.removeFromCanvas(String(msg.args.code))
-                break
-            }
-          }
+          default:
+            result = { error: `Unknown UI tool: ${msg.name}` }
         }
         uiResult(msg.reqId, true, result)
       } catch (e) {

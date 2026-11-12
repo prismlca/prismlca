@@ -203,3 +203,7 @@
 .tagman-others { font-size: var(--fs-label); color: var(--faint); text-transform: uppercase; letter-spacing: .04em;
   margin: 4px 0 -4px; }
 .tagman-name .tag-used-chip { margin-left: 8px; vertical-align: 1px; }
+
+/* The documented API default under the Default tick ("Default" / "(medium)"): a line of its own, because
+   up to seven ticks share the row and "Default (medium)" would be cut short. */
+.effort-tick-sub { display: block; }

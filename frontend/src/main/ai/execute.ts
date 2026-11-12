@@ -1,8 +1,9 @@
 /**
  * The tool executor: one place that builds a `ToolCtx` and runs a tool call with every rule the chat
  * loop used to enforce inline — unknown tool, switched-off tool, stop pressed, foreign serialisation
- * in the arguments, the byte-identical-repeat guard, the result shapes a tool may return, and the
- * "did this change the model" verdict that triggers a canvas reload.
+ * in the arguments, the byte-identical-repeat guard, the schema check and the empty-argument rule,
+ * the result shapes a tool may return, and the "did this change the model" verdict that triggers a
+ * canvas reload.
  *
  * Extracted from agent.ts so a second caller — the MCP server for external agents — runs
  * a tool under exactly the same rules as the chat. Copying the `ToolCtx` construction would not have
@@ -23,11 +24,20 @@ import {
   type RepeatGuard
 } from './toolGuards'
 import { validateToolArgs } from './argSchema'
+import { withoutEmptyArgs } from './emptyArgs'
 import { changesStructure, effectOf, type ToolEffect } from './tools/effects'
 import { apiError } from '../../shared/backendError'
 import { clampResearchQuestions } from '../../shared/aiDefaults'
-import { ignoredDatabase, kindMap, kindsPerCall, scopeRefusal, type ModelScope } from './modelScope'
+import {
+  ignoredDatabase,
+  kindMap,
+  kindsPerCall,
+  ownModelForEmptyDatabase,
+  scopeRefusal,
+  type ModelScope
+} from './modelScope'
 import { argumentsProblem, argumentsRefusal } from './toolArguments'
+import { aiLog } from './aiLog'
 
 /** Raw backend request, as main's `apiRequest` provides it (status + body, never throws on HTTP errors). */
 export type ApiRaw = (
@@ -286,6 +296,14 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
     const tool = Object.hasOwn(TOOL_BY_NAME, name) ? TOOL_BY_NAME[name] : undefined
     const startedAt = Date.now()
     const argText = typeof rawArgs === 'string' ? rawArgs : rawArgs ? JSON.stringify(rawArgs) : ''
+    // Set when the repeat guard itself refused: its message is not an answer worth quoting later.
+    let guardRefused = false
+    const guard = (): void => {
+      const blocked = repeats.block(name, argText)
+      if (!blocked) return
+      guardRefused = true
+      throw new Error(blocked)
+    }
     try {
       // Arguments that are not a JSON object — usually cut off by the host mid-value — run nothing and
       // come back as an ordinary refusal saying what arrived, so the model resends instead of the run
@@ -293,9 +311,9 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       // other repeat. No arguments at all is a parameterless call.
       const problem = typeof rawArgs === 'string' && rawArgs.trim() ? argumentsProblem(rawArgs) : null
       if (problem) {
-        const blocked = repeats.block(name, argText)
-        if (blocked) throw new Error(blocked)
+        guard()
         const refusal = argumentsRefusal(name, argText, problem)
+        repeats.answered(name, argText, refusal)
         return {
           ok: true,
           result: JSON.stringify({ error: refusal }),
@@ -304,7 +322,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
           ms: Date.now() - startedAt
         }
       }
-      const args: Record<string, unknown> =
+      const parsed: Record<string, unknown> =
         typeof rawArgs === 'string' ? (rawArgs.trim() ? JSON.parse(rawArgs) : {}) : (rawArgs ?? {})
       if (!tool) throw new Error(`Unknown tool: ${name}`)
       if (disabled.has(name))
@@ -318,26 +336,29 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       // A closing tag that only echoes the field's own name at the end of its value is repaired, not
       // refused (V436): the route re-encoded the model's XML tool call and left `</cutoff_criteria>`
       // behind — unambiguous, and a refusal cost a round for nothing.
-      const repaired = stripOwnClosingTags(args)
-      if (repaired.length)
-        console.log(`[prism-ai] ${name}: stripped the field's own closing tag from ${repaired.join(', ')}`)
-      const xml = xmlInArgs(args)
+      const repaired = stripOwnClosingTags(parsed)
+      if (repaired.length) aiLog(`${name}: stripped the field's own closing tag from ${repaired.join(', ')}`)
+      const xml = xmlInArgs(parsed)
       if (xml) throw new Error(xml)
       // The repeat guard files at dispatch, which is synchronous even inside a parallel group — two
       // byte-identical calls in one round still count as two.
       // Polling a job IS the same call again, by design: the guard that catches a model looping on
       // a refused edit must not stop the one legitimate repeat.
-      const blocked = isPoll(name, args) ? null : repeats.block(name, argText)
-      if (blocked) throw new Error(blocked)
+      if (!isPoll(name, parsed)) guard()
       // The declared schema, checked here for every tool (argSchema.ts) — after the repeat guard,
       // so a model re-sending the same invalid call still runs into the block instead of the same
       // diagnosis a fourth time, and after the tag check, whose cause outranks any schema symptom.
-      const invalid = validateToolArgs(name, tool.spec.function.parameters, args)
+      const schema = tool.spec.function.parameters
+      const invalid = validateToolArgs(name, schema, parsed)
       if (invalid) throw new Error(invalid)
+      // Empty optional fields read as "not given" (emptyArgs.ts). From here on every check and the tool
+      // itself see these arguments — the fence, the approval card and the handler must agree on them.
+      let args = withoutEmptyArgs(name, schema, parsed)
       // The chat's model fence — before an approval card, so the user is never asked about a call
       // that may not run anyway.
       if (ctx.scope) {
-        const ignored = ignoredDatabase(name, args, tool.spec.function.parameters, ctx.activeDb)
+        args = ownModelForEmptyDatabase(args, schema, ctx.activeDb)
+        const ignored = ignoredDatabase(name, args, schema, ctx.activeDb)
         if (ignored) throw new Error(ignored)
         const outside = await scopeRefusal(name, args, ctx.activeDb, ctx.scope, kindsForOneCall())
         if (outside) throw new Error(outside)
@@ -351,7 +372,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       let transcript: string | undefined
       let notice: string | undefined
       if (typeof out === 'object' && 'image' in out) {
-        result = 'Screenshot captured; see the image in the next message.'
+        result = out.result ?? 'Screenshot captured; see the image in the next message.'
         image = out.image
       } else if (typeof out === 'object' && 'transcript' in out) {
         result = out.result
@@ -378,13 +399,19 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       // not raise it left the Report page reading a study record from before the assistant filled
       // it in — "Not recorded for this study: functional unit, …" over a complete record (V424).
       // `graph` keeps the old meaning for the canvas: only those tools redraw it.
-      const mutated = !soft && effectOf(name, args) !== 'read'
-      if (mutated) repeats.clear() // the model state moved on: re-reading the same thing is legitimate again
+      //
+      // A writing batch whose every item failed is refused, yet an item can fail after part of it was
+      // written, so the caches are refreshed as after a write; only a real success lifts the repeat block.
+      const itemsFailed = failedItems(result)
+      const writes = effectOf(name, args) !== 'read'
+      const mutated = writes && (!soft || itemsFailed !== undefined)
+      if (writes && !soft) repeats.clear() // the model state moved on: re-reading the same thing is legitimate again
+      repeats.answered(name, argText, soft)
       return {
         ok: true,
         result,
         soft,
-        itemsFailed: failedItems(result),
+        itemsFailed,
         image,
         transcript,
         notice,
@@ -395,6 +422,8 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       }
     } catch (e) {
       const error = withUnknownFields(e instanceof Error ? e.message : String(e), argText || undefined, tool)
+      // What the call was told, for the repeat guard to quote if the model sends it unchanged again.
+      if (!guardRefused) repeats.answered(name, argText, error)
       return { ok: false, error, ms: Date.now() - startedAt }
     }
   }

@@ -11,6 +11,11 @@ The lookup is shared by every caller (process details, edits, deletion, exchange
 hint states facts and names only the one use that is safe in all of them. It never invites an edit
 elsewhere: a background database is read-only and the hint says so, and a code from another of the user's
 models or the library is named as such, without a suggestion to act on that database.
+
+A READ may go one step further (V470): when the code is not in the database named but in exactly one
+background database, the reader can be given that dataset instead of a refusal — reading changes nothing,
+and the answer says where it came from. Two backgrounds holding the code is a choice for the caller, so
+the hint names both and nothing is read.
 """
 
 from __future__ import annotations
@@ -31,15 +36,39 @@ def not_found_hint(bd, code: str, database: str) -> str:
     batch = batch_hint(code)
     if batch:
         return batch
-    holder = _holder(bd, code, database)
-    if holder is None:
+    holders = _holders(bd, code, database)
+    if not holders:
         return _CHECK
+    if len(holders) > 1:
+        named = " and ".join(f"'{h}'" for h in holders)
+        return f"That code exists in {named}, not in '{database}'. Give the database you mean."
+    holder = holders[0]
     if is_read_only(holder):
         return (
             f"That code is a dataset of '{holder}', a read-only background database. To use it as an "
             f"input, give '{holder}' as the input's database; the dataset itself cannot be changed."
         )
     return f"That code is a process in '{holder}', not in '{database}'."
+
+
+def background_holder(bd, code: str, database: str) -> str | None:
+    """The one background database holding `code` when `database` does not, for a read to fall back on.
+
+    None when no background holds it, or when several do: picking one of two would be a guess, and the
+    refusal's hint then names both."""
+    from prism_lca.engine.backgrounds.common import is_background
+
+    holders = _holders(bd, code, database)
+    backgrounds = [h for h in holders if is_background(h)]
+    return backgrounds[0] if len(backgrounds) == 1 else None
+
+
+def read_elsewhere_note(database: str, holder: str) -> str:
+    """What a read that fell back on a background database says about it."""
+    return (
+        f"Not in '{database}' — this is the dataset with that code in '{holder}', the one background "
+        f"database that has it. Give '{holder}' as the database when you read or link it."
+    )
 
 
 def batch_hint(code: str) -> str | None:
@@ -64,17 +93,18 @@ def batch_hint(code: str) -> str | None:
     )
 
 
-def _holder(bd, code: str, database: str) -> str | None:
-    """The database that does hold `code`, when it is not the one named. Looked up on this error path
-    only: one indexed query per database of the project."""
+def _holders(bd, code: str, database: str) -> list[str]:
+    """The databases that do hold `code`, other than the one named. Looked up on this error path only:
+    one indexed query per database of the project."""
     if not code or len(code) > 200:
-        return None
+        return []
+    found = []
     for name in bd.databases:
         if name == database:
             continue
         try:
             if bd.get_node(database=name, code=code) is not None:
-                return name
+                found.append(name)
         except Exception:  # not in this one — the expected answer for all but one
             continue
-    return None
+    return found

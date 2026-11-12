@@ -25,9 +25,10 @@ import re
 from dataclasses import dataclass
 
 from prism_lca import _log
+from prism_lca.engine import prose_numbers as pn
 from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
-from prism_lca.engine.health_params import unruled_message, unruled_shares
+from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_structure import two_ways_in, unreached
 from prism_lca.engine.model import _db_or_404
@@ -488,8 +489,13 @@ def frozen_parameter_figures(
         target = units_of.base(values[name], symbol) if symbol else (units_of.PERCENT_FAMILY, values[name])
         if target is None:
             continue
+        # Unless the parameter is itself a rate (kg/L), a figure written as one is another quantity:
+        # "1040 g per litre" beside a mass is the density, not the mass (V474).
+        rate = pn.places_unit((units.get(name) or "").partition("/")[2])
         window = text[max(0, ref.start() - _FIGURE_WINDOW) : ref.start()]
         for figure in reversed(list(_FIGURE.finditer(window))):
+            if not rate and pn.per_unit_after(window, figure.end()):
+                continue
             written = units_of.base(float(figure.group(1).replace(",", ".")), figure.group(2))
             if written is None or written[0] != target[0]:
                 continue  # a quantity of another kind — "per 1 L of juice" beside a mass
@@ -1666,6 +1672,11 @@ def _rule_unruled_shares(ctx: LintContext) -> list[dict]:
         if found else []
 
 
+def _rule_dead_references(ctx: LintContext) -> list[dict]:
+    # Formulas and scenario overrides naming a parameter the model does not have (engine/health_params.py).
+    return [_finding(s, c, m, _resolve(ctx.bd, k), u) for s, c, m, k, u in dead_references(ctx.database)]
+
+
 def _rule_mass_shortfall(ctx: LintContext) -> list[dict]:
     # The mass shortfall, judged now that every demand is known (V290). The info stays an info
     # until the model also CONSUMES the under-filled process by exactly its inputs' mass — the
@@ -1784,7 +1795,7 @@ def _rule_phases(ctx: LintContext) -> list[dict]:
     out: list[dict] = []
     for severity, code, message, key in _phase_findings(ctx.database, ctx.adjacency):
         node = _resolve(ctx.bd, key)
-        if node is not None:
+        if node is not None or key is None:  # no key: a finding about the model as a whole
             out.append(_finding(severity, code, message, node))
     return out
 
@@ -1914,6 +1925,7 @@ MODEL_RULES = [
     _rule_bom_unbooked,
     _rule_unused_parameters,
     _rule_unruled_shares,
+    _rule_dead_references,
     _rule_eol_shares,
     _rule_mass_shortfall,
     _rule_eol_recyclate,
@@ -1961,6 +1973,7 @@ def lint_database(database: str) -> dict:
             "formulas that evaluate to zero",
             "scenarios whose overrides reach no exchange",
             "parameters that can reach no exchange (following chains of parameters)",
+            "formulas and scenario overrides naming a parameter the model does not have",
             "typed constants that equal a parameter's value (a quantity a scenario cannot move)",
             "life-cycle phase coverage",
             "data provenance (how many figures cite a source)",

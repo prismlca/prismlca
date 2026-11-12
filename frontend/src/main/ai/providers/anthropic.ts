@@ -171,8 +171,9 @@ function streamError(type: string, message: string): AiProviderError {
 // --- request --------------------------------------------------------------------------------------
 
 /** Our effort vocabulary → Anthropic's (`output_config.effort`). Below `low` there is nothing: the
- *  thinking of the current models cannot be switched off, and the research legs' 'low' maps as is. */
-export function effortFor(e?: ReasoningEffort): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
+ *  thinking of the current models cannot be switched off, and the research legs' 'low' maps as is.
+ *  `max` is Anthropic's own top level and passes through. */
+export function effortFor(e?: ReasoningEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined {
   if (!e) return undefined
   if (e === 'none' || e === 'minimal') return 'low'
   return e

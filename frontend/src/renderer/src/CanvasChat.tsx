@@ -1,4 +1,5 @@
 import { WORKBENCH_UI_TOOLS } from './workbench/useMcpUiTools'
+import { CANVAS_UI_TOOLS } from './workbench/useCanvasUiTools'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import ComparisonPicker from './components/ComparisonPicker'
@@ -55,53 +56,6 @@ import { ToolTraceList } from './chat/ToolTraceList'
 import { ChatUsage, RunStatus } from './chat/RunStatus'
 import { Markdown, MessageRow } from './chat/MessageRow'
 
-/** Handlers the canvas provides so the assistant can drive the UI (executed in the renderer). */
-export interface ChatUiHandlers {
-  jumpToProcess: (code: string) => void
-  autoLayout: () => void
-  screenshotRect: () => { x: number; y: number; width: number; height: number } | null
-  calculateInCanvas: (method: string[], code?: string) => Promise<unknown>
-  setupResults: (args: Record<string, unknown>) => Promise<unknown> | unknown
-  /** What is actually on the canvas (foreground + read-only reference boxes). */
-  getCanvas: () => unknown
-  /** Remove all read-only background reference boxes from the canvas view. */
-  clearCanvas: () => unknown
-  /** Remove one background reference box (by code) from the canvas view. */
-  removeFromCanvas: (code: string) => Promise<unknown> | unknown
-  /**
-   * Reload after an AI edit: audit + databases + tags always, the canvas only when `canvas` is not
-   * false — a run editing another model must not rebuild the graph on screen. `fit` fits the canvas
-   * to the view once the graph is rebuilt (the end of a turn that added or removed boxes).
-   */
-  refresh: (opts?: { canvas?: boolean; fit?: boolean }) => void
-}
-
-/**
- * The UI tools that read or change the canvas on screen. Every other UI tool (ask_user,
- * set_chat_title) is about the chat, not the canvas, and is served whichever model is shown.
- */
-const CANVAS_TOOLS = new Set([
-  'jump_to_process',
-  'auto_layout',
-  'screenshot_canvas',
-  'calculate_in_canvas',
-  'setup_results',
-  'get_canvas',
-  'clear_canvas',
-  'remove_from_canvas'
-])
-
-/**
- * What a run is told when it asks for the canvas of a model the user is not looking at. Says what
- * still works, so the model finishes the modelling instead of stopping to wait for a screen — and
- * says the canvas is a view, so it does not conclude the model's data is out of reach.
- */
-const canvasElsewhere = (database: string): string =>
-  `The canvas of "${database}" is not on screen: the user is currently viewing a different model. ` +
-  'Canvas actions (viewing, arranging, calculating in the canvas) are unavailable until they return to ' +
-  `"${database}". The model's data is unaffected — the modelling tools keep working, so continue with ` +
-  'those and mention the canvas step in your answer.'
-
 // Read the AI settings fresh (`getAS()`: the Settings panel writes them to userData/settings.json via
 // lib/appSettings.ts, not localStorage) so a model change applies to the
 // next message without remounting the chat.
@@ -116,7 +70,7 @@ export default function CanvasChat({
   backgroundDbs,
   secondaryBackgroundDbs,
   libraryDbs,
-  ui,
+  onJump,
   aboveBar,
   onDatasetDrop,
   onOpenSettings,
@@ -132,7 +86,8 @@ export default function CanvasChat({
   secondaryBackgroundDbs?: string[]
   /** The user's own library databases (My processes) the assistant may search when released. */
   libraryDbs?: string[]
-  ui: ChatUiHandlers
+  /** Centre a process on the canvas — a process named in the transcript, clicked. */
+  onJump: (code: string) => void
   /**
    * Whatever should occupy the corner while the chat is collapsed — today the canvas minimap.
    *
@@ -269,7 +224,7 @@ export default function CanvasChat({
    */
   const clearQueued = useCallback(() => setQueued([]), [])
   const bodyRef = useRef<HTMLDivElement | null>(null)
-  const uiRef = useRef(ui)
+  const onJumpRef = useRef(onJump)
   const activeDbRef = useRef(activeDb)
   const askRef = useRef<PendingAsk | null>(null)
   /** The createChat lock: a second send while the first creates the chat must not make another. */
@@ -280,7 +235,7 @@ export default function CanvasChat({
   const openSeq = useRef(0)
   chatIdRef.current = chatId
 
-  uiRef.current = ui
+  onJumpRef.current = onJump
   activeDbRef.current = activeDb
   askRef.current = ask
 
@@ -301,12 +256,12 @@ export default function CanvasChat({
     uiResult(a.reqId, true, { approved })
   }, [])
 
-  // Through the existing `uiRef` (kept current above), so the handler identity never changes. `ui` is
-  // a useMemo in useAiCanvasTools that is rebuilt on every canvas selection change — listing it as a
-  // dependency gave every message in the transcript a new `onJump` the moment you clicked a process,
-  // which would switch the memo on MessageRow off exactly when someone is working.
+  // Through `onJumpRef` (kept current above), so the handler identity never changes. The Workbench's
+  // handler comes from a useMemo in useAiCanvasTools that is rebuilt on every canvas selection change —
+  // listing it as a dependency gave every message in the transcript a new `onJump` the moment you clicked
+  // a process, which would switch the memo on MessageRow off exactly when someone is working.
   const jump = useCallback((code: string) => {
-    uiRef.current.jumpToProcess(code)
+    onJumpRef.current(code)
   }, [])
 
   // Load this model's chats when the active model changes. Runs elsewhere keep going — the main
@@ -465,53 +420,17 @@ export default function CanvasChat({
     return off
   }, [markRunning])
 
-  // Execute UI-tool requests from the agent and reply (via uiRef so we don't re-subscribe on every render).
+  // Answer the chat's own UI-tool requests: its question cards and its title. Subscribed once; the
+  // state it needs is read through refs.
   useEffect(() => {
     const off = onUiTool(async (msg) => {
       // Not this panel's: an external session's request (answered by the Workbench and the
-      // External-agents drawer), or one of the app-level requests the Workbench owns for everyone.
-      if (msg.sessionId || WORKBENCH_UI_TOOLS.has(msg.name)) return
-      const u = uiRef.current
+      // External-agents drawer), an app-level request, or a canvas request — the Workbench answers
+      // those on every page, which this panel is not on.
+      if (msg.sessionId || WORKBENCH_UI_TOOLS.has(msg.name) || CANVAS_UI_TOOLS.has(msg.name)) return
       try {
         let result: unknown = { ok: true }
-        // The canvas on screen belongs to the active model. A run working on another model (started
-        // there, the user has since switched — or two assistants working in parallel) would read or
-        // rearrange the wrong canvas. Refused with the reason, as a result the model can act on.
-        const shown = activeDbRef.current
-        if (CANVAS_TOOLS.has(msg.name) && msg.database && shown && msg.database !== shown) {
-          uiResult(msg.reqId, true, { error: canvasElsewhere(msg.database) })
-          return
-        }
         switch (msg.name) {
-          case 'jump_to_process':
-            u.jumpToProcess(String(msg.args.code))
-            break
-          case 'auto_layout':
-            u.autoLayout()
-            break
-          case 'screenshot_canvas': {
-            const rect = u.screenshotRect()
-            result = rect ? { rect } : { error: 'Canvas not visible.' }
-            break
-          }
-          case 'calculate_in_canvas':
-            result = await u.calculateInCanvas(
-              (msg.args.method as string[]) ?? [],
-              msg.args.code ? String(msg.args.code) : undefined
-            )
-            break
-          case 'setup_results':
-            result = await u.setupResults(msg.args)
-            break
-          case 'get_canvas':
-            result = u.getCanvas()
-            break
-          case 'clear_canvas':
-            result = u.clearCanvas()
-            break
-          case 'remove_from_canvas':
-            result = await u.removeFromCanvas(String(msg.args.code))
-            break
           case 'ask_user':
           case 'approve_tool': {
             const questions = msg.name === 'ask_user' ? askQuestions(msg.args) : []

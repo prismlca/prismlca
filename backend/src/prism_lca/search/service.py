@@ -23,6 +23,8 @@ from prism_lca.search.identifiers import Identifiers
 from prism_lca.search.index import VectorIndex
 from prism_lca.search.index_location import index_base
 from prism_lca.search.indexer import activity_meta, embed_unique
+from prism_lca.search.left_out import region_label
+from prism_lca.search.left_out import report as left_out
 from prism_lca.search.lexical import Bm25Index, union_stats
 from prism_lca.search.market_vectors import MarketVectors
 from prism_lca.search.ranking import (
@@ -462,6 +464,7 @@ class SearchService:
         self, query: str, db_name: str, hits: list[dict], weak: bool, facets: dict,
         outside_filter: str | None = None, per_database: list[dict] | None = None,
         aliases: dict[str, str] | None = None, recyclates: dict[str, str] | None = None, honest: str | None = None,
+        outside_label: str | None = None,
     ) -> dict:
         """Turn a ranked list into the answer, honesty signals and all.
 
@@ -553,12 +556,14 @@ class SearchService:
         # directions: absent from the NAMES is not absent from the DATABASE (ecoinvent calls PVC
         # "polyvinyl chloride"), and a plausible-looking top hit is not evidence that the material
         # is there at all. Name the fact, then the two things worth doing about it.
+        # With a region and rows under `outside_region` there is a third explanation, and it comes before absence.
+        elsewhere = f"it lies outside {outside_label} — see outside_region — or " if outside_label else ""
         if unanchored:
             out["proxy_warning"] = (
                 "No result's name or reference product contains: "
                 + ", ".join(f"'{t}'" for t in unanchored)
                 + ". Either this database names the material differently (a synonym or the full "
-                "chemical name — check the hits before concluding anything), or it has no dataset "
+                f"chemical name — check the hits before concluding anything), or {elsewhere}it has no dataset "
                 "for it and you need a documented proxy. Do not treat the closest hit as the "
                 "material itself: say which it is in the exchange comment."
             )
@@ -980,11 +985,13 @@ class SearchService:
         limit_cap: int | None = None,
         reserve: int = 3,
         literal: bool = False,
+        beyond_limit: bool = False,
     ) -> dict:
         """One query, several databases, ONE ranked list.
 
         ``activity_types``, several ``geographies`` and ``units`` are hard filters (`facets.Filters`);
-        one geography is a ranking preference instead.
+        one geography is a ranking preference instead. ``beyond_limit`` adds what the cut left out
+        (`more`, `outside_region`; search/left_out.py) — for the assistant, whose list is short.
 
         An abbreviation in the query ("PET", "rPET", "HDPE-Granulat") is also searched spelled out the
         way the background databases name the material, and the two variants are fused (see
@@ -1161,7 +1168,16 @@ class SearchService:
         for name in skipped:
             per_database.append({"database": name, "hits": 0, "not_indexed": True})
 
-        notes = filter_notes(query, entries, filters, hits)
+        left: dict = {}
+        if beyond_limit:
+            def wider(f) -> list[dict]:  # the same search with only the geography lifted, embedding reused
+                rows = self._fused_candidates(query, qvec, variant, entries, f, pool)
+                return adjust_transport_modes(intent, rows) if intent else rows
+
+            left = left_out(candidates, ranked, filters=filters, geographies=geographies, activity=self._activity,
+                            variants=lambda db: self._variants_map(indices[db], db) if db in indices else {},
+                            wider=wider)
+        notes = filter_notes(query, entries, filters, hits, target_geo, listed=left.get("outside_region", ()))
 
         # Over the hits the caller can actually see — see ranking._weak. Read off the per-hit
         # flags, which were decided on the UNROUNDED score: taking `hits[*].score` instead would
@@ -1170,8 +1186,10 @@ class SearchService:
         out = self._respond(query, ", ".join(name for name, _ in entries), hits, weak, facets,
                             outside_filter=notes.pop("outside_geography_filter", None),
                             per_database=per_database, aliases=anchors, recyclates=recyclates,
-                            honest=found.rest if found else None)
+                            honest=found.rest if found else None,
+                            outside_label=region_label(geographies) if left.get("outside_region") else None)
         out.update(notes)  # the unit filter's notes (facets.filter_notes)
+        out.update(left)
         if found:  # the number is what tells two such searches apart; the signature keeps no digits
             out["content_terms"] = sorted({*out["content_terms"], *found.numbers})
         if expansion:

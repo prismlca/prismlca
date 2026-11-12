@@ -51,6 +51,7 @@ LAZY_IMPORTS: tuple[str, ...] = (
     "bw2io.importers.ecospold2_biosphere",
     "bw2io.strategies",
     "bw2parameters",
+    "bw2parameters.errors",
     "bw_processing.filesystem",
     "bw_processing.utils",
     "fastembed",

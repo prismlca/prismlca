@@ -59,11 +59,13 @@ If any of this is missing or vague, ask (section 2) instead of guessing, and per
 ## 2. Ask what is the user's to decide
 
 For **discrete decisions**, use `ask_user` (clickable options, a machine-readable answer) instead of a
-plain-text question: system boundaries, candidate functional units, the market the product is made and sold
-in, a geography fallback (country → RER → GLO), several plausible background datasets, a destructive action. Free text only for genuinely open questions
-("describe the recipe"). Ask in one question what belongs together, and never ask what the goal & scope
-already answers. **When the user has said not to ask**, every "ask" in this skill becomes: decide, write the
-decision into the comment it concerns, and record it as an assumption (section 9).
+plain-text question: system boundaries (above all whether the use phase is in — it can carry most of the
+result, and leaving it out takes nothing else out), candidate functional units, the market the product is made
+and sold in, a geography fallback (country → RER → GLO), several plausible background datasets, a destructive
+action. Free text only for genuinely open questions ("describe the recipe"). Ask in one question what belongs
+together, and never ask what the goal & scope already answers. **When the user has said not to ask**, every
+"ask" in this skill becomes: decide, write the decision into the comment it concerns, and record it as an
+assumption (section 9).
 
 **The question that keeps being skipped: what the functional unit may carry.** Some choices are not data
 you can look up — picking one silently makes the number yours instead of the user's. Ask before
@@ -140,14 +142,19 @@ point at, one process per real step; and tags carry the phases:
    on site, maintenance, refurbishment — gets an extra value in the same group. A breakdown that is not a
    phase at all (by component, by supplier) gets a group of its own, never a value in this one.
 
-   A process without a tag counts under the phase of the process that consumes it, with everything below
-   it. So ask of every process: **does it belong to one phase?** Then tag it with that phase — a part made
-   beneath Manufacturing takes "Production" as well, even though it would inherit it. Leave a process
-   untagged only when it should count with whoever consumes it: a helper that steps of different phases
-   share (a formulation dosed in Production and refilled in Use). `check_model_health` names every untagged
-   process and the phase it falls into. Packaging is no phase of its own: the box is an input of the step
-   that packs (usually Distribution) and carries "Raw materials" like any material (step 4) — a process of
-   its own for it is not needed, and if you model one, tag it "Raw materials" too.
+   A process without a tag counts under the phase of the process that consumes it, with everything below it.
+   So ask of every process: **does it belong to one phase?** Then tag it with that phase — a part made beneath
+   Manufacturing takes "Production" as well, even though it would inherit it. Leave a process untagged only
+   when it should count with whoever consumes it: a helper that steps of different phases share (a formulation
+   dosed in Production and refilled in Use). `check_model_health` warns when no process carries a phase tag,
+   and names an untagged step beneath a tagged one with the phase it falls into; its silence does not prove
+   that every process is tagged. Packaging is no phase of its own: the box is an input of the step that packs
+   (usually Distribution) and carries "Raw materials" like any material (step 4) — a process of its own for it
+   is not needed, and if you model one, tag it "Raw materials" too. When packaging or single parts will
+   interest this study — a packaged product, parts the goal compares — tag them in a second group, `Component`
+   (e.g. Formulation / Bottle / Closure / Shipping carton, on each part's material, forming and disposal
+   inputs), so that `explain_result` mode="tree" with `aggregate_by: "tag:Component"` shows what each carries;
+   ask the user when that is unclear, and leave the group out when nothing is worth separating.
 
 4. **Tag the inputs that belong to another phase than their process.** Two kinds do:
    - **Materials** a manufacturing step consumes are the raw-material phase, not production: steel,
