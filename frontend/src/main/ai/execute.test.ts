@@ -64,10 +64,47 @@ describe('createToolSession', () => {
     expect(!stopped.ok && stopped.error).toMatch(/Stopped by the user/)
   })
 
-  it('turns a broken argument string into an error the model can read', async () => {
-    const { s } = session()
-    const oc = await s.run('get_current_model', '{not json')
-    expect(oc.ok).toBe(false)
+  it('refuses arguments cut off on the way, runs nothing, and says what arrived', async () => {
+    const { s, calls } = session()
+    const oc = await s.run('search_background', '{"filtered_queries": ')
+    expect(oc.ok).toBe(true)
+    if (!oc.ok) return
+    expect(oc.soft).toMatch(/search_background call were not valid JSON/)
+    expect(oc.soft).toContain('What arrived: `{"filtered_queries": `.')
+    expect(JSON.parse(oc.result).error).toBe(oc.soft)
+    expect(oc.mutated).toBe(false)
+    expect(calls).toEqual([])
+  })
+
+  it('refuses JSON that is not an object, naming what came', async () => {
+    const { s, calls } = session()
+    for (const [raw, kind] of [
+      ['[]', 'an array'],
+      ['null', 'null'],
+      ['"x"', 'a string']
+    ]) {
+      const oc = await s.run('model_info', raw)
+      expect(oc.ok && oc.soft, raw).toMatch(new RegExp(`must be a JSON object .*${kind}`))
+    }
+    expect(calls).toEqual([])
+  })
+
+  it('still reads no arguments at all as a parameterless call', async () => {
+    const { s, calls } = session()
+    for (const raw of ['', '  ']) {
+      const oc = await s.run('list_models', raw)
+      expect(oc.ok && !oc.soft, JSON.stringify(raw)).toBe(true)
+    }
+    expect(calls.length).toBeGreaterThan(0)
+  })
+
+  it('blocks the same broken bytes sent again, like any repeat', async () => {
+    const { s } = session({ repeatEscape: 'stop and answer.' })
+    const outcomes = []
+    for (let i = 0; i < 5; i++) outcomes.push(await s.run('search_background', '{"filtered_queries": '))
+    expect(outcomes.slice(0, 3).every((o) => o.ok && o.soft)).toBe(true)
+    const blocked = outcomes.find((o) => !o.ok)
+    expect(blocked && !blocked.ok && blocked.error).toMatch(/stop and answer/)
   })
 
   it('blocks the byte-identical repeat with the escape sentence', async () => {

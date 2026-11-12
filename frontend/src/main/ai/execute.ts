@@ -27,6 +27,7 @@ import { changesStructure, effectOf, type ToolEffect } from './tools/effects'
 import { apiError } from '../../shared/backendError'
 import { clampResearchQuestions } from '../../shared/aiDefaults'
 import { ignoredDatabase, kindMap, kindsPerCall, scopeRefusal, type ModelScope } from './modelScope'
+import { argumentsProblem, argumentsRefusal } from './toolArguments'
 
 /** Raw backend request, as main's `apiRequest` provides it (status + body, never throws on HTTP errors). */
 export type ApiRaw = (
@@ -286,8 +287,25 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
     const startedAt = Date.now()
     const argText = typeof rawArgs === 'string' ? rawArgs : rawArgs ? JSON.stringify(rawArgs) : ''
     try {
+      // Arguments that are not a JSON object — usually cut off by the host mid-value — run nothing and
+      // come back as an ordinary refusal saying what arrived, so the model resends instead of the run
+      // failing. The repeat guard first: the same broken bytes sent again run into its block like any
+      // other repeat. No arguments at all is a parameterless call.
+      const problem = typeof rawArgs === 'string' && rawArgs.trim() ? argumentsProblem(rawArgs) : null
+      if (problem) {
+        const blocked = repeats.block(name, argText)
+        if (blocked) throw new Error(blocked)
+        const refusal = argumentsRefusal(name, argText, problem)
+        return {
+          ok: true,
+          result: JSON.stringify({ error: refusal }),
+          soft: refusal,
+          mutated: false,
+          ms: Date.now() - startedAt
+        }
+      }
       const args: Record<string, unknown> =
-        typeof rawArgs === 'string' ? (rawArgs ? JSON.parse(rawArgs) : {}) : (rawArgs ?? {})
+        typeof rawArgs === 'string' ? (rawArgs.trim() ? JSON.parse(rawArgs) : {}) : (rawArgs ?? {})
       if (!tool) throw new Error(`Unknown tool: ${name}`)
       if (disabled.has(name))
         throw new Error(`Tool ${name} is switched off for this chat (Settings → AI → Tools).`)

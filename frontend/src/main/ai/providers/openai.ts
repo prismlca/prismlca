@@ -35,6 +35,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { logUnsendableArguments, sendableArguments } from '../toolArguments'
 
 const BASE_URL = 'https://api.openai.com/v1'
 
@@ -179,7 +180,8 @@ export function toResponsesInput(messages: ChatMessage[]): {
           type: 'function_call',
           call_id: tc.id,
           name: tc.function.name,
-          arguments: tc.function.arguments
+          // Not a JSON object (cut off on the way) → `{}`: one such string gets the request refused.
+          arguments: sendableArguments(tc.function.arguments)
         })
       }
       continue
@@ -382,6 +384,7 @@ export const openaiTransport: ChatTransport<OaiState> = {
       .sort((a, b) => a - b)
       .map((i) => state.calls[i])
       .filter((c) => c.name)
+    logUnsendableArguments('OpenAI', assembled)
     return assembled.length ? [{ type: 'tool_calls', calls: assembled }] : []
   }
 }

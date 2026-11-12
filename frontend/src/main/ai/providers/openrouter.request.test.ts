@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { openrouterTransport } from './openrouter'
-import type { StreamChatOpts } from './types'
+import { assistantToolTurn, type ChatMessage, type StreamChatOpts } from './types'
 
 /**
  * What the OpenRouter request carries for web access.
@@ -393,5 +393,109 @@ describe('which reasoning formats travel back', () => {
       const [ev] = await openrouterTransport.finish(state)
       expect(ev.type === 'tool_calls' && ev.replay, format).toBeFalsy()
     }
+  })
+})
+
+describe('tool arguments a host cut off', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  /** Verbatim from a recorded stream: the value of the list never came, then `finish_reason`. */
+  const CUT = '{"filtered_queries": '
+  const body = (messages: ChatMessage[], model = base.model) =>
+    JSON.parse(openrouterTransport.buildRequest({ ...base, model, messages }, 'k').body).messages as Array<{
+      tool_calls?: Array<{ function: { arguments: string } }>
+      reasoning_details?: unknown
+    }>
+
+  it('go out as {}, while a valid call and its reasoning go out unchanged', () => {
+    const steps = [{ type: 'reasoning.text', text: 'Search, then read.', signature: 'sig', index: 0 }]
+    const kept = '{ "codes": ["a", "b"],\n "summary": true }'
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'Go' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'c1', type: 'function', function: { name: 'get_process_details', arguments: kept } },
+          { id: 'c2', type: 'function', function: { name: 'search_background', arguments: CUT } }
+        ],
+        replay: { provider: 'openrouter', model: base.model, steps }
+      },
+      { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+      { role: 'tool', tool_call_id: 'c2', content: '{"error":"…"}' }
+    ]
+    const before = JSON.stringify(messages)
+    const sent = body(messages)
+    expect(sent[1].tool_calls?.map((c) => c.function.arguments)).toEqual([kept, '{}'])
+    expect(sent[1].reasoning_details).toEqual(steps)
+    // The transcript is not touched: it keeps what the host delivered.
+    expect(JSON.stringify(messages)).toBe(before)
+  })
+
+  it('leave a round of valid calls byte for byte as it was sent before, reasoning included', () => {
+    const steps = [{ type: 'reasoning.text', text: 'Read both.', signature: 'sig', index: 0 }]
+    const kept = {
+      id: 'c1',
+      type: 'function' as const,
+      function: { name: 'f', arguments: '{ "b": 1, "a": 2 }' }
+    }
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'Go' },
+      {
+        role: 'assistant',
+        content: 'Reading.',
+        tool_calls: [kept],
+        replay: { provider: 'openrouter', model: base.model, steps }
+      },
+      { role: 'tool', tool_call_id: 'c1', content: 'ok' }
+    ]
+    // What the builder sent before arguments were checked: the replay moved onto the message as
+    // `reasoning_details`, everything else as it was — compared as the serialized request, not as objects.
+    const before = [
+      messages[0],
+      { role: 'assistant', content: 'Reading.', tool_calls: [kept], reasoning_details: steps },
+      messages[2]
+    ]
+    const raw = openrouterTransport.buildRequest({ ...base, messages }, 'k').body
+    expect(raw).toContain(`"messages":${JSON.stringify(before)}`)
+  })
+
+  it('stream in, are logged with the host, and the next request carries {}', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const state = openrouterTransport.createState({ ...base, model: 'minimax/minimax-m3.1-flash' })
+    const chunk = (delta: Record<string, unknown>, finish?: string) => ({
+      provider: 'Fireworks',
+      choices: [{ delta, ...(finish ? { finish_reason: finish } : {}) }]
+    })
+    const call = (index: number, extra: Record<string, unknown>) =>
+      chunk({ tool_calls: [{ index, ...extra }] })
+    for (const c of [
+      call(0, { id: 'c1', type: 'function', function: { name: 'get_process_details', arguments: '' } }),
+      call(0, { function: { arguments: '{"codes": ["a"], "summary": true}' } }),
+      call(1, { id: 'c2', type: 'function', function: { name: 'search_background', arguments: '' } }),
+      call(1, { function: { arguments: '{' } }),
+      call(1, { function: { arguments: '"filtered_queries": ' } }),
+      chunk({}, 'tool_calls')
+    ])
+      openrouterTransport.interpret(c, state)
+    const [ev] = await openrouterTransport.finish(state)
+    if (ev.type !== 'tool_calls') throw new Error('no tool round')
+    expect(ev.calls.map((c) => c.arguments)).toEqual(['{"codes": ["a"], "summary": true}', CUT])
+    const line = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes('not a JSON object'))
+    expect(line).toMatch(/Fireworks .* search_background \(syntax, 21 chars\)/)
+
+    const next = body(
+      [
+        { role: 'user', content: 'Go' },
+        assistantToolTurn(null, ev.calls, ev.replay),
+        { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+        { role: 'tool', tool_call_id: 'c2', content: '{"error":"…"}' }
+      ],
+      'minimax/minimax-m3.1-flash'
+    )
+    expect(next[1].tool_calls?.map((c) => c.function.arguments)).toEqual([
+      '{"codes": ["a"], "summary": true}',
+      '{}'
+    ])
   })
 })

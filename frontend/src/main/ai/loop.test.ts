@@ -156,11 +156,22 @@ describe('runAgent — basics', () => {
     expect(String(toolMsg?.content)).toContain('Unknown tool')
   })
 
-  it('contains malformed tool arguments the same way', async () => {
-    chat.rounds = [{ calls: [{ id: 't1', name: 'list_models', arguments: '{not json' }] }, { text: 'ok' }]
+  it('refuses arguments a host cut off, tells the model what arrived, and carries on', async () => {
+    chat.rounds = [
+      { calls: [{ id: 't1', name: 'search_background', arguments: '{"filtered_queries": ' }] },
+      { calls: [{ id: 't2', name: 'list_models', arguments: '{}' }] },
+      { text: 'ok' }
+    ]
     const d = deps()
-    await runAgent(request(), d.deps)
-    expect(d.events.find((e) => e.type === 'tool' && e.phase === 'error')).toBeTruthy()
+    const res = await runAgent(request(), d.deps)
+    expect(res.outcome).not.toBe('error')
+    expect(res.trace?.[0]).toMatchObject({ name: 'search_background', status: 'rejected' })
+    const refusal = chat.seen[1].messages.find((m) => m.role === 'tool' && m.tool_call_id === 't1')
+    expect(JSON.parse(String(refusal?.content)).error).toMatch(
+      /not valid JSON .* What arrived: `\{"filtered_queries": `\./
+    )
+    // The model sees its own call as it was sent; the transport sends `{}` for it (toolArguments.ts).
+    expect(chat.seen.length).toBe(3)
   })
 
   it('asks the renderer to reload after a mutating tool', async () => {
@@ -1167,8 +1178,65 @@ describe('durable: the plan tool and the transcript', () => {
   })
 })
 
+describe('runAgent — a transcript that kept a call a host cut off', () => {
+  it('is carried on, and the request that goes out for it sends {} in its place', async () => {
+    const { openrouterTransport } = await import('./providers/openrouter')
+    const history = [
+      { role: 'user' as const, content: 'hello' },
+      { role: 'assistant' as const, content: '' }
+    ]
+    const stored = {
+      turnId: 'turn-old',
+      historyAfter: history,
+      messages: [
+        { role: 'user' as const, content: 'hello' },
+        {
+          role: 'assistant' as const,
+          content: null,
+          tool_calls: [
+            {
+              id: 't1',
+              type: 'function' as const,
+              function: { name: 'search_background', arguments: '{"filtered_queries": ' }
+            }
+          ]
+        },
+        { role: 'tool' as const, tool_call_id: 't1', content: '{"error":"Unexpected end of JSON input"}' }
+      ]
+    }
+    forgetTranscript()
+    chat.rounds = [{ text: 'ok' }]
+    await runAgent(
+      request({ history, userText: 'Continue' }),
+      deps({ transcriptStore: { load: async () => stored, save: async () => undefined } }).deps
+    )
+    const carried = chat.seen[0].messages
+    expect(carried.some((m) => m.tool_calls?.[0]?.function.arguments === '{"filtered_queries": ')).toBe(true)
+    const body = JSON.parse(
+      openrouterTransport.buildRequest(
+        { model: 'minimax/minimax-m3.1-flash', messages: carried, temperature: null, maxTokens: 1000 },
+        'k'
+      ).body
+    ) as { messages: Array<{ tool_calls?: Array<{ function: { arguments: string } }> }> }
+    const args = body.messages.flatMap((m) => m.tool_calls ?? []).map((c) => c.function.arguments)
+    expect(args).toEqual(['{}'])
+  })
+})
+
 describe('runAgent — the stall guard (rounds that only hear "no")', () => {
   const failing = (id: string) => ({ calls: [{ id, name: 'no_such_tool', arguments: '{}' }] })
+
+  it('stops a model that only ever sends arguments cut off on the way', async () => {
+    chat.rounds = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
+      calls: [
+        { id: `c${n}`, name: 'search_background', arguments: `{"filtered_queries": [{"query": "q${n}"` }
+      ]
+    }))
+    chat.rounds.push({ text: 'never reached' })
+    const res = await runAgent(request(), deps().deps)
+    expect(res.outcome).toBe('stalled')
+    expect(chat.seen.length).toBe(6)
+  })
 
   it('nudges after three failed rounds and stops after six', async () => {
     chat.rounds = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => failing(`f${n}`))

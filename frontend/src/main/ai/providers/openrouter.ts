@@ -29,6 +29,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { logUnsendableArguments, withSendableArguments } from '../toolArguments'
 
 export const BASE_URL = 'https://openrouter.ai/api/v1'
 
@@ -213,6 +214,8 @@ interface OrState {
   /** What this request carried, for the wording of a mid-stream "no endpoint" error. */
   restrictions: Restrictions
   sentProvider: boolean // the serving endpoint's name rides on every chunk; report it once
+  /** That name, for the log line about calls this host delivered broken. */
+  host?: string
   sentFinish: boolean // likewise for finish_reason: stated once, on the chunk that carries it
   calls: Record<number, AccumTool>
   /** The reply's reasoning blocks (`reasoning_details`), in the order they arrived, assembled from
@@ -263,18 +266,20 @@ function addDetail(state: OrState, piece: Record<string, unknown>): void {
  *  reasoning blocks go back on the assistant message of their tool round — unchanged and in order, as
  *  OpenRouter requires — when the request goes to the model that wrote them, and only for the rounds of
  *  the current turn (after the last user message): that is what the models continue from, and older
- *  blocks would only grow every request. */
+ *  blocks would only grow every request. Tool arguments that are not a JSON object go out as `{}`: one
+ *  such string, echoed as it came, gets the whole request refused (toolArguments.ts). */
 function toOpenRouterMessages(messages: ChatMessage[], model: string): Array<Record<string, unknown>> {
   const turnStart = lastUserIndex(messages)
-  return messages.map(({ replay, ...m }, i) =>
-    i > turnStart &&
-    m.role === 'assistant' &&
-    replay?.provider === 'openrouter' &&
-    replay.model === model &&
-    replay.steps.length
+  return messages.map(({ replay, ...rest }, i) => {
+    const m = withSendableArguments(rest)
+    return i > turnStart &&
+      m.role === 'assistant' &&
+      replay?.provider === 'openrouter' &&
+      replay.model === model &&
+      replay.steps.length
       ? { ...m, reasoning_details: replay.steps }
       : m
-  )
+  })
 }
 
 /**
@@ -409,6 +414,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
     // nothing in the app able to say that anything had changed. Emitted once per request.
     if (!state.sentProvider && typeof parsed.provider === 'string' && parsed.provider) {
       state.sentProvider = true
+      state.host = parsed.provider
       events.push({ type: 'provider', name: parsed.provider })
     }
     if (parsed.usage)
@@ -468,6 +474,7 @@ export const openrouterTransport: ChatTransport<OrState> = {
       .map((i) => state.calls[i])
       .filter((c) => c.name)
     if (!assembled.length) return []
+    logUnsendableArguments(state.host ?? 'OpenRouter (host not reported)', assembled)
     // Only formats measured to pay for themselves travel back (REPLAYED_FORMATS). A block may leave out
     // `format` (continuations do), so the reply's NAMED formats decide: all of them on the list, and at
     // least one named — otherwise the round keeps none, so a reply is never resent with half its reasoning.

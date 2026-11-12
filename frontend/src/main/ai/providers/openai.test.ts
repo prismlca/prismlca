@@ -143,6 +143,31 @@ describe('the request body', () => {
     ])
   })
 
+  it('sends {} for arguments a host cut off, and the others byte for byte', () => {
+    const cut = '{"filtered_queries": '
+    const kept = '{ "a": 1 }'
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'build it' },
+      {
+        role: 'assistant',
+        content: null,
+        tool_calls: [
+          { id: 'c1', type: 'function', function: { name: 'search_background', arguments: cut } },
+          { id: 'c2', type: 'function', function: { name: 'do_it', arguments: kept } }
+        ]
+      },
+      { role: 'tool', tool_call_id: 'c1', content: '{"error":"…"}' },
+      { role: 'tool', tool_call_id: 'c2', content: '{"ok":true}' }
+    ]
+    const { input } = toResponsesInput(messages)
+    const args = (input as Array<{ type?: string; arguments?: string }>)
+      .filter((i) => i.type === 'function_call')
+      .map((i) => i.arguments)
+    expect(args).toEqual(['{}', kept])
+    // What the host delivered stays in the transcript.
+    expect(messages[1].tool_calls?.[0].function.arguments).toBe(cut)
+  })
+
   it('converts vision parts to the Responses input shapes', () => {
     const { input } = toResponsesInput([
       {
