@@ -63,6 +63,63 @@ def test_a_code_found_nowhere_keeps_the_plain_hint_and_a_batch_keeps_its_own(pro
     assert '"codes"' in _hint("pet", '["a", "b"]')
 
 
+SODA = "3fb7e6c01f6a6c14148bda9026e83b0b"
+STEAM = "9a1c5e2d7b3f4a6c8e0d2f4b6a8c0e2d"
+
+
+def _hex_background(bd) -> None:
+    bd.Database("eco").write(
+        {
+            ("eco", SODA): {"name": "market for soda ash, light", "location": "RER", "unit": "kg"},
+            ("eco", STEAM): {"name": "steam production", "location": "RER", "unit": "kg"},
+        }
+    )
+
+
+def test_a_code_with_a_digit_too_many_names_the_dataset_it_was_meant_to_be_and_does_not_use_it(project):
+    _hex_background(get_bd())
+    hint = _hint("eco", SODA + "6")
+    assert "33 characters" in hint and "has 32" in hint
+    assert f"{SODA} ('market for soda ash, light', RER)" in hint
+    assert "not used in its place" in hint
+    assert STEAM not in hint
+
+
+def test_a_changed_digit_behind_the_start_is_named_too_and_a_wrong_case_finds_its_code(project):
+    _hex_background(get_bd())
+    changed = SODA[:20] + ("0" if SODA[20] != "0" else "1") + SODA[21:]
+    hint = _hint("eco", changed)
+    assert SODA in hint and "characters" not in hint  # same length: nothing to say about it
+    assert SODA in _hint("eco", SODA.upper())
+
+
+def test_a_code_far_from_every_code_says_only_what_is_true(project):
+    _hex_background(get_bd())
+    # The right length, nothing near: the plain hint.
+    assert _hint("eco", "f" * 32) == "Check the activity code and database."
+    # A character short, nothing near: the length, and no dataset named.
+    hint = _hint("eco", "f" * 31)
+    assert hint.startswith("This code has 31 characters; every code in 'eco' has 32.")
+    assert "Did you mean" not in hint
+    # Far off the database's length: not called a slip.
+    assert _hint("eco", "f" * 40) == "Check the activity code and database."
+
+
+def test_a_slip_in_another_models_code_is_not_named_behind_the_fence(project):
+    from prism_lca.engine.model_scope import CURRENT_MODEL_SCOPE
+
+    bd = get_bd()
+    _hex_background(bd)
+    set_read_only("eco", False)  # now a user's model, not a background
+    bd.Database("own").write({("own", "a" * 32): {"name": "bottle", "unit": "unit"}})
+    set_read_only("own", False)
+    token = CURRENT_MODEL_SCOPE.set("own")
+    try:
+        assert _hint("eco", SODA + "6") == "Check the activity code and database."
+    finally:
+        CURRENT_MODEL_SCOPE.reset(token)
+
+
 def test_an_ambiguous_method_names_the_recommended_one_first_and_still_the_others(client, token, project):
     bd = get_bd()
     bd.Database("biosphere").write({("biosphere", "co2"): {"name": "Carbon dioxide", "unit": "kg"}})

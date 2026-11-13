@@ -115,7 +115,7 @@ export type AgentEvent =
    * nothing from it after earlier rounds did (`dropped`), or its share has stopped growing with the
    * conversation (`stuck`). Sent once per run; the run bar says so until the run ends.
    */
-  | { chatId: string; type: 'cache-warning'; pattern: 'dropped' | 'stuck' }
+  | { chatId: string; type: 'cache-warning'; pattern: 'dropped' | 'stuck' | 'recovered' }
   // A mutating tool ran — the renderer should reload the canvas. `database` names the model the run
   // edits, so a canvas showing ANOTHER model (two assistants working in parallel) is left alone.
   /** A write happened; `graph === false` says the canvas graph itself did not change (study

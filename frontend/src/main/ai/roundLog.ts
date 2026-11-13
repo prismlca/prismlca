@@ -11,7 +11,7 @@
  * prompt text, no tool result, no key — figures and names only.
  */
 import { aiLog, aiWarn } from './aiLog'
-import { createCacheWatch, type CacheAlarm } from './cacheWatch'
+import { createCacheWatch, type CacheAlarm, type CacheSignal } from './cacheWatch'
 import type { ProviderId } from './providers/types'
 
 /** The usage figures of one request, as the stream's `usage` event carries them. */
@@ -163,13 +163,13 @@ export interface RunTelemetry {
 export function createRunTelemetry(o: {
   model: string
   provider: ProviderId
-  /** Called on the run's FIRST cache alarm only — the run bar says it once; the log says every one. */
-  onCacheAlarm?: (alarm: CacheAlarm) => void
+  /** Called on every change of the cache's state — an alarm, and the round that ends it — so the run bar
+   *  says what holds now rather than what once went wrong. */
+  onCacheSignal?: (signal: CacheSignal) => void
   now?: () => number
 }): RunTelemetry {
   const now = o.now ?? Date.now
   const watch = createCacheWatch()
-  let alarmed = false
   let lastEnd: number | undefined
   let cur:
     | {
@@ -259,10 +259,9 @@ export function createRunTelemetry(o: {
         idleMs
       })
       if (!alarm) return
-      aiWarn(cacheAlarmLine(alarm, f))
-      if (alarmed) return
-      alarmed = true
-      o.onCacheAlarm?.(alarm)
+      if (alarm === 'recovered') aiLog(`cache working again — ${f.model} (round ${f.round})`)
+      else aiWarn(cacheAlarmLine(alarm, f))
+      o.onCacheSignal?.(alarm)
     },
     compacted() {
       watch.reset()

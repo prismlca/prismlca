@@ -35,6 +35,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { CitationMarkerFilter } from './citationMarkers'
 import { logUnsendableArguments, sendableArguments } from '../toolArguments'
 
 const BASE_URL = 'https://api.openai.com/v1'
@@ -205,6 +206,13 @@ interface OaiState {
   calls: Record<number, AccumTool>
   /** Paid web_search invocations, counted into the synthesized cost. */
   webSearches: number
+  /** Drops the raw citation markers a model leaves in text it writes between tool calls. */
+  markers: CitationMarkerFilter
+}
+
+/** A text event for what the marker filter let through — none for an empty piece. */
+function pushText(events: StreamEvent[], text: string): void {
+  if (text) events.push({ type: 'delta', text })
 }
 
 /** Price the reported tokens against the catalogue's list prices (directModels.ts, `priceOn`). */
@@ -288,7 +296,8 @@ export const openaiTransport: ChatTransport<OaiState> = {
     model: opts.model,
     sentProvider: false,
     calls: {},
-    webSearches: 0
+    webSearches: 0,
+    markers: new CitationMarkerFilter()
   }),
 
   interpret(raw: unknown, state: OaiState): StreamEvent[] {
@@ -304,7 +313,10 @@ export const openaiTransport: ChatTransport<OaiState> = {
         break
       case 'response.output_text.delta':
         if (typeof parsed.delta === 'string' && parsed.delta)
-          events.push({ type: 'delta', text: parsed.delta })
+          pushText(events, state.markers.push(parsed.delta))
+        break
+      case 'response.output_text.done':
+        pushText(events, state.markers.flush())
         break
       // A page the server-side web_search cited, one event per citation. URL and title only — the
       // Responses API carries no excerpt, unlike OpenRouter's Exa engine.
@@ -355,12 +367,14 @@ export const openaiTransport: ChatTransport<OaiState> = {
         break
       }
       case 'response.completed': {
+        pushText(events, state.markers.flush())
         state.finishReason = Object.values(state.calls).some((c) => c.name) ? 'tool_calls' : 'stop'
         events.push({ type: 'finish', reason: state.finishReason })
         events.push(finishUsage(state, parsed.response))
         break
       }
       case 'response.incomplete': {
+        pushText(events, state.markers.flush())
         const why = parsed.response?.incomplete_details?.reason
         state.finishReason = why === 'max_output_tokens' ? 'length' : String(why || 'incomplete')
         events.push({ type: 'finish', reason: state.finishReason })

@@ -1088,11 +1088,12 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const budgetTokens = contextBudgetTokens(model.contextTokens)
   /** The effort sent with each round; dropped for the rest of the run if the API refuses it. */
   let reasoningEffort = req.reasoningEffort
-  /** One log line per round, and the cache watch: the run bar hears of a failing cache once. */
+  /** One log line per round, and the cache watch: the run bar hears when the cache fails and when it
+   *  works again. */
   const telemetry = createRunTelemetry({
     model: model.id,
     provider,
-    onCacheAlarm: (pattern) => deps.emit({ chatId: req.chatId, type: 'cache-warning', pattern })
+    onCacheSignal: (pattern) => deps.emit({ chatId: req.chatId, type: 'cache-warning', pattern })
   })
 
   /**

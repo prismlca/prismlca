@@ -11,6 +11,9 @@ export interface ContextLevel {
  * What the turn in flight looks like so far: the text streamed, the tool rows, the thinking state.
  * The renderer assembles it from the run's events — main sends the full trace only with `done`.
  */
+/** What the run bar says about the provider's prompt cache: failing now, or failed and working again. */
+export type CacheNote = 'dropped' | 'stuck' | 'dropped-recovered' | 'stuck-recovered'
+
 export interface TurnView {
   streaming: string
   live: ToolTrace[]
@@ -33,9 +36,9 @@ export interface TurnView {
    */
   retry?: RetryState
   context: ContextLevel | null
-  /** The provider's prompt cache stopped working in this run (main's cache watch) — said once, kept
-   *  until the run ends. */
-  cacheWarning?: 'dropped' | 'stuck'
+  /** The provider's prompt cache stopped working in this run (main's cache watch), or did and works
+   *  again (`…-recovered`) — kept until the run ends, so a failure stays visible after it is over. */
+  cacheWarning?: CacheNote
   /**
    * When the current thinking phase began: the turn's start, a restarted round, or the last call's end.
    * Unknown for a run this window has seen nothing of yet (adopted after a reload) — the clock then
@@ -112,7 +115,10 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
     case 'context':
       return { ...v, context: { tokens: ev.tokens, window: ev.window, budget: ev.budget } }
     case 'cache-warning':
-      return v.cacheWarning ? v : { ...v, cacheWarning: ev.pattern }
+      if (ev.pattern !== 'recovered') return { ...v, cacheWarning: ev.pattern }
+      return v.cacheWarning === 'dropped' || v.cacheWarning === 'stuck'
+        ? { ...v, cacheWarning: `${v.cacheWarning}-recovered` }
+        : v
     case 'round-restart':
       // The round is starting over, so the clock has to as well — otherwise it keeps timing an attempt
       // whose reasoning has already been discarded, and the two numbers on that line stop describing
