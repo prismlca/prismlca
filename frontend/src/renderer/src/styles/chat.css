@@ -338,31 +338,20 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-thinking i { animation: none; opacity: .9; }
 }
-/* The run status, pinned inside the scroll container so it survives any amount of transcript above
-   it. Opaque background on purpose: it sits over the messages it is pinned above.
-   It used to be --surface-2 — the exact colour of an assistant message — so on a long run the bar
-   and the bubble scrolling under it merged into one shape with no edge between them. A pinned
-   element is on a layer of its own, so it is dressed like one: the panel's own surface (which
-   neither bubble uses — the assistant's is --surface-2, the user's a green tint), the stronger
-   border, and a shadow that does the separating whatever happens to slide beneath it. */
+/* The run status: a row of the panel between its head and the transcript, so it stays in view however
+   far the transcript scrolls. It is not a sticky child of the transcript: a sticky bar lost its place
+   when the transcript scrolled on while the window was covered, and showed again only at the top.
+   Inset like the transcript's content (10px), and dressed as a layer above it: the panel's own surface
+   (which neither bubble uses — the assistant's is --surface-2, the user's a green tint), the stronger
+   border, and a shadow over the messages scrolling out beneath it — positioned with a z-index so that
+   shadow paints over them. */
 .chat-runbar {
-  position: sticky; top: 0; z-index: 2;
+  position: relative; z-index: 2; flex: none;
   display: flex; align-items: center; gap: 8px;
-  margin: -2px 0 8px; padding: 5px 8px;
+  margin: 8px 10px 0; padding: 5px 8px;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: 7px;
   box-shadow: 0 2px 8px rgba(20,32,28,.10);
   font-size: var(--fs-sec); color: var(--text);
-}
-/* The transcript's own 10px gutter sits above the pinned bar, and lines scrolled through it. It did
-   not show while the bar was the same colour as the messages; against a bar that now stands off the
-   page it read as text leaking out from behind. This paints that strip in the panel's surface, so
-   the bar is the top of the transcript rather than a card with something sliding past over it.
-   An absolutely positioned child is placed against the PADDING box, so the bar's own 1px top border
-   lives at -1px and a mask starting at 0 paints straight over it — the box then had a border on
-   three sides and an open top edge. It stops one pixel short. */
-.chat-runbar::before {
-  content: ''; position: absolute; left: -11px; right: -11px; top: -14px; height: 13px;
-  background: var(--surface); pointer-events: none;
 }
 .chat-runbar-what { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 /* Only the label gives way. Every flex item shrinks by default, so a long label — a research agent's

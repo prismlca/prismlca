@@ -88,6 +88,10 @@ describe('the chat the panel comes back to', () => {
     })
     await userEvent.click(screen.getByPlaceholderText(/Ask or instruct the assistant/))
     await waitFor(() => expect(container.querySelector('.chat-runbar')).not.toBeNull())
+    // A row of the panel, outside the scrolling transcript: as a sticky child of it the bar lost its
+    // place when the transcript scrolled while the window was covered.
+    expect(container.querySelector('.chat-panel > .chat-runbar')).not.toBeNull()
+    expect(container.querySelector('.chat-body .chat-runbar')).toBeNull()
   })
 
   it('does not bring back a run that ended while main was being asked', async () => {

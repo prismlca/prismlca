@@ -1043,6 +1043,10 @@ export default function CanvasChat({
               </div>
             ) : null}
           </div>
+          {/* A row of its own above the transcript, not a sticky child of it: pinned by `position: sticky`
+              inside the scrolling transcript, it lost its place when the transcript scrolled on while the
+              window was covered (another app in front during a run) and came back only at the very top. */}
+          {busy ? <RunStatus turn={turn} labels={toolLabels} /> : null}
           <div
             className="chat-body"
             ref={bodyRef}
@@ -1054,7 +1058,6 @@ export default function CanvasChat({
               setAtBottom((was) => (was === bottom ? was : bottom))
             }}
           >
-            {busy ? <RunStatus turn={turn} labels={toolLabels} /> : null}
             {messages.length === 0 && !streaming ? (
               <div className="chat-hint">
                 Ask about your model or the data, or tell me to build/change something. I can search
