@@ -142,19 +142,27 @@ point at, one process per real step; and tags carry the phases:
    on site, maintenance, refurbishment — gets an extra value in the same group. A breakdown that is not a
    phase at all (by component, by supplier) gets a group of its own, never a value in this one.
 
-   A process without a tag counts under the phase of the process that consumes it, with everything below it.
-   So ask of every process: **does it belong to one phase?** Then tag it with that phase — a part made beneath
-   Manufacturing takes "Production" as well, even though it would inherit it. Leave a process untagged only
-   when it should count with whoever consumes it: a helper that steps of different phases share (a formulation
-   dosed in Production and refilled in Use). `check_model_health` warns when no process carries a phase tag,
-   and names an untagged step beneath a tagged one with the phase it falls into; its silence does not prove
-   that every process is tagged. Packaging is no phase of its own: the box is an input of the step that packs
-   (usually Distribution) and carries "Raw materials" like any material (step 4) — a process of its own for it
-   is not needed, and if you model one, tag it "Raw materials" too. When packaging or single parts will
-   interest this study — a packaged product, parts the goal compares — tag them in a second group, `Component`
-   (e.g. Formulation / Bottle / Closure / Shipping carton, on each part's material, forming and disposal
-   inputs), so that `explain_result` mode="tree" with `aggregate_by: "tag:Component"` shows what each carries;
-   ask the user when that is unclear, and leave the group out when nothing is worth separating.
+   Every tag group in PrismLCA works the same way, phases included: a tag counts for the place it sits and
+   everything below it, until a nearer tag takes over — a process's tag for its inputs and their supply chains,
+   an input's tag for that input, over its process's. Whatever carries no tag counts with its consumer. A tag
+   is needed where the value changes; one that repeats the value it would inherit changes nothing in the
+   result. For the phases, ask of every process: **does it belong to one phase?** Then tag it with that phase —
+   a part made beneath Manufacturing takes "Production" as well, even though it would inherit it. Leave a
+   process untagged only when it should count with whoever consumes it: a helper that steps of different phases
+   share (a formulation dosed in Production and refilled in Use). `check_model_health` warns when no process
+   carries a phase tag, and names an untagged step beneath a tagged one with the phase it falls into; its
+   silence does not prove that every process is tagged. Packaging is no phase of its own: the box is an input
+   of the step that packs (usually Distribution) and carries "Raw materials" like any material (step 4) — a
+   process of its own for it is not needed, and if you model one, tag it "Raw materials" too. When packaging or
+   single parts will interest this study — a packaged product, parts the goal compares — tag them in a second
+   group, `Component` (e.g. Formulation / Bottle / Closure / Shipping carton), so that `explain_result`
+   mode="tree" with `aggregate_by: "tag:Component"` shows what each carries. It inherits like the phases: tag
+   the process that makes a part, and its material, forming and energy count with it; tag a single input only
+   where it should not count with its process — the box, the label and the line's electricity at a filling step
+   that serves several parts. A part's disposal is not below the process that makes it but in the end-of-life
+   branch beside it, which that tag does not reach: tag each part's disposal input (or its own disposal
+   process) with the same value. Ask the user when that is unclear, and leave the group out when nothing is
+   worth separating.
 
 4. **Tag the inputs that belong to another phase than their process.** Two kinds do:
    - **Materials** a manufacturing step consumes are the raw-material phase, not production: steel,
@@ -164,15 +172,15 @@ point at, one process per real step; and tags carry the phases:
      because a production dataset was linked or the material travels further than its market's average
      (section 4) — tag "Inbound transport". A market's own transport is inside the market and gets nothing.
 
-   Tag an input when you link it (`edit_exchange` action="add" with
-   `tags: {"Life-cycle phase": "Raw materials"}`) or afterwards, all in one call: `edit_tags`
-   action="assign", group "Life-cycle phase", the value, `keys` a list of `{ uid }` — the uids come back from
-   `edit_exchange` and are on every edge of `get_model_graph`. Every other input stays untagged and counts
-   under the phase of its process — processing services, energy, in-plant transport and transport between
-   your own sites under Production, the freight that carries the finished product to the customer under
-   Distribution, rinse water under Use. Only inputs from outside the model take a tag of their own; a
-   process of the model is tagged on the process (a "Transport — granulate to plant" you modelled as a
-   process carries "Inbound transport" itself).
+   Tag an input when you link it (`edit_exchange` action="add" with `tags: {"Life-cycle phase": "Raw
+   materials"}`) or afterwards, all in one call: `edit_tags` action="assign", group "Life-cycle phase", the
+   value, `keys` a list of `{ uid }` — the uids come back from `edit_exchange` and are on every edge of
+   `get_model_graph`. Every other input stays untagged because it belongs to the phase of its process and
+   inherits it — processing services, energy, in-plant transport and transport between your own sites under
+   Production, the freight that carries the finished product to the customer under Distribution, rinse water
+   under Use. Only inputs from outside the model take a tag of their own; a process of the model is tagged on
+   the process (a "Transport — granulate to plant" you modelled as a process carries "Inbound transport"
+   itself).
    **This is the one mistake no check sees:** an untagged steel input of Manufacturing computes correctly
    and lands in Production, and the phase table then says the product has no raw materials. Before you
    calculate, read the edges of `get_model_graph` once and confirm every material input of a manufacturing
@@ -216,8 +224,11 @@ follow the steps above.
   data: when a *production* dataset is linked directly, when a known leg differs from the market's average
   (a material shipped from overseas to your plant, an imported finished product's sea freight), and
   between your own steps when they plausibly happen at different sites. That last one may legitimately be
-  zero (one site); decide it consciously — ask, or state the assumption. Freight into the plant is
-  "Inbound transport", freight to the customer is Distribution (section 3, step 4).
+  zero (one site); decide it consciously — ask, or state the assumption. Of these legs, the one that carries
+  a main constituent — a material or part with much of the mass or of the result — is not left out as a
+  rule: book it with a stated distance when none is known. A minor leg may stay out once a rough estimate
+  (its tonne-kilometres times the lorry's score) shows it below the cut-off; say so. Freight into the plant
+  is "Inbound transport", freight to the customer is Distribution (section 3, step 4).
 - **Open the datasets that will carry the result BEFORE you link them** — not after the contribution
   analysis, when a baseline, scenarios and a quoted number already rest on the choice. You know the handful
   while you build: the battery in a battery-powered device, the metal in a metal product. **Do not stop at
