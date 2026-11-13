@@ -48,8 +48,7 @@ export const DEFAULT_PROVIDER_ALLOWLIST: readonly string[] = [
   'nebius',
   'mistral',
   'digitalocean',
-  'cloudflare',
-  'primeintellect'
+  'cloudflare'
 ]
 
 /**
@@ -81,8 +80,7 @@ export const PROVIDER_NAMES: Readonly<Record<string, string>> = {
   nebius: 'Nebius',
   mistral: 'Mistral',
   digitalocean: 'DigitalOcean',
-  cloudflare: 'Cloudflare',
-  primeintellect: 'Prime Intellect'
+  cloudflare: 'Cloudflare'
 }
 
 export const DEFAULT_PROVIDER_ALLOWLIST_ON = true

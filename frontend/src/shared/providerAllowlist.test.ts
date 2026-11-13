@@ -26,6 +26,8 @@ describe('the provider allowlist', () => {
   it('keeps out the hosts our own runs showed breaking tool calls', () => {
     expect(DEFAULT_PROVIDER_ALLOWLIST).not.toContain('parasail')
     expect(DEFAULT_PROVIDER_ALLOWLIST).not.toContain('open-inference')
+    // Lost required fields of GLM 5.3 Flash's tool calls in a run where another host lost none.
+    expect(DEFAULT_PROVIDER_ALLOWLIST).not.toContain('primeintellect')
     // Every entry is a slug in canonical form, once.
     for (const s of DEFAULT_PROVIDER_ALLOWLIST) expect(normaliseSlug(s)).toBe(s)
     expect(new Set(DEFAULT_PROVIDER_ALLOWLIST).size).toBe(DEFAULT_PROVIDER_ALLOWLIST.length)
