@@ -1,7 +1,7 @@
 # PrismLCA third-party notices
 
 PrismLCA version 0.9.11.
-Generated from git commit 25ae6a21 by `backend/scripts/third_party_notices.py`.
+Generated from git commit 979a7aae by `backend/scripts/third_party_notices.py`.
 152 Python runtime packages, 267 npm packages.
 
 This file lists the third-party software, fonts, icons, data and models that ship with PrismLCA or that PrismLCA downloads, together with their licence and notice texts. PrismLCA itself is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only); see the LICENSE file. The file is generated; do not edit it by hand.
@@ -134,7 +134,7 @@ All components are under permissive licences, except the Intel oneAPI runtime li
 | six | 1.17.0 | MIT |  |
 | sniffio | 1.3.1 | MIT, Apache-2.0 |  |
 | snowflake-id | 1.0.2 | MIT |  |
-| soupsieve | 2.9.2 | MIT |  |
+| soupsieve | 4.1 | MIT |  |
 | sparqlwrapper | 2.0.0 | W3C |  |
 | starlette | 1.3.1 | BSD-3-Clause |  |
 | stats-arrays | 2.0 | BSD-3-Clause | licence from text |
@@ -179,7 +179,7 @@ All components are under permissive licences, except the Intel oneAPI runtime li
 |---|---|---|---|
 | @dagrejs/dagre | 3.0.0 | MIT |  |
 | @dagrejs/graphlib | 4.0.1 | MIT |  |
-| @hono/node-server | 2.1.3 | MIT |  |
+| @hono/node-server | 2.1.8 | MIT |  |
 | @modelcontextprotocol/sdk | 1.32.1 | MIT |  |
 | @types/d3-color | 3.1.3 | MIT |  |
 | @types/d3-drag | 3.0.7 | MIT |  |
@@ -296,7 +296,7 @@ All components are under permissive licences, except the Intel oneAPI runtime li
 | hasown | 2.0.4 | MIT |  |
 | hast-util-to-jsx-runtime | 2.3.6 | MIT |  |
 | hast-util-whitespace | 3.0.0 | MIT |  |
-| hono | 4.13.12 | MIT |  |
+| hono | 4.13.18 | MIT |  |
 | html-url-attributes | 3.0.1 | MIT |  |
 | http-errors | 2.0.1 | MIT |  |
 | iconv-lite | 0.6.3 | MIT |  |
@@ -19811,9 +19811,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### soupsieve 2.9.2 — MIT
+### soupsieve 4.1 — MIT
 
-File: `soupsieve-2.9.2.dist-info/licenses/LICENSE.md`
+File: `soupsieve-4.1.dist-info/licenses/LICENSE.md`
 
 ```text
 MIT License
@@ -31474,7 +31474,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @hono/node-server 2.1.3 — MIT
+### @hono/node-server 2.1.8 — MIT
 
 File: `LICENSE`
 
@@ -35023,7 +35023,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### hono 4.13.12 — MIT
+### hono 4.13.18 — MIT
 
 File: `LICENSE`
 
