@@ -240,6 +240,34 @@ def test_coverage_says_when_the_words_are_spread_over_different_hits():
     assert best_hit_coverage("titanium dioxide", ["market for titanium dioxide"]) == (2, 2)
 
 
+def test_a_plural_in_the_dataset_name_still_counts_as_the_word_the_query_named():
+    """A query for "amine oxide" found "market for amine oxides" first and was then told that no
+    single result carried more than one of its two words — the singular and the plural were compared
+    letter for letter. The words a dataset carries count in either number, and only those endings."""
+    from prism_lca.search.ranking import best_hit_coverage
+
+    hits = ["market for amine oxides", "market for magnesium oxide", "market for nitrous oxide"]
+    assert best_hit_coverage("amine oxide", hits) == (2, 2)
+    assert best_hit_coverage("amine oxides", ["amine oxide production"]) == (2, 2)
+    assert best_hit_coverage("glass bottles", ["market for glass bottle"]) == (2, 2)
+    assert unanchored_terms("polypropylene granulates", ["market for polypropylene, granulate"]) == []
+    assert best_hit_coverage("cardboard boxes", ["market for cardboard box"]) == (2, 2)
+    assert best_hit_coverage("glass", ["market for glasses"]) == (1, 1)
+    # Not a stemmer: a word that merely starts like the query's is still another word.
+    assert best_hit_coverage("amine oxide", ["market for amine", "market for oxidizer"]) == (1, 2)
+
+
+def test_only_the_regular_plural_counts_and_an_abbreviation_is_compared_as_written():
+    """The plural is the regular one, one way per word: "fines" is "fine", never "fin" — so a
+    different material does not read as fully covered. An abbreviation keeps its letters: "PET" in
+    capitals is a polymer, and "pets" in a dataset name is not it."""
+    from prism_lca.search.ranking import best_hit_coverage
+
+    assert best_hit_coverage("copper fines", ["market for copper fin"]) == (1, 2)
+    assert best_hit_coverage("PET bottle", ["bottle for pets"]) == (1, 2)
+    assert unanchored_terms("PET bottle", ["bottle for pets"]) == ["pet"]
+
+
 def test_query_signature_recognises_the_same_search_worded_differently():
     """V112: a search repeated inside a batch is invisible to the agent's byte-level repeat guard.
 

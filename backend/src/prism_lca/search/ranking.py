@@ -50,6 +50,40 @@ def _tokens(text: str) -> set[str]:
     return out
 
 
+#: Stems that take "-es" in the plural (box → boxes, glass → glasses, batch → batches); every other word takes "-s".
+_ES_STEM = re.compile(r"(?:s|x|z|ch|sh)$")
+#: Upper-case runs as a query writes abbreviations ("PET", "EPDM", "TPS"): content however short they are.
+_SHOUTED_RE = re.compile(r"\b[A-Z][A-Z0-9]{1,}\b")
+
+
+def _shouted(query: str) -> set[str]:
+    """The abbreviations a query wrote in capitals, lower-cased."""
+    return {m.group(0).lower() for m in _SHOUTED_RE.finditer(query)}
+
+
+def _carries(term: str, words: set[str], *, literal: bool = False) -> bool:
+    """Whether ``words`` (a result's tokens) carry ``term``, in the singular or the plural.
+
+    ecoinvent writes "market for amine oxides" next to "market for magnesium oxide", and a query may
+    say either. Compared letter for letter, "amine oxide" found its own dataset carrying only half of
+    what it named, and the search warned that the words were spread over different datasets — about the
+    one hit that was exactly right. Only the regular English plural counts, and only one way per word:
+    "-es" after s, x, z, ch and sh, "-s" after anything else — so "fines" is "fine", never "fin".
+    An abbreviation (``literal``), a word with digits and a word under four letters are compared as
+    written: "PET" is not "pets".
+    """
+    if term in words:
+        return True
+    if literal or len(term) < 4 or any(c.isdigit() for c in term):
+        return False
+    forms = {term + ("es" if _ES_STEM.search(term) else "s")}
+    if term.endswith("es") and _ES_STEM.search(term[:-2]):
+        forms.add(term[:-2])
+    elif term.endswith("s") and not term.endswith("ss"):
+        forms.add(term[:-1])
+    return not forms.isdisjoint(words)
+
+
 def unmatched_terms(query: str, hit_texts: list[str]) -> list[str]:
     """Query terms that appear in **no** result — the honest "not found" the score cannot give.
 
@@ -217,10 +251,11 @@ def best_hit_coverage(query: str, hit_texts: list[str]) -> tuple[int, int]:
     terms = content_terms(query, _MIN_COVERAGE_WORD)
     if not terms or not hit_texts:
         return (0, len(terms))
+    shouted = _shouted(query)
     best = 0
     for text in hit_texts:
         hay = _tokens(text)
-        best = max(best, sum(1 for t in terms if t in hay))
+        best = max(best, sum(1 for t in terms if _carries(t, hay, literal=t in shouted)))
     return (best, len(terms))
 
 
@@ -256,7 +291,7 @@ def unanchored_terms(query: str, hit_texts: list[str]) -> list[str]:
     for text in hit_texts:
         hay |= _tokens(text)
     # Upper-case runs in the ORIGINAL query: abbreviations are content however short they are.
-    shouted = {m.group(0).lower() for m in re.finditer(r"\b[A-Z][A-Z0-9]{1,}\b", query)}
+    shouted = _shouted(query)
     out: set[str] = set()
     restated = vocabulary.restated(query)
     for term in _tokens(query):
@@ -265,7 +300,7 @@ def unanchored_terms(query: str, hit_texts: list[str]) -> list[str]:
         if term in _GENERIC_TERMS or term in _GEO_WORDS:
             continue
         long_enough = term in _RECOGNISED or len(term) >= (_MIN_ABBREVIATION if term in shouted else _MIN_CONTENT_WORD)
-        if long_enough and term not in hay:
+        if long_enough and not _carries(term, hay, literal=term in shouted):
             out.add(term)
     return sorted(out)
 
