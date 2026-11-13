@@ -3,6 +3,50 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.12 — 2026-11-13
+
+### New
+
+- **More AI models.** Claude Fable 5.2 replaces Fable 5.1, on OpenRouter and with Anthropic directly. OpenRouter also
+  offers Gemini 4 Carbon, Tencent's Hy4, MiniMax M3.1 Flash and Mistral Large 4. GPT-6 Astra, 6.1 Sol and Luna offer
+  *Max* reasoning effort, and the effort picker says which level *Default* stands for. *Settings → AI → Models* rates
+  models by the Artificial Analysis Intelligence Index v5.
+- **Only trusted OpenRouter providers.** Under *Settings → AI → Provider*, a switch below the provider cards keeps
+  OpenRouter requests to an allowlist of providers: the labs, the large clouds and established inference hosts. It is
+  on by default; *Edit list* removes a provider or adds one by name, *Reset defaults* brings back our list.
+- **Filter the dataset search by unit.** The search beside the canvas and in the Results has a unit filter under the
+  regions. Every filter now applies at once — a type, region or unit repeats the last search without pressing Enter.
+- **Searches keep the best matches outside the region.** When the assistant searches with a region, the answer also
+  lists the two best datasets outside it, so a material missing from the region is no longer taken as missing
+  altogether.
+- **Reviews show progress and stop on time.** The run bar shows how far the reviewer has got. A review that runs past
+  ten minutes starts once more with a six-minute limit and keeps what it wrote, and reviewing again in the same chat
+  shows the reviewer its earlier findings and your outcomes.
+
+### Fixes
+
+- Renaming a model takes about a second instead of half a minute; a parameter that formulas or scenarios still use is
+  not deleted, and adding one with a formula is all or nothing.
+- The run bar warns when the prompt cache stops working and says when it works again. An answer that ended in an error
+  keeps the reason after a reload, and canvas actions work from any page.
+- A tool call a provider cut off no longer ends the run, long reasoning no longer ends in an empty reply, and rounds
+  that only call tools hit the prompt cache again on models with explicit caching.
+- The run bar stays in view after the window was covered, scrolling up during a run lets go of the transcript, and a
+  run names its chat without waiting for the chat panel.
+- Answers show no raw citation marks, and a mistyped dataset code points to the dataset it was meant to be.
+- The dataset search finds a dataset named in the plural for a query in the singular, and the assistant tries other
+  names before it takes a proxy or calls a dataset missing.
+- As the chat model, GPT-6 Luna runs at High effort or above; at lower levels it left out whole parts of a model.
+- Electron and several dependencies are updated, with minor security fixes.
+
+**Installing.** The Windows installer is signed by *Open Source Developer Jonas Harth*. While the certificate is
+new, Windows SmartScreen may still warn: check that *More info* names this publisher, compare the installer with
+`SHA256SUMS` below, then choose *Run anyway*. On Linux the AppImage needs FUSE 2 (`sudo apt install libfuse2t64` on
+Ubuntu 24.04); the deb and the rpm need nothing extra. PrismLCA 0.9.3 and later find this release under *Check for
+updates*.
+
+Changes since v0.9.11: https://github.com/prismlca/prismlca/compare/v0.9.11...v0.9.12
+
 ## 0.9.11 — 2026-11-08
 
 ### New
