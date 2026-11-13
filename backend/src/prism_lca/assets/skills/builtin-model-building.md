@@ -210,15 +210,18 @@ follow the steps above.
 
 ## 4. Link the background datasets
 
-- Prefer **market** activities as inputs; match geography to the study with the cascade local → regional
-  (e.g. RER) → GLO/RoW. Give `search_background` **one** geography — that ranks the region first and keeps
+- Prefer **market** activities as inputs; match geography to the study with the cascade local → regional (e.g.
+  RER) → GLO/RoW. Give `search_background` **one** geography — that ranks the region first and keeps
   RER/GLO/RoW as fallbacks. A **list** of geographies is a hard filter and hides datasets that only exist
   elsewhere (the generic wastewater treatment lives in `Europe without Switzerland`, `CH` and `RoW`); the
-  answer then says so in `outside_geography_filter`. When a dataset you expect does not appear, search once
-  **without** geographies before reaching for a proxy, and record a geography proxy in the exchange comment.
-  `lookup` kind="geographies" lists the regions a database actually holds, with plain names, and whether
-  each is a country or an aggregate — use it to find a code ("europe" finds RER) or to check that one
-  exists before you filter on it.
+  answer then says so in `outside_geography_filter`. When a dataset you expect does not appear, or only near
+  neighbours come back, search two or three more times before you reach for a proxy or say the database lacks
+  it: once **without** geographies, and under other names — the chemical or material name rather than its class
+  ("amine oxides", not "amphoteric surfactant"), a synonym, the word the database uses for a service. Among
+  tens of thousands of datasets a semantic search can bury the right one under its neighbours. Record a
+  geography proxy in the exchange comment. `lookup` kind="geographies" lists the regions a database actually
+  holds, with plain names, and whether each is a country or an aggregate — use it to find a code ("europe"
+  finds RER) or to check that one exists before you filter on it.
 - **Transport is a decision, not a default.** A *market* already includes average transport to the
   consumer — do not book generic delivery on top of one. Book explicit transport where it is not in the
   data: when a *production* dataset is linked directly, when a known leg differs from the market's average
