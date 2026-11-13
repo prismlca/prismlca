@@ -34,6 +34,7 @@ import { useChatPrefs } from './chat/useChatPrefs'
 import { useAttachments } from './chat/useAttachments'
 import ChatComposer from './chat/ChatComposer'
 import { usePlanState } from './chat/usePlanState'
+import { useStickToBottom } from './chat/useStickToBottom'
 import OtherRuns, { type OtherRun } from './chat/OtherRuns'
 import { dropTurn, onChatEvent, startTurn, turnOf, useTurnFeed, useTurnView } from './chat/turnView'
 import { leaveChat, shownChat, withLiveTail } from './chat/shownChats'
@@ -54,7 +55,7 @@ import {
 } from './chat/askCards'
 import { ToolTraceList } from './chat/ToolTraceList'
 import { ChatUsage, RunStatus } from './chat/RunStatus'
-import { Markdown, MessageRow } from './chat/MessageRow'
+import { AssistantText, MessageRow } from './chat/MessageRow'
 
 // Read the AI settings fresh (`getAS()`: the Settings panel writes them to userData/settings.json via
 // lib/appSettings.ts, not localStorage) so a model change applies to the
@@ -127,8 +128,6 @@ export default function CanvasChat({
   onAskShown?: (reqId: string | null) => void
 }): JSX.Element {
   const [open, setOpen] = useState(false)
-  /** Is the transcript resting at its bottom? Drives both the autoscroll and the jump button. */
-  const [atBottom, setAtBottom] = useState(true)
   const [height, setHeight] = useState(() => Math.round(window.innerHeight * 0.6))
   const [chats, setChats] = useState<ChatSummary[]>([])
   // From the first render on, not only from the loading effect: the refs below must already hold it when
@@ -486,23 +485,9 @@ export default function CanvasChat({
     return off
   }, [])
 
-  /** How far off the bottom still counts as "at the bottom" — a couple of rounded pixels do not. */
-  const BOTTOM_SLACK = 24
-
-  const toBottom = useCallback((smooth = false): void => {
-    const el = bodyRef.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
-    setAtBottom(true)
-  }, [])
-
-  // Autoscroll the transcript as it streams — but only while the reader is at the bottom. It used
-  // to scroll unconditionally, so reading back through a long run was impossible during one: every
-  // token yanked the view down again. Sticking to the bottom is what people want by default and
-  // scrolling up is how they say otherwise.
-  useEffect(() => {
-    if (atBottom) bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight })
-  }, [messages, streaming, live, atBottom])
+  // The transcript follows the output while the reader is at its end; scrolling up lets go of it, and
+  // the jump button below brings it back (chat/useStickToBottom.ts).
+  const { atBottom, toBottom, follow, onScroll } = useStickToBottom(bodyRef)
 
   // Opening the panel on an existing chat lands at the newest message, not at the oldest. The
   // transcript is only in the DOM once `open` is true, so this waits a frame for it to be laid out
@@ -556,7 +541,7 @@ export default function CanvasChat({
       setOpen(true)
       // Sending is the one moment where being scrolled up should not be honoured: you have just
       // added to the end, and not showing it would look like nothing happened.
-      setAtBottom(true)
+      follow()
       let id = chatIdRef.current
       if (!id) {
         // Nothing else says "busy" until the run is marked below, and a second click during createChat
@@ -697,7 +682,8 @@ export default function CanvasChat({
       answerAsk,
       typeInput,
       adopt,
-      clearAttachments
+      clearAttachments,
+      follow
     ]
   )
 
@@ -1047,17 +1033,7 @@ export default function CanvasChat({
               inside the scrolling transcript, it lost its place when the transcript scrolled on while the
               window was covered (another app in front during a run) and came back only at the very top. */}
           {busy ? <RunStatus turn={turn} labels={toolLabels} /> : null}
-          <div
-            className="chat-body"
-            ref={bodyRef}
-            onScroll={(e) => {
-              const el = e.currentTarget
-              const bottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK
-              // Only on a change: this fires on every scrolled pixel, and a setState per pixel
-              // re-renders a transcript that can be hundreds of nodes long.
-              setAtBottom((was) => (was === bottom ? was : bottom))
-            }}
-          >
+          <div className="chat-body" ref={bodyRef} onScroll={onScroll}>
             {messages.length === 0 && !streaming ? (
               <div className="chat-hint">
                 Ask about your model or the data, or tell me to build/change something. I can search
@@ -1089,7 +1065,7 @@ export default function CanvasChat({
             ) : null}
             {streaming ? (
               <div className="chat-msg assistant">
-                <Markdown text={streaming} onJump={jump} />
+                <AssistantText text={streaming} onJump={jump} />
               </div>
             ) : null}
             {ask && ask.chatId === chatId ? (

@@ -601,3 +601,14 @@
   font-family: inherit; font-size: var(--fs-sec); font-weight: 600;
 }
 .chat-ask-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
+/* The questions the assistant asked and the user's answers, once the card is gone
+   (chat/AnsweredQuestions.tsx): each pair on a quiet rule, the question small, the answer under it with
+   the arrow in the accent. A rule under the block parts it from the text that follows. */
+.chat-answered { display: flex; flex-direction: column; gap: 7px; margin: .35em 0; }
+.chat-answered:not(:last-child) { padding-bottom: 9px; border-bottom: 1px solid var(--border); }
+.chat-answered-item { border-left: 2px solid var(--border-strong); padding: 1px 0 1px 9px; }
+/* pre-line: an answer typed over several lines keeps its line breaks. */
+.chat-answered-q { font-size: var(--fs-sec); color: var(--muted); line-height: 1.4; white-space: pre-line; }
+.chat-answered-a { font-weight: 600; color: var(--ink); line-height: 1.45; white-space: pre-line; }
+.chat-answered-arrow { color: var(--green); font-weight: 400; margin-right: 6px; }
+.chat-answered-a.none { font-weight: 400; font-style: italic; color: var(--faint); }

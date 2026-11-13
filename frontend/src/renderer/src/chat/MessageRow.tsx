@@ -6,6 +6,8 @@ import { safeMarkdownUrl } from '../lib/markdownUrl'
 import { ArrowUpRightIcon, FolderIcon, PaperclipIcon } from '../components/icons'
 import { ToolTraceList } from './ToolTraceList'
 import { attachExtent } from './chatFormat'
+import { splitAskTranscript } from './askTranscript'
+import { AnsweredQuestions } from './AnsweredQuestions'
 
 /**
  * One finished message of the transcript.
@@ -36,7 +38,7 @@ export const MessageRow = memo(function MessageRow({
       {m.tools?.length ? (
         <ToolTraceList traces={m.tools} labels={labels} summary cost={m.cost} provider={m.provider} />
       ) : null}
-      {m.role === 'assistant' ? <Markdown text={m.content} onJump={onJump} /> : m.content}
+      {m.role === 'assistant' ? <AssistantText text={m.content} onJump={onJump} /> : m.content}
       {/* The reason a run failed, as stored with its answer: the message the window showed at the time
           is gone after a reload, and "why did this not work yesterday" was unanswerable. */}
       {m.role === 'assistant' && m.error ? <div className="chat-error">Error: {m.error}</div> : null}
@@ -70,6 +72,31 @@ export const MessageRow = memo(function MessageRow({
     </div>
   )
 })
+
+/**
+ * An assistant's text: Markdown, with the questions it asked and the user's answers drawn as such
+ * rather than as the quoted lines they are stored as (chat/askTranscript.ts).
+ */
+export function AssistantText({
+  text,
+  onJump
+}: {
+  text: string
+  onJump: (code: string) => void
+}): JSX.Element {
+  const segments = useMemo(() => splitAskTranscript(text), [text])
+  return (
+    <>
+      {segments.map((s, i) =>
+        s.kind === 'text' ? (
+          <Markdown key={i} text={s.text} onJump={onJump} />
+        ) : (
+          <AnsweredQuestions key={i} pairs={s.pairs} />
+        )
+      )}
+    </>
+  )
+}
 
 /** Module-level, so the array identity never changes. It used to be a literal in the JSX below,
  *  which handed `ReactMarkdown` a new array on every single render. */

@@ -52,6 +52,25 @@ describe('a transcript row', () => {
     expect(screen.getByRole('cell', { name: '12' })).toBeInTheDocument()
   })
 
+  it('draws the questions it asked and the answers given as such, not as quoted lines', () => {
+    const content =
+      'Let me ask first.\n\n> ❓ Which system boundary?\n> ➤ cradle-to-gate excluding use phase\n>\n' +
+      "> ❓ Research the recipe?\n> ➤ (no answer)\n\nI'm creating the processes now."
+    const { container } = render(
+      <MessageRow m={{ role: 'assistant', content }} labels={LABELS} onJump={vi.fn()} onReveal={vi.fn()} />
+    )
+    const block = screen.getByRole('group', { name: 'Your answers' })
+    expect(block).toHaveTextContent('Which system boundary?')
+    expect(block).toHaveTextContent('cradle-to-gate excluding use phase')
+    expect(block).toHaveTextContent('No answer')
+    expect(container.querySelector('blockquote')).toBeNull()
+    expect(container.textContent).not.toMatch(/❓|➤/)
+    // The text around the block is Markdown as before, in order.
+    const text = container.textContent ?? ''
+    expect(text.indexOf('Let me ask first.')).toBeLessThan(text.indexOf('Which system boundary?'))
+    expect(text.indexOf('No answer')).toBeLessThan(text.indexOf("I'm creating the processes now."))
+  })
+
   it('turns a prism:process link into a jump button and calls back with the decoded code', async () => {
     const onJump = vi.fn()
     render(

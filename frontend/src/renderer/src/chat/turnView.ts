@@ -186,7 +186,28 @@ const eventListeners = new Set<(ev: AiEvent, before: TurnView | undefined) => vo
 let holders = 0
 let unsubscribe: (() => void) | null = null
 
+/**
+ * Text arrives a few characters at a time, and every announcement re-renders the panel and parses the
+ * answer's Markdown again — dozens of times a second, while the reader tries to scroll. Text and
+ * reasoning are folded into the store at once but announced once per frame; any other event announces
+ * at once and takes a waiting announcement with it. A covered window gets no frames, so it does no
+ * rendering work for the text until it is shown again, and then once.
+ */
+let framePending: number | null = null
+function publishSoon(): void {
+  if (framePending !== null) return
+  if (typeof requestAnimationFrame !== 'function') return publish()
+  framePending = requestAnimationFrame(() => {
+    framePending = null
+    publish()
+  })
+}
+
 function publish(): void {
+  if (framePending !== null) {
+    cancelAnimationFrame(framePending)
+    framePending = null
+  }
   for (const fn of viewers) fn()
 }
 
@@ -214,7 +235,8 @@ export function handleTurnEvent(ev: AiEvent, now: number = Date.now()): void {
   if (next !== prev) {
     if (next) turns.set(ev.chatId, next)
     else turns.delete(ev.chatId)
-    publish()
+    if (ev.type === 'delta' || ev.type === 'reasoning') publishSoon()
+    else publish()
   }
   for (const fn of eventListeners) fn(ev, prev)
 }
