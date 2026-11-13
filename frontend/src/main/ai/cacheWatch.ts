@@ -19,6 +19,10 @@
  */
 
 export type CacheAlarm = 'dropped' | 'stuck'
+/** What the watch reports: an alarm, or that the cache works again after one. A single miss in the
+ *  middle of a run (a route that switched endpoints once) would otherwise leave "not working" standing
+ *  for the rest of it, over rounds that are served from the cache again. */
+export type CacheSignal = CacheAlarm | 'recovered'
 
 /** Below this the providers do not cache at all (their minimum is about 1k tokens). */
 const MIN_PROMPT_TOKENS = 2048
@@ -42,8 +46,11 @@ export interface CacheObservation {
 
 export interface CacheWatch {
   /** Read one round's figures; returns the alarm it raises, or null. Each alarm is raised once per
-   *  episode: again only after the cache has worked in between. */
-  observe(o: CacheObservation): CacheAlarm | null
+   *  episode: again only after the cache has worked in between — and the first round that ends an
+   *  episode says so ("recovered"): a hit after "dropped"; after "stuck", a cached figure above the one
+   *  it was stuck at — a figure that only fell is no recovery, and a hit after a miss inside a stall
+   *  says "stuck" again. */
+  observe(o: CacheObservation): CacheSignal | null
   /** The conversation was rewritten (compaction): earlier figures no longer describe this prefix. */
   reset(): void
 }
@@ -59,6 +66,10 @@ export function createCacheWatch(): CacheWatch {
   let recent: CacheObservation[] = []
   /** Rounds still exempt from "dropped" — the one after a compaction. */
   let grace = 0
+  /** An unresolved stall, with the cached figure a recovery has to exceed: the highest it stalled at;
+   *  unknown right after a compaction until the next hit sets it. Kept through a full miss — a miss
+   *  inside a stall ends the miss when hits return, not the stall. */
+  let stall: { at?: number } | null = null
 
   return {
     observe(o) {
@@ -74,21 +85,38 @@ export function createCacheWatch(): CacheWatch {
         dropRaised = true
         return 'dropped'
       }
+      const afterDrop = dropRaised
       seenHit = true
       dropRaised = false
       if (stuckAt !== undefined && cached !== stuckAt) stuckAt = undefined
       recent = [...recent, { ...o, cached }].slice(-STUCK_ROUNDS)
+      // Grown past the figure it stalled at, or served from the cache after a miss: the episode is over.
+      // A hit right after a miss inside a stall ends the miss only — the bar says "stuck" again. The
+      // same round cannot raise a new stall: its figure just grew, or it is the first hit after a miss.
+      // After a compaction the old figure describes another prefix; the first hit is the new one.
+      if (stall) {
+        if (stall.at === undefined) stall.at = cached
+        else if (cached > stall.at) {
+          stall = null
+          return 'recovered'
+        }
+        if (afterDrop) return 'stuck'
+      } else if (afterDrop) return 'recovered'
       if (recent.length < STUCK_ROUNDS || stuckAt !== undefined) return null
       if (!recent.every((r) => r.cached === cached)) return null
       const growth = recent[recent.length - 1].prompt - recent[0].prompt
       if (growth < STUCK_MIN_GROWTH_TOKENS || growth < recent[0].prompt * STUCK_MIN_GROWTH_SHARE) return null
       stuckAt = cached
+      // A lower plateau inside an unresolved stall keeps the higher figure as the bar to clear: back up
+      // to where it stalled before is not recovery.
+      stall = { at: Math.max(stall?.at ?? 0, cached) }
       return 'stuck'
     },
     reset() {
       recent = []
       stuckAt = undefined
       grace = 1
+      if (stall) stall = {}
     }
   }
 }

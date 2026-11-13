@@ -227,6 +227,29 @@ describe('the event stream', () => {
     expect(calls.calls).toEqual([{ id: 'call_9', name: 'do_it', arguments: '{"a":1}' }])
   })
 
+  it('drops the raw citation markers a model leaves in its text, even cut across deltas', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        sse([
+          { type: 'response.created' },
+          { type: 'response.output_text.delta', delta: 'Washing at 40 °C. citeturn53' },
+          { type: 'response.output_text.delta', delta: '9023search3 Next.' },
+          { type: 'response.output_text.delta', delta: ' citeturn1' },
+          { type: 'response.output_text.done' },
+          completed({ input_tokens: 10, output_tokens: 4 })
+        ])
+      )
+    )
+    const events = await run({ webSearch: true })
+    expect(
+      events
+        .filter((e) => e.type === 'delta')
+        .map((e: any) => e.text)
+        .join('')
+    ).toBe('Washing at 40 °C.  Next. ')
+  })
+
   it('passes a url_citation annotation on as a citations event (URL and title, no excerpt)', async () => {
     vi.stubGlobal(
       'fetch',

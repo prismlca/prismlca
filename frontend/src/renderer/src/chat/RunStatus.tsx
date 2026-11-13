@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ChatMessage } from '../lib/ai'
 import { Elapsed } from './ToolTraceList'
-import type { RetryState, TurnView } from './turnView'
+import type { CacheNote, RetryState, TurnView } from './turnView'
 import { compact, contextLabel } from './chatFormat'
 
 /**
@@ -82,7 +82,7 @@ function RetryNote({ retry }: { retry: RetryState }): JSX.Element {
 }
 
 /** What the run bar says when the provider's prompt cache stops working, and the longer word on hover. */
-const CACHE_WARNING: Record<'dropped' | 'stuck', { short: string; title: string }> = {
+const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
   dropped: {
     short: 'prompt cache is not working — rounds are billed in full',
     title:
@@ -95,6 +95,18 @@ const CACHE_WARNING: Record<'dropped' | 'stuck', { short: string; title: string 
       "The share of the prompt served from the provider's cache has stopped growing while the conversation " +
       'grows, so the new part of every round is billed at the full input price. If cost matters, stop the ' +
       'run and pick another model or route.'
+  },
+  'dropped-recovered': {
+    short: 'prompt cache dropped out — working again',
+    title:
+      "Some rounds of this run were not served from the provider's prompt cache and were billed at the full " +
+      'input price; the rounds since are served from it again.'
+  },
+  'stuck-recovered': {
+    short: 'prompt cache stalled — growing again',
+    title:
+      "For some rounds the share served from the provider's cache stopped growing and the new part was " +
+      'billed at the full input price; it grows with the conversation again.'
   }
 }
 
@@ -136,8 +148,9 @@ export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<str
         {!pending && restarts > 0 ? (
           <span className="chat-runbar-note"> · restarted {restarts}× (the model returned nothing)</span>
         ) : null}
-        {/* Said once per run and kept until it ends: a run whose cache has failed costs several times
-            what it should, and the ledger shows it only afterwards. */}
+        {/* Kept until the run ends, and turned into "working again" when the cache recovers: a run whose
+            cache has failed costs several times what it should, and the ledger shows it only afterwards —
+            but a warning left standing over rounds that hit again says something that is no longer true. */}
         {cacheWarning ? (
           <span className="chat-runbar-note" title={CACHE_WARNING[cacheWarning].title}>
             {' '}

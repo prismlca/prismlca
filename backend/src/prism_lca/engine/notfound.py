@@ -5,7 +5,13 @@ what went wrong, the hint says it (the same shape as the report gate's repair, V
 
 - a whole batch sent in the single-code field, as a JSON string (V277);
 - a code that lives in ANOTHER database — most often a background dataset's code sent with the model's
-  own database name as an input's database.
+  own database name as an input's database;
+- a code one copy slip away from a code of the database named — a character added, lost or changed while
+  a model copied 32 hex digits by hand (V513). The near code is NAMED with its dataset, never used in its
+  place: two datasets can differ in one digit, and a lookup that took the nearest would link the wrong one
+  and report success. When every code of that database has one length and the code sent is a character or
+  two off it, the hint says so — measured on the database, because the shapes differ (ecoinvent and the
+  models use 32 hex digits, a BAFU database 36-character UUIDs).
 
 The lookup is shared by every caller (process details, edits, deletion, exchanges, the HTTP API), so the
 hint states facts and names only the one use that is safe in all of them. It never invites an edit
@@ -27,12 +33,20 @@ from __future__ import annotations
 import json
 
 from prism_lca.engine.guardrails import is_read_only
+from prism_lca.engine.uid_hint import is_near
 
 #: How many codes of a mis-sent batch the hint repeats back. Enough to recognise it as one's own
 #: list, short enough that a forty-code slip does not become a wall of hex.
 _HINT_CODES = 3
 
 _CHECK = "Check the activity code and database."
+
+#: Leading characters a near code must share (32 bits for hex — no two datasets share them by chance),
+#: and how many near codes a hint names.
+_PREFIX = 8
+_SHOWN = 3
+#: How far a code's length may be from its database's for the difference to be called a copy slip.
+_SLIP = 2
 
 
 def not_found_hint(bd, code: str, database: str) -> str:
@@ -42,7 +56,7 @@ def not_found_hint(bd, code: str, database: str) -> str:
         return batch
     holders = _visible(_holders(bd, code, database))
     if not holders:
-        return _CHECK
+        return _slip_hint(code, database) or _CHECK
     if len(holders) > 1:
         named = " and ".join(f"'{h}'" for h in holders)
         return f"That code exists in {named}, not in '{database}'. Give the database you mean."
@@ -53,6 +67,46 @@ def not_found_hint(bd, code: str, database: str) -> str:
             f"input, give '{holder}' as the input's database; the dataset itself cannot be changed."
         )
     return f"That code is a process in '{holder}', not in '{database}'."
+
+
+def _slip_hint(code: str, database: str) -> str | None:
+    """The hint for a code that looks like a mis-copied code of `database`, or None."""
+    from bw2data.backends import ActivityDataset as AD
+    from peewee import fn
+
+    text = (code or "").strip()
+    if not _PREFIX <= len(text) <= 64 or not _visible([database]):
+        return None
+    wanted = text.lower()
+    in_db = AD.database == database
+    size = fn.LENGTH(AD.code).coerce(False)  # a count, not text like the column it measures
+    lengths = {int(n) for (n,) in AD.select(size).where(in_db).distinct().limit(2).tuples()}
+    usual = next(iter(lengths)) if len(lengths) == 1 else None
+    length = (
+        f"This code has {len(text)} characters; every code in '{database}' has {usual}. "
+        if usual and usual != len(text) and abs(usual - len(text)) <= _SLIP
+        else ""
+    )
+    # One character too many is the slip seen; its fixes are few enough to look up exactly, and they are
+    # asked first so that a crowd of codes with the same start cannot push them out. A changed or lost
+    # character behind the first eight is found by the shared start.
+    dropped = list({wanted[:i] + wanted[i + 1 :] for i in range(len(wanted))})
+    fields = (AD.code, AD.name, AD.location)
+    exact = list(AD.select(*fields).where(in_db & AD.code.in_(dropped)).limit(_SHOWN))
+    started = list(AD.select(*fields).where(in_db & AD.code.startswith(wanted[:_PREFIX])).limit(_SHOWN * 4))
+    near = []
+    for r in exact + started:
+        if r.code not in (n.code for n in near) and (r.code.lower() == wanted or is_near(wanted, r.code)):
+            near.append(r)
+    near = near[:_SHOWN]
+    if near:
+        named = " or ".join(f"{r.code} ('{r.name}', {r.location})" for r in near)
+        return (
+            f"{length}Did you mean {named}? It was not used in its place — send it if it is the one you meant."
+        )
+    if length:
+        return f"{length}Copy the code again from the search result or from get_process_details."
+    return None
 
 
 def _visible(holders: list[str]) -> list[str]:

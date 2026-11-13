@@ -80,7 +80,7 @@ describe('the log of a run', () => {
     )
   })
 
-  it('warns when the cache stops working, and tells the run bar once', async () => {
+  it('warns when the cache stops working, and tells the run bar each time and when it works again', async () => {
     chat.rounds = [
       { ...listModels('t1'), usage: usage(50_000, 40_000) },
       { ...listModels('t2'), usage: usage(70_000, 0) },
@@ -90,8 +90,11 @@ describe('the log of a run', () => {
     ]
     const d = deps()
     await runAgent(request(), d.deps)
-    expect(d.events.filter((e) => e.type === 'cache-warning')).toEqual([
-      { chatId: 'c-records', type: 'cache-warning', pattern: 'dropped' }
+    expect(d.events.filter((e) => e.type === 'cache-warning').map((e: any) => e.pattern)).toEqual([
+      'dropped',
+      'recovered',
+      'dropped',
+      'recovered'
     ])
     expect(warned.filter((l) => l.includes('[prism-ai] cache warning:'))).toHaveLength(2)
   })

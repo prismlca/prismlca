@@ -131,14 +131,14 @@ describe('the run telemetry', () => {
     expect(String(log.mock.calls[0][0])).toContain('first token —, round 3.0 s')
   })
 
-  it('warns in the log on every alarm and tells the run bar once', () => {
+  it('warns in the log on every alarm and tells the run bar each change, the recovery too', () => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const alarms: string[] = []
     const t = createRunTelemetry({
       model: 'test/model',
       provider: 'openrouter',
-      onCacheAlarm: (a) => alarms.push(a)
+      onCacheSignal: (a) => alarms.push(a)
     })
     const round = (prompt: number, cached: number): void => {
       t.begin(0, 1)
@@ -150,7 +150,7 @@ describe('the run telemetry', () => {
     round(70_000, 0)
     round(90_000, 89_000)
     round(110_000, 0)
-    expect(alarms).toEqual(['dropped'])
+    expect(alarms).toEqual(['dropped', 'recovered', 'dropped'])
     const lines = warn.mock.calls.map((c) => String(c[0]))
     expect(lines).toHaveLength(2)
     expect(lines[0]).toContain("[prism-ai] cache warning: none of this round's 70000 prompt tokens")

@@ -120,14 +120,22 @@ describe('the turn view of one chat', () => {
     ).toBe(true)
   })
 
-  it('keeps the first cache warning of the run until the run ends', () => {
-    const warn = (pattern: 'dropped' | 'stuck'): AiEvent => ({ chatId: 'c', type: 'cache-warning', pattern })
+  it('shows what holds for the cache now, and keeps a recovered failure visible until the run ends', () => {
+    const warn = (pattern: 'dropped' | 'stuck' | 'recovered'): AiEvent => ({
+      chatId: 'c',
+      type: 'cache-warning',
+      pattern
+    })
     const v = fold([
       [warn('stuck'), 1],
       [{ chatId: 'c', type: 'delta', text: 'Linking.' }, 2],
-      [warn('dropped'), 3]
+      [warn('recovered'), 3]
     ])!
-    expect(v.cacheWarning).toBe('stuck')
+    expect(v.cacheWarning).toBe('stuck-recovered')
+    expect(foldTurn(v, warn('dropped'), 4)!.cacheWarning).toBe('dropped')
+    expect(foldTurn(v, warn('recovered'), 4)!.cacheWarning).toBe('stuck-recovered')
+    // A recovery with nothing raised before it says nothing.
+    expect(fold([[warn('recovered'), 1]])?.cacheWarning).toBeUndefined()
     expect(foldTurn(v, { chatId: 'c', type: 'done', text: 'Linking.' }, 4)).toBeUndefined()
   })
 

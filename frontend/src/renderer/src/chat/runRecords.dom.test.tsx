@@ -12,6 +12,12 @@ describe('the run bar', () => {
     expect(note.getAttribute('title')).toMatch(/billed at the full input price/)
   })
 
+  it('says when the cache works again after it failed, still with the cost on hover', () => {
+    render(<RunStatus turn={{ ...emptyTurn(0), cacheWarning: 'dropped-recovered' }} labels={{}} />)
+    const note = screen.getByText(/prompt cache dropped out — working again/)
+    expect(note.getAttribute('title')).toMatch(/billed at the full input price/)
+  })
+
   it('says nothing about the cache while it works', () => {
     render(<RunStatus turn={emptyTurn(0)} labels={{}} />)
     expect(screen.queryByText(/prompt cache/)).toBeNull()
