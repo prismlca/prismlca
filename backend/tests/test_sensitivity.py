@@ -89,6 +89,7 @@ def test_curve(client, token, project):
     assert abs(scores[3.0] - 1.6) < 1e-6
 
 
+@pytest.mark.writes_every_step
 def test_breakeven(client, token, project):
     _seed(get_bd())
     _setup_param(client, token)

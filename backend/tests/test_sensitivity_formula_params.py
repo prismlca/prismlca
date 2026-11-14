@@ -83,6 +83,7 @@ def test_a_tornado_on_a_named_formula_parameter_says_what_it_broke(client, token
     assert not param_window.path().exists()
 
 
+@pytest.mark.writes_every_step
 def test_a_break_even_on_a_formula_parameter_is_found(client, token, project):
     _model(client, token)
     bd = get_bd()
@@ -246,6 +247,7 @@ def _breakeven(client, token, **body) -> dict:
                                              "lo": 0.0, "hi": 10.0, **body})
 
 
+@pytest.mark.writes_every_step
 def test_a_jump_across_the_other_score_is_not_a_break_even(client, token, project):
     """Bottle 0.1 kg below b = 4 and 2.1 kg from there on, against 1.1 kg: the difference goes from −1 to
     +1 with no point where it is 0. Bisection used to call the jump a root, residual 1."""
@@ -261,6 +263,7 @@ def test_a_jump_across_the_other_score_is_not_a_break_even(client, token, projec
     _assert_baseline_back()
 
 
+@pytest.mark.writes_every_step
 def test_two_crossings_inside_the_bracket_are_both_found(client, token, project):
     """0.5 (b−2)(b−8) + 0.1 against 0.1: equal at b = 2 and b = 8. Both ends of [0, 10] have the same
     sign, and testing only the ends answered "no break-even"."""
@@ -276,6 +279,7 @@ def test_two_crossings_inside_the_bracket_are_both_found(client, token, project)
     _assert_baseline_back()
 
 
+@pytest.mark.writes_every_step
 def test_no_sign_change_says_so_and_names_the_closest_point(client, token, project):
     _model(client, token)
     _reference(get_bd(), 0.0)  # bottle 0.5 b + 0.1 > 0 on the whole bracket
@@ -369,6 +373,7 @@ def scenarios_plan(overrides: dict, formulas: dict):
 # --------------------------------------------------------------------------- #
 # Break-even tolerances near zero
 # --------------------------------------------------------------------------- #
+@pytest.mark.writes_every_step
 @pytest.mark.parametrize("ref", [0.0, 1e-20])
 def test_a_smooth_crossing_at_zero_is_a_break_even(client, token, project, ref):
     """A = b − 0.3 against B = 0 (or 1e-20): both scores are ~0 at the crossing, and a tolerance
@@ -382,6 +387,7 @@ def test_a_smooth_crossing_at_zero_is_a_break_even(client, token, project, ref):
     assert "discontinuities" not in out
 
 
+@pytest.mark.writes_every_step
 def test_tiny_scores_of_one_sign_are_not_a_crossing(client, token, project, monkeypatch):
     """A = 1e-200 · (1 + b) against B = 0: the product of two differences underflowed to 0 and the
     scan took two positive values for a sign change — an invented discontinuity."""
