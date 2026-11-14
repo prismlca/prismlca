@@ -37,7 +37,9 @@ built commit by commit and is left as it is.
 
 ## The usual
 
-- Backend: `cd backend && uv run pytest -n auto` and `uv run ruff check src tests scripts`. After changing the
+- Backend: `cd backend && uv run python scripts/full_suite.py` (the whole suite, its guards for generated files
+  answering first; `uv run pytest tests/test_x.py` for the tests of one change) and
+  `uv run ruff check src tests scripts`. After changing the
   BAFU import or bumping bw2io/bw2data, also `PRISM_FULL_BAFU=1 uv run pytest tests/test_backgrounds_bafu.py`
   (writes all of bw2io's bundled methods instead of one per family).
 - Frontend: `cd frontend && npm run lint && npm run typecheck && npx vitest run`. A change to start-up, the
