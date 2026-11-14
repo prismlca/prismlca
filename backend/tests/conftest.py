@@ -29,7 +29,9 @@ if "PRISM_TEST_RUN_DIR" not in os.environ:
     )
 
 import uuid  # noqa: E402
+from collections.abc import Iterator  # noqa: E402
 
+import anyio.from_thread  # noqa: E402
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -37,7 +39,7 @@ from prism_lca.app import create_app  # noqa: E402
 from prism_lca.config import Settings  # noqa: E402
 
 #: How many tests run between two collections that see the frozen objects too (see below).
-FULL_COLLECTION_EVERY = 20
+FULL_COLLECTION_EVERY = 60
 _tests_since_full_collection = 0
 
 
@@ -52,7 +54,9 @@ def _freeze_survivors():
     A frozen object that is abandoned later is never collected, though: the SQLite connection a test
     opened on the main thread stays with the old database object when a request on another thread
     switches the project — about 1.4 open files per test. So every few tests the freeze is lifted for one
-    full collection, which bounds that to a few dozen files at ~5 ms per test."""
+    full collection, which bounds that to under a hundred files per worker. That collection walks
+    everything frozen, some 800 000 objects at ~250 ms: every 20 tests it was more than half of what
+    this fixture cost a run, every 60 it is a third of that."""
     global _tests_since_full_collection
     _tests_since_full_collection += 1
     if _tests_since_full_collection >= FULL_COLLECTION_EVERY:
@@ -84,8 +88,17 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def client(settings: Settings) -> TestClient:
-    return TestClient(create_app(settings))
+def client(settings: Settings) -> Iterator[TestClient]:
+    """One event loop for the whole test, as uvicorn runs one for the whole app. Left to itself, the
+    TestClient starts a thread with a fresh loop for every request — a few milliseconds each, and a run
+    makes thousands of requests. The app's lifespan still does not run (that takes ``with client:``)."""
+    test_client = TestClient(create_app(settings))
+    with anyio.from_thread.start_blocking_portal(**test_client.async_backend) as portal:
+        test_client.portal = portal
+        try:
+            yield test_client
+        finally:
+            test_client.portal = None
 
 
 @pytest.fixture
@@ -111,11 +124,29 @@ def written_steps(monkeypatch) -> None:
     monkeypatch.setattr(sensitivity_fast, "ENABLED", False)
 
 
-@pytest.fixture(params=["fast", "written"])
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "writes_every_step: a test of the break-even search, which writes every step whatever the fast "
+        "path says (engine/sensitivity.py); `sensitivity_path` runs it once, with the fast path enabled.",
+    )
+
+
+def pytest_generate_tests(metafunc):
+    """`sensitivity_path` runs a test on both paths — except a test of the break-even search: it never
+    takes the fast path, so its two runs were the same code twice. Such a test keeps the setting the app
+    ships with, the fast path enabled, so the check in `sensitivity_path` engages the day the search
+    learns the fast path."""
+    if "sensitivity_path" in metafunc.fixturenames:
+        writes = metafunc.definition.get_closest_marker("writes_every_step") is not None
+        metafunc.parametrize("sensitivity_path", ["fast"] if writes else ["fast", "written"], indirect=True)
+
+
+@pytest.fixture
 def sensitivity_path(request, monkeypatch):
     """Runs a sensitivity test once on each path; both have to give the same answer. On the fast one, a
     run that quietly fell back to writing its steps fails the test: it would have tested the other path
-    twice."""
+    twice. The paths are handed out by `pytest_generate_tests` above."""
     from prism_lca.engine import sensitivity_fast
 
     if request.param == "written":
