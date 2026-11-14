@@ -452,13 +452,42 @@ def _npm_license_files(pkg_dir: Path) -> list[tuple[str, str]]:
     return found
 
 
+def npm_directory() -> Path:
+    """Where to ask `npm ls`. A git worktree may borrow the main checkout's node_modules through a
+    symlink; asked from the worktree, npm then cannot tell the dev packages apart and lists all of them,
+    while asked from the directory the packages really live in it answers correctly. That answer is the
+    other checkout's package set, so it only stands for this one while both lock the same dependencies."""
+    modules = FRONTEND / "node_modules"
+    if not modules.is_symlink():
+        return FRONTEND
+    owner = modules.resolve().parent
+    if _locked_dependencies(owner) != _locked_dependencies(FRONTEND):
+        raise SystemExit(
+            f"{FRONTEND} borrows its node_modules from {owner}, but its package-lock.json locks other "
+            "dependencies, so that installation does not stand for them. Install its own (`npm ci` in "
+            "that frontend directory) and run this again."
+        )
+    return owner
+
+
+def _locked_dependencies(frontend: Path) -> object:
+    """Every locked package, and the root package's dependency fields — not its version or scripts."""
+    try:
+        lock = json.loads((frontend / "package-lock.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    packages = dict(lock.get("packages") or {})
+    root = packages.pop("", {})
+    return packages, {k: v for k, v in root.items() if k.endswith(("ependencies", "overrides"))}
+
+
 def npm_packages() -> list[Package]:
     npm = shutil.which("npm")
     if npm is None:
         raise SystemExit("npm not found on PATH; it is needed for the frontend inventory")
     proc = subprocess.run(
         [npm, "ls", "--omit=dev", "--all", "--long", "--json"],
-        cwd=FRONTEND,
+        cwd=npm_directory(),
         capture_output=True,
         text=True,
         encoding="utf-8",

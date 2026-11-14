@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc -p tsconfig.e2e.json",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
-    "lint": "prettier --check src e2e && eslint src e2e",
+    "lint": "prettier --check --cache --cache-strategy content --cache-location .cache/prettier src e2e && eslint --cache --cache-strategy content --cache-location .cache/eslint/ --concurrency auto src e2e",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:node": "vitest run --project node",

@@ -83,12 +83,16 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
   - A **tripwire** holds the line: `frontend/src/fileSize.test.ts` and `backend/tests/test_file_size.py`.
     New files stay below 800 or 1000 lines; every current large file has a ceiling (line count + 25 for
     wiring) that may only go down. Raising it is allowed when the new lines belong in that file — with a
-    comment saying why they cannot live elsewhere. Both run in the normal suites, so run `npx vitest run`
-    and `uv run pytest -n auto` before every commit that touches code (plus `npm run typecheck` and
-    `npm run lint`); a commit that changes only docs, text, images or CSS may skip them. These local runs are
-    the check for every commit: CI (`.github/workflows/ci.yml`) runs on pull requests and on demand only —
-    on every pull request, and started deliberately before every release, because its Windows job is the only
-    place the suites run on Windows. A red CI run is the next thing to fix.
+    comment saying why they cannot live elsewhere. Both run in the normal suites.
+- **The full suites are green on every state that is pushed or merged**: `npx vitest run`, `npm run typecheck`
+  and `npm run lint` in `frontend/`, and `uv run python scripts/full_suite.py` in `backend/` (the guards for
+  generated files first, then the full run, one full run per machine at a time). An intermediate commit on a
+  local branch needs only the tests that cover the change (`pytest tests/test_x.py`, `npx vitest run <files>`,
+  plus typecheck and lint for frontend code); a change to docs, text, images or CSS alone needs none. Agents
+  working in parallel run targeted tests only, and the full suites run once on the combined state. These local
+  runs are the check for every change: CI (`.github/workflows/ci.yml`) runs on pull requests and on demand
+  only — on every pull request, and started deliberately before every release, because its Windows job is the
+  only place the suites run on Windows. A red CI run is the next thing to fix.
 - **Changes reach `main` through pull requests**: one branch per feature or fix (in its own git worktree when
   several people or agents share a checkout), small commits on the branch are fine, and the maintainer
   squash-merges the pull request once it is approved, so `main` carries one commit per change. Only release

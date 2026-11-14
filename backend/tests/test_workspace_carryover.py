@@ -18,6 +18,8 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -118,15 +120,39 @@ def _read(brightway_dir: Path, project: str) -> dict:
     return json.loads(_python(_READ, brightway_dir, project).strip().splitlines()[-1])
 
 
-@pytest.fixture(scope="module")
-def shared_dir(tmp_path_factory) -> tuple[Path, float]:
-    """The shared directory as an earlier PrismLCA left it, and the Brightway user's LCA score."""
-    root = tmp_path_factory.mktemp("shared")
+def _build(root: Path) -> Path:
     bw = root / "Brightway3"
     bw.mkdir()
-    score_file = root / "score.json"
-    _python(_BUILD, bw, str(score_file), data_dir=root / "old-prism-data")
-    return bw, json.loads(score_file.read_text())["score"]
+    _python(_BUILD, bw, str(root / "score.json"), data_dir=root / "old-prism-data")
+    return root
+
+
+@pytest.fixture(scope="module")
+def shared_dir(tmp_path_factory) -> tuple[Path, float]:
+    """The shared directory as an earlier PrismLCA left it, and the Brightway user's LCA score.
+
+    Building it takes a child process ~7 s, and under xdist every worker that drew one of these tests
+    built its own. So it is built once per run into the run's shared directory, the way the core
+    migrations are shared: a lock directory says "being built" and the result appears complete in one
+    rename. A worker that finds the lock waits; if that build fails or takes implausibly long, it builds
+    its own copy as before. Tests only read it — ``theirs`` hands each one a copy."""
+    run_dir = Path(os.environ["PRISM_TEST_RUN_DIR"])
+    cache, lock = run_dir / "workspace-carryover", run_dir / "workspace-carryover.lock"
+    if not cache.is_dir():
+        try:
+            os.mkdir(lock)
+        except FileExistsError:
+            deadline = time.monotonic() + 300
+            while lock.is_dir() and not cache.is_dir() and time.monotonic() < deadline:
+                time.sleep(0.1)
+        else:
+            try:
+                if not cache.is_dir():  # not published while this worker took the lock
+                    os.rename(_build(Path(tempfile.mkdtemp(dir=run_dir))), cache)
+            finally:
+                os.rmdir(lock)
+    root = cache if cache.is_dir() else _build(tmp_path_factory.mktemp("shared"))
+    return root / "Brightway3", json.loads((root / "score.json").read_text())["score"]
 
 
 @pytest.fixture
@@ -159,9 +185,9 @@ def _carry(old: Path, new: Path) -> tuple[str | None, list[str], list[str]]:
     return carry_over(old, new, progress.append, log.append), progress, log
 
 
-def test_the_fixture_is_a_real_shared_directory(shared_dir):
+def test_the_fixture_is_a_real_shared_directory(shared_dir, tmp_path):
     bw, score = shared_dir
-    seen = _read(shutil.copytree(bw, bw.parent / "probe"), "steel-bottle-study")
+    seen = _read(shutil.copytree(bw, tmp_path / "probe"), "steel-bottle-study")
     assert {"steel-bottle-study", "Übung 2", "prism-workspace"} <= set(seen["projects"])
     assert seen["databases"]["bottles"] == 2 and seen["databases"]["my-biosphere"] == 2
     assert seen["score"] == pytest.approx(score) and score > 0
