@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import types
 from pathlib import Path
 
 import pytest
@@ -162,11 +163,35 @@ def test_loader_that_leaves_no_files_is_an_error(hub_cache):
 # --- warm() -------------------------------------------------------------------------------------
 
 
+def _threads_for_the_service(monkeypatch, thread) -> None:
+    """Hand the search service a ``threading`` whose ``Thread`` is ``thread``, and leave the real module
+    alone. ``service.threading`` *is* the real module: patching ``Thread`` there also reached every module
+    imported during the test. huggingface_hub's telemetry, imported by ``warm()`` when no earlier test in
+    the worker had loaded it, evaluates ``Thread | None`` at import time; a stand-in made that import fail
+    halfway and left the package unable to import for every later test in that worker."""
+    from prism_lca.search import service
+
+    stand_in = types.ModuleType("threading")
+    stand_in.__dict__.update(vars(threading))
+    stand_in.Thread = thread
+    monkeypatch.setattr(service, "threading", stand_in)
+
+
+def test_the_service_gets_its_own_threading_and_the_real_module_stays(monkeypatch):
+    from prism_lca.search import service
+
+    real = threading.Thread
+    _threads_for_the_service(monkeypatch, lambda *a, **k: None)
+    assert threading.Thread is real
+    assert service.threading.Thread is not real
+    assert service.threading.Lock is threading.Lock
+
+
 def test_warm_skips_a_missing_model(hub_cache, monkeypatch):
     from prism_lca.search import service
 
     started: list[str] = []
-    monkeypatch.setattr(service.threading, "Thread", lambda *a, **k: started.append("thread"))
+    _threads_for_the_service(monkeypatch, lambda *a, **k: started.append("thread"))
     service.SearchService(_settings()).warm()
     assert started == []
 
@@ -184,14 +209,13 @@ def test_warm_loads_a_cached_model(hub_cache, monkeypatch):
             started.append(self.name)
 
     started: list[str] = []
-    monkeypatch.setattr(service.threading, "Thread", _Thread)
+    _threads_for_the_service(monkeypatch, _Thread)
     service.SearchService(_settings()).warm()
     assert started == ["prism-embed-warmup"]
 
 
 def _fake_sentence_transformers(monkeypatch) -> list[dict]:
     import sys
-    import types
 
     calls: list[dict] = []
 
