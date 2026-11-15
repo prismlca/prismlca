@@ -309,6 +309,10 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
             (b) => b.code
           ),
           scenarios: on(held.scenSel),
+          // Said, because it is not in `subjects`: with scenarios ticked, the plain subject is computed
+          // only while this is on — an assistant reading one subject and three scenarios took its
+          // baseline for lost and reported a view that was complete as wrong.
+          baseline: held.baseline !== false,
           methods: ((held.picked as Array<{ method: string[] }> | undefined) ?? []).map((m) => m.method),
           ...(unknownMethods.length ? { methods_not_found: unknownMethods } : {}),
           stacked: readLs('prism.ov.stacked', false),

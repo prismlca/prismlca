@@ -681,9 +681,9 @@ def _bom_items_unbooked(
     `exchanges` is (unit symbol, evaluated amount, formula) per technosphere exchange, collected by
     the caller's pass over the model. A component counts as booked when a non-zero exchange in the
     mass family sits within `_BOM_MATCH_TOLERANCE` of its researched mass, or when a parameter
-    carrying the figure feeds at least one non-zero exchange through its formula.
+    carrying the figure feeds a non-zero exchange — in its formula, or through derived parameters.
     """
-    from prism_lca.engine.params import list_params
+    from prism_lca.engine.params import downstream_of, list_params
     from prism_lca.engine.research_log import ResearchLogStore
 
     placed = units_of.base(1.0, "kg")
@@ -764,8 +764,8 @@ def _bom_items_unbooked(
         carriers = exact or [name for name, value in mass_params if name and close(value, mass)]
         if carriers:
             fed = False
-            for name in carriers:
-                ident = re.compile(rf"\b{re.escape(name)}\b")
+            for name in carriers:  # the figure may arrive one step removed, via a derived parameter
+                ident = re.compile(r"\b(?:" + "|".join(map(re.escape, downstream_of(stored, name))) + r")\b")
                 if any(amount and f and ident.search(f) for _s, amount, f in exchanges):
                     fed = True
                     break

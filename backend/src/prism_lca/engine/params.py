@@ -406,6 +406,27 @@ def parameter_usage(database: str) -> dict[str, list[dict]]:
     return usage
 
 
+def downstream_of(rows: list[dict], name: str) -> set[str]:
+    """``name`` and every parameter whose value depends on it, through any chain of formulas.
+
+    ``rows`` are parameters as :func:`list_params` returns them. A figure can reach an exchange one
+    step removed — a wheel mass that only feeds ``steel_in_wheel = wheel - tyre - tube`` is booked
+    by the exchanges that use the derived parameter — so "does this figure feed anything?" has to
+    be asked of the whole set, not of the one name.
+    """
+    found = {name}
+    grew = True
+    while grew:
+        grew = False
+        for row in rows:
+            own = str(row.get("name") or "")
+            # Parsed, not matched as words: `1e3` holds no parameter `e3`, nor does a comment.
+            if own and own not in found and found & param_references.names_in(str(row.get("formula") or "")):
+                found.add(own)
+                grew = True
+    return found
+
+
 def unreachable_parameters(database: str) -> dict[str, list[str]]:
     """Parameters from which **no exchange formula is reachable**, following the chain of parameters.
 

@@ -209,7 +209,9 @@ export const modelTools: Tool[] = [
         try {
           return S(await edit(items[0]))
         } catch (e) {
-          return e instanceof Error ? e.message : String(e)
+          // As `{error}`, like `edit_exchange` below: bare text was booked as a successful write, so a
+          // call aimed at a code that is no process left no failed call behind.
+          return S({ error: e instanceof Error ? e.message : String(e) })
         }
       }
       const results = await Promise.all(items.map((it) => runItem(it, () => edit(it))))
