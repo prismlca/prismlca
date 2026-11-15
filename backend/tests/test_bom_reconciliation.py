@@ -63,6 +63,53 @@ def test_a_parameter_that_feeds_a_live_exchange_is_silence():
     assert found == []
 
 
+def test_a_figure_that_arrives_through_a_derived_parameter_is_silence():
+    """The wheel's 2.5 kg sits in `m_rad`, which no exchange names: it feeds
+    `m_stahl_rad = m_rad - m_reifen - m_schlauch`, and that one carries the steel exchanges. The
+    figure is booked, one step removed — the finding stood through three health checks of a run
+    and went into the reviewer's dossier as a gap."""
+    found = _run(
+        [{"component": "wheel, complete", "mass_kg": 2.5}],
+        [
+            {"name": "m_rad", "amount": 2.5, "unit": "kg"},
+            {"name": "m_reifen", "amount": 0.8, "unit": "kg"},
+            {"name": "m_schlauch", "amount": 0.2, "unit": "kg"},
+            {"name": "m_stahl_rad", "amount": 1.5, "unit": "kg", "formula": "m_rad - m_reifen - m_schlauch"},
+        ],
+        [("kilogram", 1.5, "m_stahl_rad"), ("kilogram", 0.8, "m_reifen")],
+    )
+    assert found == []
+
+
+def test_a_derived_parameter_that_feeds_only_a_dormant_exchange_is_still_the_finding():
+    """The chain has to end in a NON-ZERO exchange: a derived parameter parked in a switched-off
+    branch books nothing, however many steps lead to it."""
+    found = _run(
+        [{"component": "wheel, complete", "mass_kg": 2.5}],
+        [
+            {"name": "m_rad", "amount": 2.5, "unit": "kg"},
+            {"name": "m_stahl_rad", "amount": 1.5, "unit": "kg", "formula": "m_rad - 1"},
+        ],
+        [("kilogram", 0.0, "m_stahl_rad * schalter"), ("kilogram", 9.0, "m_gestell")],
+    )
+    assert len(found) == 1 and "m_rad" in found[0][1]
+
+
+def test_a_number_or_a_comment_that_merely_spells_the_name_is_no_dependency():
+    """`1e3` is a number, not the parameter `e3`, and a name in a comment is read by nobody. A
+    dormant carrier must not count as booked through a parameter that only looks related."""
+    found = _run(
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        [
+            {"name": "e3", "amount": 0.2, "unit": "kg"},
+            {"name": "per_tonne", "amount": 1000, "unit": "kg", "formula": "1e3"},
+            {"name": "frame", "amount": 9, "unit": "kg", "formula": "9  # was e3 once"},
+        ],
+        [("kilogram", 1000.0, "per_tonne"), ("kilogram", 9.0, "frame")],
+    )
+    assert len(found) == 1 and "e3" in found[0][1]
+
+
 def test_a_deliberate_deviation_stays_inside_the_tolerance():
     """Research said 0.4 kg, the modeller booked 0.3 after checking — modelling, not a gap."""
     found = _run(

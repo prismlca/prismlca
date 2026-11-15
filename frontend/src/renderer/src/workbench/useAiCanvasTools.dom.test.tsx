@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useAiCanvasTools, type AiCanvasToolsDeps } from './useAiCanvasTools'
+import { makePrism } from '../test/prism'
+import { resetQueryCache } from '../lib/server/useQuery'
 
 /**
  * The end of an agent turn that added boxes: the chat asks for a reload with `fit`, and the canvas is
@@ -43,7 +45,13 @@ function setup(view: AiCanvasToolsDeps['view']) {
       canvas
     })
   )
-  return { refresh: result.current.chatUi.refresh, reloadGraph, fitView, finishReload: () => finishReload() }
+  return {
+    refresh: result.current.chatUi.refresh,
+    setupResults: result.current.chatUi.setupResults,
+    reloadGraph,
+    fitView,
+    finishReload: () => finishReload()
+  }
 }
 
 describe('refresh with fit', () => {
@@ -131,5 +139,53 @@ describe('the wait for the drawn canvas', () => {
     expect(done).toBeUndefined() // a box React Flow still hides
     boxes[0].measured = { width: 210 }
     await waitFor(() => expect(done).toBe(true))
+  })
+})
+
+/**
+ * What `setup_results` reports back is what the assistant tells the user the page will show. The plain
+ * subject and its scenarios are one process there, so the baseline is a switch of its own — and has
+ * to be in the readback, or "one subject, three scenarios" reads as a baseline that went missing.
+ */
+describe('setup_results readback', () => {
+  function backend() {
+    let view: Record<string, unknown> = {}
+    resetQueryCache()
+    const fixture = makePrism({
+      'GET /api/v1/views/m': () => ({ view }),
+      'PUT /api/v1/views/m': (body: unknown) => {
+        view = { ...view, ...(body as { view: Record<string, unknown> }).view }
+        return { ok: true }
+      },
+      'GET /api/v1/model/tag-groups': { groups: [] }
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+  }
+
+  it('says the baseline is on when a process is named plain and once per scenario', async () => {
+    backend()
+    const { setupResults } = setup('model')
+    const held = (await setupResults({
+      tab: 'overview',
+      subjects: [
+        { database: 'm', code: 'root' },
+        { database: 'm', code: 'root', scenario: 's1' },
+        { database: 'm', code: 'root', scenario: 's2' }
+      ]
+    })) as Record<string, unknown>
+    expect(held.subjects).toEqual(['root'])
+    expect(held.scenarios).toEqual(['s1', 's2'])
+    expect(held.baseline).toBe(true)
+  })
+
+  it('says the baseline is off when only scenario variants were asked for', async () => {
+    backend()
+    const { setupResults } = setup('model')
+    const held = (await setupResults({
+      tab: 'overview',
+      subjects: [{ database: 'm', code: 'root', scenario: 's1' }]
+    })) as Record<string, unknown>
+    expect(held.scenarios).toEqual(['s1'])
+    expect(held.baseline).toBe(false)
   })
 })
