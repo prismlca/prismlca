@@ -80,6 +80,7 @@ import ChatElsewhereBanner from './components/ChatElsewhereBanner'
 import { useTurnFeed } from './chat/turnView'
 import { invalidateModelCaches } from './lib/server/modelCaches'
 import { useAiEditRefresh } from './workbench/useAiEditRefresh'
+import { useRunCalculationOnCanvas } from './workbench/useRunCalculationOnCanvas'
 import { useHistorySteps } from './workbench/useHistorySteps'
 import { usedFirst } from './lib/tagGroupsUsed'
 import { useExternalAgents } from './workbench/useExternalAgents'
@@ -764,6 +765,8 @@ export default function Workbench(): JSX.Element {
   // The canvas, the audit log and the caches follow the assistant's edits on every view, not only where
   // its chat panel is.
   useAiEditRefresh(activeDb, chatUi.refresh)
+  // After a run that calculated, the toolbar holds its process and method — nothing is calculated.
+  useRunCalculationOnCanvas({ activeDb, methods, setChosen, canvas })
   // External agents (MCP): their sessions for the drawer, their edits reloading the canvas exactly
   // like the chat's, and the window-side answers to what they ask of the app.
   const external = useExternalAgents((database) =>

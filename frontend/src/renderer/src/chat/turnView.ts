@@ -7,13 +7,17 @@ export interface ContextLevel {
   budget: number
 }
 
+/** What the run bar says about the provider's prompt cache: failing now, or failed and working again. */
+export type CacheNote = 'dropped' | 'stuck' | 'dropped-recovered' | 'stuck-recovered'
+
+/** Further rounds the all-clear stays: long enough to be seen in passing, short enough that a failure
+ *  long over does not read as a standing problem. */
+const CACHE_ALL_CLEAR_ROUNDS = 3
+
 /**
  * What the turn in flight looks like so far: the text streamed, the tool rows, the thinking state.
  * The renderer assembles it from the run's events — main sends the full trace only with `done`.
  */
-/** What the run bar says about the provider's prompt cache: failing now, or failed and working again. */
-export type CacheNote = 'dropped' | 'stuck' | 'dropped-recovered' | 'stuck-recovered'
-
 export interface TurnView {
   streaming: string
   live: ToolTrace[]
@@ -36,9 +40,13 @@ export interface TurnView {
    */
   retry?: RetryState
   context: ContextLevel | null
-  /** The provider's prompt cache stopped working in this run (main's cache watch), or did and works
-   *  again (`…-recovered`) — kept until the run ends, so a failure stays visible after it is over. */
+  /** The provider's prompt cache is failing now (main's cache watch) — kept for as long as it fails —
+   *  or failed and works again (`…-recovered`). That all-clear stays for CACHE_ALL_CLEAR_ROUNDS further
+   *  rounds, so a failure is still seen after it is over, and then goes: kept to the end of a long run,
+   *  one miss early on read as a problem standing for the rest of it. */
   cacheWarning?: CacheNote
+  /** Rounds reported since the cache recovered — set only while an all-clear is shown. */
+  roundsSinceRecovery?: number
   /**
    * When the current thinking phase began: the turn's start, a restarted round, or the last call's end.
    * Unknown for a run this window has seen nothing of yet (adopted after a reload) — the clock then
@@ -79,6 +87,21 @@ const openRow = (v: TurnView, name: string, callId?: string): number =>
     : v.live.map((t) => !t.status && t.name === name).lastIndexOf(true)
 
 /**
+ * One more round has reported (its `context` event): an all-clear that has now stood for
+ * CACHE_ALL_CLEAR_ROUNDS of them goes. Rounds, not minutes — the cache is judged round by round, and a
+ * slow round is no reason to take the note down sooner. A reply the provider paused and continued
+ * reports once per request, so such a round counts more than once: the note may go a round early,
+ * never late. A failing-now warning has no count and never goes here.
+ */
+function allClearAged(v: TurnView): Pick<TurnView, 'cacheWarning' | 'roundsSinceRecovery'> {
+  if (v.roundsSinceRecovery === undefined) return {}
+  const rounds = v.roundsSinceRecovery + 1
+  return rounds >= CACHE_ALL_CLEAR_ROUNDS
+    ? { cacheWarning: undefined, roundsSinceRecovery: undefined }
+    : { roundsSinceRecovery: rounds }
+}
+
+/**
  * One event folded into the chat's view; `undefined` = no turn in flight. Pure, for the tests.
  *
  * `done` and `error` end the turn and drop the view. Main can send an `error` AFTER `done` (the answer
@@ -113,11 +136,18 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
     case 'reasoning':
       return { ...v, reasoning: ev.chars, retry: undefined }
     case 'context':
-      return { ...v, context: { tokens: ev.tokens, window: ev.window, budget: ev.budget } }
+      return {
+        ...v,
+        context: { tokens: ev.tokens, window: ev.window, budget: ev.budget },
+        ...allClearAged(v)
+      }
     case 'cache-warning':
-      if (ev.pattern !== 'recovered') return { ...v, cacheWarning: ev.pattern }
+      // A new failure replaces whatever stood, an all-clear included, and stays until it is over.
+      if (ev.pattern !== 'recovered')
+        return { ...v, cacheWarning: ev.pattern, roundsSinceRecovery: undefined }
+      // Main reports a round's recovery after that round's `context`, so the count starts with the next one.
       return v.cacheWarning === 'dropped' || v.cacheWarning === 'stuck'
-        ? { ...v, cacheWarning: `${v.cacheWarning}-recovered` }
+        ? { ...v, cacheWarning: `${v.cacheWarning}-recovered`, roundsSinceRecovery: 0 }
         : v
     case 'round-restart':
       // The round is starting over, so the clock has to as well — otherwise it keeps timing an attempt

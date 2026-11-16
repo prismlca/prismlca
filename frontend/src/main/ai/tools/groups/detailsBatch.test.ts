@@ -87,14 +87,34 @@ describe('get_process_details batch (V470 b)', () => {
     const r = JSON.parse(oc.ok ? oc.result : '{}')
     expect(r.results).toHaveLength(2)
     expect(r.results[0].activity.name).toBe('widget granulate')
-    expect(r.hint).toContain('1 of 2 codes failed')
+    expect(r.hint).toContain('1 of 2 read — 1 could not be: bbb.')
     expect(r.hint).toContain('This tool has no "databse"')
+  })
+
+  it('counts a partial failure in front of the answers, and the trace counts it too', async () => {
+    // One code a character short among datasets of thousands of characters each: its entry carried the
+    // reason, nothing in front said one was missing, and the call read "ok".
+    const oc = await session().run('get_process_details', JSON.stringify({ codes: ['gran', 'bbb', 'gran2'] }))
+    expect(oc.ok).toBe(true)
+    const text = oc.ok ? oc.result : ''
+    const r = JSON.parse(text)
+    expect([r.total, r.read, r.failed]).toEqual([3, 2, 1])
+    expect(r.not_read).toEqual(['bbb'])
+    expect(r.hint).toContain('2 of 3 read — 1 could not be: bbb.')
+    expect(r.hint).not.toContain('This tool has no')
+    expect(r.results[1].error).toContain('not found')
+    // In front: a reader that stops after the first dataset has already seen the count.
+    expect(text.indexOf('"not_read"')).toBeLessThan(text.indexOf('"results"'))
+    expect(oc.ok && oc.itemsFailed).toBe(1)
   })
 
   it('says nothing extra when all codes were read', async () => {
     const oc = await session().run('get_process_details', JSON.stringify({ codes: ['gran'] }))
     const r = JSON.parse(oc.ok ? oc.result : '{}')
     expect(r.hint).toBeUndefined()
+    expect(r.not_read).toBeUndefined()
+    expect([r.total, r.read, r.failed]).toEqual([1, 1, 0])
+    expect(oc.ok && oc.itemsFailed).toBeUndefined()
   })
 })
 

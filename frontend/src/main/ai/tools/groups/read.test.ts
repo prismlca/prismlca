@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ToolCtx } from '../context'
 import { MAX_BATCH_QUERIES, MIN_LIMIT, liftReserved, markOwnDatasets } from './read'
 import { RESULT_HARD_MAX_CHARS, capToolResult } from '../../resultBudget'
+import { createToolSession } from '../../execute'
 
 type Hit = { name: string; database: string; library?: boolean; score: number }
 const hits = (): Hit[] => [
@@ -67,6 +68,28 @@ describe('search_background batch size', () => {
       expect(String(out)).toMatch(new RegExp(`send at most ${MAX_BATCH_QUERIES}`))
       expect(api).not.toHaveBeenCalled()
     })
+  })
+
+  it('answers a seventh query with that one refusal when the call comes through the executor', async () => {
+    // The argument check runs before the tool. With the ceiling declared in the schema it answered
+    // first, and the refusal above was written for a call that could not reach it.
+    const session = createToolSession({
+      apiRaw: async () => ({ status: 200, body: { hits: [] } }),
+      headers: () => ({}),
+      ui: async () => ({}),
+      activeDb: 'Bottle'
+    })
+    for (const key of ['queries', 'filtered_queries']) {
+      const list = Array.from({ length: MAX_BATCH_QUERIES + 1 }, (_, i) =>
+        key === 'queries' ? `material ${i}` : { query: `material ${i}` }
+      )
+      const oc = await session.run('search_background', JSON.stringify({ [key]: list }))
+      const said = oc.ok ? (oc.soft ?? '') : oc.error
+      expect(said).toContain(`send at most ${MAX_BATCH_QUERIES}`)
+      expect(said).toContain('Split them across several calls')
+      expect(said).not.toContain('takes at most')
+      expect(said).not.toContain('Invalid arguments')
+    }
   })
 
   it('asks for fewer regions per hit in a batch than for a single query', async () => {
@@ -197,10 +220,14 @@ describe('search_background limit and what the cut left out (V462, V463)', () =>
     expect(batch.out.results.map((r: any) => r.result.limit_raised_to)).toEqual([8, 8, 8])
   })
 
-  it('caps both query lists in the schema, the run-time refusal staying as the fallback', () => {
+  it('leaves the ceiling of both query lists to the tool, whose refusal says how to split them', () => {
+    // Declared as `maxItems`, the ceiling was enforced by the argument check, and a call one query over
+    // got "takes at most 6 items" — never the tool's own refusal with the reason and the way on.
     const props = (tool.spec.function.parameters as any).properties
-    expect(props.queries.maxItems).toBe(MAX_BATCH_QUERIES)
-    expect(props.filtered_queries.maxItems).toBe(MAX_BATCH_QUERIES)
+    expect(props.queries.maxItems).toBeUndefined()
+    expect(props.filtered_queries.maxItems).toBeUndefined()
+    expect(props.queries.description).toContain('at most six')
+    expect(props.filtered_queries.description).toContain('at most six')
     expect(props.limit.description).toContain('Minimum 8.')
     expect(props.geographies.description).toContain(
       'The limit cuts this queue; the 2 best hits outside come back under outside_region.'

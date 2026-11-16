@@ -7,7 +7,7 @@ import type { Tool } from '../context'
 import { num, obj, objArr, str } from '../schema'
 import { AI, NO_MODEL, S, batchResult, fgDb, runItem } from '../format'
 import { resolveCode } from '../resolve'
-import { uidMiss } from '../uidHint'
+import { uidNotFound } from '../uidHint'
 import { trimUnitNotes } from '../advice/warnings'
 import { IMPL, delegate } from '../impl'
 import { type LinkedInput, UNOPENED_LINKS_SHOWN, unopenedLinks } from '../advice/hotspots'
@@ -580,12 +580,7 @@ export const modelTools: Tool[] = [
         const activityName = it?.activity_name
         if (!activityCode && !activityName && typeof it?.uid === 'string' && it.uid.trim()) {
           const found = await activityOfUid(ctx, db, it.uid.trim())
-          if (!found)
-            throw new Error(
-              `No exchange with uid "${it.uid.trim()}" in "${db}" — it may have been removed, or replaced: ` +
-                'replace_input gives the exchange a NEW uid (in its answer). Read the process (get_process_details) for the current one.' +
-                uidMiss(it.uid.trim(), await foreground)
-            )
+          if (!found) throw new Error(uidNotFound(it.uid.trim(), db, await foreground))
           activityCode = found
         }
         const resolved = await resolveCode(

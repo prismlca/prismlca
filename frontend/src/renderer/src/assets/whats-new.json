@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-17",
+    "title": "The Model page follows the assistant's calculation",
+    "details": "After an assistant run that calculated, the Model page's toolbar holds the run's process and method, so Calculate there computes what the chat reported. An outdated canvas result is now struck through. On the Results page the radar is left out for a single subject, and the run bar's note that the prompt cache works again goes after three rounds."
+  },
+  {
     "date": "2026-11-12",
     "title": "Searches keep the best matches outside the region",
     "details": "When the assistant searches with a region, the answer now also lists the two best datasets outside it and says how many similar ones remain, so a material missing from the region is no longer taken as missing altogether. Every search returns at least eight rows."

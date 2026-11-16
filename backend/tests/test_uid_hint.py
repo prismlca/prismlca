@@ -11,7 +11,7 @@ import pytest
 from prism_lca.engine import model, tag_scope
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import set_read_only
-from prism_lca.engine.uid_hint import is_near
+from prism_lca.engine.uid_hint import difference, is_near
 from prism_lca.errors import PrismError
 
 GRANULATE_UID = "378d2ed8cdfc4d60abeaea33550cba9a"
@@ -41,7 +41,7 @@ def test_one_character_appended_is_called_malformed_and_the_meant_uid_is_named(p
     act = _model(get_bd())
     err = _refusal(act, GRANULATE_UID + "9")
     assert "Malformed uid (33 characters)" in err.message
-    assert f"Did you mean {GRANULATE_UID} (input: widget granulate)?" in err.hint
+    assert f'Did you mean {GRANULATE_UID} (input: widget granulate — yours has "9" too many' in err.hint
     assert "not used in its place" in err.hint
     # Only named: the exchange itself is untouched and the near one is not returned.
     assert model.find_exchange(act, GRANULATE_UID)["amount"] == 1
@@ -54,6 +54,17 @@ def test_a_well_formed_uid_one_digit_off_is_named_without_the_malformed_note(pro
     assert GRANULATE_UID in err.hint and SHEET_UID not in err.hint
     # The same first eight characters with a garbled tail count as near too.
     assert GRANULATE_UID in _refusal(act, GRANULATE_UID[:8] + "f" * 24).hint
+
+
+def test_the_near_uid_comes_with_where_it_differs(project):
+    """Two swapped characters look the same; the refusal says which, so the right uid is not read as the sent one."""
+    act = _model(get_bd())
+    swapped = GRANULATE_UID[:27] + GRANULATE_UID[28] + GRANULATE_UID[27] + GRANULATE_UID[29:]
+    assert 'at character 28 yours has "bc" where it has "cb"' in _refusal(act, swapped).hint
+    assert difference(GRANULATE_UID[:-1], GRANULATE_UID) == 'yours lacks "a" after character 31'
+    assert difference(GRANULATE_UID[:8] + "0" * 24, GRANULATE_UID) == (
+        "it shares only its first 8 characters with yours"
+    )
 
 
 def test_a_uid_near_nothing_keeps_the_plain_answer_and_a_short_one_is_still_called_malformed(project):

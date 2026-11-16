@@ -1498,13 +1498,21 @@ class AddExchangeCommand(Command):
 
             if self.exchange_type not in ("technosphere", "substitution"):
                 raise PrismError("Only inputs carry tags.", code="tag_target_not_input")
-            if tag_scope.tag_kind(self.activity_database) != tag_scope.MODEL or (
-                self.input_database == self.activity_database
-            ):
+            if tag_scope.tag_kind(self.activity_database) != tag_scope.MODEL:
                 raise PrismError(
                     "Tags on a new input are for what a model draws from outside it (background, library, "
                     "another model).",
                     code="tag_target_same_model",
+                )
+            if self.input_database == self.activity_database:
+                # The way out belongs in the refusal: the rule alone reads as "this input cannot be tagged",
+                # and the phase the caller wanted on it then goes missing from the model.
+                raise PrismError(
+                    f"'{self._input_name}' is a process of this model, and such a process carries its tags "
+                    "itself. Nothing was added.",
+                    code="tag_target_same_model",
+                    hint='Add the input again without "tags", then tag the process itself (edit_tags). An '
+                    "input tag is for what a model draws from outside it: background, library, another model.",
                 )
             if any(not d or not v for d, v in self.tags.items()):
                 raise PrismError("A tag needs a group and a value.", code="invalid_value")

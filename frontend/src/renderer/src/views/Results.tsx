@@ -868,7 +868,9 @@ export default function Results({
               </div>
 
               <div className="results-charts-top">
-                {picked.length >= 3 ? (
+                {/* Every axis is normalised to its maximum across the subjects, so over one subject the radar is
+                    a full polygon at 100 % that compares nothing. */}
+                {picked.length >= 3 && matrix.subjects.length >= 2 ? (
                   <section className="ind-fam-section res-card res-radar radar-wrap">
                     <div className="ind-fam-head has-sub">Radar</div>
                     <div className="chart-sub-row">
