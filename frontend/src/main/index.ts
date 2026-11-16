@@ -390,14 +390,21 @@ function createWindow(splash?: Splash | null): void {
     if (process.env.PRISM_SHOT) win.setPosition(-9000, 0)
     // Let the splash rest at 100% for a moment before handing over to the main window.
     // One second, not two: long enough to read "Ready.", short enough not to feel like a wait.
+    // Every start opens maximised: the unmaximised 1280 px leave the canvas a strip between its two
+    // panels, and nobody should have to find that out before enlarging the window. A screenshot run
+    // keeps the size it asked for.
+    const present = (): void => {
+      if (launchedBy !== 'diagnostic') win.maximize()
+      win.show()
+    }
     if (splash) {
       splash.setStatus('Ready.', 100)
       setTimeout(() => {
-        win.show()
+        present()
         splash?.close()
       }, 1000)
     } else {
-      win.show()
+      present()
     }
   })
   mainWindow = win

@@ -47,6 +47,21 @@ describe('AppSidebar', () => {
     expect(toggle).toHaveBeenLastCalledWith(true)
   })
 
+  it('a fold that follows the window does not animate; one asked for with a click does', () => {
+    const pillTransition = (): string => document.querySelector<HTMLElement>('.nav-pill')!.style.transition
+    const { rerender } = render(<AppSidebar {...props} collapsed={false} snap onToggleCollapsed={vi.fn()} />)
+    rerender(<AppSidebar {...props} collapsed snap onToggleCollapsed={vi.fn()} />)
+    // The class switches the grid's transition off (shell.css), the pill jumps along with it.
+    expect(document.querySelector('.side')!.classList.contains('side-snap')).toBe(true)
+    expect(pillTransition()).toBe('none')
+    // Navigating on such a rail still glides: only the fold itself is exempt.
+    rerender(<AppSidebar {...props} view="results" collapsed snap onToggleCollapsed={vi.fn()} />)
+    expect(pillTransition()).toBe('')
+    rerender(<AppSidebar {...props} view="results" collapsed={false} onToggleCollapsed={vi.fn()} />)
+    expect(document.querySelector('.side')!.classList.contains('side-snap')).toBe(false)
+    expect(pillTransition()).toBe('')
+  })
+
   it('without a model, opens only Overview and LCIA and says so', () => {
     const onNavigate = vi.fn()
     render(

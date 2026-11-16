@@ -49,8 +49,10 @@ export interface AppSidebarProps {
   /** The project dropdown + its action buttons, shared with the setup gate. */
   projectSelect: ReactNode
   projectActions: ReactNode
-  /** Folded to the icon strip? Owned by the caller, because it is a stored app setting. */
+  /** Folded to the icon strip? Owned by the caller, which also knows the window's width. */
   collapsed: boolean
+  /** The fold follows the window's width right now rather than a click: no animation (useSidebarFold). */
+  snap?: boolean
   onToggleCollapsed: (next: boolean) => void
 }
 
@@ -62,6 +64,7 @@ export default function AppSidebar({
   projectSelect,
   projectActions,
   collapsed,
+  snap,
   onToggleCollapsed
 }: AppSidebarProps): JSX.Element {
   // The green highlight behind the nav is one element that slides between rows instead of
@@ -71,10 +74,14 @@ export default function AppSidebar({
   const navListRef = useRef<HTMLDivElement | null>(null)
   const navPillPlaced = useRef(false)
   const [navPill, setNavPill] = useState<{ top: number; height: number; animate: boolean } | null>(null)
-  const placeNavPill = useCallback(() => {
+  const placeNavPill = useCallback((glide = true) => {
     const active = navListRef.current?.querySelector<HTMLElement>('.navitem.on')
     if (!active) return
-    setNavPill({ top: active.offsetTop, height: active.offsetHeight, animate: navPillPlaced.current })
+    setNavPill({
+      top: active.offsetTop,
+      height: active.offsetHeight,
+      animate: glide && navPillPlaced.current
+    })
     navPillPlaced.current = true
   }, [])
   // The sidebar only exists once the setup gate clears, which is long after the Workbench first
@@ -89,11 +96,17 @@ export default function AppSidebar({
     [placeNavPill]
   )
   // Folding changes the rows' width, and with it their height the moment a label wraps or stops
-  // wrapping — so the pill is re-measured on the flag as well as on the page.
-  useLayoutEffect(placeNavPill, [view, collapsed, placeNavPill])
+  // wrapping — so the pill is re-measured on the flag as well as on the page. A fold that follows the
+  // window is not animated (see `snap`), so the pill jumps with it instead of gliding after it.
+  const foldSeen = useRef(collapsed)
+  useLayoutEffect(() => {
+    const snapped = !!snap && foldSeen.current !== collapsed
+    foldSeen.current = collapsed
+    placeNavPill(!snapped)
+  }, [view, collapsed, snap, placeNavPill])
 
   return (
-    <aside className={`side${collapsed ? ' side-collapsed' : ''}`}>
+    <aside className={`side${collapsed ? ' side-collapsed' : ''}${snap ? ' side-snap' : ''}`}>
       <div className="brand">
         <span className="prism" />
         <span className="brand-name">

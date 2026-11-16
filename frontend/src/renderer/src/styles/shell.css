@@ -146,3 +146,9 @@
 .chat-elsewhere-row.err { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: var(--bad); border-bottom-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .chat-elsewhere-x { background: none; border: 0; padding: 2px 6px; color: inherit; opacity: .7; cursor: pointer; font-size: var(--fs-sec); }
 .chat-elsewhere-x:hover { opacity: 1; }
+
+/* A fold that follows the window's width (workbench/useSidebarFold.ts) is not animated — only one
+   asked for with a click is. Crossing the width, the whole layout jumps with the window anyway; and at
+   start the window is maximised under a page laid out at its unmaximised size, where a rail sliding
+   open would be the first thing anyone sees. */
+.app-shell:has(.side-snap) { transition: none; }
