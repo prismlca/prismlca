@@ -152,6 +152,9 @@ def test_a_new_input_carries_its_tags_in_one_undo_step(client, token, project):
         headers=token,
     )
     assert refused.status_code == 400 and "tag_target_same_model" in refused.text
+    # The refusal names the way out: the supplying process is tagged itself, the input goes in without tags.
+    assert "'Manufacturing' is a process of this model" in refused.text
+    assert "tag the process itself (edit_tags)" in refused.text
     detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['R']}", headers=token).json()
     assert len([e for e in detail["exchanges"] if e["type"] == "technosphere"]) == 1  # nothing half-written
 

@@ -202,13 +202,15 @@ export const readTools: Tool[] = [
                 'query, in order, all under the call-level geographies/limit/activity_types. For a query ' +
                 'that needs its OWN filter use "filtered_queries" instead. Pass ONE of "query", "queries" or ' +
                 '"filtered_queries" — never two, and never an empty list.',
-              items: { type: 'string' },
-              maxItems: MAX_BATCH_QUERIES
+              // The ceiling is not declared as `maxItems`: the argument check would then refuse a seventh
+              // query with "takes at most 6 items" before this tool runs, and its own refusal below — which
+              // says why, and to split the list and keep the other arguments — could never be reached.
+              items: { type: 'string' }
             },
             filtered_queries: {
               type: 'array',
               description:
-                'Several searches in ONE call where each query carries its OWN geographies/limit/' +
+                'Several searches in ONE call, at most six, where each query carries its OWN geographies/limit/' +
                 'activity_types — e.g. DE waste datasets and RER chemicals in one call, which the ' +
                 'call-level filter cannot express. Objects only; for plain strings use "queries".',
               items: {
@@ -220,8 +222,7 @@ export const readTools: Tool[] = [
                   activity_types: { type: 'array', items: { type: 'string' } }
                 },
                 required: ['query']
-              },
-              maxItems: MAX_BATCH_QUERIES
+              }
             },
             database: str(
               'One database to search, by name; omit for the default: every background database released to this chat plus, when released, the user\'s own "My processes".'

@@ -48,12 +48,11 @@
             "description": "Several searches in ONE call, at most six, as plain strings — results are returned per query, in order, all under the call-level geographies/limit/activity_types. For a query that needs its OWN filter use \"filtered_queries\" instead. Pass ONE of \"query\", \"queries\" or \"filtered_queries\" — never two, and never an empty list.",
             "items": {
               "type": "string"
-            },
-            "maxItems": 6
+            }
           },
           "filtered_queries": {
             "type": "array",
-            "description": "Several searches in ONE call where each query carries its OWN geographies/limit/activity_types — e.g. DE waste datasets and RER chemicals in one call, which the call-level filter cannot express. Objects only; for plain strings use \"queries\".",
+            "description": "Several searches in ONE call, at most six, where each query carries its OWN geographies/limit/activity_types — e.g. DE waste datasets and RER chemicals in one call, which the call-level filter cannot express. Objects only; for plain strings use \"queries\".",
             "items": {
               "type": "object",
               "properties": {
@@ -79,8 +78,7 @@
               "required": [
                 "query"
               ]
-            },
-            "maxItems": 6
+            }
           },
           "database": {
             "type": "string",

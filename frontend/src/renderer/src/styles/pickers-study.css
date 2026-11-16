@@ -517,3 +517,7 @@
 /* An outdated canvas result: the model changed after it was calculated, the Sankey is off. */
 .result-bar.stale b { color: var(--muted); }
 .rb-stale { margin-left: 10px; color: var(--prism-warning); font-weight: 600; white-space: nowrap; cursor: help; }
+
+/* The outdated score itself is withdrawn: muted and struck through. Muted alone, the largest number on the screen
+   still read as the current result. The tag beside it keeps its colour and says why; the score's title, too. */
+.result-bar b.rb-outdated { color: var(--muted); text-decoration: line-through; cursor: help; }

@@ -8,7 +8,7 @@
 import type { Tool, ToolCtx } from '../context'
 import { obj, str } from '../schema'
 import { AI, NO_MODEL, S, cap, fgDb } from '../format'
-import { uidMiss } from '../uidHint'
+import { uidNotFound } from '../uidHint'
 
 /** How many of the copy's inputs the answer lists — enough for nine datasets in ten, and each one
  *  carries the uid that localizes it in turn. */
@@ -36,12 +36,7 @@ async function targetOfUid(ctx: ToolCtx, db: string, uid: string): Promise<Targe
       }
     return { database: String(ex.input?.database ?? ''), code: String(ex.input?.code ?? ''), uid }
   }
-  return {
-    error:
-      `No exchange with uid "${uid}" in "${db}" — it may have been removed or replaced. Read the process ` +
-      '(get_process_details) for the current one.' +
-      uidMiss(uid, acts)
-  }
+  return { error: uidNotFound(uid, db, acts) }
 }
 
 /** What to do next, in the order a caller needs it. */

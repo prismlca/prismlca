@@ -1436,12 +1436,21 @@ describe('Results', () => {
       renderWithPrism(<Results activeDb={db} methods={METHODS} databases={ALL_DBS} />, {
         routes: {
           ...routes(db),
-          [`GET /api/v1/views/${db}`]: { view: { results: { subjSel: { root: true }, picked: PICKED3 } } },
+          // Two subjects: over one the page draws no radar, and the radar is what this test enlarges.
+          [`GET /api/v1/views/${db}`]: {
+            view: {
+              results: {
+                subjSel: { root: true },
+                picked: PICKED3,
+                bgSubjects: [bgAct('b1', 'PET granulate')]
+              }
+            }
+          },
           'POST /api/v1/calc/compare': scoreFor(() => 1)
         }
       })
       await user.click(await screen.findByRole('button', { name: /Calculate/ }))
-      await waitFor(() => expect(drawnColours().bar).toHaveLength(1))
+      await waitFor(() => expect(drawnColours().bar).toHaveLength(2))
       await new Promise((r) => setTimeout(r, 50))
       const drawn = chartOptions.length
       await user.click(screen.getAllByTitle('Enlarge')[0]) // the radar
@@ -1567,12 +1576,21 @@ describe('Results', () => {
       renderWithPrism(<Results activeDb={db} methods={METHODS} databases={ALL_DBS} />, {
         routes: {
           ...routes(db),
-          [`GET /api/v1/views/${db}`]: { view: { results: { subjSel: { root: true }, picked: PICKED3 } } },
+          // Two subjects, so the radar is drawn too: its redraw on unrelated renders is part of what is guarded.
+          [`GET /api/v1/views/${db}`]: {
+            view: {
+              results: {
+                subjSel: { root: true },
+                picked: PICKED3,
+                bgSubjects: [bgAct('b1', 'PET granulate')]
+              }
+            }
+          },
           'POST /api/v1/calc/compare': scoreFor(() => 1)
         }
       })
       await user.click(await screen.findByRole('button', { name: /Calculate/ }))
-      await waitFor(() => expect(drawnColours().bar).toHaveLength(1))
+      await waitFor(() => expect(drawnColours().bar).toHaveLength(2))
       await user.click(screen.getByRole('button', { name: /Indicators/ }))
       await user.click(screen.getByRole('button', { name: '+ Add indicator' }))
       await new Promise((r) => setTimeout(r, 50))

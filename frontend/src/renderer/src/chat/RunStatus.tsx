@@ -148,9 +148,11 @@ export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<str
         {!pending && restarts > 0 ? (
           <span className="chat-runbar-note"> · restarted {restarts}× (the model returned nothing)</span>
         ) : null}
-        {/* Kept until the run ends, and turned into "working again" when the cache recovers: a run whose
-            cache has failed costs several times what it should, and the ledger shows it only afterwards —
-            but a warning left standing over rounds that hit again says something that is no longer true. */}
+        {/* Kept for as long as the cache fails, and turned into "working again" when it recovers: a run
+            whose cache has failed costs several times what it should, and the ledger shows it only
+            afterwards — but a warning left standing over rounds that hit again says something that is no
+            longer true. The all-clear goes a few rounds later (turnView.ts), before it reads as a
+            standing problem of its own. */}
         {cacheWarning ? (
           <span className="chat-runbar-note" title={CACHE_WARNING[cacheWarning].title}>
             {' '}

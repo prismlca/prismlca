@@ -14,6 +14,21 @@ const tool = (name: string, phase: 'start' | 'progress' | 'done' | 'error', extr
   ...extra
 })
 
+const warn = (pattern: 'dropped' | 'stuck' | 'recovered'): AiEvent => ({
+  chatId: 'c',
+  type: 'cache-warning',
+  pattern
+})
+
+/** One round's figures as main reports them — the per-round event the all-clear counts. */
+const round = (tokens = 30_000): AiEvent => ({
+  chatId: 'c',
+  type: 'context',
+  tokens,
+  window: 200_000,
+  budget: 120_000
+})
+
 describe('the turn view of one chat', () => {
   it('keeps every row with the time it started, and closes the newest open row of that tool', () => {
     const v = fold([
@@ -120,12 +135,7 @@ describe('the turn view of one chat', () => {
     ).toBe(true)
   })
 
-  it('shows what holds for the cache now, and keeps a recovered failure visible until the run ends', () => {
-    const warn = (pattern: 'dropped' | 'stuck' | 'recovered'): AiEvent => ({
-      chatId: 'c',
-      type: 'cache-warning',
-      pattern
-    })
+  it('shows what holds for the cache now, and turns a failure that is over into an all-clear', () => {
     const v = fold([
       [warn('stuck'), 1],
       [{ chatId: 'c', type: 'delta', text: 'Linking.' }, 2],
@@ -137,6 +147,74 @@ describe('the turn view of one chat', () => {
     // A recovery with nothing raised before it says nothing.
     expect(fold([[warn('recovered'), 1]])?.cacheWarning).toBeUndefined()
     expect(foldTurn(v, { chatId: 'c', type: 'done', text: 'Linking.' }, 4)).toBeUndefined()
+  })
+
+  it('takes the all-clear down after three further rounds, counted from the recovery', () => {
+    for (const failure of ['dropped', 'stuck'] as const) {
+      // Main reports a round's figures first and its recovery after them: round 2 is the one that hit.
+      const recovered = fold([
+        [round(), 1],
+        [warn(failure), 1],
+        [round(), 2],
+        [warn('recovered'), 2]
+      ])!
+      expect(recovered.cacheWarning).toBe(`${failure}-recovered`)
+      const twoLater = fold(
+        [
+          [round(), 3],
+          [round(), 4]
+        ],
+        recovered
+      )!
+      expect(twoLater.cacheWarning).toBe(`${failure}-recovered`)
+      const threeLater = foldTurn(twoLater, round(), 5)!
+      expect(threeLater.cacheWarning).toBeUndefined()
+      expect(foldTurn(threeLater, round(), 6)!.cacheWarning).toBeUndefined()
+      // Gone means gone: a stray recovery after it brings nothing back.
+      expect(foldTurn(threeLater, warn('recovered'), 6)!.cacheWarning).toBeUndefined()
+    }
+  })
+
+  it('shows a new failure after the all-clear, and counts afresh from the next recovery', () => {
+    const v = fold([
+      [round(), 1],
+      [warn('dropped'), 1],
+      [round(), 2],
+      [warn('recovered'), 2],
+      [round(), 3],
+      [round(), 4],
+      [warn('stuck'), 4]
+    ])!
+    expect(v.cacheWarning).toBe('stuck')
+    // The failure stands through the rounds the old all-clear had left, and well beyond.
+    const failing = fold(
+      Array.from({ length: 12 }, (_, i): [AiEvent, number] => [round(), 5 + i]),
+      v
+    )!
+    expect(failing.cacheWarning).toBe('stuck')
+    const again = fold([[warn('recovered'), 17]], failing)!
+    expect(again.cacheWarning).toBe('stuck-recovered')
+    const twoLater = fold(
+      [
+        [round(), 18],
+        [round(), 19]
+      ],
+      again
+    )!
+    expect(twoLater.cacheWarning).toBe('stuck-recovered')
+    expect(foldTurn(twoLater, round(), 20)!.cacheWarning).toBeUndefined()
+  })
+
+  it('keeps a failing-now warning for as long as the run goes', () => {
+    for (const failure of ['dropped', 'stuck'] as const) {
+      const v = fold([
+        [round(), 1],
+        [warn(failure), 1],
+        ...Array.from({ length: 40 }, (_, i): [AiEvent, number] => [round(), 2 + i])
+      ])!
+      expect(v.cacheWarning).toBe(failure)
+      expect(v.roundsSinceRecovery).toBeUndefined()
+    }
   })
 
   it('leaves the view alone for events that are not the turn', () => {

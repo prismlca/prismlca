@@ -35,27 +35,60 @@ export function isNearUid(wanted: string, uid: unknown): boolean {
   return oneEdit(a, b)
 }
 
+/** A stretch of differing characters longer than this is no slip of the hand: the two uids only start alike. */
+const SLIP = 6
+
 /**
- * The sentences to add to a "no exchange with uid …" refusal, from the model's activities read with their
- * exchanges (`GET /model/activities/<db>?with_exchanges=true`, a list or `{activities}`); '' when there is
- * nothing to add.
+ * Where `sent` departs from the uid `real`, in words the caller can hold against its own text. Two uids of
+ * 32 hex digits that differ in two swapped characters look identical, and a caller told only "did you mean
+ * <the right one>" read it as the uid it had sent and sent the wrong one again.
  */
-export function uidMiss(uid: string, acts: unknown): string {
+export function uidDifference(sent: string, real: string): string {
+  const a = sent.toLowerCase()
+  const b = real.toLowerCase()
+  let head = 0
+  while (head < a.length && head < b.length && a[head] === b[head]) head++
+  let tail = 0
+  while (
+    tail < a.length - head &&
+    tail < b.length - head &&
+    a[a.length - 1 - tail] === b[b.length - 1 - tail]
+  )
+    tail++
+  const yours = a.slice(head, a.length - tail)
+  const its = b.slice(head, b.length - tail)
+  if (yours.length > SLIP || its.length > SLIP)
+    return `it shares only its first ${head} characters with yours`
+  if (!yours) return `yours lacks "${its}" after character ${head}`
+  if (!its) return `yours has "${yours}" too many at character ${head + 1}`
+  return `at character ${head + 1} yours has "${yours}" where it has "${its}"`
+}
+
+/**
+ * The refusal of a model-wide lookup by exchange uid that found nothing, from the model's activities read
+ * with their exchanges (`GET /model/activities/<db>?with_exchanges=true`, a list or `{activities}`).
+ *
+ * A near uid comes first, with where it differs: when one exists it is almost always the answer, and
+ * "it may have been removed or replaced" in front of it sent the caller looking elsewhere.
+ */
+export function uidNotFound(uid: string, db: string, acts: unknown): string {
   const list = Array.isArray(acts) ? acts : ((acts as { activities?: unknown })?.activities ?? [])
   const near: string[] = []
   for (const act of Array.isArray(list) ? list : [])
     for (const ex of (act as { exchanges?: any[] })?.exchanges ?? [])
       if (isNearUid(uid, ex?.uid)) {
         const role = ex.type === 'production' ? 'output' : ex.type === 'biosphere' ? 'flow' : 'input'
-        near.push(`${ex.uid} (${role}: ${ex.input?.name ?? '?'})`)
+        near.push(`${ex.uid} (${role}: ${ex.input?.name ?? '?'} — ${uidDifference(uid, String(ex.uid))})`)
       }
-  const parts = UID_SHAPE.test(uid)
-    ? []
-    : [`Malformed uid (${uid.length} characters) — a uid is 32 hex digits.`]
-  if (near.length)
-    parts.push(
-      `Did you mean ${near.slice(0, SHOWN).join(' or ')}? It was not used in its place — send it if it is ` +
-        'the one you meant.'
-    )
-  return parts.length ? ` ${parts.join(' ')}` : ''
+  const malformed = UID_SHAPE.test(uid)
+    ? ''
+    : ` Malformed uid (${uid.length} characters) — a uid is 32 hex digits.`
+  const elsewhere =
+    'the exchange may have been removed, or replaced: replace_input gives the exchange a NEW uid (in its ' +
+    'answer). Read the process (get_process_details) for the current one.'
+  if (!near.length) return `No exchange with uid "${uid}" in "${db}" — ${elsewhere}${malformed}`
+  return (
+    `No exchange with uid "${uid}" in "${db}".${malformed} Did you mean ${near.slice(0, SHOWN).join(' or ')}? ` +
+    `It was not used in its place — send it if it is the one you meant. If it is not, ${elsewhere}`
+  )
 }
