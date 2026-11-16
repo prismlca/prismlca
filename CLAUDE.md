@@ -54,6 +54,13 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
   combined into **one** entry. And `details` stays at **two to three sentences** (≈ 300–450 characters,
   hard limit ~500): what readers need to find and use the thing — the reasoning belongs in the commit
   message. Length tends to drift upwards; whoever writes an entry counts the characters.
+- **Keep the handbook current**: a change that is more than a bug fix — a new feature, or a function that now
+  works noticeably differently — is checked against the handbook before it is handed in for review, and the
+  handbook is updated where it needs it. Look first for statements that have become false (they are worse than
+  gaps), including the paths through the interface and the captions of screenshots, then for what is missing.
+  The handbook is the one published at https://www.prismlca.com/handbook/ (the Handbook button opens it); it is
+  maintained with the website, not in this repository. The pull request says which pages changed, or that the
+  check found nothing to change. Bug fixes and chores need no check.
 - **Chat and MCP share tools and prompt**: one catalogue, opt-out in `frontend/src/main/mcp/catalog.ts`
   (`MCP_EXCLUDED_TOOLS`), a parity test against the manifest. Whoever changes a tool, a prompt rule or an
   effect declaration (`tools/effects.ts`) decides in the same commit what the MCP server gets of it, and
