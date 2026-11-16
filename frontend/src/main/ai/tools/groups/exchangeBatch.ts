@@ -71,6 +71,24 @@ export function ignoredNote(ignored: string[]): Record<string, unknown> | null {
 }
 
 /**
+ * What to add to an item's "also requires" error when the call gave that very value at the top level: where
+ * it went. The error alone is true of the item and reads as wrong to a caller that did write the value —
+ * once, above the list, the way it wrote the process — so it has to find the cause in a note at the end of
+ * the answer. Empty when none of `fields` was given at the top, and for a call without a list.
+ *
+ * It asks for a value per item rather than offering to copy the one from the top: the items of a batch
+ * rarely share a number, and one that was simply forgotten must not pick up its neighbours'.
+ */
+export function topLevelOnly(ignored: string[], ...fields: Array<(typeof PER_EXCHANGE)[number]>): string {
+  const given = fields.filter((f) => ignored.includes(f))
+  if (!given.length) return ''
+  return (
+    ` The ${given.map((f) => `"${f}"`).join(' and ')} at the top level of the batch ` +
+    `${given.length > 1 ? 'are' : 'is'} not applied to the items — give each item its own.`
+  )
+}
+
+/**
  * The error of a failed item, with its cause when the input was not found in a database the item took from
  * the top level. A batch that links a process of the model and some background datasets under one top-level
  * input_database fails on the background rows with "not found in '<model>'" — which names the database but

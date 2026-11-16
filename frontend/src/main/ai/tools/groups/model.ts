@@ -11,7 +11,7 @@ import { uidMiss } from '../uidHint'
 import { trimUnitNotes } from '../advice/warnings'
 import { IMPL, delegate } from '../impl'
 import { type LinkedInput, UNOPENED_LINKS_SHOWN, unopenedLinks } from '../advice/hotspots'
-import { expandBatch, explainNotFound, ignoredNote } from './exchangeBatch'
+import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './exchangeBatch'
 import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
 
 /**
@@ -480,6 +480,7 @@ export const modelTools: Tool[] = [
         remove: 'remove_exchange',
         replace_input: 'add_exchange'
       } as const
+      const { items, ignored, inheritedDb } = expandBatch(a)
 
       /** Background datasets this call linked (add / replace_input), for the reminder in withLinks. */
       const linked: LinkedInput[] = []
@@ -607,7 +608,8 @@ export const modelTools: Tool[] = [
           const hasAmount = it.amount !== undefined && it.amount !== null
           if (!hasAmount && !it.formula)
             throw new Error(
-              'action="add" also requires: amount — or a formula, which is evaluated to give one.'
+              'action="add" also requires: amount — or a formula, which is evaluated to give one.' +
+                topLevelOnly(ignored, 'amount', 'formula')
             )
           if (it.formula) await checkFormulaBeforeAdd(ctx, db, String(it.formula))
           const made: any = await IMPL.add_exchange(
@@ -799,7 +801,7 @@ export const modelTools: Tool[] = [
         }
         if (action === 'set_amount') {
           if (it.amount === undefined || it.amount === null)
-            throw new Error('action="set_amount" also requires: amount.')
+            throw new Error('action="set_amount" also requires: amount.' + topLevelOnly(ignored, 'amount'))
           return alsoComment(await IMPL.set_exchange_amount({ ...base, uid, amount: it.amount }, ctx))
         }
         if (action === 'set_formula') {
@@ -807,13 +809,15 @@ export const modelTools: Tool[] = [
           // existing formula together with its parameter registration. Pass "" to
           // remove a formula on purpose.
           if (typeof it.formula !== 'string')
-            throw new Error('action="set_formula" also requires: formula (pass "" to remove the formula).')
+            throw new Error(
+              'action="set_formula" also requires: formula (pass "" to remove the formula).' +
+                topLevelOnly(ignored, 'formula')
+            )
           return alsoComment(await IMPL.set_exchange_formula({ ...base, uid, formula: it.formula }, ctx))
         }
         return JSON.parse(String(await IMPL.set_exchange_comment({ ...base, uid, comment: it.comment }, ctx)))
       }
 
-      const { items, ignored, inheritedDb } = expandBatch(a)
       /** What was handed over and could not be honoured — never silently. */
       const withNote = (out: string): string => {
         const note = ignoredNote(ignored)
