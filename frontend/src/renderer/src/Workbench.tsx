@@ -75,6 +75,7 @@ import ResultBar from './workbench/ResultBar'
 import { useTagging } from './workbench/useTagging'
 import { useCanvasModel } from './workbench/useCanvasModel'
 import { useSearchIndexStatus } from './workbench/useSearchIndexStatus'
+import { useSidebarFold } from './workbench/useSidebarFold'
 import { usePendingAsks } from './workbench/usePendingAsks'
 import ChatElsewhereBanner from './components/ChatElsewhereBanner'
 import { useTurnFeed } from './chat/turnView'
@@ -151,10 +152,11 @@ export default function Workbench(): JSX.Element {
   // (see highlightEdges); the node itself lights up through `.pnode:hover` in CSS.
   const [hovered, setHovered] = useState<string | null>(null)
   const settings = useSettings()
-  // Deliberately NOT a stored setting: every start begins with the full rail, so
-  // the page names are on screen before the icons are asked to stand for them. Folding it is a thing
-  // you do to get room for the task in front of you, not a preference to carry to the next session.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Deliberately NOT a stored setting: folding the rail is a thing you do to get room for the task in
+  // front of you, not a preference to carry to the next session. A wide window starts with the full
+  // rail, so the page names are on screen before the icons are asked to stand for them; a narrow one
+  // starts folded, because there the room is missing from the first moment on.
+  const sidebarFold = useSidebarFold()
   const [detailsFor, setDetailsFor] = useState<{ database: string; code: string } | null>(null)
   /** A library dataset opened for editing. One dataset, not the whole library: the library is not a
    *  study, so it is not opened on the canvas like one. */
@@ -941,8 +943,9 @@ export default function Workbench(): JSX.Element {
         activeKind={databases.find((d) => d.name === activeDb)?.kind ?? 'foreground'}
         projectSelect={projectSelect}
         projectActions={projectActions}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={setSidebarCollapsed}
+        collapsed={sidebarFold.collapsed}
+        snap={sidebarFold.byWindow}
+        onToggleCollapsed={sidebarFold.toggle}
       />
 
       <div className="main">

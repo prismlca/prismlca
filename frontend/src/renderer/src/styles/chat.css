@@ -612,3 +612,9 @@
 .chat-answered-a { font-weight: 600; color: var(--ink); line-height: 1.45; white-space: pre-line; }
 .chat-answered-arrow { color: var(--green); font-weight: 400; margin-right: 6px; }
 .chat-answered-a.none { font-weight: 400; font-style: italic; color: var(--faint); }
+
+/* The model picker gives way when the composer is narrow. A button sizes itself to its content, so
+   its width cap alone let it run out of its shrunken wrapper and under the microphone and Send; as a
+   flex item that may shrink, it cuts the name with an ellipsis instead and keeps its chevron. */
+.chat-model-wrap { display: flex; }
+.chat-bar-model { min-width: 0; }

@@ -521,3 +521,7 @@
 /* The outdated score itself is withdrawn: muted and struck through. Muted alone, the largest number on the screen
    still read as the current result. The tag beside it keeps its colour and says why; the score's title, too. */
 .result-bar b.rb-outdated { color: var(--muted); text-decoration: line-through; cursor: help; }
+/* When the toolbar does wrap (see `.topbar` above), the dark-mode switch and Settings keep their place
+   at the right edge on the new line instead of starting it at the left. On an unwrapped bar the spacer
+   has already taken the free room, so this margin is zero there. */
+.topbar .darkmode { margin-left: auto; }
