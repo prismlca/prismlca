@@ -9,7 +9,9 @@
  * case, forgetting is no longer a thing a call site can do.
  */
 import { streamChat } from './client'
+import { getActiveProvider } from './providers/state'
 import type { ChatMessage, Citation, ProviderReplay, StreamChatOpts } from './providers/types'
+import { createRequestLog, sentChars } from './requestLog'
 
 /** The usage payload of a stream's `usage` event — see providers/types.ts. */
 type StreamUsage = {
@@ -80,31 +82,50 @@ export async function collectText(opts: {
   budget?: StreamChatOpts['budget']
   /** How long a failed request may keep trying (StreamChatOpts.retry); absent = the engine's default. */
   retry?: StreamChatOpts['retry']
+  /** Name the request in the app log: with it, the request leaves one line saying who served it, what
+   *  it cost and how much of its prompt came from the cache (requestLog.ts). Absent = no line. */
+  logAs?: string
 }): Promise<string> {
   let text = ''
-  for await (const ev of streamChat({
-    model: opts.model,
-    provider: opts.provider,
-    messages: opts.messages,
-    tools: opts.tools,
-    cacheTail: opts.cacheTail,
-    sessionId: opts.sessionId,
-    temperature: null,
-    signal: opts.signal,
-    webSearch: opts.webSearch,
-    webDomains: opts.webDomains,
-    reasoningEffort: opts.reasoningEffort,
-    maxTokens: opts.maxTokens,
-    budget: opts.budget,
-    retry: opts.retry
-  })) {
-    if (ev.type === 'delta') {
-      text += ev.text
-      opts.onDelta?.(ev.text)
-    } else if (ev.type === 'citations') opts.onCitations?.(ev.citations)
-    else if (ev.type === 'usage') opts.onCost?.(opts.model, costOf(ev.usage))
-    else if (ev.type === 'finish') opts.onFinish?.(ev.reason)
-    else if (ev.type === 'tool_calls') opts.onToolCalls?.(ev.calls, ev.replay)
+  const log = opts.logAs
+    ? createRequestLog({
+        role: opts.logAs,
+        model: opts.model,
+        provider: opts.provider ?? getActiveProvider(),
+        sentChars: sentChars(opts.messages)
+      })
+    : undefined
+  let failed = true
+  try {
+    for await (const ev of streamChat({
+      model: opts.model,
+      provider: opts.provider,
+      messages: opts.messages,
+      tools: opts.tools,
+      cacheTail: opts.cacheTail,
+      sessionId: opts.sessionId,
+      temperature: null,
+      signal: opts.signal,
+      webSearch: opts.webSearch,
+      webDomains: opts.webDomains,
+      reasoningEffort: opts.reasoningEffort,
+      maxTokens: opts.maxTokens,
+      budget: opts.budget,
+      retry: opts.retry
+    })) {
+      log?.event(ev)
+      if (ev.type === 'delta') {
+        text += ev.text
+        opts.onDelta?.(ev.text)
+      } else if (ev.type === 'citations') opts.onCitations?.(ev.citations)
+      else if (ev.type === 'usage') opts.onCost?.(opts.model, costOf(ev.usage))
+      else if (ev.type === 'finish') opts.onFinish?.(ev.reason)
+      else if (ev.type === 'tool_calls') opts.onToolCalls?.(ev.calls, ev.replay)
+    }
+    failed = false
+  } finally {
+    // A stream ended by its signal returns quietly with what it had: the line says so.
+    log?.end({ failed, notes: opts.signal?.aborted ? ['stopped'] : undefined })
   }
   return text
 }

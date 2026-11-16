@@ -15,6 +15,9 @@
  *    research legs, whose partial text survives their clock;
  *  - past that deadline, what the reviewer has written stands as a partial review. With nothing written
  *    the review has timed out, and the tool says so instead of the chat waiting on.
+ *
+ * Every attempt leaves one line in the app log (requestLog.ts): who served it, what it cost, how large
+ * the dossier was and how much the reviewer reasoned — for a review that went well as for one that did not.
  */
 import { streamChat } from './client'
 import { getModels } from './models'
@@ -23,6 +26,7 @@ import type { ChatMessage, StreamChatOpts, StreamEvent } from './providers/types
 import type { ReasoningEffort } from '../../shared/aiDefaults'
 import { costOf, type CostSample } from './stream'
 import { aiLog } from './aiLog'
+import { createRequestLog } from './requestLog'
 
 /** The first attempt's ceiling. No observed review came near it (the slowest took 594 s, reasoning
  *  throughout); it is there for the one that would otherwise hold the chat indefinitely. */
@@ -121,6 +125,8 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
     effort?: ReasoningEffort
     retry?: StreamChatOpts['retry']
     label: string
+    /** 1 for the first attempt, 2 for the restart — for the attempt's log line. */
+    n: number
   }): Promise<Attempt> => {
     // Our own clock beside the caller's signal, so "stopped by the user" and "out of time" stay apart.
     const clock = new AbortController()
@@ -140,6 +146,12 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
       opts.onProgress?.(`${a.label}${what}, ${Math.round(n / 100) / 10}k characters`)
     }
     let attemptReasoning = 0
+    const log = createRequestLog({
+      role: 'review_model',
+      model: opts.model,
+      provider: getActiveProvider(),
+      sentChars: opts.system.length + a.user.length
+    })
     try {
       for await (const ev of stream({
         model: opts.model,
@@ -149,6 +161,7 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
         ...(a.effort ? { reasoningEffort: a.effort } : {}),
         ...(a.retry ? { retry: a.retry } : {})
       })) {
+        log.event(ev)
         if (ev.type === 'delta') {
           // Writing restarts the count: the line now follows the text, not the thinking before it.
           if (!text) shown = 0
@@ -165,6 +178,10 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
       if (!signal.aborted) error = e instanceof Error ? e.message : String(e)
     } finally {
       clearTimeout(timer)
+      const notes = [`attempt ${a.n}`]
+      if (clock.signal.aborted) notes.push('stopped at its deadline')
+      else if (opts.signal?.aborted) notes.push('stopped')
+      log.end({ failed: !!error, notes })
     }
     // A stop from the user ends the review at once, partial text or not. The spend ceiling does too —
     // but a review already received (the ceiling often trips on its own closing usage event) is paid
@@ -208,7 +225,7 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
     return result('ok', last, attempts, text, !(last.text && last.finish === 'stop'))
   }
 
-  const first = await attempt({ user: opts.dossier, budgetMs: FIRST_ATTEMPT_MS, label: '' })
+  const first = await attempt({ user: opts.dossier, budgetMs: FIRST_ATTEMPT_MS, label: '', n: 1 })
   // Only a stream that ended on its own counts as a whole review: text from one that was stopped or
   // broke off is kept below as a last resort, marked as cut off.
   if (first.budgetStopped) return budgetEnd(first, 1)
@@ -230,7 +247,8 @@ export async function runReview(opts: ReviewRunOpts): Promise<ReviewResult> {
     budgetMs: RESTART_MS,
     effort,
     retry: RESTART_RETRY,
-    label
+    label,
+    n: 2
   })
 
   if (second.budgetStopped) return budgetEnd(second, 2, first.text)

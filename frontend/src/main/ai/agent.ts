@@ -44,6 +44,7 @@ import { refusalNote } from './stopNotes'
 import { aiLog } from './aiLog'
 import { localDate } from './localTime'
 import { createRunTelemetry } from './roundLog'
+import { describeWebLookups } from './webLookups'
 import { logProviderError, storedError } from './providerErrorLog'
 
 import {
@@ -689,43 +690,6 @@ export { withUnknownFields } from './execute'
 
 /** Trace-row name for the provider-side web lookups of a round. Not a tool: nothing dispatches on it. */
 export const WEB_LOOKUPS_ROW = 'web_lookups'
-
-/**
- * Put OpenRouter's `server_tool_use` counters into words. `web_search_requests` and
- * `web_fetch_requests` are the two known kinds; any other `*_requests` counter is named as it comes.
- * Returns null when nothing ran, so a round without lookups adds no row.
- */
-export function describeWebLookups(
-  use: Record<string, number> | undefined
-): { short: string; preview: string; total: number } | null {
-  if (!use || typeof use !== 'object') return null
-  const parts: string[] = []
-  let total = 0
-  for (const [key, raw] of Object.entries(use)) {
-    const n = typeof raw === 'number' ? raw : Number(raw)
-    if (!Number.isFinite(n) || n <= 0) continue
-    total += n
-    const kind = key.replace(/_requests$/, '')
-    const noun =
-      kind === 'web_search'
-        ? n === 1
-          ? 'web search'
-          : 'web searches'
-        : kind === 'web_fetch'
-          ? n === 1
-            ? 'page fetched'
-            : 'pages fetched'
-          : `${kind.replace(/_/g, ' ')} ${n === 1 ? 'call' : 'calls'}`
-    parts.push(`${n} ${noun}`)
-  }
-  if (!total) return null
-  const short = parts.join(', ')
-  const preview =
-    `${short} — run by the provider inside this reply. Every lookup makes the model read the whole ` +
-    `conversation again, so this round's input tokens and cost cover ${total + 1} passes, not one. ` +
-    `Settings → AI → Chat caps how many lookups one reply may run.`
-  return { short, preview, total }
-}
 
 export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<AgentResult> {
   // Provider-aware: an id belonging to the inactive provider (a stored choice after a switch)

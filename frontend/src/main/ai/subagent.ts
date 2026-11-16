@@ -77,6 +77,8 @@ export interface ResearchOpts {
   domains?: string[]
   /** Pages the provider's web search cited while this leg ran — the engine's word on what was read. */
   onCitations?: (citations: Citation[]) => void
+  /** The tool this leg works for, as its requests are named in the app log (requestLog.ts). */
+  logAs: string
 }
 
 /**
@@ -140,7 +142,8 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       // Well inside the leg's own clock, so a provider that refuses or a network that is gone ends the
       // leg with that error, not with "ran past its budget" from a clock that fired in a pause.
       retry: LEG_RETRY,
-      onCost: opts.onCost
+      onCost: opts.onCost,
+      logAs: opts.logAs
     })
     text = roundText.trim()
     // Without function tools there is nothing to feed back — one pass is the whole leg.
@@ -535,6 +538,7 @@ export async function researchBom(opts: {
       let text: string
       try {
         text = await runResearch({
+          logAs: 'research_bom',
           question: attempts[i].q,
           system: BOM_SYSTEM,
           model: opts.model,
@@ -926,6 +930,7 @@ export async function researchWeb(opts: {
     let text = ''
     try {
       text = await runResearch({
+        logAs: 'research_web',
         question: q,
         system: WEB_SYSTEM,
         model: opts.model,
@@ -986,6 +991,7 @@ export async function researchWeb(opts: {
       .join('\n')
     try {
       const text = await runResearch({
+        logAs: 'research_web',
         question:
           `${question}\n\nA first pass answered this from media/community sources only (blogs, ` +
           'retailer guides, forums). Find OFFICIAL or INDUSTRY confirmation for the decisive figures ' +

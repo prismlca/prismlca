@@ -45,6 +45,71 @@ afterEach(() => {
 })
 
 describe('runReview', () => {
+  /** The review's own lines in the app log, without stamp and tag. */
+  const reviewLines = (): string[] =>
+    vi
+      .mocked(console.log)
+      .mock.calls.map((c) => String(c[0]).replace(/^.*?\[prism-ai\] /, ''))
+      .filter((l) => l.startsWith('review_model: cache'))
+
+  it('leaves a line for a review that went well: who served it, its cost, the dossier and the thinking', async () => {
+    const { stream } = fakeStream([
+      {
+        events: [
+          { type: 'provider', name: 'Widgets Inc' },
+          { type: 'reasoning', chars: 152_000 },
+          { type: 'delta', text: 'Blocking: none.' },
+          {
+            type: 'usage',
+            usage: {
+              cost: 0.081,
+              prompt_tokens: 9_500,
+              completion_tokens: 40_000,
+              prompt_tokens_details: { cached_tokens: 0 }
+            }
+          },
+          { type: 'finish', reason: 'stop' }
+        ]
+      }
+    ])
+    await runReview({ ...base, dossier: 'D'.repeat(38_000), stream })
+    const written = reviewLines()
+    expect(written).toHaveLength(1)
+    expect(written[0]).toMatch(/^review_model: cache: 0\/9500 prompt tokens \(0%\), \$0\.0810, /)
+    expect(written[0]).toMatch(
+      /40000 out tokens.*, via OpenRouter\/Widgets Inc, sent ≈38k chars, attempt 1, reasoning 152k chars — test\/reviewer-without-row$/
+    )
+  })
+
+  it('leaves a line for each attempt, and says which one was stopped at its deadline', async () => {
+    const { stream } = fakeStream([
+      {
+        events: [
+          { type: 'provider', name: 'Widgets Inc' },
+          { type: 'reasoning', chars: 89_000 }
+        ],
+        hang: true
+      },
+      {
+        events: [
+          { type: 'provider', name: 'Gadgets Ltd' },
+          { type: 'delta', text: 'Should fix: the lid.' },
+          { type: 'finish', reason: 'stop' }
+        ]
+      }
+    ])
+    const done = runReview({ ...base, stream })
+    await vi.advanceTimersByTimeAsync(FIRST_ATTEMPT_MS)
+    await done
+    const written = reviewLines()
+    expect(written).toHaveLength(2)
+    expect(written[0]).toMatch(
+      /request 600\.0 s, via OpenRouter\/Widgets Inc, .*attempt 1, stopped at its deadline, reasoning 89k chars/
+    )
+    expect(written[1]).toMatch(/via OpenRouter\/Gadgets Ltd, .*attempt 2 — /)
+    expect(written[1]).not.toContain('stopped')
+  })
+
   it('returns the first answer as it is: no effort, no deadline note, one attempt', async () => {
     const { stream, calls } = fakeStream([
       {
