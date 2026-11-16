@@ -291,9 +291,6 @@ def apply_values(
     recalc_database(database, model_change=False)
 
 
-_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
-
-
 def formula_usage(database: str) -> dict[str, list[dict]]:
     """Parameter name -> the exchanges whose formula references it.
 
@@ -309,7 +306,7 @@ def formula_usage(database: str) -> dict[str, list[dict]]:
             formula = ex.get("formula")
             if not formula:
                 continue
-            for token in set(_IDENT_RE.findall(str(formula))):
+            for token in param_references.all_names_in(formula):
                 usage.setdefault(token, []).append(
                     {
                         "activity_code": act.get("code"),
@@ -399,7 +396,7 @@ def parameter_usage(database: str) -> dict[str, list[dict]]:
     for p in DatabaseParameter.select().where(DatabaseParameter.database == database):
         if not p.formula:
             continue
-        for token in set(_IDENT_RE.findall(str(p.formula))):
+        for token in param_references.all_names_in(p.formula):
             if token == p.name:  # a self-reference is not a use; it is a cycle, refused elsewhere
                 continue
             usage.setdefault(token, []).append({"name": p.name, "formula": p.formula})
@@ -1258,7 +1255,7 @@ def _dimension_check(database: str, formula: str, info: dict) -> dict:
     """
     used: dict[str, str] = {}
     try:
-        referenced = set(_IDENT_RE.findall(formula or ""))
+        referenced = param_references.all_names_in(formula or "")
         for p in list_params(database):
             name = str(p.get("name") or "")
             if name in referenced:

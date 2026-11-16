@@ -134,7 +134,7 @@ _QUANTITY = {
 }
 
 #: A bare parameter reference: the whole formula is one name, so no conversion factor is in play.
-_BARE_PARAM = re.compile(r"^\s*-?\s*([A-Za-z_][A-Za-z0-9_]*)\s*$")
+_BARE_PARAM = re.compile(r"^\s*-?\s*([^\W\d]\w*)\s*$")
 
 
 def _dimension_note(ex: dict, provider_unit: str, param_units: dict[str, str]) -> str | None:
@@ -451,7 +451,7 @@ _FIGURE = re.compile(r"([0-9]+(?:[.,][0-9]+)?)\s*(%|[A-Za-zµ]{1,4})\b")
 
 #: How a description points at the parameter a figure belongs to. One convention, used throughout the
 #: models this app writes: "(parameter mass_glass_bottle)".
-_PARAM_REF = re.compile(r"\(?\s*parameter\s+([A-Za-z_][A-Za-z0-9_]*)")
+_PARAM_REF = re.compile(r"\(?\s*parameter\s+([^\W\d]\w*)")
 
 #: How far back a figure may sit and still be the one this reference is about. Long enough for
 #: "1.5 kg of apples per 1 L of juice (parameter apples_per_litre)", short enough that the sentence

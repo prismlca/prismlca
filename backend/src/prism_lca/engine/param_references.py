@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import keyword
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -46,22 +47,34 @@ def _interpreter_names() -> frozenset[str]:
     return frozenset(Interpreter().symtable)
 
 
+#: A name as the formula interpreter reads one: a letter or an underscore, then letters, digits and underscores —
+#: letters of any script. Read with ASCII letters only, `transport_händler_km` falls apart into `transport_h` and
+#: `ndler_km`, and a parameter the interpreter computes with is reported as one nothing uses.
+IDENT = r"[^\W\d]\w*"
+
 #: Every word that could be a name — the reading of a formula that does not parse.
-_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_WORD = re.compile(IDENT)
+
+
+def all_names_in(formula: str) -> frozenset[str]:
+    """Every name a formula reads, the interpreter's own (``sqrt``, ``pi``) included.
+
+    Parsed as asteval parses it (a module, so "mass * 2;" counts), names collected as its NameFinder collects
+    them — and in the form the interpreter compares them: Python folds a name to NFKC, so "e" followed by a
+    combining accent is "é". Read from the syntax tree, ``1e3`` names nothing and a word inside a string is
+    no name. A formula that does not parse still keeps its words: read as naming nothing, it would let the
+    parameter it names be deleted."""
+    text = str(formula)
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return frozenset(_WORD.findall(unicodedata.normalize("NFKC", text))) - frozenset(keyword.kwlist)
+    return frozenset(n.id for n in ast.walk(tree) if isinstance(n, ast.Name))
 
 
 def names_in(formula: str) -> frozenset[str]:
-    """The names a formula reads that the interpreter does not supply itself — parameters, defined or not.
-
-    Parsed as asteval parses it (a module, so "mass * 2;" counts), names collected as its NameFinder collects
-    them. A formula that does not parse still keeps its words: read as naming nothing, it would let the
-    parameter it names be deleted."""
-    try:
-        tree = ast.parse(str(formula))
-    except (SyntaxError, ValueError):
-        words = set(_WORD.findall(str(formula))) - set(keyword.kwlist)
-        return frozenset(words) - _interpreter_names()
-    return frozenset(n.id for n in ast.walk(tree) if isinstance(n, ast.Name)) - _interpreter_names()
+    """The names a formula reads that the interpreter does not supply itself — parameters, defined or not."""
+    return all_names_in(formula) - _interpreter_names()
 
 
 def _input_name(ex) -> str:

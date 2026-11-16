@@ -128,8 +128,12 @@ const KEYWORDS = new Set(['if', 'else', 'and', 'or', 'not'])
 const COMPARISONS = new Set(['<', '<=', '>', '>=', '==', '!='])
 
 const NUM_RE = /^(?:\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?)/
-const ID_RE = /^[A-Za-z_][A-Za-z0-9_]*/
-const IDENT_CHAR = /[A-Za-z0-9_]/
+// A name as the stored-formula interpreter reads one: letters of any script, so `händler_km` is one
+// parameter and not a letter the formula "cannot use". The interpreter compares names in their
+// composed form (NFKC), so a token carries that form: "e" followed by a combining accent is "é".
+const ID_RE = /^[\p{L}_][\p{L}\p{N}\p{M}_]*/u
+// A run of name characters, digits included — what a caret sits in and what a replacement must match whole.
+const WORD_RUN = /[\p{L}\p{N}\p{M}_]+/gu
 
 function tokenize(text: string): { toks: Tok[]; problem: FormulaProblem | null } {
   const toks: Tok[] = []
@@ -149,7 +153,7 @@ function tokenize(text: string): { toks: Tok[]; problem: FormulaProblem | null }
     }
     m = ID_RE.exec(rest)
     if (m) {
-      toks.push({ t: KEYWORDS.has(m[0]) ? 'kw' : 'id', v: m[0], i })
+      toks.push({ t: KEYWORDS.has(m[0]) ? 'kw' : 'id', v: m[0].normalize('NFKC'), i })
       i += m[0].length
       continue
     }
@@ -481,13 +485,16 @@ export function wordAt(
   caret: number
 ): { start: number; end: number; word: string; prefix: string } {
   const at = Math.max(0, Math.min(caret, text.length))
-  let start = at
-  while (start > 0 && IDENT_CHAR.test(text[start - 1])) start--
-  let end = at
-  while (end < text.length && IDENT_CHAR.test(text[end])) end++
-  const word = text.slice(start, end)
-  if (!word || /^[0-9]/.test(word)) return { start: at, end: at, word: '', prefix: '' }
-  return { start, end, word, prefix: text.slice(start, at) }
+  // Whole runs, found by the pattern: a letter outside the basic plane is two code units, and a walk
+  // unit by unit from the caret would cut the name in the middle of it.
+  for (const run of text.matchAll(WORD_RUN)) {
+    const start = run.index
+    const end = start + run[0].length
+    if (at < start || at > end) continue
+    if (/^[0-9]/.test(run[0])) break
+    return { start, end, word: run[0], prefix: text.slice(start, at) }
+  }
+  return { start: at, end: at, word: '', prefix: '' }
 }
 
 /** Parameter names for a typed prefix: the name typed in full first, then the ones that begin with it,
@@ -522,6 +529,7 @@ export function insertName(
 
 /** Every whole-word use of `name` replaced — what the "did you mean" button does. */
 export function replaceName(text: string, name: string, replacement: string): string {
-  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return text.replace(new RegExp(`\\b${esc}\\b`, 'g'), replacement)
+  // By whole runs, not by `\b`: that boundary knows ASCII only, so "Mass" would also be replaced at the
+  // head of "Massé", and a name ending in "ß" would not be found at all.
+  return text.replace(WORD_RUN, (word) => (word.normalize('NFKC') === name ? replacement : word))
 }
