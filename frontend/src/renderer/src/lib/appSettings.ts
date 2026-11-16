@@ -17,6 +17,7 @@ import {
   clampMaxTokens,
   DEFAULT_MAX_COST_USD,
   DEFAULT_MAX_RESEARCH_QUESTIONS,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_MIN_THROUGHPUT,
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MAX_TOKENS,
@@ -64,6 +65,7 @@ function legacy(): AppSettings {
     // Newer than the move to a file: no legacy key, the default stands until main answers.
     writerMaxTokens: DEFAULT_WRITER_MAX_TOKENS,
     maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+    researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS,
     minThroughput: DEFAULT_MIN_THROUGHPUT,
     disabledTools: readLs<string[]>('prism.ai.disabledTools', []),
     zeroDataRetention: readLs('prism.ai.zeroDataRetention', DEFAULT_ZERO_DATA_RETENTION),

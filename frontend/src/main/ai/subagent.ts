@@ -79,6 +79,8 @@ export interface ResearchOpts {
   onCitations?: (citations: Citation[]) => void
   /** The tool this leg works for, as its requests are named in the app log (requestLog.ts). */
   logAs: string
+  /** Ceiling on the provider's web lookups inside one request of this leg (Settings → AI → Limits). */
+  webLookups?: number
 }
 
 /**
@@ -136,6 +138,7 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       messages,
       webSearch: true,
       webDomains: opts.domains,
+      webLookupsCap: opts.webLookups,
       onCitations: opts.onCitations,
       reasoningEffort: 'low',
       signal,
@@ -497,6 +500,8 @@ export async function researchBom(opts: {
   /** Restrict the legs' web search to these hosts (bare domains). Set by the caller when it knows
    *  where the product's own documents live — the manufacturer, the retailer with the datasheet. */
   domains?: string[]
+  /** Ceiling on the provider's web lookups inside one request of a leg (Settings → AI → Limits). */
+  webLookups?: number
 }): Promise<BomResult> {
   const cap = Math.max(1, Math.min(opts.maxComponents ?? 8, 8))
   const components = (opts.components ?? [])
@@ -539,6 +544,7 @@ export async function researchBom(opts: {
       try {
         text = await runResearch({
           logAs: 'research_bom',
+          webLookups: opts.webLookups,
           question: attempts[i].q,
           system: BOM_SYSTEM,
           model: opts.model,
@@ -889,6 +895,8 @@ export async function researchWeb(opts: {
   /** Which leg of a parallel fan this is, 1-based, and how many there are. */
   index?: number
   total?: number
+  /** Ceiling on the provider's web lookups inside one request of this leg (Settings → AI → Limits). */
+  webLookups?: number
   /** Restrict the leg's web search to these hosts (bare domains), for a caller that knows where the
    *  answer lives. Unset = open web; the leg may still name hosts for its own upgrade pass. */
   domains?: string[]
@@ -931,6 +939,7 @@ export async function researchWeb(opts: {
     try {
       text = await runResearch({
         logAs: 'research_web',
+        webLookups: opts.webLookups,
         question: q,
         system: WEB_SYSTEM,
         model: opts.model,
@@ -992,6 +1001,7 @@ export async function researchWeb(opts: {
     try {
       const text = await runResearch({
         logAs: 'research_web',
+        webLookups: opts.webLookups,
         question:
           `${question}\n\nA first pass answered this from media/community sources only (blogs, ` +
           'retailer guides, forums). Find OFFICIAL or INDUSTRY confirmation for the decisive figures ' +

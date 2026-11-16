@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_MAX_COST_USD,
   DEFAULT_MAX_RESEARCH_QUESTIONS,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MAX_TOKENS,
   DEFAULT_MIN_THROUGHPUT,
@@ -454,6 +455,7 @@ export default function Settings({
                     maxTokens: DEFAULT_MAX_TOKENS,
                     writerMaxTokens: DEFAULT_WRITER_MAX_TOKENS,
                     maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+                    researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS,
                     minThroughput: DEFAULT_MIN_THROUGHPUT,
                     reasoningEffort: {},
                     planToolByModel: {},

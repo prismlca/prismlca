@@ -4,20 +4,23 @@ import {
   clampMaxTokens,
   clampMinThroughput,
   clampResearchQuestions,
+  clampResearchWebLookups,
   DEFAULT_MAX_ROUNDS,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_WRITER_MAX_TOKENS,
   MAX_MAX_TOKENS,
   MAX_MIN_THROUGHPUT,
   MAX_RESEARCH_QUESTIONS,
+  MAX_WEB_LOOKUPS_PER_ANSWER,
   MIN_MAX_TOKENS,
   MIN_RESEARCH_QUESTIONS
 } from '../../../../shared/aiDefaults'
 import { fmtInt } from '../../lib/format'
 import type { ProviderChoice } from './ProviderKeyBlock'
 import { NumberInput } from '../../components/NumberInput'
-import { PROVIDER_CAPS } from '../../../../shared/providerCaps'
+import { PROVIDER_CAPS, providersWith } from '../../../../shared/providerCaps'
 
-/** AI → Limits: how far a run may go — rounds, the provider speed preference, research width, the
+/** AI → Limits: how far a run may go — rounds, the provider speed preference, research width and lookups, the
  *  cost brake and both reply budgets — plus the tool-focus and approval switches and the privacy rule. */
 export function AiLimitsPanel(): JSX.Element {
   // Every setting is READ from the store, never copied into local state. The copies kept showing a
@@ -28,6 +31,7 @@ export function AiLimitsPanel(): JSX.Element {
   const maxRounds = as.maxRounds
   const maxCost = as.maxCostUsd
   const maxResearch = clampResearchQuestions(as.maxResearchQuestions)
+  const researchLookups = clampResearchWebLookups(as.researchWebLookups)
   const minTput = clampMinThroughput(as.minThroughput)
   const maxTokens = clampMaxTokens(as.maxTokens)
   const writerMaxTokens = clampMaxTokens(as.writerMaxTokens, DEFAULT_WRITER_MAX_TOKENS)
@@ -54,6 +58,10 @@ export function AiLimitsPanel(): JSX.Element {
   const setResearchWidth = (v: string): void => {
     const n = clampResearchQuestions(Number(v))
     setAS({ maxResearchQuestions: n })
+  }
+  const setResearchLookups = (v: string): void => {
+    // 0 is a value here (no cap of ours), not "unset".
+    setAS({ researchWebLookups: clampResearchWebLookups(Number(v)) })
   }
   const setTokens = (v: string): void => {
     // Clamped rather than validated: an out-of-range figure is corrected to the nearest supported one
@@ -124,6 +132,34 @@ export function AiLimitsPanel(): JSX.Element {
         How many questions one web-research call looks into at once. They run in parallel, but each is its own
         paid search — this is what research costs. Questions over the limit are reported to the assistant as
         unanswered, not dropped.
+      </p>
+      <label className="settings-field">
+        <span>Web lookups per research request</span>
+        <NumberInput
+          min={0}
+          max={MAX_WEB_LOOKUPS_PER_ANSWER}
+          value={researchLookups}
+          disabled={!caps.webLookupsCap}
+          onValue={setResearchLookups}
+        />
+      </label>
+      <p className="settings-hint">
+        {!caps.webLookupsCap ? (
+          <>
+            The {caps.name} API takes no such limit ({providersWith('webLookupsCap')} do). Your value stays
+            stored for when you switch.
+          </>
+        ) : (
+          <>
+            Searches and pages one request of a research agent may look up. Each lookup is another pass of the
+            research model over everything it has gathered so far — that, more than the search fee, is what
+            research costs. One web-research call sends one to three requests per question, so at most{' '}
+            {3 * maxResearch} with the limit above; a bill-of-materials research sends a few per component.
+            The chat shows what the research of a run has cost, and the cost limit below ends a research that
+            outgrows it. Default {DEFAULT_RESEARCH_WEB_LOOKUPS}; 0 = no cap of ours, the provider’s limit of{' '}
+            {MAX_WEB_LOOKUPS_PER_ANSWER} applies.
+          </>
+        )}
       </p>
       <label className="settings-field">
         <span>Cost limit per run ($)</span>

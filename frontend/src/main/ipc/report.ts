@@ -78,7 +78,13 @@ export function registerReportIpc(deps: AiIpcDeps, controllers: RunControllers):
   const researcher =
     (signal: AbortSignal, onCost: CostSink): NonNullable<WriteSectionOpts['researchWeb']> =>
     (o) =>
-      researchWeb({ ...o, model: modelForActive(getSettings().researchModel) || undefined, signal, onCost })
+      researchWeb({
+        ...o,
+        model: modelForActive(getSettings().researchModel) || undefined,
+        webLookups: getSettings().researchWebLookups,
+        signal,
+        onCost
+      })
   /** Questions per research call: the chat's setting, at most four for one chapter's background. */
   const researchWidth = (): number => Math.min(getSettings().maxResearchQuestions ?? 4, 4)
 

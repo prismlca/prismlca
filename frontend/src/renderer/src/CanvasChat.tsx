@@ -402,6 +402,7 @@ export default function CanvasChat({
                 content: text,
                 tools: trace.length ? trace : undefined,
                 cost: ev.cost,
+                research_cost: ev.researchCost,
                 prompt_tokens: ev.promptTokens,
                 cached_tokens: ev.cachedTokens,
                 completion_tokens: ev.completionTokens,

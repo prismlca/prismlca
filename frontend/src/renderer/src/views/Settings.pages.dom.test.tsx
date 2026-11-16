@@ -12,6 +12,7 @@ import {
   DEFAULT_MAX_TOKENS,
   DEFAULT_MIN_THROUGHPUT,
   DEFAULT_MODEL_ID,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_WEB_LOOKUPS_PER_ANSWER,
   DEFAULT_WRITER_MAX_TOKENS,
   DEFAULT_ZDR_EXCEPT_ANTHROPIC,
@@ -121,6 +122,7 @@ const AI_DEFAULTS = {
   newsAutoLoad: false,
   keepAwake: true,
   maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+  researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS,
   minThroughput: DEFAULT_MIN_THROUGHPUT,
   zdrExceptAnthropic: DEFAULT_ZDR_EXCEPT_ANTHROPIC,
   zdrExceptOpenai: DEFAULT_ZDR_EXCEPT_OPENAI,
@@ -305,6 +307,7 @@ describe('Settings → Reset AI settings puts the AI pages back to their default
       zdrExceptGoogle: false,
       minThroughput: 55,
       maxResearchQuestions: 2,
+      researchWebLookups: 3,
       eurostatEnabled: false,
       reasoningEffort: { [DEFAULT_MODEL_ID]: 'high' }
     })
@@ -315,6 +318,9 @@ describe('Settings → Reset AI settings puts the AI pages back to their default
     expect(screen.getByRole('checkbox', { name: /Ask me before/ })).not.toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Except Google (Gemini)' })).not.toBeChecked()
     expect(screen.getByLabelText('Parallel research questions')).toHaveValue(2)
+    // The research limit, and what it bounds with the width above: three requests a question at most.
+    expect(screen.getByLabelText('Web lookups per research request')).toHaveValue(3)
+    expect(screen.getByText(/so at most 6 with the limit above/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Reset AI settings' }))
     await waitFor(() => expect(prism.settings.chatApproval).toBe('irreversible'))
@@ -324,6 +330,7 @@ describe('Settings → Reset AI settings puts the AI pages back to their default
       zdrExceptGoogle: DEFAULT_ZDR_EXCEPT_GOOGLE,
       minThroughput: DEFAULT_MIN_THROUGHPUT,
       maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+      researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS,
       eurostatEnabled: true,
       reasoningEffort: {}
     })

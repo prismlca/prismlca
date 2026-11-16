@@ -116,6 +116,9 @@ export type AgentEvent =
    * conversation (`stuck`). Sent once per run; the run bar says so until the run ends.
    */
   | { chatId: string; type: 'cache-warning'; pattern: 'dropped' | 'stuck' | 'recovered' }
+  /** What the research agents of this run have billed so far (USD) — sent with every booking, so the
+   *  run bar can say how much of a growing bill is research while the run is still going. */
+  | { chatId: string; type: 'research-cost'; usd: number }
   // A mutating tool ran — the renderer should reload the canvas. `database` names the model the run
   // edits, so a canvas showing ANOTHER model (two assistants working in parallel) is left alone.
   /** A write happened; `graph === false` says the canvas graph itself did not change (study
@@ -129,6 +132,8 @@ export type AgentEvent =
       type: 'done'
       text: string
       cost?: number
+      /** The part of `cost` the research agents billed. */
+      researchCost?: number
       promptTokens?: number
       cachedTokens?: number
       /** Output tokens, reasoning included — the half the price hangs on. Sent so the chat header can
@@ -458,6 +463,10 @@ export interface AppSettings {
   /** How many questions one research_web call may research in parallel. Each is a separate paid
    *  sub-agent, so this is a cost guardrail, not a preference — see aiDefaults. */
   maxResearchQuestions: number
+  /** How many web lookups (searches + page fetches, each) the provider may run inside ONE request of
+   *  a research agent; each one re-runs everything gathered so far through the research model.
+   *  0 = the provider's own default. */
+  researchWebLookups: number
   /** Preferred provider throughput in tokens/second; 0 = express no preference. Unlike the limits
    *  above this cannot block a request — it only says which endpoints we would rather have. */
   minThroughput: number

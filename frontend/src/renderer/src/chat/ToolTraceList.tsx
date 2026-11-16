@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import type { ToolTrace } from '../lib/ai'
 import { fmtInt } from '../lib/format'
+import { usd } from './chatFormat'
 
 /**
  * The row label of a call. A `plan` call that went through reads "Plan updated · 3/7": the plan
@@ -69,6 +70,7 @@ export function ToolTraceList({
   running,
   summary,
   cost,
+  researchCost,
   provider
 }: {
   traces: ToolTrace[]
@@ -80,6 +82,8 @@ export function ToolTraceList({
   summary?: boolean
   /** USD the turn cost, shown on that line. */
   cost?: number
+  /** The part of it the research agents billed, named beside it: it can be most of a run. */
+  researchCost?: number
   /** The OpenRouter endpoint that served the turn, shown on that line — routing changes it per
    *  request, and it is the difference between a slow model and a slow provider. */
   provider?: string
@@ -115,7 +119,8 @@ export function ToolTraceList({
           {seconds >= 1
             ? ` · ${seconds < 60 ? `${seconds.toFixed(1)} s` : `${Math.round(seconds / 60)} min`} in tools`
             : ''}
-          {cost ? ` · $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}` : ''}
+          {cost ? ` · ${usd(cost)}` : ''}
+          {cost && researchCost ? `, of it research ${usd(researchCost)}` : ''}
           {provider ? ` · ${provider}` : ''}
           {refused ? <span className="chat-trace-tag">{refused} rejected</span> : null}
           {failed ? <span className="chat-trace-tag">{failed} failed</span> : null}

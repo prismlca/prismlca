@@ -157,10 +157,32 @@ export const DEFAULT_WEB_LOOKUPS_PER_ANSWER = 8
 export const MAX_WEB_LOOKUPS_PER_ANSWER = 30
 
 /** Whole number 0…MAX; anything unreadable reads as the default (0 means "no cap"). */
-export function clampWebLookups(value: unknown): number {
+export function clampWebLookups(value: unknown, fallback = DEFAULT_WEB_LOOKUPS_PER_ANSWER): number {
   const n = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(n)) return DEFAULT_WEB_LOOKUPS_PER_ANSWER
+  if (!Number.isFinite(n)) return fallback
   return Math.min(MAX_WEB_LOOKUPS_PER_ANSWER, Math.max(0, Math.round(n)))
+}
+
+/**
+ * The same cap for one request of a research agent (`research_bom`, `research_web`), a setting of its
+ * own because research is where the lookups happen: a research request exists to search and read,
+ * and it went out without any cap — up to the provider's thirty searches and thirty pages, each
+ * re-reading everything gathered so far. Measured over nine modelling runs: 7 to 13 research requests
+ * carried 4.2 to 5.0 million input tokens per run on one model (350,000 to 700,000 per request),
+ * three times what the whole chat cost.
+ *
+ * Eight, the chat's value, on one measured bill-of-materials order of six components per variant: the
+ * model that reads most took 2.6 million input tokens and $0.80 without a cap, 1.2 million and $0.67
+ * with eight, 0.65 million and $0.41 with four; a model that searches little by itself was hardly
+ * touched by eight. Four was cheaper again, but with a cap one or two of the six components needed a
+ * second request where none did without, and one run at four lost the heaviest part — too few runs to
+ * call four safe, so the default stays where the runaway ends. 0 = send no cap and take the provider's
+ * default.
+ */
+export const DEFAULT_RESEARCH_WEB_LOOKUPS = 8
+
+export function clampResearchWebLookups(value: unknown): number {
+  return clampWebLookups(value, DEFAULT_RESEARCH_WEB_LOOKUPS)
 }
 
 /** Clamp the throughput preference; 0 (or anything unreadable) means "express no preference". */

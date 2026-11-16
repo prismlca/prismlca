@@ -286,6 +286,7 @@ export function registerChatIpc(
             reviewModel: modelForActive(req.reviewModel ?? getSettings().reviewModel),
             // Cost guardrail, so the store decides — the renderer may echo it, never raise it.
             maxResearchQuestions: getSettings().maxResearchQuestions,
+            researchWebLookups: getSettings().researchWebLookups,
             // Same: how many web lookups the provider may run inside one reply (V398).
             webLookupsCap: getSettings().webLookupsPerAnswer,
             distancesAvailable: distancesOn,
@@ -355,6 +356,7 @@ export function registerChatIpc(
                   content: result.text,
                   tools: result.trace.length ? result.trace : undefined,
                   cost: result.cost,
+                  research_cost: result.researchCost,
                   // And what it consumed. The chat header adds these up over the conversation;
                   // without them on the message the total would reset on every reload, because
                   // the monthly ledger in Settings is per model and cannot tell two chats apart.

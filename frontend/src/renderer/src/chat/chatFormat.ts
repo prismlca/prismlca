@@ -8,6 +8,11 @@ export function compact(n: number): string {
   return `${(n / 1_000_000).toFixed(2)}M`
 }
 
+/** A cost in USD: two decimals, four below a cent so a small figure does not read as free. */
+export function usd(cost: number): string {
+  return `$${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)}`
+}
+
 /** How much of a file went with a turn — pages for a PDF, sheets for a workbook, otherwise size.
  *  The chip above the input disappears the moment the message is sent, so without this the sent
  *  message is the only record and it says nothing: a reader cannot tell an attachment was there. */

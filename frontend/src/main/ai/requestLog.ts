@@ -117,7 +117,8 @@ export function createRequestLog(o: {
       done = true
       const t = now()
       const notes = [...(opts?.notes ?? [])]
-      if (reasoning > 0) notes.push(`reasoning ${Math.round(reasoning / 1000)}k chars`)
+      // Below half a thousand characters the figure would read "0k": too little to be worth a word.
+      if (reasoning >= 500) notes.push(`reasoning ${Math.round(reasoning / 1000)}k chars`)
       // Only an end that is not the natural one is worth a word: a reply cut at its token limit, a refusal.
       if (finish && finish !== 'stop') notes.push(`finish ${finish}`)
       aiLog(

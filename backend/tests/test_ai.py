@@ -181,6 +181,8 @@ def test_chat_keeps_what_a_turn_consumed(client, token, project):
                     "prompt_tokens": 48_000,
                     "cached_tokens": 37_440,
                     "completion_tokens": 1_200,
+                    "cost": 1.85,
+                    "research_cost": 1.34,
                 },
                 # A free model that reports nothing, and a run that produced no output: neither may
                 # invent a zero, because a stored 0 reads as a measurement.
@@ -193,6 +195,11 @@ def test_chat_keeps_what_a_turn_consumed(client, token, project):
     assert msgs[1]["prompt_tokens"] == 48_000
     assert msgs[1]["cached_tokens"] == 37_440
     assert msgs[1]["completion_tokens"] == 1_200
+    # The research agents' share of the cost survives a reload beside the cost itself; a turn without
+    # research stores none.
+    assert msgs[1]["cost"] == 1.85
+    assert msgs[1]["research_cost"] == 1.34
+    assert "research_cost" not in msgs[2]
     # The prompt count INCLUDES the cached share, which is what makes the ratio meaningful.
     assert msgs[1]["cached_tokens"] < msgs[1]["prompt_tokens"]
     for key in ("prompt_tokens", "cached_tokens", "completion_tokens"):

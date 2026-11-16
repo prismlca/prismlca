@@ -569,6 +569,8 @@ export interface AgentRequest {
   eurostatAvailable?: boolean
   /** Ceiling on parallel research legs per research_web call (Settings → AI → Limits). */
   maxResearchQuestions?: number
+  /** Ceiling on the provider's web lookups inside one research request (Settings → AI → Limits). */
+  researchWebLookups?: number
   /**
    * The read-only background databases installed, e.g. `ecoinvent-3.12-cutoff`, so the prompt can name
    * the data source instead of saying "ecoinvent". Sent from the renderer, which already has the list.
@@ -667,6 +669,8 @@ export interface AgentResult {
   /** USD this turn cost, as OpenRouter billed it — stored with the message, since the cost limit is
    *  per run and a monthly per-model total cannot answer "what did that answer cost". */
   cost?: number
+  /** The part of `cost` the research agents billed (`research_bom`, `research_web`). */
+  researchCost?: number
   /** What the turn consumed, stored with the message for the same reason the cost is: the monthly
    *  per-model ledger cannot tell two chats apart, so it can never answer "what has THIS conversation
    *  used". `promptTokens` INCLUDES `cachedTokens` — the cached ones are the share of the prompt the
@@ -771,15 +775,11 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     // fan is indistinguishable from chat traffic (the V244 confusion). The tally goes back on the
     // result so the tool answer can say what the fan it just ordered came to.
     research: async (o) => {
-      const tally = { usd: 0, requests: 0 }
-      const meter: typeof onCost = (m, u) => {
-        tally.usd += u.cost ?? 0
-        tally.requests += 1
-        onCost(m, u)
-      }
+      const { tally, meter } = researchMeter()
       const r = await researchBom({
         ...o,
         model: req.researchModel || undefined,
+        webLookups: req.researchWebLookups,
         signal: spendSignal,
         onCost: meter,
         onProgress: (note) =>
@@ -794,15 +794,11 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       return { ...r, cost: { requests: tally.requests, usd: Number(tally.usd.toFixed(4)) } }
     },
     researchWeb: async (o) => {
-      const tally = { usd: 0, requests: 0 }
-      const meter: typeof onCost = (m, u) => {
-        tally.usd += u.cost ?? 0
-        tally.requests += 1
-        onCost(m, u)
-      }
+      const { tally, meter } = researchMeter()
       const r = await researchWeb({
         ...o,
         model: req.researchModel || undefined,
+        webLookups: req.researchWebLookups,
         signal: spendSignal,
         onCost: meter,
         onProgress: (note) =>
@@ -1026,6 +1022,22 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     deps.emit({ chatId: req.chatId, type: 'delta', text: shown })
   }
   let totalCost = 0
+  /** The research agents' share of `totalCost` — shown beside it, since it can be most of a run. */
+  let researchCost = 0
+  /** Meters one research call (for the tool's own answer) and adds what it books to the turn's share. */
+  const researchMeter = (): { tally: { usd: number; requests: number }; meter: typeof onCost } => {
+    const tally = { usd: 0, requests: 0 }
+    return {
+      tally,
+      meter: (m, u) => {
+        tally.usd += u.cost ?? 0
+        tally.requests += 1
+        researchCost += u.cost ?? 0
+        onCost(m, u)
+        if (u.cost) deps.emit({ chatId: req.chatId, type: 'research-cost', usd: researchCost })
+      }
+    }
+  }
   let totalPromptTokens = 0
   let totalCachedTokens = 0
   let totalCompletionTokens = 0
@@ -1163,9 +1175,16 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
    *  failed run was persisted without its cost and tokens although the ledger had them. */
   const usageSoFar = (): Pick<
     AgentResult,
-    'cost' | 'promptTokens' | 'cachedTokens' | 'completionTokens' | 'provider' | 'contextTokens'
+    | 'cost'
+    | 'researchCost'
+    | 'promptTokens'
+    | 'cachedTokens'
+    | 'completionTokens'
+    | 'provider'
+    | 'contextTokens'
   > => ({
     cost: totalCost || undefined,
+    researchCost: researchCost || undefined,
     promptTokens: totalPromptTokens || undefined,
     cachedTokens: totalCachedTokens || undefined,
     completionTokens: totalCompletionTokens || undefined,
@@ -1743,6 +1762,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       type: 'done',
       text: finalText,
       cost: totalCost || undefined,
+      researchCost: researchCost || undefined,
       promptTokens: totalPromptTokens || undefined,
       cachedTokens: totalCachedTokens || undefined,
       completionTokens: totalCompletionTokens || undefined,
