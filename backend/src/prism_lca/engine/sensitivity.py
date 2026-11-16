@@ -43,10 +43,10 @@ of numbers alone (``2.5 / 1000``) refers to no other parameter and counts as an 
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Callable
 
 from prism_lca.engine import lca, param_rules, param_window, params, scenarios, sensitivity_fast
+from prism_lca.engine.param_references import all_names_in
 from prism_lca.errors import PrismError
 
 
@@ -102,8 +102,6 @@ Progress = Callable[[int, int, str], None]
 #: puts the baseline back either way.
 Checkpoint = Callable[[], None]
 
-_NAME = re.compile(r"[A-Za-z_][A-Za-z_0-9]*")
-
 
 def _visible_names(database: str) -> set[str]:
     """Every parameter name a formula of this model can refer to: its own and the workspace's."""
@@ -116,7 +114,7 @@ def _derived(formula: str | None, visible: set[str]) -> bool:
     """A formula over another parameter is *derived*: its drivers already move it, and a bar of its own
     would count the same lever twice. A formula of numbers alone (``2.5 / 1000``) is an input written as
     its arithmetic, and is varied like one."""
-    return bool(formula) and bool(set(_NAME.findall(str(formula))) & visible)
+    return bool(formula) and bool(all_names_in(formula) & visible)
 
 
 def _rules(database: str) -> dict[str, dict]:

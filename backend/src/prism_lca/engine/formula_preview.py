@@ -13,6 +13,7 @@ import ast
 import keyword
 import re
 
+from prism_lca.engine.param_references import IDENT
 from prism_lca.engine.params import list_params
 from prism_lca.errors import PrismError
 
@@ -20,7 +21,7 @@ from prism_lca.errors import PrismError
 MAX_FORMULA_CHARS = 50_000
 
 #: Identifiers in a formula, so the answer can say which parameters it actually leaned on.
-_IDENT_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
+_IDENT_RE = re.compile(rf"\b{IDENT}\b")
 
 
 def evaluate_formula(
