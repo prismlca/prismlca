@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { chat } from './test/fakeStream'
 
 /**
@@ -18,11 +18,19 @@ const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.con
 const legs = (): Array<{ system: string; reasoningEffort?: string }> =>
   chat.seen.map((c) => ({ system: String(c.messages[0]?.content ?? ''), reasoningEffort: c.reasoningEffort }))
 
-const { researchBom } = await import('./subagent')
+const { researchBom, researchWeb } = await import('./subagent')
+
+/** The app log's lines, without stamp and tag. */
+let logged: string[] = []
 
 beforeEach(() => {
   chat.seen.length = 0
+  logged = []
+  vi.spyOn(console, 'log').mockImplementation(
+    (line: unknown) => void logged.push(String(line).replace(/^.*?\[prism-ai\] /, ''))
+  )
 })
+afterEach(() => vi.restoreAllMocks())
 
 describe('researchBom brief', () => {
   it('forwards product, context and total mass to the research leg', async () => {
@@ -77,5 +85,18 @@ describe('researchBom brief', () => {
     expect(legs()[0].reasoningEffort).toBe('low')
     expect(legs()[0].system).toMatch(/Time budget: about 6 minutes/)
     expect(legs()[0].system).toMatch(/write your answer early/)
+  })
+
+  // A leg's request ran beside the chat's rounds without a trace: nothing said who served it or what it
+  // cost. Each now leaves one line, named after the tool it works for.
+  it('leaves one log line per leg, named after the tool', async () => {
+    await researchBom({ product: 'bottle', components: ['body', 'cap'] })
+    expect(logged.filter((l) => l.startsWith('research_bom: cache'))).toHaveLength(chat.seen.length)
+    expect(chat.seen.length).toBeGreaterThanOrEqual(2)
+    logged = []
+    chat.seen.length = 0
+    await researchWeb({ question: 'How much does a 0.5 l PET bottle weigh?', allowUnsourced: true })
+    expect(logged.filter((l) => l.startsWith('research_web: cache'))).toHaveLength(chat.seen.length)
+    expect(chat.seen.length).toBeGreaterThanOrEqual(1)
   })
 })

@@ -71,7 +71,7 @@ export function addUsage(a: RoundUsage | undefined, u: RoundUsage): RoundUsage {
 
 /** Does a usage report carry any figure? The transport sends an empty one for a request it could
  *  not price (an aborted or failed stream). */
-const hasFigures = (u: RoundUsage): boolean =>
+export const hasFigures = (u: RoundUsage): boolean =>
   [u.cost, u.prompt_tokens, u.completion_tokens].some((x) => typeof x === 'number')
 
 const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`
@@ -88,8 +88,12 @@ export function tokensPerSecond(
   return ms > 0 ? out / (ms / 1000) : null
 }
 
-/** The round's line, without stamp and tag. */
-export function roundLine(f: RoundFigures): string {
+/**
+ * The figures of one request in the order every line gives them: cache, cost, first token, duration
+ * (named by `span`), output and speed, route, size, lookups. Shared with the line of a research or
+ * review request (requestLog.ts), so the two read alike.
+ */
+export function figureParts(f: Omit<RoundFigures, 'round' | 'model'>, span: string): string[] {
   const u = f.usage ?? {}
   const parts: string[] = []
   if (typeof u.prompt_tokens === 'number' && u.prompt_tokens > 0) {
@@ -108,7 +112,7 @@ export function roundLine(f: RoundFigures): string {
         (f.requests && f.requests > 1 ? ` for ${f.requests} requests` : '')
     )
   parts.push(`first token ${f.firstTokenMs !== undefined ? secs(f.firstTokenMs) : '—'}`)
-  parts.push(`round ${secs(f.durationMs)}`)
+  parts.push(`${span} ${secs(f.durationMs)}`)
   if (f.failed) parts.push('failed')
   if (typeof u.completion_tokens === 'number') {
     const tps = tokensPerSecond(f)
@@ -125,7 +129,12 @@ export function roundLine(f: RoundFigures): string {
   if (f.sentChars) parts.push(`sent ≈${Math.round(f.sentChars / 1000)}k chars`)
   if (u.generation_id) parts.push(`gen ${u.generation_id}`)
   if (f.web) parts.push(`web: ${f.web}`)
-  return `${parts.join(', ')} — ${f.model} (round ${f.round})`
+  return parts
+}
+
+/** The round's line, without stamp and tag. */
+export function roundLine(f: RoundFigures): string {
+  return `${figureParts(f, 'round').join(', ')} — ${f.model} (round ${f.round})`
 }
 
 /** The warning line for a cache alarm, without stamp and tag. */
