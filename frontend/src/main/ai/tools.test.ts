@@ -293,6 +293,74 @@ describe('consolidated tools', () => {
     expect(out.hint).toContain('activity_code') // it names what may sit at the top
   })
 
+  it('tells items without an amount that the one at the top of the batch does not reach them', async () => {
+    // "Five parts, one of each", written the way the process is written: once, above the list. Every
+    // item came back with "also requires: amount" — true, and it reads as wrong to a caller that did
+    // pass one. The item's own error now says where that amount went. It is not spread over the
+    // items instead: an item whose amount was simply forgotten would pick up its neighbours' number
+    // without a word.
+    const calls: Array<{ path: string; body: any }> = []
+    const ctx = {
+      api: async (_method: string, path: string, body: unknown) => {
+        calls.push({ path, body })
+        return { exchange: { uid: 'u' } }
+      },
+      ui: async () => ({ ok: true }),
+      activeDb: 'demo-model'
+    } as unknown as ToolCtx
+    const run = async (args: Record<string, unknown>): Promise<any> =>
+      JSON.parse(String(await TOOL_BY_NAME['edit_exchange'].run(args, ctx)))
+    const top = { activity_code: 'barrow', action: 'add', input_database: 'demo-model' }
+
+    const out = await run({
+      ...top,
+      amount: 1,
+      exchanges: [
+        { input_code: 'tray', comment: 'One tray per barrow.' },
+        { input_code: 'wheel', comment: 'One wheel per barrow.' }
+      ]
+    })
+    expect(out.failed).toBe(2)
+    for (const r of out.results) {
+      expect(r.error).toContain('also requires: amount')
+      expect(r.error).toContain('"amount" at the top level of the batch is not applied')
+    }
+    expect(calls.filter((c) => c.path === '/api/v1/model/exchanges')).toEqual([])
+
+    // An item with its own amount goes through untouched; only the one without is told.
+    const mixed = await run({
+      ...top,
+      amount: 1,
+      exchanges: [{ input_code: 'tray', amount: 2 }, { input_code: 'wheel' }]
+    })
+    expect(mixed.results.map((r: any) => r.ok)).toEqual([true, false])
+    expect(mixed.results[1].error).toContain('at the top level of the batch')
+    expect(calls.filter((c) => c.path === '/api/v1/model/exchanges').map((c) => c.body.amount)).toEqual([2])
+
+    // No amount anywhere: nothing was put in the wrong place, so the error says only what is missing.
+    const none = await run({ ...top, exchanges: [{ input_code: 'tray' }, { input_code: 'wheel' }] })
+    for (const r of none.results)
+      expect(r.error).toBe(
+        'action="add" also requires: amount — or a formula, which is evaluated to give one.'
+      )
+
+    // The same slip on the two actions that change a value.
+    const setAmount = await run({
+      activity_code: 'barrow',
+      action: 'set_amount',
+      amount: 3,
+      exchanges: [{ uid: 'u1' }, { uid: 'u2' }]
+    })
+    for (const r of setAmount.results) expect(r.error).toContain('"amount" at the top level of the batch')
+    const setFormula = await run({
+      activity_code: 'barrow',
+      action: 'set_formula',
+      formula: 'n_wheels',
+      exchanges: [{ uid: 'u1' }, { uid: 'u2' }]
+    })
+    for (const r of setFormula.results) expect(r.error).toContain('"formula" at the top level of the batch')
+  })
+
   it('names the arguments this tool actually has when the process is unidentified', async () => {
     // It used to answer "Pass either \"code\" or \"name\"" — two parameters `edit_exchange` does not
     // have. The model retried with the words it was given and failed again.

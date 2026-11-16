@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { expandBatch, explainNotFound, ignoredNote } from './exchangeBatch'
+import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './exchangeBatch'
 
 describe('an edit_exchange batch', () => {
   const call = {
@@ -37,6 +37,24 @@ describe('an edit_exchange batch', () => {
     expect(ignoredNote([])).toBeNull()
     expect(expandBatch({ ...call, comment: 'why' }).ignored).toEqual(['comment'])
     expect(ignoredNote(['comment'])?.not_applied).toEqual(['comment'])
+  })
+
+  it('tells an item that lacks a value where the one given at the top went', () => {
+    const { ignored } = expandBatch({ ...call, amount: 1 })
+    expect(topLevelOnly(ignored, 'amount', 'formula')).toContain('"amount" at the top level')
+    expect(topLevelOnly(ignored, 'amount', 'formula')).not.toContain('formula')
+    // Nothing given at the top, or a different field: the item's error stands alone.
+    expect(topLevelOnly(expandBatch(call).ignored, 'amount', 'formula')).toBe('')
+    expect(topLevelOnly(ignored, 'formula')).toBe('')
+    // A top-level 0 is padding, not a statement, exactly as in the note at the end of the answer.
+    expect(topLevelOnly(expandBatch({ ...call, amount: 0 }).ignored, 'amount')).toBe('')
+    // Without a list the top level IS the item, so there is nothing to explain.
+    expect(
+      topLevelOnly(expandBatch({ action: 'set_amount', uid: 'u', formula: 'x' }).ignored, 'formula')
+    ).toBe('')
+    expect(
+      topLevelOnly(expandBatch({ ...call, amount: 1, formula: 'n' }).ignored, 'amount', 'formula')
+    ).toContain('"amount" and "formula" at the top level of the batch are not applied')
   })
 
   it('treats a call without a list as one item', () => {
