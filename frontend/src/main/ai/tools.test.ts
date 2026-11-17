@@ -480,7 +480,9 @@ describe('consolidated tools', () => {
       input_code: 'k',
       amount: 1
     })
-    expect((calls[0].body as { source?: string }).source).toBe('ai')
+    // The add reads the process first (for the same-input hint); the write is the call with a body.
+    const write = calls.find((c) => c.body !== undefined)
+    expect((write?.body as { source?: string }).source).toBe('ai')
   })
 
   it('reports an unknown action instead of throwing', async () => {
