@@ -100,7 +100,9 @@ export function lastUserIndex(messages: ChatMessage[]): number {
  * May compaction drop this round's replay? Google's can always go (a round without it gets the skip
  * signature, accepted live) and so can OpenAI's (resending reasoning is optional there). Anthropic's
  * signed thinking — direct, or carried by OpenRouter — must come back whole and unmodified for the tool
- * loop it belongs to, so inside the current turn it stays.
+ * loop it belongs to, so inside the current turn it stays. An earlier turn's goes back too (anthropic.ts),
+ * but may go here: compaction only reaches the oldest rounds, whose results it stubs in the same sweep,
+ * and thinking left out at the start of a conversation is allowed where a gap in between is not.
  */
 export function replayDroppable(replay: ProviderReplay, inCurrentTurn: boolean): boolean {
   return (replay.provider !== 'openrouter' && replay.provider !== 'anthropic') || !inCurrentTurn

@@ -6,11 +6,16 @@
  * The seams to know about, each checked against the live API on 2026-11-08:
  *  - **Thinking is always on and bound to its conversation.** Adaptive thinking is the only mode the
  *    current models accept, and every thinking block carries a signature over the prefix that produced
- *    it (system prompt, tools, every earlier message). A tool round has to go back verbatim — so every
- *    tool round hands its content blocks on as `replay` (types.ts) and they are resent unchanged inside
- *    the turn (measured: accepted, nothing dropped). Earlier turns go back as plain text and calls: their
- *    blocks were made under an older system prompt or tool list and would no longer validate, and
- *    dropping a LEADING run of thinking is allowed where a gap in the middle is not.
+ *    it (system prompt, tools, every earlier message). So the conversation is append-only: every tool
+ *    round hands its content blocks on as `replay` (types.ts), and they go back unchanged in every later
+ *    request — of its own turn and of every turn after it. A round rebuilt as text and calls would change
+ *    the prefix of everything behind it: the thinking there fails the check, and the prompt cache misses
+ *    from that round on, so a follow-up question paid the whole run again. A round without an Anthropic
+ *    replay is rebuilt from its text and calls: another provider's round holds no thinking to leave out,
+ *    and a chat rebuilt from prose or the oldest rounds whose replay compaction dropped leave it out at
+ *    the start — which the API allows, where a gap between two thinking blocks it does not. A turn's
+ *    final answer goes back as its text alone: leaving out the newest thinking is allowed too, and every
+ *    later request leaves it out the same way.
  *  - **An edited history degrades instead of failing.** Accounts created after 2026-08-31 get a 400 when
  *    a replayed block's prefix changed — and compaction does exactly that. Every request therefore asks
  *    for `drop_block` (beta `thinking-binding-controls-2026-08-01`): the API drops the invalidated
@@ -37,7 +42,6 @@ import { getModels } from '../models'
 import { contextOverflow } from './contextOverflow'
 import {
   AiProviderError,
-  lastUserIndex,
   type AccumTool,
   type ChatMessage,
   type ChatTransport,
@@ -248,17 +252,50 @@ function markLast(blocks: Record<string, unknown>[]): void {
   }
 }
 
-/** An assistant turn as content blocks. Inside the current turn, a round Anthropic produced goes back
- *  verbatim (its replay), minus calls the loop no longer carries; anything else is rebuilt from the text
- *  and the calls — without reasoning, which belongs to the conversation that made it. */
-function assistantBlocks(m: ChatMessage, inCurrentTurn: boolean): Record<string, unknown>[] {
+/** A server tool's result inside an assistant turn (`web_search_tool_result`) — never one of our
+ *  `tool_result` blocks, which sit in the user turn. */
+const serverResult = (b: Record<string, unknown>): boolean =>
+  typeof b.tool_use_id === 'string' && String(b.type).endsWith('_tool_result')
+
+/**
+ * The server-tool calls and results the replayed rounds of this request hold. A call and its result can
+ * sit in two rounds: Claude searches beside one of our tools, and the API runs the search once our
+ * results are in, so the result opens the next reply. Either half can go missing where the other stays
+ * — a closing reply is stored as its text alone, and compaction or the transcript's size bound drops an
+ * older round's replay — and a call without its result, or a result without its call, is refused.
+ */
+function serverPairs(messages: ChatMessage[]): { calls: Set<string>; results: Set<string> } {
+  const calls = new Set<string>()
+  const results = new Set<string>()
+  for (const m of messages)
+    if (m.role === 'assistant' && m.replay?.provider === 'anthropic' && Array.isArray(m.replay.steps))
+      for (const b of m.replay.steps.filter(isObj)) {
+        if (b.type === 'server_tool_use') calls.add(String(b.id))
+        else if (serverResult(b)) results.add(String(b.tool_use_id))
+      }
+  return { calls, results }
+}
+
+/** An assistant turn as content blocks. A round Anthropic produced goes back verbatim (its replay),
+ *  minus calls the loop no longer carries and server-tool halves whose partner is gone, in whichever
+ *  turn it was made; anything else is rebuilt from the text and the calls. Only the newest round may
+ *  hold a search still waiting for its result (`newest`): the API runs it on this request. */
+function assistantBlocks(
+  m: ChatMessage,
+  pairs: ReturnType<typeof serverPairs>,
+  newest: boolean
+): Record<string, unknown>[] {
   const calls = m.tool_calls ?? []
   let blocks: Record<string, unknown>[]
-  if (inCurrentTurn && m.replay?.provider === 'anthropic' && Array.isArray(m.replay.steps)) {
+  if (m.replay?.provider === 'anthropic' && Array.isArray(m.replay.steps)) {
     const ids = new Set(calls.map((c) => c.id))
     blocks = m.replay.steps
       .filter(isObj)
       .filter((b) => !(b.type === 'tool_use' && !ids.has(String(b.id))))
+      // Leaving one out changes what the thinking after it was made on: the API drops that thinking
+      // (drop_block) and the cache misses from here — a degraded request instead of a refused one.
+      .filter((b) => !(b.type === 'server_tool_use' && !newest && !pairs.results.has(String(b.id))))
+      .filter((b) => !(serverResult(b) && !pairs.calls.has(String(b.tool_use_id))))
       // Dropped the same way in every request, so the reasoning that follows was made on what is sent.
       .filter((b) => !(b.type === 'text' && typeof b.text === 'string' && blankText(b.text)))
       .map((b) => {
@@ -301,20 +338,21 @@ export function toMessages(messages: ChatMessage[]): {
 } {
   const system: Record<string, unknown>[] = []
   const out: Array<{ role: 'user' | 'assistant'; content: Record<string, unknown>[] }> = []
-  const turnStart = lastUserIndex(messages)
   const push = (role: 'user' | 'assistant', blocks: Record<string, unknown>[]): void => {
     if (!blocks.length) return
     const last = out.at(-1)
     if (last?.role === role) last.content.push(...blocks)
     else out.push({ role, content: blocks })
   }
+  const pairs = serverPairs(messages)
+  const newest = messages.map((m) => m.role).lastIndexOf('assistant')
   messages.forEach((m, i) => {
     if (m.role === 'system') {
       system.push(...blocksOf(m.content).filter((b) => b.type === 'text'))
       return
     }
     if (m.role === 'assistant') {
-      push('assistant', assistantBlocks(m, i > turnStart))
+      push('assistant', assistantBlocks(m, pairs, i === newest))
       return
     }
     if (m.role === 'tool') {
@@ -338,11 +376,7 @@ export function toMessages(messages: ChatMessage[]): {
 /** A server-tool call (Claude's web search) in this assistant turn that has no result yet: Claude called
  *  it beside one of our tools, and the API runs it once our results are in. */
 function pendingServerCall(blocks: Record<string, unknown>[]): boolean {
-  const answered = new Set(
-    blocks
-      .filter((b) => typeof b.tool_use_id === 'string' && String(b.type).endsWith('_tool_result'))
-      .map((b) => String(b.tool_use_id))
-  )
+  const answered = new Set(blocks.filter(serverResult).map((b) => String(b.tool_use_id)))
   return blocks.some((b) => b.type === 'server_tool_use' && !answered.has(String(b.id)))
 }
 

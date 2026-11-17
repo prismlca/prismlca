@@ -230,7 +230,11 @@ describe('the transcript', () => {
     ])
   })
 
-  it('sends a round of the current turn back verbatim, an earlier turn’s without its reasoning', () => {
+  it('sends every round Anthropic produced back verbatim, in its own turn and in every later one', () => {
+    const verbatim = (id: string): Record<string, unknown>[] => [
+      { type: 'thinking', thinking: 'plan', signature: 'SIG' },
+      { type: 'tool_use', id, name: 'get_weather', input: { city: 'Paris' }, caller: { type: 'direct' } }
+    ]
     const { messages } = toMessages([
       { role: 'user', content: 'first task' },
       callMsg('toolu_old'),
@@ -240,20 +244,65 @@ describe('the transcript', () => {
       callMsg('toolu_new'),
       { role: 'tool', tool_call_id: 'toolu_new', content: '12 °C' }
     ])
-    // Earlier turn: the call survives, the thinking does not (dropping a leading run is allowed).
-    expect(messages[1].content).toEqual([
-      { type: 'tool_use', id: 'toolu_old', name: 'get_weather', input: { city: 'Paris' } }
-    ])
-    // Current turn: verbatim, signature and `caller` included.
-    expect(messages[5].content).toEqual([
-      { type: 'thinking', thinking: 'plan', signature: 'SIG' },
+    // Signature and `caller` included, whichever turn the round belongs to.
+    expect(messages[1].content).toEqual(verbatim('toolu_old'))
+    expect(messages[5].content).toEqual(verbatim('toolu_new'))
+    // The answer that closed the earlier turn goes back as its text.
+    expect(messages[3].content).toEqual([{ type: 'text', text: 'Done.' }])
+  })
+
+  it('starts a follow-up with exactly what the last round of the run sent — the cached prefix', () => {
+    // A run with a search round and a tool round, then a question in the same chat. Rebuilding the
+    // run's rounds as text and calls made the follow-up differ right after the task, so only the
+    // system prompt and the tools came from the cache, and the thinking behind it failed its check.
+    const searched = assistantToolTurn(
+      'Looking it up.',
+      [{ id: 'toolu_2', name: 'get_weather', arguments: '{"city":"Paris"}' }],
       {
-        type: 'tool_use',
-        id: 'toolu_new',
-        name: 'get_weather',
-        input: { city: 'Paris' },
-        caller: { type: 'direct' }
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-5',
+        steps: [
+          { type: 'thinking', thinking: '', signature: 'SIG2' },
+          { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'Paris' } },
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtoolu_1',
+            content: [{ type: 'web_search_result', url: 'https://example.org', encrypted_content: 'ENC' }]
+          },
+          { type: 'thinking', thinking: 'found it', signature: 'SIG3' },
+          { type: 'text', text: 'Looking it up.' },
+          { type: 'tool_use', id: 'toolu_2', name: 'get_weather', input: { city: 'Paris' } }
+        ]
       }
+    )
+    const run: ChatMessage[] = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'task' },
+      callMsg('toolu_1'),
+      { role: 'tool', tool_call_id: 'toolu_1', content: '11 °C' },
+      searched,
+      { role: 'tool', tool_call_id: 'toolu_2', content: '12 °C' }
+    ]
+    const lastRound = toMessages(run)
+    const followUp = toMessages([
+      ...run,
+      { role: 'assistant', content: 'It is 12 °C.' },
+      { role: 'user', content: 'Where does that come from?' }
+    ])
+    expect(followUp.system).toEqual(lastRound.system)
+    expect(followUp.messages.slice(0, lastRound.messages.length)).toEqual(lastRound.messages)
+    expect(followUp.messages.slice(lastRound.messages.length)).toEqual([
+      { role: 'assistant', content: [{ type: 'text', text: 'It is 12 °C.' }] },
+      { role: 'user', content: [{ type: 'text', text: 'Where does that come from?' }] }
+    ])
+    // The thinking of both rounds and the search went along, the empty thinking block included.
+    expect(followUp.messages[3].content.map((b) => b.type)).toEqual([
+      'thinking',
+      'server_tool_use',
+      'web_search_tool_result',
+      'thinking',
+      'text',
+      'tool_use'
     ])
   })
 
@@ -315,6 +364,76 @@ describe('the transcript', () => {
       { role: 'user', content: 'Use the European market.' }
     ])
     expect(closed.messages[2].content.map((b) => b.type)).toEqual(['tool_result', 'text'])
+  })
+
+  describe('a search Claude ran beside one of our tools — its result opens the next reply', () => {
+    const deferred = (): ChatMessage =>
+      assistantToolTurn(null, [{ id: 'toolu_1', name: 'list_models', arguments: '{}' }], {
+        provider: 'anthropic',
+        steps: [
+          { type: 'thinking', thinking: 'plan', signature: 'SIG' },
+          { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'x' } },
+          { type: 'tool_use', id: 'toolu_1', name: 'list_models', input: {} }
+        ]
+      })
+    const completing = (): ChatMessage =>
+      assistantToolTurn(null, [{ id: 'toolu_2', name: 'list_models', arguments: '{}' }], {
+        provider: 'anthropic',
+        steps: [
+          { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_1', content: [] },
+          { type: 'thinking', thinking: 'more', signature: 'SIG2' },
+          { type: 'tool_use', id: 'toolu_2', name: 'list_models', input: {} }
+        ]
+      })
+    const types = (blocks: Record<string, unknown>[]): unknown[] => blocks.map((b) => b.type)
+
+    it('keeps the pair when both rounds are there', () => {
+      const { messages } = toMessages([
+        { role: 'user', content: 'go' },
+        deferred(),
+        { role: 'tool', tool_call_id: 'toolu_1', content: 'ok' },
+        completing(),
+        { role: 'tool', tool_call_id: 'toolu_2', content: 'ok' },
+        { role: 'assistant', content: 'Done.' },
+        { role: 'user', content: 'next' }
+      ])
+      expect(types(messages[1].content)).toEqual(['thinking', 'server_tool_use', 'tool_use'])
+      expect(types(messages[3].content)).toEqual(['web_search_tool_result', 'thinking', 'tool_use'])
+    })
+
+    it('drops the call once a later reply follows that never stored its result', () => {
+      // The result came with the closing answer, which is kept as its text alone.
+      const run: ChatMessage[] = [
+        { role: 'user', content: 'go' },
+        deferred(),
+        { role: 'tool', tool_call_id: 'toolu_1', content: 'ok' }
+      ]
+      // Inside the run the call is the newest round's and still open: the API runs it on this request.
+      expect(types(toMessages(run).messages[1].content)).toContain('server_tool_use')
+      const { messages } = toMessages([
+        ...run,
+        { role: 'assistant', content: 'Done.' },
+        { role: 'user', content: 'Use the European market.' }
+      ])
+      expect(types(messages[1].content)).toEqual(['thinking', 'tool_use'])
+      // Nothing open any more, so the question is not folded into the tool's result.
+      expect(types(messages[2].content)).toEqual(['tool_result'])
+      expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user'])
+    })
+
+    it('drops the result when compaction took the replay of the round that called it', () => {
+      const rebuilt = deferred()
+      delete rebuilt.replay
+      const { messages } = toMessages([
+        { role: 'user', content: 'go' },
+        rebuilt,
+        { role: 'tool', tool_call_id: 'toolu_1', content: 'ok' },
+        completing(),
+        { role: 'tool', tool_call_id: 'toolu_2', content: 'ok' }
+      ])
+      expect(types(messages[1].content)).toEqual(['tool_use'])
+      expect(types(messages[3].content)).toEqual(['thinking', 'tool_use'])
+    })
   })
 
   it('drops text blocks that hold nothing but whitespace — the API refuses them', () => {
