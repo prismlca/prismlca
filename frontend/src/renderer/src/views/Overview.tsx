@@ -48,6 +48,7 @@ import { errMsg } from '../lib/errors'
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
 import { fmtInt } from '../lib/format'
 import LastModelsCard from './overview/LastModelsCard'
+import FoldersPending from './overview/FoldersPending'
 import NewsCard from './overview/NewsCard'
 
 /** Entries of assets/whats-new.json — newest first. Every shipped FEATURE (not bugfixes) gets a
@@ -206,7 +207,7 @@ export default function Overview({
   }, [newsShown])
 
   // --- folders -------------------------------------------------------------------------------
-  const { folders, of } = useSyncExternalStore(subscribeFolders, getFolders)
+  const { folders, of, status: folderStatus } = useSyncExternalStore(subscribeFolders, getFolders)
   useEffect(() => {
     void reloadFolders()
   }, [modelKey])
@@ -352,11 +353,14 @@ export default function Overview({
   // What each group holds, in display order: the folders as they are ordered, then Unsorted, which
   // is always last and holds whatever is in no folder at all. Searching filters the models but keeps
   // the grouping — a flat result list would answer "which model" and lose "where it lives", and the
-  // second is half the reason to look.
-  const groups: Array<{ folder: ModelFolder | null; models: DatabaseInfo[] }> = [
-    ...folders.map((f) => ({ folder: f, models: shown.filter((m) => of[m.name] === f.id) })),
-    { folder: null, models: shown.filter((m) => !of[m.name]) }
-  ]
+  // second is half the reason to look. No groups at all until the folders are known (FoldersPending).
+  const groups: Array<{ folder: ModelFolder | null; models: DatabaseInfo[] }> =
+    folderStatus !== 'ready'
+      ? []
+      : [
+          ...folders.map((f) => ({ folder: f, models: shown.filter((m) => of[m.name] === f.id) })),
+          { folder: null, models: shown.filter((m) => !of[m.name]) }
+        ]
 
   return (
     <div className="work">
@@ -405,6 +409,9 @@ export default function Overview({
           {models.length === 0 ? <div className="ov-empty">No models yet.</div> : null}
           {models.length > 0 && shown.length === 0 ? (
             <div className="ov-empty">No model matches “{query}”.</div>
+          ) : null}
+          {folderStatus !== 'ready' ? (
+            <FoldersPending status={folderStatus} onRetry={() => void reloadFolders()} />
           ) : null}
           {groups.map(({ folder, models: inFolder }) => {
             // An empty group still shows — it is a place to drop something, and hiding it would

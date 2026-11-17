@@ -4,6 +4,7 @@ import { useProjectModels } from './useProjectModels'
 import { makePrism, type PrismFixture } from '../test/prism'
 import { initAppSettings, setAS } from '../lib/appSettings'
 import { resetQueryCache } from '../lib/server/useQuery'
+import { getFolders, reloadFolders } from '../lib/modelFolders'
 
 /**
  * "Last models" is stamped by a USER's open only. The start-up restore of `prism.activeModel` and the
@@ -161,6 +162,46 @@ describe('a refresh still running when the workspace changes', () => {
     expect(result.current.project).toBe('B')
     expect(result.current.databases.map((d) => d.name)).toEqual(['model-b'])
     expect(result.current.activeDb).toBe('model-b')
+  })
+})
+
+describe('the model folders across a workspace switch', () => {
+  it('reads the folders of the workspace switched to instead of keeping the old ones', async () => {
+    resetQueryCache()
+    let active = 'A'
+    const fixture = makePrism({
+      'GET /api/v1/system/info': { current_project: { name: 'A' } },
+      'GET /api/v1/projects': [{ name: 'A' }, { name: 'B' }],
+      'GET /api/v1/model/audit': [],
+      'GET /api/v1/databases': [],
+      'POST /api/v1/projects/B/activate': () => {
+        active = 'B'
+        return { name: 'B' }
+      },
+      'GET /api/v1/databases/folders': () =>
+        active === 'A'
+          ? { folders: [{ id: 'a1', name: 'Packaging' }], of: { 'PET bottle': 'a1' } }
+          : { folders: [{ id: 'b1', name: 'Buildings' }], of: {} }
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+    await initAppSettings()
+    await reloadFolders()
+    expect(getFolders().folders.map((f) => f.name)).toEqual(['Packaging'])
+    const { result } = renderHook(() =>
+      useProjectModels({
+        run: async (fn) => fn(),
+        reloadAudit: async () => {},
+        setConfirm: () => {},
+        onProjectSwitched: () => {},
+        renameCanvasRefs: () => false,
+        openModelView: () => {}
+      })
+    )
+    await act(async () => {
+      result.current.activateProject('B')
+    })
+    await waitFor(() => expect(getFolders().folders.map((f) => f.name)).toEqual(['Buildings']))
+    expect(getFolders()).toMatchObject({ of: {}, status: 'ready' })
   })
 })
 

@@ -60,6 +60,17 @@ describe('Last models card', () => {
     expect(screen.getByText('Opened Sep 24, 2026')).toBeInTheDocument()
   })
 
+  it('names no folder while the folders are not read yet — "Unsorted" would be a claim', async () => {
+    vi.resetModules() // a store that has never read its folders
+    const settings = await import('../../lib/appSettings')
+    const { default: FreshCard } = await import('./LastModelsCard')
+    await settings.initAppSettings()
+    settings.setAS({ recentModels: [{ project: 'p', db: 'PET bottle', openedAt: day(1) }] })
+    renderWithPrism(<FreshCard project="p" databases={[fg('PET bottle', 12)]} onOpenModel={() => {}} />)
+    expect(screen.getByText('12 processes')).toBeInTheDocument()
+    expect(screen.queryByText(/Unsorted/)).toBeNull()
+  })
+
   it('opens a model on click and on Enter', async () => {
     const user = userEvent.setup()
     const onOpen = vi.fn()
