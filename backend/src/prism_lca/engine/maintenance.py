@@ -161,8 +161,11 @@ def _restore_over_existing(staged: StagedBackup) -> None:
     checked folder; bw2io would unpack the file again."""
     from bw2io.backup import _remove_project_metadata, _restore_project_metadata
 
+    from prism_lca.engine import workspace_removal
+
     projects = get_bd().projects
     previous = projects.current
+    workspace_removal.put_back(staged.name)
     projects.set_current(staged.name, update=False)
     try:
         backup_archive.assert_room(staged.size, Path(projects.dir))

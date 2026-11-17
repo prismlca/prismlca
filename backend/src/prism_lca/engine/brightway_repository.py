@@ -120,9 +120,16 @@ class BrightwayRepository(LcaRepository):
         bd = get_bd()
         if _is_populated(bd):
             return
+        from prism_lca.engine import workspace_removal
+
         original = bd.projects.current
         for name in _project_names(bd):
             if name == original:
+                continue
+            try:
+                workspace_removal.put_back(name)
+            except PrismError as exc:  # its folder is set aside and cannot be put back yet: not this one
+                _log.swallowed(exc, "ensure_working_project")
                 continue
             bd.projects.set_current(name)
             if _is_populated(bd):
@@ -159,6 +166,9 @@ class BrightwayRepository(LcaRepository):
         if name in _project_names(bd):
             raise PrismError(f"Workspace '{name}' already exists.", code="project_exists",
                              status_code=409, hint="Activate it or choose another name.")
+        from prism_lca.engine import workspace_removal
+
+        workspace_removal.free_name(name)
         bd.projects.set_current(name)  # creates and activates
         return ProjectInfo(name=name, database_count=len(bd.databases), is_active=True)
 
@@ -167,6 +177,9 @@ class BrightwayRepository(LcaRepository):
         if name not in _project_names(bd):
             raise PrismError(f"Workspace '{name}' does not exist.", code="project_not_found",
                              status_code=404, hint="Create it first via POST /api/v1/projects.")
+        from prism_lca.engine import workspace_removal
+
+        workspace_removal.put_back(name)
         bd.projects.set_current(name)
         return ProjectInfo(name=name, database_count=len(bd.databases), is_active=True)
 
@@ -180,23 +193,35 @@ class BrightwayRepository(LcaRepository):
             raise PrismError("The 'default' workspace cannot be deleted.", code="project_protected",
                              status_code=400, hint="Brightway always keeps a 'default' workspace.")
         # Never delete the project we are standing in — switch to 'default' first.
-        if name == bd.projects.current:
+        was_current = name == bd.projects.current
+        if was_current:
             bd.projects.set_current("default")
-        # A cached LCA keeps the project's processed ZIP files open, and Windows refuses to delete an open
-        # file: without this, Brightway's rmtree below cannot remove a workspace calculated in this session.
-        from prism_lca.engine import lca
+        # A cached LCA keeps the project's processed ZIP files open, and Windows refuses to rename or delete
+        # a folder with an open file in it: without this, a workspace calculated in this session could not
+        # be removed.
+        from prism_lca.engine import lca, workspace_removal
 
         lca.release_cached(name)
         # The same goes for the workspace's SQLite files. Brightway's switch closes the connections of the
         # thread that switches; every other thread that read the workspace — the server's event loop runs
         # the `async` routes, its worker threads the rest — keeps its own until the database object they
         # belong to is collected. The switch collects them one database late, so the last one, the parameter
-        # database, is still there: `parameters.db` stays open and the rmtree below fails on it. Nothing
-        # refers to those objects any more, so one collection closes what is left — also for a workspace
-        # that was left earlier and is deleted from another one.
+        # database, is still there and `parameters.db` stays open. Nothing refers to those objects any
+        # more, so one collection closes what is left — also for a workspace that was left earlier and is
+        # deleted from another one.
         gc.collect()
-        # de facto via Brightway — removes both the DB row and the on-disk data directory.
-        bd.projects.delete_project(name, delete_dir=True)
+        try:
+            workspace_removal.remove(name)
+        except BaseException:
+            # Nothing was deleted, so the user is still standing where they stood — unless the folder is
+            # still set aside: opening the workspace now would give it an empty one, so we stay in 'default'.
+            if was_current:
+                try:
+                    workspace_removal.put_back(name)
+                    bd.projects.set_current(name)
+                except PrismError as exc:
+                    _log.swallowed(exc, "delete_project")
+            raise
 
     def list_databases(self) -> list[DatabaseInfo]:
         bd = get_bd()
