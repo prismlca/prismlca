@@ -224,6 +224,28 @@ def release_cached(project: str) -> None:
                     package.fs.close()
 
 
+def inventory_method() -> tuple:
+    """A registered LCIA method to solve the technosphere with, for a read that needs the inventory only.
+
+    A cached LCA is built per (demand, method), so any method gives the same supply vector; one already in
+    the cache keeps such a read from forcing a second factorisation of the whole matrix. Only a method of THIS
+    project's cache: the cache outlives a project switch, and the previous project's custom method is unknown
+    here — the inventory then failed on a method it never needed.
+    """
+    bd = get_bd()
+    here = str(bd.projects.current)
+    method = next((e for k, e in _LCA_CACHE.items() if k[0] == here and e.get("method")), {}).get("method")
+    if method is None:
+        method = next(iter(bd.methods), None)
+    if method is None:
+        raise PrismError(
+            "No LCIA method is registered, so the technosphere cannot be solved.",
+            code="no_methods",
+            hint="Import impact methods for this workspace first.",
+        )
+    return tuple(method)
+
+
 def cache_generation() -> int:
     """How often the MATRICES changed, for the factorisation caches. Includes the reversible
     scenario/sensitivity windows — do not key anything long-lived on this; use
@@ -1221,88 +1243,3 @@ def characterization_factors(methods: list, flow_query: str | None = None, limit
         flows = flows[:limit]
     return {"methods": meta, "flows": flows, "total_flows": total}
 
-
-def technosphere_inventory(
-    database: str,
-    code: str,
-    amount: float = 1.0,
-    query: str | None = None,
-    limit: int = 40,
-) -> dict:
-    """How much of every technosphere product one functional unit actually pulls in.
-
-    "How many grams of glycerine are in one tube?" had no answer in the toolbox: the contribution
-    tree carries impacts rather than quantities, `explain_result mode="flows"` is elementary flows
-    only, and reading the exchanges gives amounts per process, not per FU. Both the assistant and the
-    review sub-agent worked it out by hand (0.4 × 0.05406 kg) — and the reviewer then raised the
-    number it had derived itself as a blocking finding. This is that arithmetic done once, correctly.
-
-    The quantity is the scaling vector times each activity's own reference amount, so a treatment
-    dataset reports the amount TREATED as a positive figure rather than a sign artefact.
-    """
-    import numpy as np
-
-    act = get_activity(database, code)
-    bd_ = get_bd()
-    # The inventory is method-independent — it comes out of the technosphere solve alone — but the
-    # cached LCA object is built per (demand, method), so any registered method does. Reusing one
-    # already in the cache keeps this from forcing a second factorisation of the whole matrix.
-    # …any method of THIS project's cache: the cache outlives a project switch, and the previous
-    # project's custom method is unknown here — the inventory then failed on a method it never
-    # needed.
-    here = str(bd_.projects.current)
-    method = next(
-        (e for k, e in _LCA_CACHE.items() if k[0] == here and e.get("method")), {}
-    ).get("method")
-    if method is None:
-        method = next(iter(bd_.methods), None)
-    if method is None:
-        raise PrismError(
-            "No LCIA method is registered, so the technosphere cannot be solved.",
-            code="no_methods",
-            hint="Import impact methods for this workspace first.",
-        )
-    with _LCA_LOCK:
-        lca = get_lca({act.id: amount * _demand_sign(act)}, tuple(method))
-        supply = np.asarray(lca.supply_array).ravel()
-        by_col = {col: node_id for node_id, col in lca.dicts.activity.items()}
-        rows: list[dict] = []
-        bd = bd_
-        for col, s in enumerate(supply):
-            if not s or abs(float(s)) < 1e-12:
-                continue
-            node_id = by_col.get(col)
-            if node_id is None or node_id == act.id:
-                continue  # the functional unit itself is not part of its own inventory
-            try:
-                node = bd.get_node(id=node_id)
-            except Exception as exc:  # noqa: BLE001 - a node we cannot resolve is simply not listed
-                _log.swallowed(exc, "technosphere_inventory")
-                continue
-            rows.append(
-                {
-                    "database": node.key[0],
-                    "code": node.key[1],
-                    "name": node.get("name") or "",
-                    "product": node.get("reference product") or "",
-                    "location": node.get("location") or "",
-                    "unit": node.get("unit") or "",
-                    "quantity": float(s) * _production_amount(node),
-                }
-            )
-    if query:
-        q = query.strip().lower()
-        rows = [r for r in rows if q in r["name"].lower() or q in r["product"].lower()]
-    rows.sort(key=lambda r: -abs(r["quantity"]))
-    total = len(rows)
-    note = None
-    if limit and limit > 0 and total > limit:
-        note = f"… {total - limit} more not shown (limit {limit}); narrow it with 'query'."
-        rows = rows[:limit]
-    return {
-        "activity": {"database": act.key[0], "code": act.key[1], "name": act.get("name")},
-        "amount": amount,
-        "total_entries": total,
-        "note": note,
-        "inventory": rows,
-    }

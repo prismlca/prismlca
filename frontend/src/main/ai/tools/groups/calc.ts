@@ -221,7 +221,7 @@ export const calcTools: Tool[] = [
       function: {
         name: 'explain_result',
         description:
-          'Explain WHY a score is what it is. mode="tree" gives the contribution tree (which processes carry the impact; optional aggregate_by="tag:<dimension>" or "geo" for a per-phase breakdown, and "scenario" to see the tree under a scenario\'s overrides); mode="flows" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode="inventory" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass ("how many grams of glycerine are in one tube"); mode="matrix" is the HOTSPOT MATRIX — the processes down the rows, the indicators in "methods" across, each cell a process\'s OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use "matrix" for the hotspot chapter and for any trade-off question across several indicators; "tree" for where a single indicator\'s impact sits in the supply chain. Pass "methods" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.',
+          'Explain WHY a score is what it is. mode="tree" gives the contribution tree (which processes carry the impact; optional aggregate_by="tag:<dimension>" or "geo" for a per-phase breakdown, and "scenario" to see the tree under a scenario\'s overrides); mode="flows" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode="inventory" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass ("how many grams of glycerine are in one tube"; scope="foreground" for the model\'s own recipe, "query" for one material); mode="matrix" is the HOTSPOT MATRIX — the processes down the rows, the indicators in "methods" across, each cell a process\'s OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use "matrix" for the hotspot chapter and for any trade-off question across several indicators; "tree" for where a single indicator\'s impact sits in the supply chain. Pass "methods" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.',
         parameters: obj(
           {
             mode: str('One of: tree | flows | inventory | matrix.'),
@@ -255,9 +255,23 @@ export const calcTools: Tool[] = [
             },
             top_n: num(
               'How many rows to return: flows for mode="flows" (default 20), contributors for ' +
-                'mode="tree" (default 25), processes for mode="matrix" (default 30). The tree is also cut at a 1 % contribution and a depth ' +
+                'mode="tree" (default 25), processes for mode="matrix" (default 30), datasets for mode="inventory" (default 40). The tree is also cut at a 1 % contribution and a depth ' +
                 'limit, so a process missing from it is BELOW the cutoff, not absent from the model.'
             ),
+            query: str(
+              'mode=inventory only: keep the datasets whose name or reference product contains this text, ' +
+                'any case — e.g. "glycerine" for how much glycerine one unit pulls in.'
+            ),
+            scope: {
+              ...str(
+                'mode=inventory only. "foreground" = the recipe: the model\'s own processes with their output per ' +
+                  'unit, and the background datasets they draw on directly, with the amount they draw — the read ' +
+                  'for checking a bill of materials. "all" (default) = every dataset of the supply chain with the ' +
+                  'total the unit pulls through it, background included: the electricity row is all the electricity ' +
+                  'anywhere upstream, and on a full background database that is thousands of rows.'
+              ),
+              enum: ['all', 'foreground']
+            },
             cutoff: num(
               'mode=matrix only: the share (0.01 = 1 %) a process must reach in at least ONE indicator to get a row. Default 0.01.'
             ),
