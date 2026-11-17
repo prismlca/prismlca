@@ -23,6 +23,7 @@ from prism_lca.engine import (
 )
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.consumers import find_consumers
+from prism_lca.engine.input_summary import biggest_inputs
 from prism_lca.engine.market_suppliers import suppliers_of
 from prism_lca.engine.notfound import background_holder, read_elsewhere_note
 from prism_lca.engine.tag_groups import TagGroupStore
@@ -174,13 +175,16 @@ def graph(database: str) -> dict:
 
 @router.get("/activities/{database}/{code}", summary="Read an activity with its exchanges")
 def get_activity(
-    database: str, code: str, detail: str | None = None, background_fallback: bool = False
+    database: str, code: str, detail: str | None = None, background_fallback: bool = False, summary: bool = False
 ) -> dict:
     """``detail=review`` adds the critical-review fields (system boundary, product information, synonyms,
     validity, per-exchange production volume and uncertainty) — see ``model.activity_detail``.
 
     ``background_fallback=true``: a code that is not in ``database`` but in exactly one background
-    database is read from there, and ``found_in`` + ``found_in_note`` say so (see ``engine/notfound.py``)."""
+    database is read from there, and ``found_in`` + ``found_in_note`` say so (see ``engine/notfound.py``).
+
+    ``summary=true`` adds ``biggest_inputs``: the inputs the assistant's short view of a dataset lists, one
+    input bought in several regions summed into one row (see ``engine/input_summary.py``)."""
     found_in = None
     try:
         act = model.get_activity(database, code)
@@ -191,6 +195,10 @@ def get_activity(
             raise
         act = model.get_activity(found_in, code)
     out = model.activity_detail(act, review=detail == "review")
+    if summary:
+        # Six significant digits where a market's per-unit block has four: on a model's own process the
+        # summary shows an amount the model booked, and a rounding must not read as a changed value.
+        out["biggest_inputs"] = biggest_inputs(act, "activity summary", digits=6)
     if found_in:
         out = {"found_in": found_in, "found_in_note": read_elsewhere_note(database, found_in), **out}
     return out

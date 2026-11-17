@@ -34,7 +34,7 @@ describe('get_process_details reads a code from the one background that has it (
         )
       )
     )
-    expect(paths[0]).toBe('/api/v1/model/activities/Bottle/gran?background_fallback=true')
+    expect(paths[0]).toBe('/api/v1/model/activities/Bottle/gran?background_fallback=true&summary=true')
     expect(out.found_in).toBe('bg-db')
     expect(out.found_in_note).toContain("'bg-db'")
     // The hotspot check matches on where the dataset really is, not on the model the call defaulted to.
