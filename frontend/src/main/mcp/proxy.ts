@@ -243,12 +243,22 @@ export function appSpawnOptions(
 /**
  * One shutdown, however many things trigger it (stdin EOF, the transport closing, SIGTERM): end the
  * session in the app, then exit — bounded, because a hung app must not keep the bridge alive.
+ *
+ * The first trigger is named on the log before anything else happens. A bridge that ends is otherwise
+ * silent, and "the server disconnected" in a client's log cannot tell a client that left from a stream
+ * that broke; the reason is what a user can send along.
  */
-export function createShutdown(core: ProxyCore, exit: (code: number) => void, timeoutMs = 3000): () => void {
+export function createShutdown(
+  core: ProxyCore,
+  exit: (code: number) => void,
+  log: (msg: string) => void,
+  timeoutMs = 3000
+): (reason: string) => void {
   let started = false
-  return () => {
+  return (reason) => {
     if (started) return
     started = true
+    log(`${reason} — ending the session and exiting (code 0).`)
     const timer = setTimeout(() => exit(0), timeoutMs)
     void core.close().finally(() => {
       clearTimeout(timer)

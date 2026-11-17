@@ -24,6 +24,7 @@ import { appLaunchCommandFor } from './clientConfig'
 import { displayForLaunch } from './displayEnv'
 import { linuxDisplayFs } from './displayProbe'
 import { BRIDGE_LAUNCH_FLAG } from './idleQuit'
+import { openBridgeStdin } from './bridgeStdin'
 
 /** How to start the app from the bridge: packaged = this very binary; dev = electron + the app dir. */
 export function appLaunchCommand(): { command: string; args: string[] } {
@@ -193,20 +194,28 @@ export async function runProxyMain(): Promise<void> {
   }
   const core = new ProxyCore(deps)
   const server = createProxyServer(deps, core)
-  const transport = new StdioServerTransport()
+  // Not `process.stdin` on Windows: Electron hands out an empty one there (bridgeStdin.ts).
+  const stdin = openBridgeStdin()
+  const transport = new StdioServerTransport(stdin, process.stdout)
   // The client is gone when stdin ends or it signals us: end our session in the app and go. The
   // app stays — the user is working in it. The SDK's transport listens for data and errors only,
   // not for EOF, so stdin's own end/close are wired here, and the
   // shutdown is idempotent and bounded. Set before connect, so the SDK keeps onclose (see server.ts).
-  const shutdown = createShutdown(core, (code) => app.exit(code))
-  transport.onclose = shutdown
-  process.stdin.once('end', shutdown)
-  process.stdin.once('close', shutdown)
+  // Every trigger says what it is: the first one to fire is the line the log ends with.
+  const shutdown = createShutdown(core, (code) => app.exit(code), log)
+  transport.onclose = () => shutdown('The transport closed')
+  stdin.once('end', () => shutdown('The client closed standard input'))
+  stdin.once('close', () => shutdown('Standard input closed'))
+  // Unreadable input is a bridge nobody can talk to — usually one started by hand, without a pipe.
+  stdin.on('error', (e) =>
+    shutdown(`Standard input cannot be read (${e.message}); the bridge is started by an MCP client`)
+  )
   // A client that quits closes its end of our stdout as well, and the next reply fails with EPIPE. Unheard,
   // that error is an uncaught exception in Electron's main process and kills the bridge with SIGTRAP — a
   // core dump and a lingering crash reporter per closed session. It is the same "client gone".
-  process.stdout.on('error', shutdown)
-  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) process.once(sig, shutdown)
+  process.stdout.on('error', (e) => shutdown(`Standard output failed (${e.message})`))
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const)
+    process.once(sig, () => shutdown(`Received ${sig}`))
   await server.connect(transport)
   log(`ready (PrismLCA ${app.getVersion()})`)
 }
