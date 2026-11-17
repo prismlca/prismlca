@@ -56,6 +56,8 @@ export const KEEP_EMPTY: Record<string, Record<string, Actions>> = {
   setup_results: { split_by: '*' },
   // `description: ""` clears the family's description; an absent one leaves it.
   edit_lcia_method: { description: ['create', 'duplicate'] },
+  // `description: ""` removes a scenario's description; an absent one leaves it.
+  edit_scenario: { description: ['update'] },
   // An empty per-query filter lifts the call-level one for that query.
   search_background: { 'filtered_queries[].geographies': '*', 'filtered_queries[].activity_types': '*' }
 }

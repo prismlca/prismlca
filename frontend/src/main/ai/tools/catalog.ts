@@ -359,6 +359,11 @@ export const TOOL_META: Record<string, { label: string; hint: string; group: str
     hint: 'Sets one parameter override in a scenario.',
     group: 'Scenarios'
   },
+  update_scenario: {
+    label: 'Rename scenario',
+    hint: 'Changes a scenario’s name or description; its id and overrides stay.',
+    group: 'Scenarios'
+  },
   duplicate_scenario: {
     label: 'Duplicate scenario',
     hint: 'Copies a scenario under a new name.',

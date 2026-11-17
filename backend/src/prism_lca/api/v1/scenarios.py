@@ -41,10 +41,12 @@ class CreateScenarioRequest(BaseModel):
 class UpdateScenarioRequest(BaseModel):
     database: str
     id: str
-    name: str
-    description: str = ""
-    #: A number, or a formula over the model's parameters as text — see engine/scenarios.py.
-    overrides: dict[str, float | str] = {}
+    #: Each field left out keeps what the scenario has, so a rename does not restate the overrides.
+    name: str | None = None
+    description: str | None = None
+    #: The WHOLE set when given: a number, or a formula over the model's parameters as text — see
+    #: engine/scenarios.py.
+    overrides: dict[str, float | str] | None = None
     source: str = "user"
 
 
@@ -144,8 +146,10 @@ def create_scenario(request: Request, body: CreateScenarioRequest) -> dict:
 @router.post("/update", summary="Update a scenario (name, description, overrides)")
 def update_scenario(request: Request, body: UpdateScenarioRequest) -> dict:
     with lca._LCA_LOCK:
-        scenarios.check_overrides(body.database, body.overrides, scenario=body.name)
-        scenarios.refuse_ineffective(body.database, body.overrides, scenario=body.name)
+        if body.overrides is not None:
+            label = body.name if body.name is not None else str(_store().get(body.id, body.database).get("name") or "")
+            scenarios.check_overrides(body.database, body.overrides, scenario=label)
+            scenarios.refuse_ineffective(body.database, body.overrides, scenario=label)
         cmd = commands.UpdateScenarioCommand(
             _store(), body.database, body.id, body.name, body.description, body.overrides
         )

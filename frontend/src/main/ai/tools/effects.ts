@@ -99,8 +99,14 @@ export const TOOL_EFFECTS: Record<string, Record<string, ToolEffect>> = {
   calculate_in_canvas: { '*': 'write' },
   // Conservative: configures (and may persist) the result view; UI state only, trivially reversible.
   setup_results: { '*': 'write' },
-  // All four are Scenario commands on the undo stack, delete included.
-  edit_scenario: { create: 'write', set_value: 'write', duplicate: 'write', delete: 'write' },
+  // All five are Scenario commands on the undo stack, delete included.
+  edit_scenario: {
+    create: 'write',
+    set_value: 'write',
+    update: 'write',
+    duplicate: 'write',
+    delete: 'write'
+  },
   // Custom LCIA methods are NOT on the undo stack. create/duplicate only add a new method, so they
   // stay 'write'; everything that changes or removes an existing method cannot be taken back.
   edit_lcia_method: {

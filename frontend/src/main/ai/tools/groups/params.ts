@@ -290,12 +290,14 @@ export const paramsTools: Tool[] = [
       function: {
         name: 'edit_scenario',
         description:
-          'Create or change scenarios of the active model (a scenario is a named set of parameter overrides). action="create" needs name (+ optional description/overrides); "set_value" sets ONE override (id, param, value); "duplicate" and "delete" take the id. Pass "scenarios" to create a WHOLE SET in one call — a sensitivity analysis is normally four or five of them, and one call each is one round each. An override is a number, or a formula over the model\'s parameters written as a string. Either one REPLACES the parameter\'s own formula while the scenario is applied. For a parameter computed from others you can override its inputs instead (its formula then follows them) — choose by what the scenario means. Read ids with list_scenarios; score them with compare_scenarios. Undoable.',
+          'Create or change scenarios of the active model (a scenario is a named set of parameter overrides). action="create" needs name (+ optional description/overrides); "set_value" sets ONE override (id, param, value); "update" renames a scenario or rewrites its description (id + name and/or description), keeping its id and overrides; "duplicate" and "delete" take the id. Pass "scenarios" to create a WHOLE SET in one call — a sensitivity analysis is normally four or five of them, and one call each is one round each. An override is a number, or a formula over the model\'s parameters written as a string. Either one REPLACES the parameter\'s own formula while the scenario is applied. For a parameter computed from others you can override its inputs instead (its formula then follows them) — choose by what the scenario means. Read ids with list_scenarios; score them with compare_scenarios. Undoable.',
         parameters: obj(
           {
-            action: str('One of: create | set_value | duplicate | delete.'),
-            name: str('Scenario name (action=create).'),
-            description: str('Optional description (action=create).'),
+            action: str('One of: create | set_value | update | duplicate | delete.'),
+            name: str('Scenario name (action=create), or the new name (action=update).'),
+            description: str(
+              'Optional description (action=create), or the new description (action=update; "" removes it).'
+            ),
             overrides: {
               type: 'object',
               description:
@@ -355,6 +357,7 @@ export const paramsTools: Tool[] = [
         {
           create: 'create_scenario',
           set_value: 'set_scenario_value',
+          update: 'update_scenario',
           duplicate: 'duplicate_scenario',
           delete: 'delete_scenario'
         },
