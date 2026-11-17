@@ -507,7 +507,7 @@ export const readTools: Tool[] = [
             name: str('Process name instead of the code; must match exactly one process.'),
             location: str('Location, to disambiguate a name used in several regions.'),
             summary: bool(
-              'true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product (the inputs of a market are its producers; one billed per m² or m adds the inputs of its main producer per unit as main_supplier_inputs). Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange.'
+              'true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product (one input bought in several regions is one row, summed; the inputs of a market are its producers, one row each; one billed per m² or m adds the inputs of its main producer per unit as main_supplier_inputs). Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange.'
             ),
             detail: str(
               '"review" = add the critical-review fields (system boundary, product information, synonyms, validity, per-exchange production volume and uncertainty). Omit for the normal read.'
@@ -534,17 +534,11 @@ export const readTools: Tool[] = [
         // unit, same CPC 35110, treatment false on both, no weak flag, no unmatched term. The
         // difference was in the exchanges, and the summary had dropped exactly those while keeping
         // the paragraph that says the same thing about every market in the database. Six lines cost
-        // a few hundred characters against a budget of 30,000.
-        const inputs = ex
-          .filter((e: any) => e?.type === 'technosphere' && Number.isFinite(Number(e?.amount)))
-          .sort((x: any, y: any) => Math.abs(Number(y.amount)) - Math.abs(Number(x.amount)))
-          .slice(0, 6)
-          .map((e: any) => ({
-            amount: e.amount,
-            name: e.input?.name,
-            unit: e.input?.unit,
-            location: e.input?.location
-          }))
+        // a few hundred characters against a budget of 30,000. The backend lists them
+        // (engine/input_summary.py): one input bought in several regions is one row, because a RoW
+        // producer buys its electricity in five regions and, ranked exchange by exchange, the fragments
+        // took the places of the materials and showed each amount as a part.
+        const inputs = Array.isArray(full.biggest_inputs) ? full.biggest_inputs : []
         // A market billed per m² or m lists only its producers here, and so would the full list. What one
         // unit consumes sits in the activity (main_supplier_inputs, from the backend), and the note
         // points there instead of to a second call that would show the same two lines.
@@ -560,9 +554,11 @@ export const readTools: Tool[] = [
               'consumes is in activity.main_supplier_inputs. Settle what the unit refers to from it before ' +
               'you book: the main material per unit is a layer you can check against the thickness the ' +
               'comment states, and times your quantity it is what your part will carry.'
-            : `summary=true — the ${inputs.length} largest of ${ex.length} exchanges are shown; call again ` +
-              'without it for all of them. READ THESE: a dataset that draws a different named material ' +
-              'in bulk is not that material — it is a product made from it, or a service applied to it.'
+            : `summary=true — the ${inputs.length} largest inputs of ${ex.length} exchanges are shown. One ` +
+              'input bought in several regions is one row, summed, and its location names the largest region ' +
+              'and how many more ("RAS and 6 more"); call again without summary for every exchange and the ' +
+              'split by region. READ THESE: a dataset that draws a different named material in bulk is not ' +
+              'that material — it is a product made from it, or a service applied to it.'
         }
       }
       const one = async (code: string): Promise<any> => {
@@ -572,7 +568,8 @@ export const readTools: Tool[] = [
         const full = await ctx.api(
           'GET',
           `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(code)}` +
-            `?background_fallback=true${a.detail === 'review' ? '&detail=review' : ''}`
+            `?background_fallback=true${a.detail === 'review' ? '&detail=review' : ''}` +
+            (a.summary ? '&summary=true' : '')
         )
         // Remember that this dataset has been read, so the contribution list can say which of the
         // datasets that carry the result never were. Recorded even for `summary=true`: the summary

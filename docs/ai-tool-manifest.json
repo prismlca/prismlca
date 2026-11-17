@@ -190,7 +190,7 @@
           },
           "summary": {
             "type": "boolean",
-            "description": "true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product (the inputs of a market are its producers; one billed per m² or m adds the inputs of its main producer per unit as main_supplier_inputs). Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange."
+            "description": "true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product (one input bought in several regions is one row, summed; the inputs of a market are its producers, one row each; one billed per m² or m adds the inputs of its main producer per unit as main_supplier_inputs). Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange."
           },
           "detail": {
             "type": "string",

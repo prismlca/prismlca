@@ -1662,27 +1662,72 @@ describe('the wall-paint run findings', () => {
   it('shows what a dataset is made of in the summary (V87)', async () => {
     // summary=true kept 1,900 characters of market boilerplate and dropped the five lines that say
     // whether this is a binder or a paint. It was a paint, and it cost 4.56 kg CO2e of hidden TiO2.
+    // The rows come from the backend, which sums one input bought in several regions into one.
+    const paths: string[] = []
     const out = JSON.parse(
       (await TOOL_BY_NAME.get_process_details.run(
         { database: 'ei', code: 'disp', summary: true },
         {
-          api: async () => ({
-            activity: { name: 'acrylic dispersion production', unit: 'kilogram' },
-            exchanges: [
-              { type: 'production', amount: 1, input: { name: 'acrylic dispersion' } },
-              { type: 'technosphere', amount: 0.5041, input: { name: 'market for acrylic binder' } },
-              { type: 'technosphere', amount: 0.2516, input: { name: 'market for titanium dioxide' } },
-              { type: 'technosphere', amount: 0.04, input: { name: 'market for ethylene glycol' } }
-            ]
-          }),
+          api: async (_m: string, path: string) => {
+            paths.push(path)
+            return {
+              activity: { name: 'acrylic dispersion production', unit: 'kilogram' },
+              exchanges: [
+                { type: 'production', amount: 1, input: { name: 'acrylic dispersion' } },
+                {
+                  type: 'technosphere',
+                  amount: 0.3,
+                  input: { name: 'market for acrylic binder', location: 'RoW' }
+                },
+                {
+                  type: 'technosphere',
+                  amount: 0.2041,
+                  input: { name: 'market for acrylic binder', location: 'US' }
+                },
+                { type: 'technosphere', amount: 0.2516, input: { name: 'market for titanium dioxide' } },
+                { type: 'technosphere', amount: 0.04, input: { name: 'market for ethylene glycol' } }
+              ],
+              biggest_inputs: [
+                {
+                  amount: 0.5041,
+                  name: 'market for acrylic binder',
+                  unit: 'kilogram',
+                  location: 'RoW and 1 more'
+                },
+                { amount: 0.2516, name: 'market for titanium dioxide', unit: 'kilogram', location: 'GLO' },
+                { amount: 0.04, name: 'market for ethylene glycol', unit: 'kilogram', location: 'GLO' }
+              ]
+            }
+          },
           ui: async () => ({}),
           activeDb: 'm'
         }
       )) as string
     )
-    expect(out.biggest_inputs[0].name).toBe('market for acrylic binder')
-    expect(out.biggest_inputs[1].name).toBe('market for titanium dioxide')
-    expect(out.exchange_count).toBe(4)
+    expect(paths[0]).toContain('&summary=true')
+    expect(out.biggest_inputs.map((i: any) => [i.name, i.amount, i.location])).toEqual([
+      ['market for acrylic binder', 0.5041, 'RoW and 1 more'],
+      ['market for titanium dioxide', 0.2516, 'GLO'],
+      ['market for ethylene glycol', 0.04, 'GLO']
+    ])
+    expect(out.exchanges).toBeUndefined()
+    expect(out.exchange_count).toBe(5)
+    // What a row with "and 1 more" is, and where the split by region is, is said where it is read.
+    expect(out.note).toContain('One input bought in several regions is one row, summed')
+    expect(out.note).toContain('call again without summary for every exchange and the split by region')
+  })
+
+  it('asks the backend for no summary rows when the full view is read', async () => {
+    const paths: string[] = []
+    await TOOL_BY_NAME.get_process_details.run(
+      { database: 'ei', code: 'disp' },
+      {
+        api: async (_m: string, path: string) => (paths.push(path), { activity: {}, exchanges: [] }),
+        ui: async () => ({}),
+        activeDb: 'm'
+      }
+    )
+    expect(paths[0]).not.toContain('summary')
   })
 
   it('points a market billed per m² to what one unit of it consumes, not to a second call', async () => {
@@ -1729,7 +1774,7 @@ describe('the wall-paint run findings', () => {
     expect(coat.note).not.toContain('call again without it')
     // A market without the block keeps the note it always had.
     const steel = await run({ name: 'market for steel, unalloyed', unit: 'kilogram' })
-    expect(steel.note).toContain('call again without it for all of them')
+    expect(steel.note).toContain('call again without summary for every exchange')
     expect(steel.note).not.toContain('main_supplier_inputs')
   })
 })

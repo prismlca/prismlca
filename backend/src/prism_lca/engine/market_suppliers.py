@@ -17,11 +17,11 @@ market have other products and are not what it sells.
 """
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Iterator
 
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.input_summary import biggest_inputs
 
 #: How a market's name says it is one — the same rule the search indexer uses (search/indexer.py).
 MARKET_PREFIXES = ("market group for ", "market for ")
@@ -32,9 +32,6 @@ MARKET_PREFIXES = ("market group for ", "market for ")
 #: metres, every coating, plating and weld among them. Pieces are left out on purpose: the 660 markets per
 #: "unit" are plants, vehicles and appliances, where one piece is one piece and the inputs settle nothing.
 MEASURED_UNITS = frozenset({"square meter", "meter"})
-
-#: Inputs of the main supplier shown per unit — as many as the assistant's summary shows of a dataset itself.
-SUPPLIER_INPUTS_SHOWN = 6
 
 #: Datasets one :func:`suppliers_of` call answers for. A caller asks about the inputs one edit linked or
 #: the biggest contributors of one result; a longer list is a mistake and is cut, not served.
@@ -124,16 +121,12 @@ def market_main_supplier_inputs(act) -> dict | None:
     that had opened only the market built a scenario on the wrong reading and counted the zinc twice;
     the full view of a market would not have helped, it holds the same two lines.
 
-    The supplier is the one :func:`market_main_supplier_comment` quotes. Amounts are per one unit of its
-    reference product, to four significant digits, largest first by size as the summary of a dataset
-    ranks its own — but one input bought in several regions counts once, summed: a RoW producer buys its
-    electricity from five regional markets, and ranked one by one those took the places of the coating
-    powder and the welding wire. ``location`` then names the largest region and how many more there
-    are. Only the same product from the same database is summed; two inputs that share a name but sell
-    different products stay apart, and then carry ``product``. ``None`` outside :data:`MEASURED_UNITS`,
-    for a production dataset, when the supplier has no inputs that can be read, and when the supplier
-    is a market itself (a market group buys from markets, whose inputs are producers again and say
-    nothing about one unit).
+    The supplier is the one :func:`market_main_supplier_comment` quotes. Its inputs are listed by the rule
+    every short view of a dataset follows (:func:`~prism_lca.engine.input_summary.biggest_inputs`: one input
+    bought in several regions is one row, summed), per one unit of its reference product and to four
+    significant digits. ``None`` outside :data:`MEASURED_UNITS`, for a production dataset, when the supplier
+    has no inputs that can be read, and when the supplier is a market itself (a market group buys from
+    markets, whose inputs are producers again and say nothing about one unit).
     """
     if act.get("unit") not in MEASURED_UNITS:
         return None
@@ -144,31 +137,9 @@ def market_main_supplier_inputs(act) -> dict | None:
     if is_market(supplier):
         return None
     produced = next((e.get("amount") for e in supplier.production() if e.get("amount")), 1.0)
-    totals: dict[tuple, list] = {}
-    for e in supplier.technosphere():
-        amount = e.get("amount")
-        if not amount:
-            continue
-        try:
-            source = e.input
-        except Exception as exc:  # noqa: BLE001 - a broken link must never fail a read
-            _log.swallowed(exc, "market_main_supplier_inputs")
-            continue
-        key = (source.key[0], source.get("name"), source.get("reference product"), source.get("unit"))
-        entry = totals.setdefault(key, [0.0, []])
-        entry[0] += amount
-        entry[1].append((abs(amount), source.get("location")))
-    biggest = sorted(totals.items(), key=lambda kv: abs(kv[1][0]), reverse=True)[:SUPPLIER_INPUTS_SHOWN]
-    if not biggest:
+    rows = biggest_inputs(supplier, "market_main_supplier_inputs", per=produced)
+    if not rows:
         return None
-    names = Counter(name for (_db, name, _product, _unit), _ in biggest)
-    rows = []
-    for (_db, name, product, unit), (total, places) in biggest:
-        row = {"amount": float(f"{total / produced:.4g}"), "name": name, "unit": unit}
-        if names[name] > 1:
-            row["product"] = product
-        row["location"] = _regions(places)
-        rows.append(row)
     return {
         "name": supplier.get("name"),
         "location": supplier.get("location"),
@@ -176,13 +147,6 @@ def market_main_supplier_inputs(act) -> dict | None:
         "per": f"1 {supplier.get('unit') or act.get('unit')}",
         "biggest_inputs": rows,
     }
-
-
-def _regions(places: list[tuple[float, str | None]]) -> str | None:
-    """The region an input is mostly bought in, and how many others add to it."""
-    ordered = sorted(places, key=lambda p: p[0], reverse=True)
-    first = ordered[0][1]
-    return first if len(ordered) == 1 else f"{first or '?'} and {len(ordered) - 1} more"
 
 
 def suppliers_of(datasets: list[tuple[str, str]]) -> list[dict]:
