@@ -143,7 +143,6 @@
  "limits.checked": "Vom Bericht geprüft",
  "limits.no_uncertainty": "Es wurde keine quantitative Unsicherheitsanalyse (etwa eine Monte-Carlo-Simulation) durchgeführt; die Ergebnisse sind Punktwerte.",
  "limits.method_mismatch": "Unter {field} nennt die Studie {named}, ausgewertet wurde sie jedoch mit {used}. Eines von beiden ist veraltet.",
- "limits.review_not_run": "Unter {field} gibt die Studie an, eine interne Modellprüfung sei durchgeführt worden. Für dieses Modell ist keine Prüfung verzeichnet — sie fand also nicht statt oder ihr Ergebnis wurde nicht aufbewahrt.",
  "limits.no_data_quality": "Für die verwendeten Datensätze wurde keine formale Datenqualitätsbewertung dokumentiert.",
  "limits.no_critical_review": "Für diese Studie ist keine kritische Prüfung nach ISO 14044 dokumentiert.",
  "limits.no_sensitivity": "Es wurden keine Szenarien variiert, die Sensitivität der Ergebnisse gegenüber den Annahmen wurde daher nicht quantifiziert.",

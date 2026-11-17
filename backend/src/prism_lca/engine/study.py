@@ -76,9 +76,9 @@ FIELDS = (
     "ai_model",
 )
 
-#: The study's own free-text fields, in the order the report prints them — author prose that the report
-#: reads for what it claims: a method it names (until V181 only `limitations` was read), an internal
-#: review it says was carried out (review_claims.py).
+#: The study's own free-text fields, in the order the report prints them — author prose read for what it
+#: claims: by the report for a method it names (until V181 only `limitations` was read), by the health
+#: check for an internal review it says was carried out (review_claims.py).
 AUTHOR_TEXT_FIELDS = (
     "goal",
     "scope",

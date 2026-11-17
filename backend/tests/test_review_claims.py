@@ -1,8 +1,8 @@
 """What counts as study prose claiming an internal review of the model (engine/review_claims.py).
 
 The sentences are the ones assistants actually wrote into `critical_review` across a test series of nine
-runs; the report's limitation (`claimed_review_not_run`) and the health check's warning both rest on this
-reading, so a sentence misread here is misread in both.
+runs; the health check's warning rests on this reading. The report prints nothing from it
+(test_report_checks), because only whoever edits the model knows whose review a sentence means.
 """
 from __future__ import annotations
 

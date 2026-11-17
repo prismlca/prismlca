@@ -143,7 +143,6 @@
  "limits.checked": "Vérifiées par le rapport",
  "limits.no_uncertainty": "Aucune analyse quantitative d'incertitude (par exemple une simulation de Monte-Carlo) n'a été réalisée ; les résultats sont des valeurs ponctuelles.",
  "limits.method_mismatch": "Sous {field}, l'étude cite {named}, alors qu'elle a été évaluée avec {used}. L'un des deux n'est plus à jour.",
- "limits.review_not_run": "Sous {field}, l'étude indique qu'une revue interne du modèle a été réalisée. Aucune revue n'est enregistrée pour ce modèle : elle n'a donc pas eu lieu, ou son résultat n'a pas été conservé.",
  "limits.no_data_quality": "Aucune évaluation formelle de la qualité des données n'a été documentée pour les jeux de données utilisés.",
  "limits.no_critical_review": "Aucune revue critique au sens de l'ISO 14044 n'est documentée pour cette étude.",
  "limits.no_sensitivity": "Aucun scénario n'a été varié ; la sensibilité des résultats aux hypothèses n'a donc pas été quantifiée.",

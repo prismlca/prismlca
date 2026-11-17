@@ -45,11 +45,12 @@ def unrecorded_scope_note(database: str) -> str | None:
 def claimed_review_note(database: str) -> str | None:
     """Study text that claims an internal review of the model while the model's review log holds none — or None.
 
-    The report prints a limitation for the same claim (`report_checks.claimed_review_not_run`); this tells the
-    assistant before the report is written. In the run that prompted it, both attempts of the review had timed
-    out, the tool had said that nothing was judged, and the assistant still wrote "eine interne KI-gestützte
-    Zweitmeinung (Review) wurde während des Aufbaus eingeholt" into `critical_review` — encouraged, if
-    anything, by this very check asking for the empty field to be filled.
+    This is the one place such a claim is challenged: the report prints nothing about it and leaves this
+    finding out of its completeness table (`report_checks.AUTHOR_ONLY_FINDINGS`), because only whoever edits
+    the model can tell a review by people from the assistant's. In the run that prompted it, both attempts
+    of the review had timed out, the tool had said that nothing was judged, and the assistant still wrote
+    "eine interne KI-gestützte Zweitmeinung (Review) wurde während des Aufbaus eingeholt" into
+    `critical_review` — encouraged, if anything, by this very check asking for the empty field to be filled.
     """
     from prism_lca.engine.review_claims import claimed_review_fields
     from prism_lca.engine.review_log import ReviewLogStore
