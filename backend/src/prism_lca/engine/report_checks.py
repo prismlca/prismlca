@@ -25,6 +25,8 @@ from typing import Any
 from prism_lca.engine import report_model as rm
 from prism_lca.engine.report_i18n import fmt_column, fmt_number, t
 from prism_lca.engine.report_tokens import share_text
+from prism_lca.engine.review_claims import claimed_review_fields
+from prism_lca.engine.study import AUTHOR_TEXT_FIELDS
 
 #: Findings at or above this severity are what a completeness check is about. `info` findings are
 #: style notes and would bury the ones that matter.
@@ -419,19 +421,6 @@ def _same_family(named: str, family: str) -> bool:
     return bool(a) and bool(b) and (a.startswith(b) or b.startswith(a))
 
 
-#: The study's own free-text fields, in the order the report prints them. Every one of them is author
-#: prose that can name a method, and until V181 only `limitations` was read.
-_AUTHOR_TEXT_FIELDS = (
-    "goal",
-    "scope",
-    "functional_unit",
-    "system_boundaries",
-    "cutoff_criteria",
-    "allocation",
-    "system_allocation",
-    "critical_review",
-)
-
 #: Sentence boundaries, coarsely — used only to bound the context a method name is read in. Splitting
 #: too eagerly (at "v3.1", at "z. B.") shortens that context and therefore *loses* suppressions below,
 #: which is the harmless direction.
@@ -539,7 +528,7 @@ def declared_method_mismatch(data: dict[str, Any], lang: str) -> list[str]:
         return []
     study = data.get("study") or {}
     sources: list[tuple[str, str]] = [
-        (t(f"field.{field}", lang), str(study.get(field) or "")) for field in _AUTHOR_TEXT_FIELDS
+        (t(f"field.{field}", lang), str(study.get(field) or "")) for field in AUTHOR_TEXT_FIELDS
     ]
     sources += [
         (t("field.limitations", lang), str((item or {}).get("text") or ""))
@@ -567,30 +556,6 @@ def declared_method_mismatch(data: dict[str, Any], lang: str) -> list[str]:
     return out
 
 
-#: Phrases that claim an internal/automated review OF THE MODEL was carried out. Deliberately
-#: narrow. "Modellprüfung" on its own is not here, because "strukturelle Modellprüfung (Prism Model
-#: Health Check)" names a check that really does run, and flagging it would teach authors to stop
-#: writing down what they did. What is caught is the claim of a *review*: a second opinion on the
-#: model, which PrismLCA records when it happens and which therefore cannot be claimed for free.
-_REVIEW_CLAIM_RE = re.compile(
-    r"\b("
-    r"modell[- ]?review|automatis(?:ierte|che)\s+modellpr[üu]fung|interne\s+modellpr[üu]fung"
-    r"|model\s+review|automated\s+model\s+(?:review|check)|internal\s+review"
-    r"|revue\s+(?:interne\s+)?du\s+mod[èe]le|revue\s+interne"
-    r"|revisi[óo]n\s+(?:interna\s+)?del\s+modelo|revisi[óo]n\s+interna"
-    r"|revis[ãa]o\s+(?:interna\s+)?do\s+modelo|revis[ãa]o\s+interna"
-    r")\b",
-    re.IGNORECASE,
-)
-
-#: A denial reads like a claim to a regex. "Keine automatisierte Modellreview" is the honest form of
-#: exactly this sentence, and printing a contradiction under it would be the worst possible lesson.
-_REVIEW_DENIAL_RE = re.compile(
-    r"\b(kein[a-z]*|ohne|nicht|no|not|none|without|sans|aucune?|sin|ninguna|sem|nenhuma)\b",
-    re.IGNORECASE,
-)
-
-
 def claimed_review_not_run(data: dict[str, Any], lang: str) -> list[str]:
     """Study text that claims an internal model review, where none is on record.
 
@@ -606,28 +571,11 @@ def claimed_review_not_run(data: dict[str, Any], lang: str) -> list[str]:
     """
     if data.get("review"):
         return []
-    study = data.get("study") or {}
-    sources: list[tuple[str, str]] = [
-        (t(f"field.{field}", lang), str(study.get(field) or "")) for field in _AUTHOR_TEXT_FIELDS
+    # What counts as a claim is read in review_claims.py, which the health check shares.
+    return [
+        t("limits.review_not_run", lang, field=rm.esc(t(f"field.{field}", lang)))
+        for field in claimed_review_fields(data.get("study") or {})
     ]
-    sources += [
-        (t("field.limitations", lang), str((item or {}).get("text") or ""))
-        for item in study.get("limitations") or []
-    ]
-
-    out: list[str] = []
-    for label, text in sources:
-        m = _REVIEW_CLAIM_RE.search(text)
-        if not m:
-            continue
-        # Only the words immediately before the claim can negate it; a "nicht" three sentences up
-        # belongs to something else.
-        if _REVIEW_DENIAL_RE.search(text[max(0, m.start() - 40) : m.start()]):
-            continue
-        line = t("limits.review_not_run", lang, field=rm.esc(label))
-        if line not in out:
-            out.append(line)
-    return out
 
 
 def critical_review_recorded(study: dict[str, Any]) -> bool:

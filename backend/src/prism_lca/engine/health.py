@@ -31,6 +31,7 @@ from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_structure import two_ways_in, unreached
+from prism_lca.engine.health_study import claimed_review_note, unrecorded_scope_note
 from prism_lca.engine.model import _db_or_404
 from prism_lca.engine.tags import TagStore
 
@@ -297,34 +298,6 @@ def _unused_parameters(database: str) -> list[tuple[str, str]]:
                 )
             )
     return out
-
-
-def _unrecorded_scope(database: str) -> str | None:
-    """The ISO 14044 §5.2 fields this study leaves empty, as one sentence — or None if it records them.
-
-    The report's scope panel says the same thing, and the assistant never reads it: it has no report
-    tools and no reason to open the page. The health check is the one report it runs by itself, so
-    this is where it finds out — and it can act on it, because `model_info` action="set" takes every
-    one of these fields. In the run that prompted this, five of the six were left empty by an
-    assistant that had used the same tool to set the functional unit an hour earlier.
-    """
-    from prism_lca.engine.study import StudyMetaStore, unrecorded_scope
-
-    missing = [label for _key, label in unrecorded_scope(StudyMetaStore().get(database))]
-    if not missing:
-        return None
-    review = (
-        " An empty critical review is a legitimate answer, but record it as one instead of leaving "
-        "the field blank."
-        if "critical review" in missing
-        else ""
-    )
-    return (
-        f"The study records no {', no '.join(missing)}. ISO 14044 §5.2 expects a report to state "
-        "them, and the report's goal-and-scope chapter is written from these fields — an empty one "
-        "becomes \"not defined\" in the document. Set them with `model_info` action=\"set\"; ask the "
-        f"user where the answer is theirs to give rather than inventing one.{review}"
-    )
 
 
 #: What counts as a source, in any language: a link or a DOI. Deliberately not a word list — "laut
@@ -1543,8 +1516,14 @@ ACTIVITY_RULES = [
 
 def _rule_unrecorded_scope(ctx: LintContext) -> list[dict]:
     # The study's own metadata.
-    note = _unrecorded_scope(ctx.database)
+    note = unrecorded_scope_note(ctx.database)
     return [_finding("info", "unrecorded_scope", note)] if note else []
+
+
+def _rule_claimed_review(ctx: LintContext) -> list[dict]:
+    # Study prose against the review log: a review claimed that never returned a result.
+    note = claimed_review_note(ctx.database)
+    return [_finding("warning", "review_claimed_not_run", note)] if note else []
 
 
 def _rule_missing_forming(ctx: LintContext) -> list[dict]:
@@ -1917,6 +1896,7 @@ def _eol_group_finding(shares: dict[str, float], material: str) -> dict | None:
 #: Model-wide rules, in the order their findings are emitted after the per-activity pass.
 MODEL_RULES = [
     _rule_unrecorded_scope,
+    _rule_claimed_review,
     _rule_missing_forming,
     _rule_unsourced_figures,
     _rule_scenario_window,
@@ -1977,6 +1957,7 @@ def lint_database(database: str) -> dict:
             "typed constants that equal a parameter's value (a quantity a scenario cannot move)",
             "life-cycle phase coverage",
             "data provenance (how many figures cite a source)",
+            "study text claiming an internal review the model's review log does not have",
             "shaping (bulk metal or plastic linked with no forming step in the model)",
             "transport legs (the distance a tonne-kilometre exchange implies per unit of product)",
             "end-of-life shares (parameters named eol_* or grouped under end of life sum to 1)",

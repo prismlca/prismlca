@@ -159,6 +159,9 @@ export interface ToolCtx {
     ms: number
     error?: string
   }>
+  /** The model this run's reviews go to — the review model chosen in Settings, or the provider's default.
+   *  A review that came back without a result is not repeated with the same one on an unchanged model. */
+  reviewModel?: string
   /**
    * The in-app chat this run belongs to; absent in an MCP session. A review is logged with it, and a
    * later review in the SAME chat is shown that one's findings and outcomes — never another chat's,
