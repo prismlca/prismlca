@@ -17,7 +17,7 @@ import { fetchQuery, invalidate } from '../lib/server/useQuery'
 import { beginWorkspaceSwitch, cancelWorkspaceSwitch, endWorkspaceSwitch } from '../lib/modelView'
 import { usePersisted } from '../lib/persist'
 import { defaultSearchDbs } from '../lib/search'
-import { assignFolder, reloadFolders } from '../lib/modelFolders'
+import { assignFolder, reloadFolders, resetFolders } from '../lib/modelFolders'
 import { forgetView } from '../lib/modelView'
 import { rememberRecentModel, renameRecentModel } from '../lib/recentModels'
 import type { ConfirmSpec } from '../views/ConfirmDialog'
@@ -184,6 +184,7 @@ export function useProjectModels(deps: ProjectModelDeps) {
           const mine = ++refreshSeq.current
           // A project switch changes every server answer at once — one prefix covers them all.
           invalidate('/api/v1/')
+          void resetFolders() // a store of its own, not a cached answer: told separately
           resetThemePreviews()
           setProject(name)
           onProjectSwitched()
@@ -444,6 +445,7 @@ export function useProjectModels(deps: ProjectModelDeps) {
         onProjectSwitched()
         setActiveDb(null)
         invalidate('/api/v1/') // a fresh workspace: every cached answer belongs to the old one
+        void resetFolders() // see activateProject
         setProjects((await api<{ name: string }[]>('GET', '/api/v1/projects')).map((p) => p.name))
         const dbs = await fetchQuery('/api/v1/databases')
         endWorkspaceSwitch(fence)

@@ -27,7 +27,7 @@ export default function LastModelsCard({
   onOpenModel: (name: string) => void
 }): JSX.Element {
   const { recentModels } = useAppSettings()
-  const { folders, of } = useSyncExternalStore(subscribeFolders, getFolders)
+  const { folders, of, status } = useSyncExternalStore(subscribeFolders, getFolders)
   const models = new Map(databases.filter((d) => d.kind === 'foreground').map((d) => [d.name, d]))
   const rows = recentModelsFor(project, recentModels)
     .filter((r) => models.has(r.db))
@@ -64,7 +64,9 @@ export default function LastModelsCard({
               <div className="ov-recent-main">
                 <div className="ov-model-name">{r.db}</div>
                 <div className="ov-recent-meta">
-                  {folderName(r.db)} · {fmtInt(m.node_count)} {m.node_count === 1 ? 'process' : 'processes'}
+                  {/* No folder until the folders are read: "Unsorted" before then would be a claim. */}
+                  {status === 'ready' ? `${folderName(r.db)} · ` : null}
+                  {fmtInt(m.node_count)} {m.node_count === 1 ? 'process' : 'processes'}
                 </div>
               </div>
               <div className="ov-recent-when">Opened {fmtDay(r.openedAt)}</div>
