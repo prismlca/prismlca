@@ -1021,6 +1021,14 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     finalText += shown
     deps.emit({ chatId: req.chatId, type: 'delta', text: shown })
   }
+  /**
+   * Where the closing answer begins in `finalText`: moved behind every tool round, every line the
+   * user sent and the notice of a request sent again, so what follows is what the model wrote last,
+   * and the stop note when the run did not finish. The text before it is the turn's record (answered
+   * questions, notes between tool rounds), kept in the message; a reader with one line to show
+   * starts here.
+   */
+  let answerFrom = finalText.length
   let totalCost = 0
   /** The research agents' share of `totalCost` — shown beside it, since it can be most of a run. */
   let researchCost = 0
@@ -1218,6 +1226,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       const shown = `\n\n> **You:** ${t.replace(/\n+/g, ' ')}\n\n`
       finalText += shown
       deps.emit({ chatId: req.chatId, type: 'delta', text: shown })
+      answerFrom = finalText.length
     }
     return texts.length
   }
@@ -1425,6 +1434,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           if (retry) {
             finalText += retry.note
             deps.emit({ chatId: req.chatId, type: 'delta', text: retry.note })
+            answerFrom = finalText.length
             reasoningEffort = retry.next
             continue
           }
@@ -1721,6 +1731,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         }
       }
       messages.push(...imageParts)
+      answerFrom = finalText.length
 
       // The stall guard: rounds that only ever hear "no". Reset by any call that lands, because a
       // model working through a batch of refusals one by one IS making progress.
@@ -1761,6 +1772,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       chatId: req.chatId,
       type: 'done',
       text: finalText,
+      answerFrom,
       cost: totalCost || undefined,
       researchCost: researchCost || undefined,
       promptTokens: totalPromptTokens || undefined,

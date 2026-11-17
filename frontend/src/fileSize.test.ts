@@ -32,7 +32,9 @@ const SHRINK = 50
 
 /** Paths relative to frontend/src. `<count + HEADROOM>` — the comment keeps the count. */
 const CEILINGS: Record<string, number> = {
-  'main/ai/agent.ts': 1832, // 1807 — the wording of the provider's web lookups moved to webLookups.ts
+  // 1839 — the mark where a turn's closing answer begins is state of the loop: it is set at the places the
+  // loop appends to the turn's text (a tool round, a line from the user, a resend notice) and nowhere else.
+  'main/ai/agent.ts': 1864,
   'renderer/src/Workbench.tsx': 1751, // 1726, after the canvas calculation (workbench/useCanvasCalc.ts) moved out
   'renderer/src/views/ReportSections.tsx': 1403, // 1378, after the correction path and the remark lists went (one state per chapter)
   'renderer/src/CanvasChat.tsx': 1195, // 1170, after the canvas requests moved to the Workbench (workbench/useCanvasUiTools.ts)

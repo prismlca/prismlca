@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { AiEvent } from './ai'
 import {
   chatNotices,
+  closingAnswer,
   dismissChatNotice,
   excerptOf,
   handleChatEvent,
@@ -58,6 +59,21 @@ describe('chatNotices', () => {
   it('ignores the events that do not end a turn', () => {
     handleChatEvent({ chatId: 'a', type: 'delta', text: 'partial' })
     expect(chatNotices()).toEqual([])
+  })
+
+  it('quotes the closing answer, not the questions and notes the turn began with', () => {
+    const record =
+      '> ❓ What is the functional unit?\n> ➤ 1 wheelbarrow over its life\n\nNow I build the model.\n\n'
+    const answer = 'The wheelbarrow comes to about 75 kg CO2-eq.'
+    handleChatEvent({ chatId: 'a', type: 'done', text: record + answer, answerFrom: record.length })
+    expect(chatNotices()[0].excerpt).toBe(answer)
+  })
+
+  it('falls back to the whole text when the turn has no mark or nothing follows it', () => {
+    expect(closingAnswer('Notes.\n\nAnswer.')).toBe('Notes.\n\nAnswer.')
+    expect(closingAnswer('Answer.', 0)).toBe('Answer.')
+    expect(closingAnswer('Notes.\n\n', 8)).toBe('Notes.\n\n')
+    expect(closingAnswer('Notes.\n\nAnswer.', 8)).toBe('Answer.')
   })
 
   it('cuts the excerpt to one line of about 80 characters', () => {
