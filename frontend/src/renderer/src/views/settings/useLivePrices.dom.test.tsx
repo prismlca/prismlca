@@ -7,8 +7,9 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderWithPrism } from '../../test/render'
 import { setAS } from '../../lib/appSettings'
-import { KEY_CHANGED_EVENT } from '../../lib/ai'
+import { KEY_CHANGED_EVENT, type AiModelInfo } from '../../lib/ai'
 import { AiModelsPanel } from './AiModelsPanel'
+import { useLivePrices } from './useLivePrices'
 
 const MODELS = [
   { id: 'z-ai/glm-5.3', label: 'GLM 5.3 (Z.AI)', descriptor: 'open weight', selectable: true, pricing: null },
@@ -36,10 +37,63 @@ describe('the Models table and OpenRouter prices', () => {
     })
     const row = (await screen.findByText('GLM 5.3 (Z.AI)')).closest('tr')!
     expect(within(row).getAllByText('…')).toHaveLength(2)
+    // "…" is there from the first render; the request goes out an effect later, and only then can it be answered.
+    await waitFor(() => expect(prices).toHaveBeenCalledTimes(1))
     act(() => answer({ 'z-ai/glm-5.3': { input: 0.4, output: 2.46 } }))
     await waitFor(() => expect(within(row).queryByText('…')).toBeNull())
     expect(row.textContent).toMatch(/0\.40/)
     expect(prices).toHaveBeenCalledTimes(1)
+  })
+
+  it('says "loading" in the very render that first has the rows, not one effect later', () => {
+    // Otherwise the rows are on screen with a dash for a moment, and a test that looks right then fails.
+    const seen: boolean[] = []
+    function Probe(): null {
+      seen.push(useLivePrices(MODELS as unknown as AiModelInfo[], true).loading)
+      return null
+    }
+    renderWithPrism(<Probe />, {
+      overrides: { ai: { openrouterPrices: () => new Promise<Record<string, never>>(() => undefined) } }
+    })
+    expect(seen[0]).toBe(true)
+    expect(seen).not.toContain(false)
+  })
+
+  it('says "loading" again when the same request is asked a second time', async () => {
+    // Away and back — to a direct provider, or to another set of models — ends in the request that was
+    // answered before. It is asked again, so its rows show "…" again, not the old answer's dash.
+    const answers: Array<(p: Record<string, never>) => void> = []
+    const prices = vi.fn(() => new Promise<Record<string, never>>((r) => answers.push(r)))
+    const all = MODELS as unknown as AiModelInfo[]
+    let loading = false
+    function Probe({ models, enabled }: { models: AiModelInfo[]; enabled: boolean }): null {
+      loading = useLivePrices(models, enabled).loading
+      return null
+    }
+    const { rerender } = renderWithPrism(<Probe models={all} enabled />, {
+      overrides: { ai: { openrouterPrices: prices } }
+    })
+    await waitFor(() => expect(answers).toHaveLength(1))
+    await act(async () => answers[0]({}))
+    expect(loading).toBe(false)
+
+    rerender(<Probe models={all} enabled={false} />)
+    expect(loading).toBe(false)
+    rerender(<Probe models={all} enabled />)
+    expect(loading).toBe(true)
+    await waitFor(() => expect(answers).toHaveLength(2))
+    await act(async () => answers[1]({}))
+    expect(loading).toBe(false)
+
+    // …and through another request that is still on its way when the first one comes back.
+    rerender(<Probe models={[{ ...all[0], id: 'another/model' }]} enabled />)
+    expect(loading).toBe(true)
+    await waitFor(() => expect(answers).toHaveLength(3))
+    rerender(<Probe models={all} enabled />)
+    expect(loading).toBe(true)
+    await waitFor(() => expect(answers).toHaveLength(4))
+    await act(async () => answers[3]({}))
+    expect(loading).toBe(false)
   })
 
   it('does not ask OpenRouter while a direct provider is chosen', async () => {
