@@ -160,9 +160,9 @@ export function useReferences(deps: ReferenceDeps) {
 
   /**
    * The inverse of :func:`localize`: the process leaves the model for the library, and the node becomes a
-   * box of it — locked here, editable there, and shared with every other study. Its tags move onto the
-   * inputs that draw on it (the library carries none), which may give the box a tag id after the reload;
-   * renaming the node first lets the reconciliation hand it the old place.
+   * box of it — locked here, editable there, and shared with every other study. Its tags stay behind (the
+   * library carries none, and nothing is written onto the inputs that now draw on it), so the box shows
+   * the tag its inputs inherit; renaming the node first lets the reconciliation hand it the old place.
    */
   const toLibrary = useCallback(
     (id: string): void => {

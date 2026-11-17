@@ -7,7 +7,13 @@ otherwise lose work silently). A directory without a stamp gets one. The first r
 before any migration exists, so that later releases find the stamp in every data directory.
 
 When a release changes the on-disk format: raise ``DATA_SCHEMA``, migrate (backup first),
-then stamp. Nothing here migrates yet.
+then stamp.
+
+Format 2: the tag groups belong to a model (``prism_meta/tag_groups.json`` holds one list per model
+instead of one for the workspace). The file says by its shape which format it is, so it is converted
+where it is read (``engine/tag_groups_split.py``) — a workspace is a folder that also arrives by a
+restore or from another directory, long after the start that stamped this one. The stamp is what keeps
+an older version, which would read the new shape as an empty and broken list, out of the directory.
 """
 from __future__ import annotations
 
@@ -16,7 +22,7 @@ import os
 from pathlib import Path
 
 #: The data format this version reads and writes. Raise it only together with a migration.
-DATA_SCHEMA = 1
+DATA_SCHEMA = 2
 STAMP_FILE = "prism-data-version.json"
 
 

@@ -11,8 +11,8 @@ const MODEL_CACHES = [
   '/api/v1/model/activities',
   '/api/v1/model/graph',
   '/api/v1/model/unit-vocabulary',
-  // Each group says which models use it, and the result pickers offer only those: a first tag
-  // assignment (or its undo) changes that list without touching the groups themselves.
+  // A model's tag groups, and the groups in use that the result pickers offer: a first tag assignment
+  // (or its undo) changes the second without touching the groups themselves. One prefix, both routes.
   '/api/v1/model/tag-groups',
   '/api/v1/study',
   '/api/v1/scenarios'

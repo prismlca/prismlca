@@ -136,11 +136,11 @@ point at, one process per real step; and tags carry the phases:
 3. **Tag every foreground process with its phase** in the group `Life-cycle phase`. The standard set is
    **Raw materials, Inbound transport, Production, Distribution, Use, End-of-life**: Manufacturing takes
    "Production", Distribution "Distribution", Use "Use", End of life "End-of-life", and the first two
-   mostly sit on inputs (step 4). In an English study use the spellings the workspace already uses, so
-   models can be compared phase by phase; in another study language the values follow it (section 1), the
-   group name does not. The set is a default, not a limit: a product with a stage of its own — installation
-   on site, maintenance, refurbishment — gets an extra value in the same group. A breakdown that is not a
-   phase at all (by component, by supplier) gets a group of its own, never a value in this one.
+   mostly sit on inputs (step 4). In an English study use these spellings, so models can be compared
+   phase by phase; in another study language the values follow it (section 1), the group name does not.
+   The set is a default, not a limit: a product with a stage of its own — installation on site,
+   maintenance, refurbishment — gets an extra value in the same group. A breakdown that is not a phase at
+   all (by component, by supplier) gets a group of its own, never a value in this one.
 
    Every tag group in PrismLCA works the same way, phases included: a tag counts for the place it sits and
    everything below it, until a nearer tag takes over — a process's tag for its inputs and their supply chains,

@@ -162,6 +162,7 @@ def per_model_stores() -> list[ModelScopedStore]:
     from prism_lca.engine.review_log import ReviewLogStore
     from prism_lca.engine.scenarios import ScenarioStore
     from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.tag_groups import TagGroupStore
     from prism_lca.engine.tags import TagStore
     from prism_lca.engine.view_store import ViewStore
 
@@ -172,6 +173,7 @@ def per_model_stores() -> list[ModelScopedStore]:
 
     return [
         of("tags", TagStore()),
+        of("tag_groups", TagGroupStore()),
         of("chats", ChatStore()),
         of("parameter_groups", parameter_groups),
         of("scenarios", ScenarioStore()),

@@ -322,7 +322,7 @@
       "name": "list_tags",
       "label": "List tags",
       "group": "Read & search",
-      "description": "List tag groups (dimensions) and their allowed values, or one activity's assigned tags. Each group says whether this model uses it, and in how many other models it is used.",
+      "description": "List this model's tag groups (dimensions) with their values, or one activity's assigned tags. Tag groups belong to a model; pass database alone to read another model's groups (a comparison model). \"unused\" names the values no process of the model carries.",
       "surface": "api",
       "mutating": false,
       "parameters": {
@@ -330,7 +330,7 @@
         "properties": {
           "database": {
             "type": "string",
-            "description": "Optional — with code, returns that activity's tags."
+            "description": "Optional. Alone: the model whose tag groups to list (default: this model). With code: that activity's tags."
           },
           "code": {
             "type": "string",
@@ -1917,7 +1917,7 @@
       "name": "edit_tags",
       "label": "Manage & assign tags",
       "group": "Tags",
-      "description": "Manage tag groups and assign tags. action=\"create_group\" creates a dimension (name); \"add_value\" adds an allowed value to a group (group, value); \"assign\" tags processes (keys, group, value — omit value to clear); \"merge_value\" folds one value of a group into another (group, value, into — every process carrying it is retagged, the old value disappears from the group); \"merge_group\" folds one dimension into another (name, into — its values and tags move). Merging is how a vocabulary that grew four spellings of one phase (\"Use\", \"Use Phase\", \"Usage Phase\") is cleaned up without untagging anything; there is deliberately no delete — tags are used across models. Tagging a whole model by life-cycle phase is ONE call: pass \"assignments\", a list of { keys, value } (the values are created if the group allows them), instead of one assign per phase. Tags drive the per-phase result breakdowns. Undoable.",
+      "description": "Manage this model's tag groups and assign tags. Tag groups belong to the model; other models keep their own. action=\"create_group\" creates a dimension (name); \"add_value\" adds an allowed value to a group (group, value); \"assign\" tags processes (keys, group, value — omit value to clear); \"merge_value\" folds one value of a group into another (group, value, into — every process carrying it is retagged, the old value disappears from the group); \"merge_group\" folds one dimension into another (name, into — its values and tags move). Merging is how a vocabulary that grew four spellings of one phase (\"Use\", \"Use Phase\", \"Usage Phase\") is cleaned up without untagging anything; there is deliberately no delete — a value no process carries is removed in the Tags window. Tagging a whole model by life-cycle phase is ONE call: pass \"assignments\", a list of { keys, value } (the values are created if the group allows them), instead of one assign per phase. Tags drive the per-phase result breakdowns. Assigning and merging are undoable; a created group or value stays.",
       "surface": "api",
       "mutating": true,
       "parameters": {
@@ -1942,6 +1942,10 @@
           "into": {
             "type": "string",
             "description": "The value (merge_value) or group (merge_group) that absorbs the other."
+          },
+          "database": {
+            "type": "string",
+            "description": "The model whose tag groups to change (action=create_group/add_value/merge_value/merge_group). Default: this model."
           },
           "keys": {
             "type": "array",

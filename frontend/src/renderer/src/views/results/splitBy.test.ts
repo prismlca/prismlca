@@ -1,29 +1,46 @@
 import { describe, expect, it } from 'vitest'
-import { familiesInUse, resolveSplit } from './splitBy'
-import type { TagGroup } from '../../lib/server/routes'
+import { familiesOffered, resolveSplit } from './splitBy'
+import type { TagFamily } from '../../lib/server/routes'
 
-const g = (name: string, databases: string[]): TagGroup => ({ name, color: '#000', values: [], databases })
-const GROUPS = [g('Supplier', ['Other']), g('Phase', ['Bottle', 'Other']), g('Component', ['Bottle'])]
+const f = (name: string, databases: string[]): TagFamily => ({ name, databases })
+const FAMILIES = [f('Supplier', ['Other']), f('Phase', ['Bottle', 'Other']), f('Component', ['Bottle'])]
 
-describe('familiesInUse', () => {
-  it('keeps the families some of the databases carry, in project order', () => {
-    expect(familiesInUse(GROUPS, new Set(['Bottle'])).map((x) => x.name)).toEqual(['Phase', 'Component'])
-    expect(familiesInUse(GROUPS, new Set(['Nothing']))).toEqual([])
+describe('familiesOffered', () => {
+  it('keeps the families some of the databases carry, in the order they arrive', () => {
+    expect(familiesOffered(FAMILIES, new Set(['Bottle']), '')).toEqual(['Phase', 'Component'])
+    expect(familiesOffered(FAMILIES, new Set(['Nothing']), '')).toEqual([])
+  })
+
+  it('keeps the family already chosen on offer, even when no selected model carries it', () => {
+    expect(familiesOffered(FAMILIES, new Set(['Bottle']), 'Supplier')).toEqual([
+      'Phase',
+      'Component',
+      'Supplier'
+    ])
+    expect(familiesOffered([], new Set(['Bottle']), 'Gone')).toEqual(['Gone'])
+    expect(familiesOffered(FAMILIES, new Set(['Bottle']), 'Phase')).toEqual(['Phase', 'Component'])
+  })
+
+  it('takes several chosen families, with or without the tag: prefix, each once', () => {
+    expect(familiesOffered(FAMILIES, new Set(['Bottle']), ['tag:Supplier', 'tag:Phase', 'Supplier'])).toEqual(
+      ['Phase', 'Component', 'Supplier']
+    )
+    expect(familiesOffered(FAMILIES, new Set(['Bottle']), [])).toEqual(['Phase', 'Component'])
   })
 })
 
 describe('resolveSplit', () => {
   it('preselects a tag family the model carries', () => {
-    expect(resolveSplit('', GROUPS, 'Bottle')).toBe('tag:Phase')
+    expect(resolveSplit('', FAMILIES, 'Bottle')).toBe('tag:Phase')
   })
 
   it('falls back to ISIC when the model carries no tags, even if another model does', () => {
-    expect(resolveSplit('', GROUPS, 'Untagged')).toBe('isic')
-    expect(resolveSplit(undefined, GROUPS, null)).toBe('isic')
+    expect(resolveSplit('', FAMILIES, 'Untagged')).toBe('isic')
+    expect(resolveSplit(undefined, FAMILIES, null)).toBe('isic')
   })
 
   it('keeps a choice once made, ISIC included', () => {
-    expect(resolveSplit('isic', GROUPS, 'Bottle')).toBe('isic')
-    expect(resolveSplit('tag:Component', GROUPS, 'Bottle')).toBe('tag:Component')
+    expect(resolveSplit('isic', FAMILIES, 'Bottle')).toBe('isic')
+    expect(resolveSplit('tag:Component', FAMILIES, 'Bottle')).toBe('tag:Component')
   })
 })

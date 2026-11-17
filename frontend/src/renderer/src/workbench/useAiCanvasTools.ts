@@ -10,6 +10,7 @@ import { splitId } from '../lib/canvas'
 import { viewLoaded, viewSet, viewSync } from '../lib/modelView'
 import { readLs } from '../lib/persist'
 import { fetchQuery } from '../lib/server/useQuery'
+import { tagFamiliesRoute } from '../lib/server/routes'
 import { resolveSplit } from '../views/results/splitBy'
 import type { MethodEntry } from '../lib/methods'
 import type { ViewKey } from './AppSidebar'
@@ -301,7 +302,9 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
             .filter(([, chosen]) => chosen)
             .map(([key]) => key)
         // The split the page shows, which is the model's tag family until one is chosen.
-        const tagGroups = (await fetchQuery('/api/v1/model/tag-groups').catch(() => null))?.groups ?? []
+        const tagGroups = activeDb
+          ? ((await fetchQuery(tagFamiliesRoute(activeDb)).catch(() => null))?.groups ?? [])
+          : []
         return {
           tab: tab === 'detail' ? 'detailed' : 'overview',
           subjects: on(held.subjSel),

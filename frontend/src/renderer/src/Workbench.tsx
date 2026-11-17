@@ -83,7 +83,6 @@ import { invalidateModelCaches } from './lib/server/modelCaches'
 import { useAiEditRefresh } from './workbench/useAiEditRefresh'
 import { useRunCalculationOnCanvas } from './workbench/useRunCalculationOnCanvas'
 import { useHistorySteps } from './workbench/useHistorySteps'
-import { usedFirst } from './lib/tagGroupsUsed'
 import { useExternalAgents } from './workbench/useExternalAgents'
 import { useMcpUiTools } from './workbench/useMcpUiTools'
 import ExternalAgentsPanel from './workbench/ExternalAgentsPanel'
@@ -428,6 +427,7 @@ export default function Workbench(): JSX.Element {
     setNodeTag,
     createTagGroup,
     addTagValue,
+    adoptTagGroups,
     deleteTagGroup,
     removeTagValue,
     mergeTagValue,
@@ -439,8 +439,12 @@ export default function Workbench(): JSX.Element {
     setHlMenu,
     inspTags
   } = tagging
-  // The highlight menu offers what this canvas carries, not every group of the workspace.
+  // The highlight menu offers what this canvas carries, not every group of the model.
   const hlGroups = useMemo(() => groupsOnCanvas(tagGroups, nodes), [tagGroups, nodes])
+  const otherModels = useMemo(
+    () => databases.filter((d) => d.kind === 'foreground' && d.name !== activeDb).map((d) => d.name),
+    [databases, activeDb]
+  )
 
   const [resultsTab, setResultsTab] = usePersisted<ResultsTab>('prism.resultsTab', 'overview')
   // The report page stays mounted like the Results tabs (see ResultsPages), for a reason that costs money: a chapter is written
@@ -1008,7 +1012,9 @@ export default function Workbench(): JSX.Element {
         ) : null}
         {showTagManager ? (
           <TagManager
-            groups={usedFirst(tagGroups, activeDb)}
+            groups={tagGroups}
+            otherModels={otherModels}
+            onAdopt={adoptTagGroups}
             onGroupByTags={groupByTagGroup}
             onClose={() => setShowTagManager(false)}
             onCreateGroup={createTagGroup}
@@ -1533,7 +1539,7 @@ export default function Workbench(): JSX.Element {
                 {tagMenu ? (
                   <TagMenu
                     pos={{ x: tagMenu.x, y: tagMenu.y }}
-                    groups={usedFirst(tagGroups, activeDb)}
+                    groups={tagGroups}
                     current={tagMenu.current}
                     inherited={tagMenu.inherited}
                     onSet={setNodeTag}

@@ -89,11 +89,15 @@ def _seed_every_store(name: str) -> dict:
     from prism_lca.engine.review_log import ReviewLogStore
     from prism_lca.engine.scenarios import ScenarioStore
     from prism_lca.engine.study import StudyMetaStore
+    from prism_lca.engine.tag_groups import TagGroupStore
     from prism_lca.engine.tags import TagStore
     from prism_lca.engine.view_store import ViewStore
 
     get_bd().Database(name).new_activity(code="c1", name="p", unit="kilogram", type="process").save()
     TagStore().add(name, "c1", "phase", "Production")
+    # A group no process carries: the list follows the tags, so only a prepared group shows the store's own share.
+    TagGroupStore().create_group(name, "Supplier")
+    TagGroupStore().add_value(name, "Supplier", "Acme")
     ChatStore().create_chat(name, "hello")
     parameter_groups.create(name, "Masses")
     ScenarioStore().create(name, "High demand")
@@ -107,6 +111,9 @@ def _seed_every_store(name: str) -> dict:
 
     seeded = {
         "tags": lambda db: bool(TagStore().list_for(db, "c1")),
+        "tag_groups": lambda db: any(
+            g["name"] == "Supplier" and g["values"] == ["Acme"] for g in TagGroupStore().list_groups(db)
+        ),
         "chats": lambda db: bool(ChatStore().list_chats(db)),
         "parameter_groups": lambda db: bool(parameter_groups.list_groups(db)),
         "scenarios": lambda db: bool(ScenarioStore().list_all(db)),
@@ -188,11 +195,11 @@ class TestPerModelRegistry:
                 if isinstance(node, ast.FunctionDef) and node.name == "rename_database":
                     offering.add(path.stem)
         registered_modules = {
-            "tags", "chat_store", "parameter_groups", "scenarios", "study",
+            "tags", "tag_groups", "chat_store", "parameter_groups", "scenarios", "study",
             "report_store", "research_log", "review_log", "view_store", "model_folders",
         }
         assert {s.name for s in per_model_stores()} == {
-            "tags", "chats", "parameter_groups", "scenarios", "study",
+            "tags", "tag_groups", "chats", "parameter_groups", "scenarios", "study",
             "reports", "research_log", "review_log", "views", "model_folders",
         }
         assert offering == registered_modules, (

@@ -1,47 +1,70 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import TagManager from './TagManager'
 
-const noop = vi.fn()
-const handlers = {
-  onClose: noop,
-  onGroupByTags: noop,
-  onCreateGroup: noop,
-  onDeleteGroup: noop,
-  onAddValue: noop,
-  onRemoveValue: noop,
-  onMergeValue: noop,
-  onMergeGroup: noop,
-  confirm: noop
-}
+const handlers = () => ({
+  otherModels: [] as string[],
+  onAdopt: vi.fn(),
+  onClose: vi.fn(),
+  onGroupByTags: vi.fn(),
+  onCreateGroup: vi.fn(),
+  onDeleteGroup: vi.fn(),
+  onAddValue: vi.fn(),
+  onRemoveValue: vi.fn(),
+  onMergeValue: vi.fn(),
+  onMergeGroup: vi.fn(),
+  confirm: vi.fn()
+})
+
+const GROUPS = [
+  {
+    name: 'Life-cycle phase',
+    color: '#0a0',
+    values: ['Production', 'Use', 'Refurbishment'],
+    used: true,
+    unused: ['Refurbishment']
+  },
+  { name: 'Part', color: '#a00', values: [], used: false, unused: [] }
+]
 
 describe('the Tags window', () => {
-  it('marks the open model’s groups and draws a line where the workspace’s others begin', () => {
-    const { container } = render(
-      <TagManager
-        {...handlers}
-        groups={[
-          { name: 'Life-cycle phase', color: '#0a0', values: ['Production'], used: true },
-          { name: 'Material', color: '#00a', values: [] },
-          { name: 'Part', color: '#a00', values: [] }
-        ]}
-      />
-    )
-    expect(screen.getByText('used in this model').closest('.tagman-group')).toHaveTextContent(
-      'Life-cycle phase'
-    )
-    expect(screen.getAllByText('Other groups in this workspace')).toHaveLength(1)
-    const order = [...container.querySelectorAll('.tagman-others, .tagman-name')].map((e) => e.textContent)
-    expect(order).toEqual([
-      'Life-cycle phaseused in this model',
-      'Other groups in this workspace',
-      'Material',
+  it('lists the model’s groups in its own order, with no line between used and unused ones', () => {
+    const { container } = render(<TagManager {...handlers()} groups={GROUPS} />)
+    expect([...container.querySelectorAll('.tagman-name')].map((e) => e.textContent)).toEqual([
+      'Life-cycle phase',
       'Part'
     ])
+    expect(screen.getByText(/This model’s tag groups/)).toBeInTheDocument()
   })
 
-  it('draws no line when the model uses no group, or all of them', () => {
-    render(<TagManager {...handlers} groups={[{ name: 'Material', color: '#00a', values: [] }]} />)
-    expect(screen.queryByText('Other groups in this workspace')).toBeNull()
+  it('marks a tag no process carries and removes it without asking', () => {
+    const h = handlers()
+    render(<TagManager {...h} groups={GROUPS} />)
+    const unused = screen.getByText('Refurbishment').closest('.tagman-chip')!
+    expect(unused).toHaveClass('unused')
+    expect(screen.getByText('Use').closest('.tagman-chip')).not.toHaveClass('unused')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag Refurbishment' }))
+    expect(h.onRemoveValue).toHaveBeenCalledWith('Life-cycle phase', 'Refurbishment')
+    expect(h.confirm).not.toHaveBeenCalled()
+  })
+
+  it('asks before removing a tag that processes carry', () => {
+    const h = handlers()
+    render(<TagManager {...h} groups={GROUPS} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove tag Use' }))
+    expect(h.onRemoveValue).not.toHaveBeenCalled()
+    expect(h.confirm).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes over another model’s groups, and offers that only when there is another model', () => {
+    const h = handlers()
+    const { rerender } = render(<TagManager {...h} groups={[]} />)
+    expect(screen.queryByText('Take over')).toBeNull()
+    rerender(<TagManager {...h} groups={[]} otherModels={['Bottle', 'Can']} />)
+    const take = screen.getByRole('button', { name: 'Take over' })
+    expect(take).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Model to take the tag groups from'), { target: { value: 'Can' } })
+    fireEvent.click(take)
+    expect(h.onAdopt).toHaveBeenCalledWith('Can')
   })
 })

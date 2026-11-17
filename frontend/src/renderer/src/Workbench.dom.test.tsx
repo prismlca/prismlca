@@ -31,6 +31,7 @@ const baseRoutes = (databases: unknown[] = []): Routes => ({
   'GET /api/v1/databases': databases,
   'GET /api/v1/databases/folders': { folders: [], assignment: {} },
   'GET /api/v1/model/tag-groups': { groups: [] },
+  'GET /api/v1/model/tag-groups/in-use': { groups: [] },
   'GET /api/v1/calc/methods': [],
   'GET /api/v1/model/unit-vocabulary': { units: [] },
   'GET /api/v1/model/audit': [],

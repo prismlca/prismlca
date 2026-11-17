@@ -211,14 +211,14 @@ def test_rename_and_delete_model(client, token, project):
     client.post("/api/v1/databases/foreground", json={"name": "fg-old"}, headers=token)
     # tag an activity so we can verify tags follow the rename
     a = client.post("/api/v1/model/activities", json={"database": "fg-old", "name": "A", "unit": "kg"}, headers=token).json()["activity"]["code"]
-    client.post("/api/v1/model/tags/set", json={"keys": [{"database": "fg-old", "code": a}], "group": "Phase", "value": "Production"}, headers=token)
+    client.post("/api/v1/model/tags/set", json={"keys": [{"database": "fg-old", "code": a}], "group": "Component", "value": "Production"}, headers=token)
 
     r = client.post("/api/v1/databases/foreground/rename", json={"database": "fg-old", "name": "fg-new"}, headers=token)
     assert r.status_code == 200, r.text
     names = [d["name"] for d in client.get("/api/v1/databases", headers=token).json()]
     assert "fg-new" in names and "fg-old" not in names
     # tags followed the rename (codes preserved)
-    assert client.get(f"/api/v1/model/tags/fg-new/{a}", headers=token).json() == [{"dimension": "Phase", "value": "Production"}]
+    assert client.get(f"/api/v1/model/tags/fg-new/{a}", headers=token).json() == [{"dimension": "Component", "value": "Production"}]
 
     # delete
     assert client.post("/api/v1/databases/foreground/delete", json={"database": "fg-new"}, headers=token).status_code == 200

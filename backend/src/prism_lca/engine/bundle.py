@@ -50,8 +50,10 @@ from prism_lca.engine.bundle_resolve import Installed, Reference, fingerprint_of
 from prism_lca.engine.bundle_tags import (
     EXCHANGE_TAGS_KEY,
     apply_row_tags,
+    read_tag_groups,
     read_tags,
     row_tags,
+    write_tag_groups,
     write_tags,
 )
 from prism_lca.engine.bundle_unknown import stored_unknown
@@ -798,6 +800,7 @@ SECTIONS: tuple[Section, ...] = (
     Section("library", 1, write_library, read_library),
     Section("parameters", 1, write_parameters, read_parameters),
     Section("tags", 1, write_tags, read_tags),
+    Section("tag_groups", 1, write_tag_groups, read_tag_groups),
     Section("scenarios", 2, write_scenarios, read_scenarios, schema_for=_scenarios_schema),
     Section("study", 1, write_study, read_study),
     Section("view", 1, write_view, read_view),

@@ -12,81 +12,94 @@ def _hdr(token):
 
 # ---- tag groups CRUD ------------------------------------------------------
 def test_tag_group_crud_and_cascade(client, token, project):
+    fg = _fg(client, token)
     # create group + values
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token).status_code == 200
-    client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": "Production"}, headers=token)
-    client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": "Distribution"}, headers=token)
-    groups = client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]
-    phase = next(g for g in groups if g["name"] == "Phase")
-    assert phase["values"] == ["Production", "Distribution"]
-    assert phase["color"]  # auto-assigned
+    assert client.post(
+        "/api/v1/model/tag-groups", json={"database": fg, "name": "Component"}, headers=token
+    ).status_code == 200
+    for v in ("Production", "Distribution"):
+        client.post(
+            "/api/v1/model/tag-groups/values", json={"database": fg, "group": "Component", "value": v}, headers=token
+        )
+    groups = client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]
+    component = next(g for g in groups if g["name"] == "Component")
+    assert component["values"] == ["Production", "Distribution"]
+    assert component["color"]  # auto-assigned
 
     # assign a value to an activity, then removing that value cascades (untags it)
-    fg = _fg(client, token)
     a = _create(client, token, fg, "A")
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": fg, "code": a}], "group": "Phase", "value": "Production"},
+        json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": "Production"},
         headers=token,
     )
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
-        {"dimension": "Phase", "value": "Production"}
+        {"dimension": "Component", "value": "Production"}
     ]
-    client.post("/api/v1/model/tag-groups/values/remove", json={"group": "Phase", "value": "Production"}, headers=token)
+    client.post(
+        "/api/v1/model/tag-groups/values/remove",
+        json={"database": fg, "group": "Component", "value": "Production"},
+        headers=token,
+    )
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
 
     # deleting the group cascades too
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": fg, "code": a}], "group": "Phase", "value": "Distribution"},
+        json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": "Distribution"},
         headers=token,
     )
-    client.post("/api/v1/model/tag-groups/delete", json={"name": "Phase"}, headers=token)
+    client.post("/api/v1/model/tag-groups/delete", json={"database": fg, "name": "Component"}, headers=token)
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+
+
+def _group(client, token, fg, name) -> dict:
+    groups = client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]
+    return next(g for g in groups if g["name"] == name)
 
 
 def test_tag_taxonomy_delete_is_undoable(client, token, project):
     """Deleting a value or a whole group cascades — and undo restores the taxonomy (colour,
     value order) AND every tag assignment. Audit marks notes vs. undoable commands."""
-    client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token)
-    for v in ("Production", "Distribution", "End-of-life"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
     fg = _fg(client, token)
+    client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "Component"}, headers=token)
+    for v in ("Production", "Distribution", "End-of-life"):
+        client.post(
+            "/api/v1/model/tag-groups/values", json={"database": fg, "group": "Component", "value": v}, headers=token
+        )
     a = _create(client, token, fg, "A")
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": fg, "code": a}], "group": "Phase", "value": "Distribution"},
+        json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": "Distribution"},
         headers=token,
     )
 
     # remove a value in the middle → cascade untags; undo restores position + assignment
     r = client.post(
-        "/api/v1/model/tag-groups/values/remove", json={"group": "Phase", "value": "Distribution"}, headers=token
+        "/api/v1/model/tag-groups/values/remove",
+        json={"database": fg, "group": "Component", "value": "Distribution"},
+        headers=token,
     )
     assert r.status_code == 200 and r.json()["untagged"] == 1
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
-    phase = next(
-        g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"] if g["name"] == "Phase"
-    )
-    assert phase["values"] == ["Production", "Distribution", "End-of-life"]  # original order kept
+    component = _group(client, token, fg, "Component")
+    assert component["values"] == ["Production", "Distribution", "End-of-life"]  # original order kept
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
-        {"dimension": "Phase", "value": "Distribution"}
+        {"dimension": "Component", "value": "Distribution"}
     ]
 
     # delete the whole group → cascade; undo restores group (colour + values) + assignment
-    color = phase["color"]
-    r = client.post("/api/v1/model/tag-groups/delete", json={"name": "Phase"}, headers=token)
+    color = component["color"]
+    r = client.post("/api/v1/model/tag-groups/delete", json={"database": fg, "name": "Component"}, headers=token)
     assert r.status_code == 200 and r.json()["untagged"] == 1
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
-    phase = next(
-        g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"] if g["name"] == "Phase"
-    )
-    assert phase["values"] == ["Production", "Distribution", "End-of-life"]
-    assert phase["color"] == color
+    component = _group(client, token, fg, "Component")
+    assert component["values"] == ["Production", "Distribution", "End-of-life"]
+    assert component["color"] == color
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
-        {"dimension": "Phase", "value": "Distribution"}
+        {"dimension": "Component", "value": "Distribution"}
     ]
 
     # audit flags: taxonomy deletions are undoable commands; database lifecycle stays a note
@@ -103,22 +116,22 @@ def test_one_value_per_group(client, token, project):
     for v in ("Production", "Distribution"):
         client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": fg, "code": a}], "group": "Phase", "value": v},
+            json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": v},
             headers=token,
         )
     tags = client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json()
-    assert tags == [{"dimension": "Phase", "value": "Distribution"}]  # replaced, not appended
+    assert tags == [{"dimension": "Component", "value": "Distribution"}]  # replaced, not appended
 
     # empty value clears the group + undo restores
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": fg, "code": a}], "group": "Phase", "value": None},
+        json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": None},
         headers=token,
     )
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
-        {"dimension": "Phase", "value": "Distribution"}
+        {"dimension": "Component", "value": "Distribution"}
     ]
 
 
@@ -172,12 +185,12 @@ def test_shared_node_path_based_attribution(client, token, project):
     for code, val in (("A", "Production"), ("B", "Distribution")):
         client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": "fg", "code": code}], "group": "Phase", "value": val},
+            json={"keys": [{"database": "fg", "code": code}], "group": "Component", "value": val},
             headers=token,
         )
     r = client.post(
         "/api/v1/calc/contribution",
-        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Phase"},
+        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Component"},
         headers=token,
     )
     assert r.status_code == 200, r.text
@@ -192,12 +205,12 @@ def test_untagged_child_inherits(client, token, project):
     # Tag only R; A, B, S untagged → everything inherits R's value.
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": "fg", "code": "R"}], "group": "Phase", "value": "Whole"},
+        json={"keys": [{"database": "fg", "code": "R"}], "group": "Component", "value": "Whole"},
         headers=token,
     )
     r = client.post(
         "/api/v1/calc/contribution",
-        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Phase"},
+        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Component"},
         headers=token,
     )
     groups = {g["key"]: g["impact"] for g in r.json()["aggregation"]["groups"]}
@@ -211,7 +224,7 @@ def test_compare_stacked_by_tag(client, token, project):
     for code, val in (("A", "Production"), ("B", "Distribution")):
         client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": "fg", "code": code}], "group": "Phase", "value": val},
+            json={"keys": [{"database": "fg", "code": code}], "group": "Component", "value": val},
             headers=token,
         )
     r = client.post(
@@ -219,16 +232,16 @@ def test_compare_stacked_by_tag(client, token, project):
         json={
             "subjects": [{"database": "fg", "code": "R"}],
             "methods": [METHOD],
-            "dimensions": ["tag:Phase", "isic"],  # multiple dims in one pass
+            "dimensions": ["tag:Component", "isic"],  # multiple dims in one pass
         },
         headers=token,
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body["keys"]["tag:Phase"]) >= {"Production", "Distribution"}
+    assert set(body["keys"]["tag:Component"]) >= {"Production", "Distribution"}
     subj = body["subjects"][0]
     dims = subj["methods"][" · ".join(METHOD)]["dims"]
-    groups = {g["key"]: g["impact"] for g in dims["tag:Phase"]}
+    groups = {g["key"]: g["impact"] for g in dims["tag:Component"]}
     assert abs(groups.get("Production", 0) - 1.0) < 1e-6
     assert abs(groups.get("Distribution", 0) - 1.0) < 1e-6
     assert "isic" in dims  # computed in the same pass
@@ -241,17 +254,17 @@ def test_below_cutoff_children_keep_their_tag(client, token, project):
     for code, val in (("A", "Production"), ("B", "Distribution")):
         client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": "fg", "code": code}], "group": "Phase", "value": val},
+            json={"keys": [{"database": "fg", "code": code}], "group": "Component", "value": val},
             headers=token,
         )
     # Each child is 50% of the total; cutoff 0.6 skips BOTH at the root.
     r = client.post(
         "/api/v1/calc/compare-stacked",
         json={"subjects": [{"database": "fg", "code": "R"}], "methods": [METHOD],
-              "dimensions": ["tag:Phase"], "cutoff": 0.6},
+              "dimensions": ["tag:Component"], "cutoff": 0.6},
         headers=token,
     )
-    dims = r.json()["subjects"][0]["methods"][" · ".join(METHOD)]["dims"]["tag:Phase"]
+    dims = r.json()["subjects"][0]["methods"][" · ".join(METHOD)]["dims"]["tag:Component"]
     groups = {g["key"]: g["impact"] for g in dims}
     assert abs(groups.get("Production", 0) - 1.0) < 1e-6
     assert abs(groups.get("Distribution", 0) - 1.0) < 1e-6
@@ -260,7 +273,7 @@ def test_below_cutoff_children_keep_their_tag(client, token, project):
     r = client.post(
         "/api/v1/calc/contribution",
         json={"database": "fg", "code": "R", "method": METHOD,
-              "aggregate_by": "tag:Phase", "cutoff": 0.6},
+              "aggregate_by": "tag:Component", "cutoff": 0.6},
         headers=token,
     )
     groups = {g["key"]: g["impact"] for g in r.json()["aggregation"]["groups"]}
@@ -312,50 +325,57 @@ def _create(client, token, db, name) -> str:
     ).json()["activity"]["code"]
 
 
-def test_a_dimension_says_which_databases_it_is_actually_used_in(client, token, project):
+def test_a_dimension_says_which_models_it_is_actually_used_in(client, token, project):
     """What lets a *split by* offer only families that would produce groups.
 
-    A dimension is project config from the moment it is created, so every picker used to offer every one of
-    them for every model — and splitting a contribution by a dimension nobody tagged draws one bar called
-    "untagged", which reads as a broken chart rather than as an empty answer.
+    A group exists in its model from the moment it is created, so a picker that offered every group would
+    offer ones nobody has tagged — and splitting a contribution by such a dimension draws one bar called
+    "untagged", which reads as a broken chart rather than as an empty answer. So the list says per group
+    whether the model uses it, and `in-use` names the models (of those asked for) that carry it.
     """
     m1, m2 = _fg(client, token), _fg(client, token)
     a = _create(client, token, m1, "A")
     _create(client, token, m2, "B")
 
-    for name in ("Phase", "Supplier"):
-        assert client.post("/api/v1/model/tag-groups", json={"name": name}, headers=token).status_code == 200
-    for group, value in (("Phase", "Production"), ("Supplier", "Acme")):
-        assert client.post(
-            "/api/v1/model/tag-groups/values", json={"group": group, "value": value}, headers=token
-        ).status_code == 200
+    for db in (m1, m2):
+        for name in ("Component", "Supplier"):
+            assert client.post(
+                "/api/v1/model/tag-groups", json={"database": db, "name": name}, headers=token
+            ).status_code == 200
+        for group, value in (("Component", "Production"), ("Supplier", "Acme")):
+            assert client.post(
+                "/api/v1/model/tag-groups/values", json={"database": db, "group": group, "value": value}, headers=token
+            ).status_code == 200
 
-    # Only m1 gets a Phase tag; Supplier is tagged nowhere.
+    # Only m1 gets a Component tag; Supplier is tagged nowhere.
     r = client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": m1, "code": a}], "group": "Phase", "value": "Production"},
+        json={"keys": [{"database": m1, "code": a}], "group": "Component", "value": "Production"},
         headers=token,
     )
     assert r.status_code == 200, r.text
 
-    groups = {g["name"]: g["databases"] for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]}
-    assert groups["Phase"] == [m1]
-    # Not "every database" and not "the ones it could apply to" — the ones it is on.
-    assert groups["Supplier"] == []
-    assert m2 not in groups["Phase"]
+    used = {g["name"]: g["used"] for g in client.get(f"/api/v1/model/tag-groups?database={m1}", headers=token).json()["groups"]}
+    assert used == {"Component": True, "Supplier": False}
+    in_use = client.get(f"/api/v1/model/tag-groups/in-use?database={m1}&database={m2}", headers=token).json()
+    # Not "every model" and not "the ones it could apply to" — the ones it is on.
+    assert in_use["groups"] == [{"name": "Component", "databases": [m1]}]
 
 
 def test_the_audit_credits_whoever_made_the_tag_group(client, token, project):
     """Creating a group and adding a value hard-coded "user" as the source, so the assistant's own
     tag groups appeared under the user's name — beside the tag assignments it *was* credited with,
     which reads as the user having done half the work."""
-    client.post("/api/v1/model/tag-groups", json={"name": "Life-cycle phase", "source": "ai"}, headers=token)
+    fg = _fg(client, token)
+    client.post(
+        "/api/v1/model/tag-groups", json={"database": fg, "name": "Life-cycle phase", "source": "ai"}, headers=token
+    )
     client.post(
         "/api/v1/model/tag-groups/values",
-        json={"group": "Life-cycle phase", "value": "Use", "source": "ai"},
+        json={"database": fg, "group": "Life-cycle phase", "value": "Use", "source": "ai"},
         headers=token,
     )
-    client.post("/api/v1/model/tag-groups", json={"name": "Owner"}, headers=token)  # default stays "user"
+    client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "Owner"}, headers=token)  # default stays "user"
 
     by_summary = {e["summary"]: e for e in client.get("/api/v1/model/audit", headers=token).json()}
     assert by_summary["Create tag group 'Life-cycle phase'"]["source"] == "ai"
@@ -367,19 +387,21 @@ def test_the_audit_credits_whoever_made_the_tag_group(client, token, project):
 def test_partition_by_tag_group_follows_the_declared_tag_order(client, token, project):
     """One box per tag, in the order the tags were arranged in — not in whatever order the activities
     happen to iterate, because the boxes are what the user then reads."""
-    client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token)
-    for v in ("Production", "Distribution", "End-of-life"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
     fg = _fg(client, token)
+    client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "Component"}, headers=token)
+    for v in ("Production", "Distribution", "End-of-life"):
+        client.post(
+            "/api/v1/model/tag-groups/values", json={"database": fg, "group": "Component", "value": v}, headers=token
+        )
     codes = {name: _create(client, token, fg, name) for name in ("A", "B", "C", "D", "untagged")}
     for name, value in (("A", "End-of-life"), ("B", "Production"), ("C", "Production"), ("D", "Distribution")):
         client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": fg, "code": codes[name]}], "group": "Phase", "value": value},
+            json={"keys": [{"database": fg, "code": codes[name]}], "group": "Component", "value": value},
             headers=token,
         )
 
-    r = client.post("/api/v1/model/tag-groups/partition", json={"database": fg, "group": "Phase"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/partition", json={"database": fg, "group": "Component"}, headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["conflicts"] == []
@@ -398,26 +420,28 @@ def test_partition_refuses_and_NAMES_the_processes_carrying_two_tags_of_the_grou
     Reachable because ``tags/bulk`` *adds* rather than sets (and an imported bundle carries whatever it
     carries), while ``tags/set`` has always kept it to one value per group.
     """
-    client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token)
-    for v in ("Production", "Distribution"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
     fg = _fg(client, token)
+    client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "Component"}, headers=token)
+    for v in ("Production", "Distribution"):
+        client.post(
+            "/api/v1/model/tag-groups/values", json={"database": fg, "group": "Component", "value": v}, headers=token
+        )
     double = _create(client, token, fg, "Wears two hats")
     clean = _create(client, token, fg, "Behaves")
     for v in ("Production", "Distribution"):
         assert client.post(
             "/api/v1/model/tags/bulk",
-            json={"keys": [{"database": fg, "code": double}], "dimension": "Phase", "value": v},
+            json={"keys": [{"database": fg, "code": double}], "dimension": "Component", "value": v},
             headers=token,
         ).status_code == 200
     client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": fg, "code": clean}], "group": "Phase", "value": "Production"},
+        json={"keys": [{"database": fg, "code": clean}], "group": "Component", "value": "Production"},
         headers=token,
     )
 
     body = client.post(
-        "/api/v1/model/tag-groups/partition", json={"database": fg, "group": "Phase"}, headers=token
+        "/api/v1/model/tag-groups/partition", json={"database": fg, "group": "Component"}, headers=token
     ).json()
     assert len(body["conflicts"]) == 1
     conflict = body["conflicts"][0]
@@ -438,8 +462,10 @@ def test_partition_refuses_a_tag_group_that_does_not_exist(client, token, projec
 def test_a_tag_written_under_an_alias_joins_the_canonical_group(client, token, project):
     """`find_or_create` resolved the alias to the existing group, and the very next
     call looked the alias up by exact name and answered group_not_found."""
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Life-cycle phase"}, headers=token).status_code == 200
     fg = _fg(client, token)
+    assert client.post(
+        "/api/v1/model/tag-groups", json={"database": fg, "name": "Life-cycle phase"}, headers=token
+    ).status_code == 200
     a = _create(client, token, fg, "A")
     r = client.post(
         "/api/v1/model/tags/set",
@@ -450,7 +476,7 @@ def test_a_tag_written_under_an_alias_joins_the_canonical_group(client, token, p
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
         {"dimension": "Life-cycle phase", "value": "Use"}
     ]
-    groups = client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]
+    groups = client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]
     assert [g["name"] for g in groups if "phase" in g["name"].casefold()] == ["Life-cycle phase"]
 
 
@@ -474,57 +500,57 @@ def test_deleting_and_undoing_an_activity_keeps_its_classification(client, token
 def test_merging_a_tag_value_retags_and_is_undoable(client, token, project):
     """Four spellings of one phase accumulate across runs ("Use", "Use Phase", "Usage Phase");
     deleting one untags its processes, merging keeps them (V385)."""
-    assert client.post("/api/v1/model/tag-groups", json={"name": "PhaseV"}, headers=token).status_code == 200
-    for v in ("Use", "Usage Phase"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "PhaseV", "value": v}, headers=token)
     fg = _fg(client, token)
+    assert client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "PhaseV"}, headers=token).status_code == 200
+    for v in ("Use", "Usage Phase"):
+        client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseV", "value": v}, headers=token)
     a = _create(client, token, fg, "A")
     b = _create(client, token, fg, "B")
     client.post("/api/v1/model/tags/set", json={"keys": [{"database": fg, "code": a}], "group": "PhaseV", "value": "Usage Phase"}, headers=token)
     client.post("/api/v1/model/tags/set", json={"keys": [{"database": fg, "code": b}], "group": "PhaseV", "value": "Use"}, headers=token)
 
-    r = client.post("/api/v1/model/tag-groups/values/merge", json={"group": "PhaseV", "value": "Usage Phase", "into": "Use"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={"database": fg, "group": "PhaseV", "value": "Usage Phase", "into": "Use"}, headers=token)
     assert r.status_code == 200, r.text
     assert r.json()["retagged"] == 1
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Use"}]
-    phase = next(g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"] if g["name"] == "PhaseV")
+    phase = next(g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"] if g["name"] == "PhaseV")
     assert phase["values"] == ["Use"]
     # unknown target is refused by name
-    bad = client.post("/api/v1/model/tag-groups/values/merge", json={"group": "PhaseV", "value": "Use", "into": "Nope"}, headers=token)
+    bad = client.post("/api/v1/model/tag-groups/values/merge", json={"database": fg, "group": "PhaseV", "value": "Use", "into": "Nope"}, headers=token)
     assert bad.status_code == 404 and bad.json()["error"]["code"] == "value_not_found"
 
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Usage Phase"}]
-    phase = next(g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"] if g["name"] == "PhaseV")
+    phase = next(g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"] if g["name"] == "PhaseV")
     assert phase["values"] == ["Use", "Usage Phase"]
 
 
 def test_merging_a_tag_group_moves_values_and_tags_and_is_undoable(client, token, project):
     """Parallel vocabularies ("PhaseG" beside "LCP-G") merge into one; a process already
     tagged in the target keeps the target's value only after undo."""
-    for name in ("PhaseG", "LCP-G"):
-        assert client.post("/api/v1/model/tag-groups", json={"name": name}, headers=token).status_code == 200
-    client.post("/api/v1/model/tag-groups/values", json={"group": "PhaseG", "value": "Production"}, headers=token)
-    client.post("/api/v1/model/tag-groups/values", json={"group": "PhaseG", "value": "Use"}, headers=token)
-    client.post("/api/v1/model/tag-groups/values", json={"group": "LCP-G", "value": "Use"}, headers=token)
     fg = _fg(client, token)
+    for name in ("PhaseG", "LCP-G"):
+        assert client.post("/api/v1/model/tag-groups", json={"database": fg, "name": name}, headers=token).status_code == 200
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseG", "value": "Production"}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseG", "value": "Use"}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "LCP-G", "value": "Use"}, headers=token)
     a = _create(client, token, fg, "A")
     b = _create(client, token, fg, "B")
     client.post("/api/v1/model/tags/set", json={"keys": [{"database": fg, "code": a}], "group": "PhaseG", "value": "Production"}, headers=token)
     client.post("/api/v1/model/tags/set", json={"keys": [{"database": fg, "code": b}], "group": "PhaseG", "value": "Use"}, headers=token)
     client.post("/api/v1/model/tags/set", json={"keys": [{"database": fg, "code": b}], "group": "LCP-G", "value": "Use"}, headers=token)
 
-    r = client.post("/api/v1/model/tag-groups/merge", json={"name": "PhaseG", "into": "LCP-G"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/merge", json={"database": fg, "name": "PhaseG", "into": "LCP-G"}, headers=token)
     assert r.status_code == 200, r.text
     assert r.json()["retagged"] == 2 and r.json()["values_added"] == ["Production"]
-    groups = {g["name"]: g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]}
+    groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert "PhaseG" not in groups
     assert groups["LCP-G"]["values"] == ["Use", "Production"]
     assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "LCP-G", "value": "Production"}]
     assert client.get(f"/api/v1/model/tags/{fg}/{b}", headers=token).json() == [{"dimension": "LCP-G", "value": "Use"}]
 
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    groups = {g["name"]: g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]}
+    groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["PhaseG"]["values"] == ["Production", "Use"]
     assert groups["LCP-G"]["values"] == ["Use"]
     tags_a = client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json()
@@ -538,12 +564,12 @@ def test_merge_undo_restores_multi_value_tags_exactly_and_redo_rebuilds_its_book
     an undo that replays set_tag lost one of them and the target's own value. Undo now restores each
     affected tag list as a snapshot. And redo runs the same command instance: bookkeeping is rebuilt
     per execution, so a value the user added between undo and redo is not deleted by the next undo."""
-    for name in ("PhaseM", "LCP-M"):
-        assert client.post("/api/v1/model/tag-groups", json={"name": name}, headers=token).status_code == 200
-    for v in ("a", "b"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "PhaseM", "value": v}, headers=token)
-    client.post("/api/v1/model/tag-groups/values", json={"group": "LCP-M", "value": "x"}, headers=token)
     fg = _fg(client, token)
+    for name in ("PhaseM", "LCP-M"):
+        assert client.post("/api/v1/model/tag-groups", json={"database": fg, "name": name}, headers=token).status_code == 200
+    for v in ("a", "b"):
+        client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseM", "value": v}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "LCP-M", "value": "x"}, headers=token)
     p = _create(client, token, fg, "P")
     # two values of one dimension via the plain route, plus the target's own value
     for group, value in (("PhaseM", "a"), ("PhaseM", "b"), ("LCP-M", "x")):
@@ -551,26 +577,26 @@ def test_merge_undo_restores_multi_value_tags_exactly_and_redo_rebuilds_its_book
     before = client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()
     assert len(before) == 3
 
-    r = client.post("/api/v1/model/tag-groups/merge", json={"name": "PhaseM", "into": "LCP-M"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/merge", json={"database": fg, "name": "PhaseM", "into": "LCP-M"}, headers=token)
     assert r.status_code == 200, r.text
     merged = client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()
     assert {(t["dimension"], t["value"]) for t in merged} == {("LCP-M", "x"), ("LCP-M", "a"), ("LCP-M", "b")}
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
     assert client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json() == before
-    groups = {g["name"]: g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]}
+    groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["LCP-M"]["values"] == ["x"]
 
     # between undo and redo the user adds "a" to the target by hand — redo must not claim it
-    client.post("/api/v1/model/tag-groups/values", json={"group": "LCP-M", "value": "a"}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "LCP-M", "value": "a"}, headers=token)
     assert client.post("/api/v1/model/redo", headers=token).status_code == 200
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    groups = {g["name"]: g for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]}
+    groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["LCP-M"]["values"] == ["x", "a"]
     assert client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json() == before
 
     # the value merge keeps sibling values too
-    client.post("/api/v1/model/tag-groups/values", json={"group": "PhaseM", "value": "c"}, headers=token)
-    r = client.post("/api/v1/model/tag-groups/values/merge", json={"group": "PhaseM", "value": "a", "into": "c"}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseM", "value": "c"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={"database": fg, "group": "PhaseM", "value": "a", "into": "c"}, headers=token)
     assert r.status_code == 200, r.text
     assert {(t["dimension"], t["value"]) for t in client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()} == {("PhaseM", "c"), ("PhaseM", "b"), ("LCP-M", "x")}
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
@@ -604,14 +630,16 @@ def test_tagging_an_unknown_code_is_refused(client, token, project):
 
 def test_adding_a_value_that_exists_leaves_no_audit_line(client, token, project):
     """The assistant's assign adds its value before every assignment; that no-op must not read as an event."""
-    client.post("/api/v1/model/tag-groups", json={"name": "Stage"}, headers=_hdr(token))
+    fg = _fg(client, token)
+    client.post("/api/v1/model/tag-groups", json={"database": fg, "name": "Component"}, headers=_hdr(token))
 
     def added() -> int:
         entries = client.get("/api/v1/model/audit", headers=_hdr(token)).json()
         return sum(e["action"] == "add_tag_value" and "'Use'" in e["summary"] for e in entries)
 
     for _ in range(3):
-        r = client.post("/api/v1/model/tag-groups/values", json={"group": "Stage", "value": "Use"}, headers=_hdr(token))
+        r = client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "Component", "value": "Use"},
+                        headers=_hdr(token))
         assert r.status_code == 200 and r.json()["values"] == ["Use"]
     assert added() == 1
 
@@ -628,13 +656,13 @@ def _seed_with_root_emission(bd, emission: float) -> None:
 def _tag_groups(client, token) -> tuple[dict, dict]:
     for code, val in (("A", "Production"), ("B", "Distribution")):
         client.post("/api/v1/model/tags/set",
-                    json={"keys": [{"database": "fg", "code": code}], "group": "Phase", "value": val}, headers=token)
+                    json={"keys": [{"database": "fg", "code": code}], "group": "Component", "value": val}, headers=token)
     det = client.post("/api/v1/calc/contribution",
-                      json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Phase"},
+                      json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Component"},
                       headers=token).json()["aggregation"]["groups"]
     st = client.post("/api/v1/calc/compare-stacked",
                      json={"subjects": [{"database": "fg", "code": "R"}], "methods": [METHOD],
-                           "dimensions": ["tag:Phase"]}, headers=token).json()
+                           "dimensions": ["tag:Component"]}, headers=token).json()
     return {g["key"]: g["impact"] for g in det}, st
 
 
@@ -645,12 +673,12 @@ def test_a_group_below_one_part_in_a_million_is_not_drawn(client, token, project
     _seed_with_root_emission(get_bd(), 2e-7)  # 1e-7 of the 2 kg score
     det, st = _tag_groups(client, token)
     assert "(untagged)" not in det
-    assert "(untagged)" not in st["keys"]["tag:Phase"]
+    assert "(untagged)" not in st["keys"]["tag:Component"]
 
     _seed_with_root_emission(get_bd(), 2e-5)  # 1e-5 of the score: a real, if small, group
     det, st = _tag_groups(client, token)
     assert abs(det["(untagged)"] - 2e-5) < 1e-9
-    assert "(untagged)" in st["keys"]["tag:Phase"]
+    assert "(untagged)" in st["keys"]["tag:Component"]
 
 
 # ---- a model's tags and a neighbour whose name extends it with a slash ------------------------

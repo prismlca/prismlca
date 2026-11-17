@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-17",
+    "title": "Tag groups belong to their model",
+    "details": "Each model now keeps its own tag groups and tags, so one model's vocabulary no longer appears in another's menus or audit log. The Tags window marks tags no process carries and can take over the groups of another model. To break two models down side by side in Results, use the same group name and the same tag spelling in both. Existing models keep the groups and tags they use."
+  },
+  {
+    "date": "2026-11-17",
     "title": "Research has its own lookup limit, and shows its cost",
     "details": "A research request now runs at most eight web lookups (Settings → AI → Limits, “Web lookups per research request”). Before, it ran up to the provider's thirty, and every lookup makes the research model read everything gathered so far again. While a run is going, the run bar shows what its research has cost; the summary of a finished run names that share beside the total."
   },

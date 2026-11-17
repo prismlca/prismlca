@@ -1,5 +1,5 @@
 /**
- * Everything tags on the Workbench: the shared tag-group catalogue, the per-node tag menu (with its
+ * Everything tags on the Workbench: the open model's tag groups, the per-node tag menu (with its
  * undo-aware re-read), group/value management, group-by-tag boxing, the tag highlight, and the
  * inspector's tag list for the selected node. Extracted from Workbench.tsx (wave 4.1, stage 5).
  *
@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { fetchQuery, invalidate, useQuery } from '../lib/server/useQuery'
-import type { TagGroup } from '../lib/server/routes'
+import { tagGroupsRoute, type TagGroup } from '../lib/server/routes'
 import { splitId } from '../lib/canvas'
 import { groupsFromTags } from '../lib/groups'
 import { boxTags, isBox, shownTags, type BoxData } from '../lib/occurrences'
@@ -68,9 +68,9 @@ export function useTagging(deps: TaggingDeps) {
     reloadGraph
   } = canvas
 
-  // Shared cache: the same key every view reads. The Workbench's own edits invalidate it (see
+  // The open model's own groups. The Workbench's edits invalidate every tag-group read (see
   // reloadTagGroups), which is what keeps the Results/Report/DetailedResults pickers fresh too.
-  const tagGroups = useQuery('/api/v1/model/tag-groups').data?.groups ?? NO_GROUPS
+  const tagGroups = useQuery(activeDb ? tagGroupsRoute(activeDb) : null).data?.groups ?? NO_GROUPS
   const [tagMenu, setTagMenu] = useState<{
     id: string
     x: number
@@ -96,8 +96,9 @@ export function useTagging(deps: TaggingDeps) {
     // Invalidate-then-fetch: awaiting callers (create group, add value) get the fresh list before
     // they continue, and every other subscribed view refetches off the same invalidation.
     invalidate('/api/v1/model/tag-groups')
-    await fetchQuery('/api/v1/model/tag-groups')
-  }, [])
+    const db = activeDbRef.current
+    if (db) await fetchQuery(tagGroupsRoute(db))
+  }, [activeDbRef])
 
   const fetchNodeTags = async (id: string): Promise<Record<string, string>> => {
     // A box of an outside dataset carries the tags its inputs share (or a copy's pending ones) on the canvas.
@@ -201,20 +202,30 @@ export function useTagging(deps: TaggingDeps) {
 
   const createTagGroup = (name: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups', { name })
+      await api('POST', '/api/v1/model/tag-groups', { database: activeDb, name })
       await reloadTagGroups()
+      await reloadAudit()
     })
   const addTagValue = (group: string, value: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups/values', { group, value })
+      await api('POST', '/api/v1/model/tag-groups/values', { database: activeDb, group, value })
       await reloadTagGroups()
+      await reloadAudit()
+    })
+  // Another model's groups, copied into this one (components/TagAdoptRow.tsx). Vocabulary only: no
+  // process is tagged by it, so the canvas stays as it is.
+  const adoptTagGroups = (source: string): void =>
+    void run(async () => {
+      await api('POST', '/api/v1/model/tag-groups/adopt', { database: activeDb, source_model: source })
+      await reloadTagGroups()
+      await reloadAudit()
     })
 
   // Tag-group management (toolbar "Tag" button). Deleting a group/value cascades on the backend
-  // (untags every process), so the canvas + audit must reload afterwards.
+  // (untags every process of the model), so the canvas + audit must reload afterwards.
   const deleteTagGroup = (name: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups/delete', { name })
+      await api('POST', '/api/v1/model/tag-groups/delete', { database: activeDb, name })
       await reloadTagGroups()
       if (activeDb) await reloadGraph(activeDb)
       await reloadAudit()
@@ -276,23 +287,23 @@ export function useTagging(deps: TaggingDeps) {
 
   const removeTagValue = (group: string, value: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups/values/remove', { group, value })
+      await api('POST', '/api/v1/model/tag-groups/values/remove', { database: activeDb, group, value })
       await reloadTagGroups()
       if (activeDb) await reloadGraph(activeDb)
       await reloadAudit()
     })
   // Merging retags instead of untagging (V385): the processes keep a phase, the vocabulary loses a
-  // spelling. Both cascade over every model, so canvas + audit reload like after a removal.
+  // spelling. Both retag processes of the model, so canvas + audit reload like after a removal.
   const mergeTagValue = (group: string, value: string, into: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups/values/merge', { group, value, into })
+      await api('POST', '/api/v1/model/tag-groups/values/merge', { database: activeDb, group, value, into })
       await reloadTagGroups()
       if (activeDb) await reloadGraph(activeDb)
       await reloadAudit()
     })
   const mergeTagGroup = (name: string, into: string): void =>
     void run(async () => {
-      await api('POST', '/api/v1/model/tag-groups/merge', { name, into })
+      await api('POST', '/api/v1/model/tag-groups/merge', { database: activeDb, name, into })
       await reloadTagGroups()
       if (activeDb) await reloadGraph(activeDb)
       await reloadAudit()
@@ -332,6 +343,7 @@ export function useTagging(deps: TaggingDeps) {
     setNodeTag,
     createTagGroup,
     addTagValue,
+    adoptTagGroups,
     deleteTagGroup,
     removeTagValue,
     mergeTagValue,

@@ -59,7 +59,7 @@ function backend(db: string, scenarios: { id: string; name: string }[]) {
     [`GET /api/v1/model/activities/${db}`]: [{ code: 'root', name: 'Bathroom cleaner, use' }],
     [`GET /api/v1/model/reference/${db}`]: { candidates: [{ code: 'root' }] },
     'GET /api/v1/scenarios': () => state.scenarios,
-    'GET /api/v1/model/tag-groups': { groups: [] },
+    'GET /api/v1/model/tag-groups/in-use': { groups: [] },
     'POST /api/v1/calc/compare': (body: unknown) => {
       const b = body as { subjects: { code: string; label: string }[]; methods: string[][] }
       return {

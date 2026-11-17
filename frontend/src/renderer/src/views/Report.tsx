@@ -2,14 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { useQuery } from '../lib/server/useQuery'
 import { fetchQuery } from '../lib/server/useQuery'
-import { activitiesRoute, scenariosRoute, studyRoute, type TagGroup } from '../lib/server/routes'
+import {
+  activitiesRoute,
+  scenariosRoute,
+  studyRoute,
+  tagFamiliesRoute,
+  type TagFamily
+} from '../lib/server/routes'
 
 // Stable fallback: `?? []` would be a fresh array each render and rattle every dependent memo.
-const NO_GROUPS: TagGroup[] = []
+const NO_FAMILIES: TagFamily[] = []
 import { readLs, usePersisted } from '../lib/persist'
 import { viewFetch, viewSync } from '../lib/modelView'
 import { initialReportLang, reportPrefill, type ResultsViewState } from '../lib/report/prefill'
-import { resolveSplit } from './results/splitBy'
+import { familiesOffered, resolveSplit } from './results/splitBy'
 import ReportSections from './ReportSections'
 import ShortReportRail from './report/ShortReportRail'
 import { useShortSettings } from './report/useShortSettings'
@@ -108,7 +114,7 @@ export default function Report({
   const [scenarios, setScenarios] = useState<{ id: string; name: string }[]>([])
   /** Tag families with the databases they are actually used in — see `dims` / ReportSections. */
   // Shared cache; `loadScope` no longer refetches this — an edit elsewhere invalidates the key.
-  const dimGroups = useQuery('/api/v1/model/tag-groups').data?.groups ?? NO_GROUPS
+  const dimGroups = useQuery(activeDb ? tagFamiliesRoute(activeDb) : null).data?.groups ?? NO_FAMILIES
   const [code, setCode] = usePersisted<string>('prism.report.code', '')
   const [picked, setPicked] = usePersisted<string[]>('prism.report.methods', [])
   /** The short report's settings: its look app-wide, its title and its variants with the open model. */
@@ -306,19 +312,12 @@ export default function Report({
 
   /**
    * Families worth breaking a contribution down by, for the short report: those in use in the open model.
-   * A family is project config from the moment it is created, so this list used to hold every one
-   * of them — and a breakdown by a family nobody tagged puts the whole tree in one "untagged" row. The one
-   * already chosen stays listed, or the select would show blank and look as if the setting had been lost.
+   * A family exists from the moment it is created, so this list used to hold every one
+   * of them — and a breakdown by a family nobody tagged puts the whole tree in one "untagged" row. The ones
+   * already chosen stay listed, or their checkboxes would be gone and the choice could not be taken back.
    */
   const dims = useMemo(
-    () =>
-      dimGroups
-        .filter(
-          (g) =>
-            shortSettings.breakdowns.includes(`tag:${g.name}`) ||
-            (g.databases ?? []).some((d) => d === activeDb)
-        )
-        .map((g) => g.name),
+    () => familiesOffered(dimGroups, new Set(activeDb ? [activeDb] : []), shortSettings.breakdowns),
     [dimGroups, activeDb, shortSettings.breakdowns]
   )
 
@@ -566,9 +565,9 @@ export default function Report({
       } catch {
         /* the list the Scope card last loaded */
       }
-      let tagGroups: TagGroup[] = []
+      let tagGroups: TagFamily[] = []
       try {
-        tagGroups = (await fetchQuery('/api/v1/model/tag-groups')).groups ?? []
+        tagGroups = (await fetchQuery(tagFamiliesRoute(activeDb))).groups ?? []
       } catch {
         /* no families known: the split resolves to ISIC, which the report does not carry over */
       }

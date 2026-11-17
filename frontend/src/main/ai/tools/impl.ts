@@ -9,6 +9,11 @@ import { ruleFor } from './paramRule'
 import { NEEDS_A_LOOK, NEEDS_A_LOOK_FLOOR, NEEDS_A_LOOK_TOP_N } from './advice/hotspots'
 import { unopenedHotspots } from './advice/opened'
 
+/** The model whose tag groups a group action changes: the one the call names, else the session's. */
+const tagModel = (a: { database?: unknown }, ctx: ToolCtx): string | null =>
+  (typeof a.database === 'string' && a.database.trim()) || ctx.activeDb
+const NO_TAG_MODEL = S({ error: 'No model is open. Tag groups belong to a model — open one first.' })
+
 /**
  * Single-purpose implementations behind the consolidated tools. They are NOT registered as tools:
  * the model sees the consolidated surface only (see the note on TOOLS below), and each capability
@@ -327,33 +332,53 @@ export const IMPL: Record<string, Tool['run']> = {
   remove_exchange: async (a, ctx) =>
     S(await ctx.api('POST', '/api/v1/model/exchanges/remove', { ...a, ...AI })),
   create_tag_group: async (a, ctx) => {
+    const database = tagModel(a, ctx)
+    if (!database) return NO_TAG_MODEL
     try {
-      return S(await ctx.api('POST', '/api/v1/model/tag-groups', { name: a.name, ...AI }))
+      return S(await ctx.api('POST', '/api/v1/model/tag-groups', { database, name: a.name, ...AI }))
     } catch (e) {
-      // Creating a group that is already there IS what the caller wanted — the group exists. Tag
-      // groups are project-wide, so a dimension made in another model of the same project lands
-      // here, and the refusal cost a failed call and a retry every time (V305, LH-Lasur run). Only
-      // the exact name is a no-op: a near-duplicate under another spelling comes back as
-      // `group_dimension_exists` and stays a refusal, because that one is a decision.
+      // Creating a group that is already there IS what the caller wanted — the group exists, made
+      // earlier in the same run or by the user, and the refusal cost a failed call and a retry every
+      // time (V305). Only the exact name is a no-op: a near-duplicate under another spelling comes back
+      // as `group_dimension_exists` and stays a refusal, because that one is a decision.
       if ((e as { code?: string })?.code === 'group_exists')
         return S({ ok: true, created: false, name: a.name })
       throw e
     }
   },
-  add_tag_value: async (a, ctx) =>
-    S(await ctx.api('POST', '/api/v1/model/tag-groups/values', { ...a, ...AI })),
+  add_tag_value: async (a, ctx) => {
+    const database = tagModel(a, ctx)
+    if (!database) return NO_TAG_MODEL
+    return S(
+      await ctx.api('POST', '/api/v1/model/tag-groups/values', {
+        database,
+        group: a.group,
+        value: a.value,
+        ...AI
+      })
+    )
+  },
   set_tag: async (a, ctx) => S(await ctx.api('POST', '/api/v1/model/tags/set', { ...a, ...AI })),
-  merge_tag_value: async (a, ctx) =>
-    S(
+  merge_tag_value: async (a, ctx) => {
+    const database = tagModel(a, ctx)
+    if (!database) return NO_TAG_MODEL
+    return S(
       await ctx.api('POST', '/api/v1/model/tag-groups/values/merge', {
+        database,
         group: a.group,
         value: a.value,
         into: a.into,
         ...AI
       })
-    ),
-  merge_tag_group: async (a, ctx) =>
-    S(await ctx.api('POST', '/api/v1/model/tag-groups/merge', { name: a.name, into: a.into, ...AI })),
+    )
+  },
+  merge_tag_group: async (a, ctx) => {
+    const database = tagModel(a, ctx)
+    if (!database) return NO_TAG_MODEL
+    return S(
+      await ctx.api('POST', '/api/v1/model/tag-groups/merge', { database, name: a.name, into: a.into, ...AI })
+    )
+  },
   set_parameter: async (a, ctx) => {
     if (!ctx.activeDb)
       return S({ error: 'No model is open. Parameters are model-scoped — open a model first.' })

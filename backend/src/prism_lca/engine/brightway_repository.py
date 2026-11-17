@@ -309,6 +309,12 @@ class BrightwayRepository(LcaRepository):
                         tags.set_tag(name, TagStore.exchange_code(new.key[1], ne["prism_uid"]),
                                      tag["dimension"], tag["value"])
 
+        # The tag groups are the model's own: the copy starts with its original's colours, value orders
+        # and prepared values, not with a list rebuilt from what happens to be tagged.
+        from prism_lca.engine.tag_groups import TagGroupStore
+
+        TagGroupStore().copy(source, name)
+
         # The study metadata (goal & scope, FU, boundaries …) belongs to the model — copy it too.
         study = StudyMetaStore()
         snapshot = dict(study.get(source))

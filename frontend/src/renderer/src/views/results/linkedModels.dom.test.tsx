@@ -46,7 +46,7 @@ const routes = (db: string, view: Record<string, unknown> = {}): Routes => ({
   // The study names the linked model, and one that no longer exists (the link outlived it).
   'GET /api/v1/study': { compared_with: [LINKED, 'fg-deleted-model'] },
   'GET /api/v1/scenarios': [],
-  'GET /api/v1/model/tag-groups': { groups: [] }
+  'GET /api/v1/model/tag-groups/in-use': { groups: [] }
 })
 
 const rail = () => within(document.querySelector<HTMLElement>('.results-rail')!)

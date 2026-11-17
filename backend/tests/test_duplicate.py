@@ -79,7 +79,7 @@ def test_duplicate_model_copies_fields_tags_and_study(client, token, project):
     )
     client.post(
         "/api/v1/model/tags",
-        json={"database": db, "code": a, "dimension": "Phase", "value": "Production"},
+        json={"database": db, "code": a, "dimension": "Component", "value": "Production"},
         headers=token,
     )
     client.post("/api/v1/study", json={"database": db, "goal": "test goal"}, headers=token)
@@ -96,7 +96,7 @@ def test_duplicate_model_copies_fields_tags_and_study(client, token, project):
     copy = get_bd().get_node(database=new, code=new_a)
     assert (copy.get("prism_doc") or {}).get("data_source") == "plant survey 2025"
     tags = client.get(f"/api/v1/model/tags/{new}/{new_a}", headers=token).json()
-    assert {"dimension": "Phase", "value": "Production"} in tags
+    assert {"dimension": "Component", "value": "Production"} in tags
     study = client.get(f"/api/v1/study?database={new}", headers=token).json()
     assert study.get("goal") == "test goal"
 

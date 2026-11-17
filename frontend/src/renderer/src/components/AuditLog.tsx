@@ -128,8 +128,8 @@ export default function AuditLog({ entries }: { entries: AuditEntry[] }): JSX.El
           <p className="audit-note">
             This model’s changes. Undo takes back only these, newest first, back to the start of this session
             — past other models’ newer edits of amounts, parameters, fields, scenarios and goal & scope. A
-            newer structural change in another model (a process added or deleted, the library, tags) holds
-            Undo here: undoing that one frees it, but takes it back; editing the value directly does not.
+            newer structural change in another model (a process added or deleted, the library) holds Undo
+            here: undoing that one frees it, but takes it back; editing the value directly does not.
           </p>
         </>
       )}

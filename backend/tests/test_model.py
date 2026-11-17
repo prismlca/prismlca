@@ -222,13 +222,13 @@ def test_tags_add_list_remove_undo(client, token, project):
 
     r = client.post(
         "/api/v1/model/tags",
-        json={"database": db, "code": code, "dimension": "stage", "value": "raw materials"},
+        json={"database": db, "code": code, "dimension": "material", "value": "raw materials"},
         headers=token,
     )
     assert r.status_code == 200 and r.json()["tagged"] == 1
 
     tags = client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json()
-    assert {"dimension": "stage", "value": "raw materials"} in tags
+    assert {"dimension": "material", "value": "raw materials"} in tags
 
     client.post("/api/v1/model/undo", headers=token)
     assert client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json() == []

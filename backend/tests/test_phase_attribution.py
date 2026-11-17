@@ -15,6 +15,9 @@ METHOD = ["t", "gwp"]
 METHOD_2 = ["t", "double"]
 #: Exchange uids as the app writes them (32 hex digits) — only those are read as an input's tag key.
 U = {n: f"{i:032x}" for i, n in enumerate(["u-steel", "u-elec", "u-m", "u-w", "u-x"], start=1)}
+#: The dimension the tests break down by. Not "Phase": that is a spelling of the life-cycle phase, and a
+#: model without one creates it under its fixed name, so the breakdown would ask for a name nobody carries.
+DIM = "Module"
 
 
 def _bio(bd) -> None:
@@ -44,7 +47,7 @@ def _background(bd, data: dict) -> None:
     bd.databases.flush()
 
 
-def _tag(client, token, code, value, group="Phase", db="fg"):
+def _tag(client, token, code, value, group=DIM, db="fg"):
     r = client.post(
         "/api/v1/model/tags/set",
         json={"keys": [{"database": db, "code": code}], "group": group, "value": value},
@@ -53,7 +56,7 @@ def _tag(client, token, code, value, group="Phase", db="fg"):
     assert r.status_code == 200, r.text
 
 
-def _tag_input(consumer, uid, value, group="Phase", db="fg"):
+def _tag_input(consumer, uid, value, group=DIM, db="fg"):
     """An input's tag, written straight into the store under the exchange key the API will use."""
     from prism_lca.engine.tags import TagStore
 
@@ -61,7 +64,7 @@ def _tag_input(consumer, uid, value, group="Phase", db="fg"):
 
 
 def _groups(client, token, *, code="R", cutoff=None, max_depth=None) -> dict[str, float]:
-    body = {"database": "fg", "code": code, "method": METHOD, "aggregate_by": "tag:Phase"}
+    body = {"database": "fg", "code": code, "method": METHOD, "aggregate_by": f"tag:{DIM}"}
     if cutoff is not None:
         body["cutoff"] = cutoff
     if max_depth is not None:
@@ -72,14 +75,14 @@ def _groups(client, token, *, code="R", cutoff=None, max_depth=None) -> dict[str
 
 
 def _stacked(client, token, *, code="R", methods=(METHOD,), cutoff=None) -> dict[str, dict[str, float]]:
-    body = {"subjects": [{"database": "fg", "code": code}], "methods": list(methods), "dimensions": ["tag:Phase"]}
+    body = {"subjects": [{"database": "fg", "code": code}], "methods": list(methods), "dimensions": [f"tag:{DIM}"]}
     if cutoff is not None:
         body["cutoff"] = cutoff
     r = client.post("/api/v1/calc/compare-stacked", json=body, headers=token)
     assert r.status_code == 200, r.text
     out = {}
     for m in methods:
-        dims = r.json()["subjects"][0]["methods"][" · ".join(m)]["dims"]["tag:Phase"]
+        dims = r.json()["subjects"][0]["methods"][" · ".join(m)]["dims"][f"tag:{DIM}"]
         out[" · ".join(m)] = {g["key"]: g["impact"] for g in dims}
     return out
 
@@ -192,7 +195,7 @@ def test_a_tag_on_a_background_dataset_itself_counts_for_nothing(client, token, 
         }
     )
     _tag(client, token, "M", "Production")
-    TagStore().set_tag("bg", "elec", "Phase", "Use")
+    TagStore().set_tag("bg", "elec", DIM, "Use")
     _close(_groups(client, token), {"Production": 1.0})
 
 
@@ -253,7 +256,7 @@ def test_the_flows_of_one_phase_add_up_to_that_phase(client, token, project):
     r = client.post(
         "/api/v1/calc/elementary-flows",
         json={"database": "fg", "code": "R", "method": METHOD,
-              "phase": {"dimension": "Phase", "value": "Raw materials"}},
+              "phase": {"dimension": DIM, "value": "Raw materials"}},
         headers=token,
     )
     assert r.status_code == 200, r.text
@@ -262,7 +265,7 @@ def test_the_flows_of_one_phase_add_up_to_that_phase(client, token, project):
     everything = client.post(
         "/api/v1/calc/elementary-flows",
         json={"database": "fg", "code": "R", "method": METHOD, "top_n": 0,
-              "phase": {"dimension": "Phase", "value": "Raw materials"}},
+              "phase": {"dimension": DIM, "value": "Raw materials"}},
         headers=token,
     ).json()
     assert sum(f["impact"] for f in everything["flows"]) == pytest.approx(3.0)
@@ -292,21 +295,21 @@ def test_a_phase_nothing_carries_is_refused_not_answered_with_zero(client, token
             headers=token,
         )
 
-    r = flows("Phase", "Raw material")
+    r = flows(DIM, "Raw material")
     assert r.status_code == 400, r.text
     error = r.json()["error"]
     assert error["code"] == "phase_value_not_found"
-    assert "Phase = 'Raw material'" in error["message"]
+    assert f"{DIM} = 'Raw material'" in error["message"]
     assert "Production, Raw materials" in error["hint"]
 
     r = flows("Life-cycle stage", "Production")
     assert r.status_code == 400, r.text
     assert "'Life-cycle stage'" in r.json()["error"]["message"]
-    assert "dimensions tagged here are: Phase" in r.json()["error"]["hint"]
+    assert f"dimensions tagged here are: {DIM}" in r.json()["error"]["hint"]
 
     # What is there still answers, and so does an untagged remainder.
-    assert flows("Phase", "Production").json()["total"] == pytest.approx(1.0)
-    assert flows("Phase", "(untagged)").status_code == 200
+    assert flows(DIM, "Production").json()["total"] == pytest.approx(1.0)
+    assert flows(DIM, "(untagged)").status_code == 200
 
 
 def test_production_amounts_other_than_one_scale_runs_not_products(client, token, project):
@@ -380,7 +383,7 @@ def test_a_process_with_two_products_is_refused_loudly(client, token, project):
     _tag(client, token, "M", "Production")
     r = client.post(
         "/api/v1/calc/contribution",
-        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": "tag:Phase"},
+        json={"database": "fg", "code": "R", "method": METHOD, "aggregate_by": f"tag:{DIM}"},
         headers=token,
     )
     assert r.status_code == 422, r.text
