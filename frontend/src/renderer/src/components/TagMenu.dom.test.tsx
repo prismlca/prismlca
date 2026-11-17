@@ -25,9 +25,9 @@ describe('the tag menu of a box', () => {
     expect(part.options[0].textContent).toBe('— none —')
   })
 
-  it('marks the groups the open model uses', () => {
-    render(<TagMenu {...props} groups={[{ ...GROUPS[0], used: true }, GROUPS[1]]} current={{}} />)
-    expect(screen.getAllByText('used')).toHaveLength(1)
-    expect(screen.getByText('used').closest('.tagmenu-group')).toHaveTextContent('Life-cycle phase')
+  it('lists the model’s groups in the order they arrive', () => {
+    render(<TagMenu {...props} current={{}} />)
+    const names = [...document.querySelectorAll('.tagmenu-group-name')].map((e) => e.textContent)
+    expect(names).toEqual(['Life-cycle phase', 'Part'])
   })
 })

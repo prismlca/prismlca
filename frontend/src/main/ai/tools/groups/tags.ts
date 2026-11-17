@@ -3,38 +3,34 @@
 // the prose description and the handler are edited as a pair, and the description guard in
 // tools.test.ts scans spec text against implementation names.
 
-import type { Tool, ToolCtx } from '../context'
+import type { Tool } from '../context'
 import { obj, str } from '../schema'
 import { AI, S, batchResult, runItem } from '../format'
 import { delegate } from '../impl'
 
 /**
- * The tag groups as `list_tags` returns them: per group whether THIS model uses it (and which of its
- * comparison models do), and how many other models — never their names (V492).
+ * A model's tag groups as `list_tags` returns them: name, colour, the values in the model's order, and
+ * `unused` — the values no process or input of the model carries — where there are any.
  *
- * The endpoint lists every database a group is used in, which the app's split-by pickers need. Handed to a
- * chat, that was the name of every study in the workspace, ~4,000 characters a call — and the names steer:
- * one run took the market of its study from the brands in its neighbours' titles. A chat works on one model;
- * an MCP client gets the same view, because the cost and the steer are the same there, and the models
- * themselves are one `list_models` away when it truly needs them.
+ * A group belongs to one model, so this is the model's own vocabulary and nothing of its neighbours':
+ * what another study called its parts is no suggestion for this one, and the names of other studies do
+ * not reach the chat this way (V492).
  */
-export function tagGroupsForModel(body: unknown, ctx: Pick<ToolCtx, 'activeDb' | 'scope'>): unknown[] {
+export function tagGroupsOf(body: unknown): unknown[] {
   const groups = (body as { groups?: unknown })?.groups
   if (!Array.isArray(groups)) return []
-  const compared = new Set((ctx.scope?.readable ?? []).filter((m) => m !== ctx.activeDb))
   return groups.map((g) => {
-    const { databases, ...group } = (g ?? {}) as { databases?: unknown } & Record<string, unknown>
-    const used = Array.isArray(databases) ? databases.map(String) : []
-    const inCompared = used.filter((d) => compared.has(d))
-    const others = used.filter((d) => d !== ctx.activeDb && !compared.has(d)).length
-    return {
-      ...group,
-      in_this_model: !!ctx.activeDb && used.includes(ctx.activeDb),
-      ...(inCompared.length ? { in_compared_models: inCompared } : {}),
-      ...(others ? { in_other_models: others } : {})
-    }
+    const {
+      used: _used,
+      unused,
+      ...group
+    } = (g ?? {}) as { used?: unknown; unused?: unknown } & Record<string, unknown>
+    return { ...group, ...(Array.isArray(unused) && unused.length ? { unused } : {}) }
   })
 }
+
+const groupsRoute = (database: string): string =>
+  `/api/v1/model/tag-groups?database=${encodeURIComponent(database)}`
 
 export const tagsTools: Tool[] = [
   {
@@ -43,23 +39,28 @@ export const tagsTools: Tool[] = [
       function: {
         name: 'list_tags',
         description:
-          "List tag groups (dimensions) and their allowed values, or one activity's assigned tags. Each group says whether this model uses it, and in how many other models it is used.",
+          "List this model's tag groups (dimensions) with their values, or one activity's assigned tags. Tag groups belong to a model; pass database alone to read another model's groups (a comparison model). \"unused\" names the values no process of the model carries.",
         parameters: obj({
-          database: str("Optional — with code, returns that activity's tags."),
+          database: str(
+            "Optional. Alone: the model whose tag groups to list (default: this model). With code: that activity's tags."
+          ),
           code: str('Optional activity code.')
         })
       }
     },
     run: async (a, ctx) => {
-      const groups = tagGroupsForModel(await ctx.api('GET', '/api/v1/model/tag-groups'), ctx)
       if (a.database && a.code) {
         const tags = await ctx.api(
           'GET',
           `/api/v1/model/tags/${encodeURIComponent(a.database)}/${encodeURIComponent(a.code)}`
         )
-        return S({ groups, activity_tags: tags })
+        // The groups beside it are this model's: the activity may be a background dataset, which has none.
+        const own = ctx.activeDb ? tagGroupsOf(await ctx.api('GET', groupsRoute(ctx.activeDb))) : []
+        return S({ groups: own, activity_tags: tags })
       }
-      return S({ groups })
+      const database = a.database ? String(a.database) : ctx.activeDb
+      if (!database) return S({ error: 'No model is open. Tag groups belong to a model — open one first.' })
+      return S({ groups: tagGroupsOf(await ctx.api('GET', groupsRoute(database))) })
     }
   },
   {
@@ -68,7 +69,7 @@ export const tagsTools: Tool[] = [
       function: {
         name: 'edit_tags',
         description:
-          'Manage tag groups and assign tags. action="create_group" creates a dimension (name); "add_value" adds an allowed value to a group (group, value); "assign" tags processes (keys, group, value — omit value to clear); "merge_value" folds one value of a group into another (group, value, into — every process carrying it is retagged, the old value disappears from the group); "merge_group" folds one dimension into another (name, into — its values and tags move). Merging is how a vocabulary that grew four spellings of one phase ("Use", "Use Phase", "Usage Phase") is cleaned up without untagging anything; there is deliberately no delete — tags are used across models. Tagging a whole model by life-cycle phase is ONE call: pass "assignments", a list of { keys, value } (the values are created if the group allows them), instead of one assign per phase. Tags drive the per-phase result breakdowns. Undoable.',
+          'Manage this model\'s tag groups and assign tags. Tag groups belong to the model; other models keep their own. action="create_group" creates a dimension (name); "add_value" adds an allowed value to a group (group, value); "assign" tags processes (keys, group, value — omit value to clear); "merge_value" folds one value of a group into another (group, value, into — every process carrying it is retagged, the old value disappears from the group); "merge_group" folds one dimension into another (name, into — its values and tags move). Merging is how a vocabulary that grew four spellings of one phase ("Use", "Use Phase", "Usage Phase") is cleaned up without untagging anything; there is deliberately no delete — a value no process carries is removed in the Tags window. Tagging a whole model by life-cycle phase is ONE call: pass "assignments", a list of { keys, value } (the values are created if the group allows them), instead of one assign per phase. Tags drive the per-phase result breakdowns. Assigning and merging are undoable; a created group or value stays.',
         parameters: obj(
           {
             action: str('One of: create_group | add_value | assign | merge_value | merge_group.'),
@@ -78,6 +79,9 @@ export const tagsTools: Tool[] = [
             ),
             value: str('Tag value (action=add_value/assign/merge_value; omit on assign to clear).'),
             into: str('The value (merge_value) or group (merge_group) that absorbs the other.'),
+            database: str(
+              'The model whose tag groups to change (action=create_group/add_value/merge_value/merge_group). Default: this model.'
+            ),
             keys: {
               type: 'array',
               description:
@@ -159,21 +163,16 @@ export const tagsTools: Tool[] = [
           continue
         }
         results.push(
-          await runItem(item, async () => {
-            // Add the value first: a phase list is normally written before the vocabulary exists, and
-            // making the caller interleave add_value with assign is the round-trip we are removing.
-            // A value that already exists makes this a no-op, so the failure is ignored on purpose.
-            if (item.value != null && String(item.value).trim())
-              await ctx
-                .api('POST', '/api/v1/model/tag-groups/values', { group, value: String(item.value), ...AI })
-                .catch(() => undefined)
-            return ctx.api('POST', '/api/v1/model/tags/set', {
+          // The assignment registers its group and its value in the model of each key, so a phase list
+          // can be written before the vocabulary exists and nothing has to be added first.
+          await runItem(item, () =>
+            ctx.api('POST', '/api/v1/model/tags/set', {
               keys: item.keys,
               group,
               value: item.value ?? null,
               ...AI
             })
-          })
+          )
         )
       }
       return batchResult(results)

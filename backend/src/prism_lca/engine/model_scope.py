@@ -12,8 +12,8 @@ the main process says no in words the model can act on, and this module catches 
 process does not see — an argument it does not know, a tool added later.
 
 What counts as "outside" follows the product rules for the chat:
-- a write lands in the fenced model or names no model at all (workspace-wide: tag vocabulary, custom
-  LCIA methods) — anything else is refused, the library included;
+- a write lands in the fenced model or names no model at all (workspace-wide: custom LCIA methods)
+  — anything else is refused, the library included;
 - an input linked into the fenced model comes from the model itself, the library or a read-only
   database (background, biosphere) — never from another model, a comparison model included, because
   the link would make one model depend on the other;

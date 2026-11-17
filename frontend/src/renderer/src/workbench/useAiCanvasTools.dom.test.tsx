@@ -157,7 +157,7 @@ describe('setup_results readback', () => {
         view = { ...view, ...(body as { view: Record<string, unknown> }).view }
         return { ok: true }
       },
-      'GET /api/v1/model/tag-groups': { groups: [] }
+      'GET /api/v1/model/tag-groups/in-use': { groups: [] }
     })
     ;(window as unknown as { prism: unknown }).prism = fixture.prism
   }

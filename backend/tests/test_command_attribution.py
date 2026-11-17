@@ -9,8 +9,8 @@ reason for D1.
 
 So the rule is not "attribute your command" (a wish) but "decide, in one of three ways":
 
-1. ``audit_attr = "<field>"`` — the model is in that instance attribute (32 of 38 classes);
-2. override ``audit_database()`` — the model has to be derived (6 classes);
+1. ``audit_attr = "<field>"`` — the model is in that instance attribute (38 of 42 classes);
+2. override ``audit_database()`` — the model has to be derived (4 classes);
 3. stand on :data:`PROJECT_SCOPE` below — the command genuinely belongs to no single model.
 
 There is no fourth way, and no default that quietly means "none".
@@ -24,18 +24,12 @@ import pathlib
 from prism_lca.engine import commands
 from prism_lca.engine.commands import Command
 
-#: Commands whose changes belong to no single model. Both of these are project-wide *and* have
-#: consequences inside models (they strip tag assignments everywhere), which is why they answer
-#: `audit_databases()` with the list of models they actually reached into. A command that
-#: is project-wide with no model consequence at all would stand here answering nothing.
-PROJECT_SCOPE = {
-    "DeleteTagGroupCommand",
-    "RemoveTagValueCommand",
-    # Merges are project-wide the same way (V385): the vocabulary belongs to the project,
-    # the retagging reaches into models, and `audit_databases()` names the ones it touched.
-    "MergeTagValueCommand",
-    "MergeTagGroupCommand",
-}
+#: Commands whose changes belong to no single model. None today: the tag vocabulary belongs to a
+#: model (engine/tag_groups.py), so the commands that edit it name their model by field like any
+#: other. A project-wide command with consequences inside models would stand here and answer
+#: `audit_databases()` with the models it actually reached into; one with no model consequence at
+#: all would stand here answering nothing.
+PROJECT_SCOPE: set[str] = set()
 
 SOURCE = pathlib.Path(commands.__file__)
 
@@ -115,12 +109,18 @@ def test_every_declared_audit_attr_is_an_attribute_the_class_actually_sets():
     assert checked >= 31, f"only {checked} classes were checked — the scan found nothing"
 
 
-def test_the_project_wide_commands_report_the_models_they_reached_into():
-    """Half of the deal: being project-wide does not mean being silent about the models whose
-    tags were stripped."""
+def test_a_step_that_reaches_into_several_models_names_every_one():
+    """Half of the deal: a step that changes several models must not be silent about any of them. The
+    steps that can are the tag selections, whose keys may lie in two models: they name their one model
+    when the selection has one (`audit_database()`) and all of them when it has several
+    (`audit_databases()`). A project-wide command with consequences in models answers the same way."""
     for name in PROJECT_SCOPE:
         cls = getattr(commands, name)
         assert "audit_databases" in cls.__dict__, f"{name} is project-wide and says nothing at all"
+    spanning = {c.__name__ for c in _concrete() if "audit_databases" in c.__dict__}
+    assert spanning - PROJECT_SCOPE == {"SetTagCommand", "TagActivitiesCommand"}, sorted(spanning)
+    for name in spanning - PROJECT_SCOPE:
+        assert "audit_database" in getattr(commands, name).__dict__, f"{name} names its models but not its model"
 
 
 def test_the_counts_are_what_the_concept_says_they_are():
@@ -128,7 +128,8 @@ def test_the_counts_are_what_the_concept_says_they_are():
     four derive it; both numbers are wrong, and this test is where the real ones live. They move
     when a command is added — `SetParametersCommand` (V228) and `SetReferenceQuantityCommand` (V233)
     took the field count from 29 to 31; `LinkModelsCommand` (comparison models) took it to 33 by field
-    and 38 to 39 overall.
+    and 38 to 39 overall. The commands that edit the tag vocabulary name their model by field, since a
+    model owns its tag groups, and so does `AdoptTagGroupsCommand`.
 
     The one the estimate missed is `ImportBundleCommand`: its model name does not exist until
     `execute()` has run, because `free_model_name()` resolves collisions, so it cannot be a field on
@@ -138,19 +139,12 @@ def test_the_counts_are_what_the_concept_says_they_are():
     derived = [c.__name__ for c in _concrete() if "audit_database" in c.__dict__]
     project_wide = [c.__name__ for c in _concrete() if c.__name__ in PROJECT_SCOPE]
 
-    assert len(by_field) == 33, sorted(by_field)
+    assert len(by_field) == 38, sorted(by_field)
     assert sorted(derived) == [
         "ImportBundleCommand",
         "SetScenarioValueCommand",
         "SetTagCommand",
         "TagActivitiesCommand",
     ], sorted(derived)
-    # The two merge commands (V385) took the project-wide list from 2 to 4 and the total
-    # from 39 to 41.
-    assert sorted(project_wide) == [
-        "DeleteTagGroupCommand",
-        "MergeTagGroupCommand",
-        "MergeTagValueCommand",
-        "RemoveTagValueCommand",
-    ]
-    assert len(by_field) + len(derived) + len(project_wide) == len(_concrete()) == 41
+    assert project_wide == []  # see PROJECT_SCOPE
+    assert len(by_field) + len(derived) + len(project_wide) == len(_concrete()) == 42

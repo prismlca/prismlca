@@ -12,7 +12,7 @@ import re
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -163,7 +163,7 @@ class AuditEntry(BaseModel):
     undoable: bool = (
         True  # False = audit-only note (database lifecycle etc.), not in the undo history
     )
-    #: The model that changed. None for project-wide actions (tag groups, ecoinvent import, backups).
+    #: The model that changed. None for project-wide actions (ecoinvent import, backups).
     database: str | None = None
     #: Where the change came from, for the cross-model actions: copy, localize, duplicate, bundle
     #: import. The entry then reads as a change in `database` and as provenance in `related`.
@@ -198,8 +198,9 @@ class AuditEntry(BaseModel):
     #: it was copied from. Only ever present in a model-scoped answer.
     copied_from: str | None = None
     #: In a model-scoped answer: this line names no model because it changed none — a workspace-wide
-    #: action written after entries began naming their model (a tag group, a tag value). It belongs in
-    #: every model's list, in its place in time, not in the "earlier history" block. True or absent.
+    #: action written after entries began naming their model (a tag group or a tag value while those were
+    #: the workspace's). It belongs in every model's list, in its place in time, not in the "earlier
+    #: history" block. True or absent.
     workspace: bool | None = None
 
 
@@ -267,7 +268,7 @@ class Command(ABC):
 
     def scope_models(self) -> list[str] | None:
         """The models this command will write, known **before** it executes — what the chat's model
-        fence (model_scope.py) checks. None = it writes into no model at all (workspace vocabulary).
+        fence (model_scope.py) checks. None = it writes into no model at all (workspace-wide).
 
         The audit fields cannot answer this: several are only known after the run. By default the
         model in ``audit_attr``; a command without one answers for itself, and the tripwire in
@@ -282,18 +283,6 @@ class Command(ABC):
         """The databases this command links into a model as inputs — the fence allows no other model
         there. Default: none."""
         return []
-
-
-def _split_key(key: str) -> tuple[str, str]:
-    """``(database, code)`` of a tag-store key (``database/code``), split from the right as the store
-    does (tags.py): a code holds no slash, a model name may."""
-    database, _, code = key.rpartition("/")
-    return database, code
-
-
-def _key_models(keys: Iterable[str]) -> list[str]:
-    """The models a set of tag-store keys belongs to."""
-    return sorted({_split_key(key)[0] for key in keys})
 
 
 # --------------------------------------------------------------------------- #
@@ -541,6 +530,12 @@ class MoveToLibraryCommand(Command):
     quiet alternatives are both worse: freezing them turns a parameterised process into fixed
     numbers that no longer follow their driver, and carrying the text along leaves a formula
     referring to a variable that does not exist where it now lives.
+
+    **Tags stay behind.** The library carries none, and a tag is a statement of the study it was made
+    in: the process's own tags and the tags on its inputs go with the process, and nothing is written
+    onto the inputs that now draw on the library copy — in this model or in any other that used the
+    process. Those inputs count under the phase of the process that uses them until they are tagged
+    themselves, which the result says. Undo brings the process back with its tags.
     """
 
     action = "move_to_library"
@@ -554,7 +549,6 @@ class MoveToLibraryCommand(Command):
         self._consumers: list[dict] = []
         self._name: str | None = None
         self._uids: dict[str, str] = {}  # the copies' uids, kept for redo (see _copy_exchanges)
-        self._moved_tags: dict[str, list[dict]] = {}  # consumer input tags before the move, for undo
         self._dropped_tags = 0
 
     def execute(self) -> dict:
@@ -622,7 +616,7 @@ class MoveToLibraryCommand(Command):
         ]
         self._snap = model.activity_snapshot(self.database, self.code)
         _relink(self._consumers, (self.database, self.code), new)
-        self._carry_tags_to_consumers()
+        self._dropped_tags = self._tags_left_behind()
         model.delete_activity(self.database, self.code)
         out = {
             "database": LIBRARY_DB,
@@ -633,39 +627,24 @@ class MoveToLibraryCommand(Command):
         if self._dropped_tags:
             out["tags_dropped"] = self._dropped_tags
             out["note"] = (
-                f"{self._dropped_tags} input tag(s) inside the process were dropped: the library carries no "
-                "tags. Its inputs now count under the phase of the model input that draws on it."
+                f"{self._dropped_tags} tag(s) of the process and its inputs were dropped: the library carries "
+                "no tags. What draws on it now counts under the phase of the process that uses it — tag that "
+                "input to say otherwise."
             )
         return out
 
-    def _carry_tags_to_consumers(self) -> None:
-        """The library carries no tags, so the process's own tags move onto the model inputs that now
-        draw on the library copy: the breakdown stays what it was. Tags on the process's own inputs cannot
-        follow (the copy is in the library) — they are counted and reported."""
-        store = TagStore()
-        own = store.list_for(self.database, self.code)
-        self._dropped_tags = sum(
-            1 for key, tags in store.load_map().items()
-            if tags and key.startswith(f"{self.database}/{self.code}{TagStore.EXCHANGE_SEP}")
+    def _tags_left_behind(self) -> int:
+        """How many tags go with the process: its own and those on the inputs it has."""
+        own = f"{self.database}/{self.code}"
+        return sum(
+            len(tags)
+            for key, tags in TagStore().model_items(self.database).items()
+            if key == own or key.startswith(f"{own}{TagStore.EXCHANGE_SEP}")
         )
-        keys = [
-            f"{c['consumer'][0]}/{TagStore.exchange_code(c['consumer'][1], c['uid'])}"
-            for c in self._consumers if c["consumer"][0] != LIBRARY_DB and c.get("uid")
-        ]
-        self._moved_tags = store.lists_for(keys) if own else {}
-        for key in self._moved_tags:
-            db, code = _split_key(key)
-            # Per dimension: what the input already says in a dimension stays; the rest comes from the process.
-            present = {t["dimension"] for t in store.list_for(db, code)}
-            for tag in own:
-                if tag["dimension"] not in present:
-                    store.set_tag(db, code, tag["dimension"], tag["value"])
 
     def undo(self) -> None:
         if self._snap is None:
             return
-        if self._moved_tags:
-            TagStore().rewrite_lists(self._moved_tags)
         model.restore_activity(self.database, self.code, self._snap)
         restored = model.get_activity(self.database, self.code)
         _relink(self._consumers, (LIBRARY_DB, self._new_code), restored)
@@ -1517,9 +1496,13 @@ class AddExchangeCommand(Command):
             if any(not d or not v for d, v in self.tags.items()):
                 raise PrismError("A tag needs a group and a value.", code="invalid_value")
             if self.group_store is not None:
-                self.tags = {self.group_store.find_or_create(d)["name"]: v for d, v in self.tags.items()}
+                model_db = self.activity_database
+                self.tags = {
+                    self.group_store.find_or_create(model_db, d)["name"]: v for d, v in self.tags.items()
+                }
                 for dimension, value in self.tags.items():
-                    self.group_store.add_value(dimension, value)  # refuses a bad value before anything is saved
+                    # refuses a bad value before anything is saved
+                    self.group_store.add_value(model_db, dimension, value)
         ex = act.new_edge(input=inp, amount=self.amount, type=self.exchange_type)
         ex["prism_uid"] = self._uid
         if self.comment:
@@ -1893,10 +1876,40 @@ def _one_database(keys: list[tuple[str, str]]) -> str | None:
     return next(iter(names)) if len(names) == 1 else None
 
 
+def _registered(group_store, keys: list[tuple[str, str]], group: str, value: str | None) -> dict[str, str]:
+    """Per model of ``keys``, the name ``group`` goes by there.
+
+    A group belongs to a model, so a selection across two models resolves the name twice: an alias joins
+    the group each model already has ("Lebenswegphase" → that model's "Life-cycle phase", V246), and the
+    two answers need not be the same. Writing a value registers the group and the value in each model
+    first — NOT undone: a model's vocabulary is prepared before it is used, the same way a parameter
+    group created on the way to a parameter stays. Clearing a tag only looks the name up.
+    """
+    if group_store is None:
+        return {}
+    names: dict[str, str] = {}
+    for database in dict.fromkeys(k[0] for k in keys if k and k[0]):
+        if value:
+            names[database] = group_store.find_or_create(database, group)["name"]
+            group_store.add_value(database, names[database], value)
+        else:
+            names[database] = group_store.name_for(database, group)
+    return names
+
+
+def _shared_name(names: dict[str, str], given: str) -> str:
+    """The one name every model of the selection uses, for the result and the summary; else as given."""
+    distinct = set(names.values())
+    return next(iter(distinct)) if len(distinct) == 1 else given
+
+
 class TagActivitiesCommand(Command):
     """Add one (dimension, value) tag to one or many activities (the canvas 'box' tool)."""
 
     action = "tag_activities"
+    # Its tags and its model's own vocabulary, nothing else; a selection across models names several
+    # models and is no local step for that reason (CommandBus._local).
+    local_to_model = True
 
     def __init__(
         self, tag_store: TagStore, keys: list[tuple[str, str]], dimension, value, group_store=None
@@ -1906,24 +1919,22 @@ class TagActivitiesCommand(Command):
         self.keys = keys
         self.dimension = dimension
         self.value = value
-        self._added: list[tuple[str, str]] = []
+        self._added: list[tuple[str, str, str]] = []  # (db, code, dimension as that model names it)
 
     def execute(self) -> dict:
-        if self.group_store is not None and self.value:
-            # `find_or_create` may answer with the dimension under its canonical spelling (an alias
-            # joins the existing group, V246); the value and the tag go under THAT name, or add_value
-            # refuses the group it was just handed.
-            self.dimension = self.group_store.find_or_create(self.dimension)["name"]
-            self.group_store.add_value(self.dimension, self.value)
-        self._added = [
-            k for k in self.keys if self.tag_store.add(k[0], k[1], self.dimension, self.value)
-        ]
+        names = _registered(self.group_store, self.keys, self.dimension, self.value)
+        self._added = []
+        for db, code in self.keys:
+            dimension = names.get(db, self.dimension)
+            if self.tag_store.add(db, code, dimension, self.value):
+                self._added.append((db, code, dimension))
+        self.dimension = _shared_name(names, self.dimension)
         self._names = _named_selection(self.keys)
         return {"tagged": len(self._added), "dimension": self.dimension, "value": self.value}
 
     def undo(self) -> None:
-        for db, code in self._added:
-            self.tag_store.remove(db, code, self.dimension, self.value)
+        for db, code, dimension in self._added:
+            self.tag_store.remove(db, code, dimension, self.value)
 
     def summary(self) -> str:
         who = getattr(self, "_names", None) or f"{len(self.keys)} process(es)"
@@ -1947,6 +1958,7 @@ class SetTagCommand(Command):
     Enforces the 'at most one value per group' rule via TagStore.set_tag."""
 
     action = "set_tag"
+    local_to_model = True  # see TagActivitiesCommand
 
     def __init__(
         self,
@@ -1963,25 +1975,22 @@ class SetTagCommand(Command):
         self.keys = keys
         self.group = group
         self.value = value or None
-        self._prev: list[tuple[str, str, str | None]] = []  # (db, code, old_value)
+        self._prev: list[tuple[str, str, str, str | None]] = []  # (db, code, group there, old_value)
 
     def execute(self) -> dict:
+        names = _registered(self.group_store, self.keys, self.group, self.value)
         self._prev = []
-        # Register the dimension and the value before writing the tag. NOT undone: a dimension is
-        # config, the same way a parameter group created on the way to a parameter is, and taking it
-        # away again would strip it from every other process that has since been tagged with it.
-        if self.group_store is not None and self.value:
-            self.group = self.group_store.find_or_create(self.group)["name"]  # see TagActivitiesCommand
-            self.group_store.add_value(self.group, self.value)
         for db, code in self.keys:
-            old = self.tag_store.set_tag(db, code, self.group, self.value)
-            self._prev.append((db, code, old))
+            group = names.get(db, self.group)
+            old = self.tag_store.set_tag(db, code, group, self.value)
+            self._prev.append((db, code, group, old))
+        self.group = _shared_name(names, self.group)
         self._names = _named_selection(self.keys)
         return {"set": len(self.keys), "group": self.group, "value": self.value}
 
     def undo(self) -> None:
-        for db, code, old in self._prev:
-            self.tag_store.set_tag(db, code, self.group, old)
+        for db, code, group, old in self._prev:
+            self.tag_store.set_tag(db, code, group, old)
 
     def summary(self) -> str:
         who = getattr(self, "_names", None) or f"{len(self.keys)} process(es)"
@@ -2005,6 +2014,7 @@ class SetTagCommand(Command):
 class RemoveTagCommand(Command):
     action = "remove_tag"
     audit_attr = "database"
+    local_to_model = True  # one tag of one process of this model
 
     def __init__(self, tag_store: TagStore, database, code, dimension, value):
         self.tag_store = tag_store
@@ -2028,22 +2038,31 @@ class RemoveTagCommand(Command):
         return f"Remove tag {self.dimension} = {self.value} from '{who}'"
 
 
+def _code_of(database: str, key: str) -> str:
+    """The code part of a tag-store key of ``database`` (a process code, or ``code#uid`` of an input)."""
+    return key[len(database) + 1:]
+
+
 class DeleteTagGroupCommand(Command):
-    """Delete a tag group including the cascade (untags every process carrying it). Undo restores
-    the group with its colour, values, list position AND every tag assignment."""
+    """Delete a tag group of a model including the cascade (untags every process and input of the model
+    carrying it). Undo restores the group with its colour, values, list position AND every assignment."""
 
     action = "delete_tag_group"
+    audit_attr = "database"
+    # The group, its values and the tags it strips are all the model's own (tag_groups.py).
+    local_to_model = True
 
-    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, name: str):
+    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, database: str, name: str):
         self.group_store = group_store
         self.tag_store = tag_store
+        self.database = database
         self.name = name
         self._group: dict | None = None
         self._index: int | None = None
-        self._assignments: list[tuple[str, str, str]] = []  # (database, code, value)
+        self._assignments: list[tuple[str, str]] = []  # (code, value)
 
     def execute(self) -> dict:
-        groups = self.group_store.list_groups()
+        groups = self.group_store.list_groups(self.database)
         self._index = next((i for i, g in enumerate(groups) if g["name"] == self.name), None)
         if self._index is None:
             raise PrismError(
@@ -2051,58 +2070,46 @@ class DeleteTagGroupCommand(Command):
             )
         self._group = groups[self._index]
         self._assignments = [
-            (*_split_key(key), value) for key, value in self._carriers()
+            (_code_of(self.database, key), t["value"])
+            for key, tags in self.tag_store.model_items(self.database).items()
+            for t in tags
+            if t["dimension"] == self.name
         ]
-        self.group_store.delete_group(self.name)
-        self.tag_store.remove_dimension(self.name)
+        self.group_store.delete_group(self.database, self.name)
+        self.tag_store.remove_dimension(self.database, self.name)
         return {"deleted": True, "untagged": len(self._assignments)}
 
     def undo(self) -> None:
         if self._group is None:
             return
-        self.group_store.restore_group(self._group, self._index)
-        for db, code, value in self._assignments:
-            self.tag_store.add(db, code, self.name, value)
+        self.group_store.restore_group(self.database, self._group, self._index)
+        for code, value in self._assignments:
+            self.tag_store.add(self.database, code, self.name, value)
 
     def summary(self) -> str:
         return f"Delete tag group '{self.name}' ({len(self._assignments)} tag(s) removed)"
 
-    def _carriers(self) -> list[tuple[str, str]]:
-        """``(key, value)`` of every assignment of this group — what the cascade strips."""
-        return [
-            (key, t["value"])
-            for key, tags in self.tag_store.load_map().items()
-            for t in tags
-            if t["dimension"] == self.name
-        ]
-
-    def scope_models(self) -> list[str] | None:
-        """The models whose assignments the cascade strips; the group itself is workspace vocabulary."""
-        return _key_models(key for key, _value in self._carriers())
-
-    def audit_databases(self) -> list[str] | None:
-        """The group itself is project-wide, its cascade is not — it strips assignments from
-        every model that carried one, and those models changed. Taken from the assignments the undo
-        already has to keep, so the list is the removals that really happened and not a guess."""
-        return sorted({db for db, _code, _value in self._assignments}) or None
-
 
 class RemoveTagValueCommand(Command):
-    """Remove one value from a tag group including the cascade (untags every process carrying
-    it). Undo restores the value at its original position AND every tag assignment."""
+    """Remove one value from a tag group of a model including the cascade (untags every process and
+    input of the model carrying it). Undo restores the value at its position AND every assignment."""
 
     action = "remove_tag_value"
+    audit_attr = "database"
+    local_to_model = True  # see DeleteTagGroupCommand
 
-    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, group: str, value: str):
+    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, database: str, group: str, value: str):
         self.group_store = group_store
         self.tag_store = tag_store
+        self.database = database
         self.group = group
         self.value = value
         self._index: int | None = None
-        self._assignments: list[tuple[str, str]] = []  # (database, code)
+        self._assignments: list[str] = []  # codes
 
     def execute(self) -> dict:
-        g = next((x for x in self.group_store.list_groups() if x["name"] == self.group), None)
+        groups = self.group_store.list_groups(self.database)
+        g = next((x for x in groups if x["name"] == self.group), None)
         if g is None or self.value not in g["values"]:
             raise PrismError(
                 f"Tag value '{self.value}' does not exist in group '{self.group}'.",
@@ -2110,53 +2117,45 @@ class RemoveTagValueCommand(Command):
                 status_code=404,
             )
         self._index = g["values"].index(self.value)
-        self._assignments = [_split_key(key) for key in self._carriers()]
-        self.group_store.remove_value(self.group, self.value)
-        self.tag_store.remove_dimension_value(self.group, self.value)
+        self._assignments = [
+            _code_of(self.database, key)
+            for key, tags in self.tag_store.model_items(self.database).items()
+            for t in tags
+            if t["dimension"] == self.group and t["value"] == self.value
+        ]
+        self.group_store.remove_value(self.database, self.group, self.value)
+        self.tag_store.remove_dimension_value(self.database, self.group, self.value)
         return {"removed": True, "untagged": len(self._assignments)}
 
     def undo(self) -> None:
         if self._index is None:
             return
-        self.group_store.restore_value(self.group, self.value, self._index)
-        for db, code in self._assignments:
-            self.tag_store.add(db, code, self.group, self.value)
+        self.group_store.restore_value(self.database, self.group, self.value, self._index)
+        for code in self._assignments:
+            self.tag_store.add(self.database, code, self.group, self.value)
 
     def summary(self) -> str:
         return f"Remove tag '{self.value}' from group '{self.group}' ({len(self._assignments)} tag(s) removed)"
 
-    def _carriers(self) -> list[str]:
-        """The keys carrying this value — what the cascade untags."""
-        return [
-            key
-            for key, tags in self.tag_store.load_map().items()
-            for t in tags
-            if t["dimension"] == self.group and t["value"] == self.value
-        ]
-
-    def scope_models(self) -> list[str] | None:
-        """As for the whole group above."""
-        return _key_models(self._carriers())
-
-    def audit_databases(self) -> list[str] | None:
-        """As for the whole group above."""
-        return sorted({db for db, _code in self._assignments}) or None
-
-
 
 class MergeTagValueCommand(Command):
-    """Fold one value of a group into another: every process tagged ``source`` is retagged ``target``,
-    then ``source`` leaves the allowed values. Undo puts the value back at its position and every
-    affected process's tag list back exactly as it was — a snapshot per activity, not a replay,
+    """Fold one value of a model's group into another: every process tagged ``source`` is retagged
+    ``target``, then ``source`` leaves the group's values. Undo puts the value back at its position and
+    every affected process's tag list back exactly as it was — a snapshot per activity, not a replay,
     because an activity may carry several values of one dimension. The cleanup a
-    vocabulary needs after several runs spelled the same phase four ways ("Use", "Use Phase",
+    vocabulary needs after the same phase was spelled several ways ("Use", "Use Phase",
     "Usage Phase"); deleting would untag them."""
 
     action = "merge_tag_value"
+    audit_attr = "database"
+    local_to_model = True  # see DeleteTagGroupCommand
 
-    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, group: str, source: str, target: str):
+    def __init__(
+        self, group_store: TagGroupStore, tag_store: TagStore, database: str, group: str, source: str, target: str
+    ):
         self.group_store = group_store
         self.tag_store = tag_store
+        self.database = database
         self.group = group
         self.source = source
         self.target = target
@@ -2168,7 +2167,7 @@ class MergeTagValueCommand(Command):
         # first run would undo things this run never did.
         self._index = None
         self._before = {}
-        g = next((x for x in self.group_store.list_groups() if x["name"] == self.group), None)
+        g = next((x for x in self.group_store.list_groups(self.database) if x["name"] == self.group), None)
         if g is None:
             raise PrismError(f"Tag group '{self.group}' does not exist.", code="group_not_found", status_code=404)
         for v in (self.source, self.target):
@@ -2181,8 +2180,11 @@ class MergeTagValueCommand(Command):
         if self.source == self.target:
             raise PrismError("Source and target are the same value.", code="same_value", status_code=400)
         self._index = g["values"].index(self.source)
-        keys = self._carriers()
-        self._before = self.tag_store.lists_for(keys)
+        self._before = {
+            key: [dict(t) for t in tags]
+            for key, tags in self.tag_store.model_items(self.database).items()
+            if any(t["dimension"] == self.group and t["value"] == self.source for t in tags)
+        }
         after: dict[str, list[dict]] = {}
         for key, tags in self._before.items():
             out: list[dict] = []
@@ -2192,13 +2194,16 @@ class MergeTagValueCommand(Command):
                     out.append(nt)
             after[key] = out
         self.tag_store.rewrite_lists(after)
-        self.group_store.remove_value(self.group, self.source)
-        return {"merged": True, "group": self.group, "from": self.source, "into": self.target, "retagged": len(keys)}
+        self.group_store.remove_value(self.database, self.group, self.source)
+        return {
+            "merged": True, "group": self.group, "from": self.source, "into": self.target,
+            "retagged": len(self._before),
+        }
 
     def undo(self) -> None:
         if self._index is None:
             return
-        self.group_store.restore_value(self.group, self.source, self._index)
+        self.group_store.restore_value(self.database, self.group, self.source, self._index)
         self.tag_store.rewrite_lists(self._before)
 
     def summary(self) -> str:
@@ -2207,34 +2212,22 @@ class MergeTagValueCommand(Command):
             f"({len(self._before)} process(es) retagged)"
         )
 
-    def audit_databases(self) -> list[str] | None:
-        return _key_models(self._before) or None
-
-    def _carriers(self) -> list[str]:
-        """The keys carrying the value that is merged away — what the merge retags."""
-        return [
-            key for key, tags in self.tag_store.load_map().items()
-            if any(t["dimension"] == self.group and t["value"] == self.source for t in tags)
-        ]
-
-    def scope_models(self) -> list[str] | None:
-        """The models whose assignments the merge rewrites; the value list is workspace vocabulary."""
-        return _key_models(self._carriers())
-
 
 class MergeTagGroupCommand(Command):
-    """Fold one group (dimension) into another: its values join the target's vocabulary, every process
+    """Fold one group (dimension) of a model into another: its values join the target's, every process
     tagged in the source carries the same value in the target, then the source group is deleted.
     Undo restores the group, every affected activity's complete tag list (snapshot, see
-    MergeTagValueCommand) and removes the values this execution added to the target. Four parallel
-    phase vocabularies ("Phase", "Life-cycle phase", "Life cycle phase", "Lebenswegphase") are what
-    this is for."""
+    MergeTagValueCommand) and removes the values this execution added to the target. A model that
+    holds two spellings of one dimension ("Phase" beside "Life-cycle phase") is what this is for."""
 
     action = "merge_tag_group"
+    audit_attr = "database"
+    local_to_model = True  # see DeleteTagGroupCommand
 
-    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, source: str, target: str):
+    def __init__(self, group_store: TagGroupStore, tag_store: TagStore, database: str, source: str, target: str):
         self.group_store = group_store
         self.tag_store = tag_store
+        self.database = database
         self.source = source
         self.target = target
         self._group: dict | None = None
@@ -2247,7 +2240,7 @@ class MergeTagGroupCommand(Command):
         self._index = None
         self._before = {}
         self._added_values = []
-        groups = self.group_store.list_groups()
+        groups = self.group_store.list_groups(self.database)
         self._index = next((i for i, g in enumerate(groups) if g["name"] == self.source), None)
         target = next((g for g in groups if g["name"] == self.target), None)
         if self._index is None:
@@ -2256,16 +2249,16 @@ class MergeTagGroupCommand(Command):
             raise PrismError(f"Tag group '{self.target}' does not exist.", code="group_not_found", status_code=404)
         if self.source == self.target:
             raise PrismError("Source and target are the same group.", code="same_group", status_code=400)
-        self._group = groups[self._index]
-        keys = self._carriers()
-        self._before = self.tag_store.lists_for(keys)
-        needed = list(self._group["values"]) + [
-            t["value"] for tags in self._before.values() for t in tags if t["dimension"] == self.source
-        ]
+        self._group = dict(groups[self._index], values=list(groups[self._index]["values"]))
+        self._before = {
+            key: [dict(t) for t in tags]
+            for key, tags in self.tag_store.model_items(self.database).items()
+            if any(t["dimension"] == self.source for t in tags)
+        }
         present = set(target["values"])
-        for v in needed:
+        for v in self._group["values"]:
             if v not in present:
-                self.group_store.add_value(self.target, v)
+                self.group_store.add_value(self.database, self.target, v)
                 present.add(v)
                 self._added_values.append(v)
         after: dict[str, list[dict]] = {}
@@ -2277,33 +2270,62 @@ class MergeTagGroupCommand(Command):
                     out.append(nt)
             after[key] = out
         self.tag_store.rewrite_lists(after)
-        self.group_store.delete_group(self.source)
+        self.group_store.delete_group(self.database, self.source)
         return {
             "merged": True, "from": self.source, "into": self.target,
-            "retagged": len(keys), "values_added": list(self._added_values),
+            "retagged": len(self._before), "values_added": list(self._added_values),
         }
 
     def undo(self) -> None:
         if self._group is None:
             return
-        self.group_store.restore_group(self._group, self._index)
+        self.group_store.restore_group(self.database, self._group, self._index)
         self.tag_store.rewrite_lists(self._before)
         for v in self._added_values:
-            self.group_store.remove_value(self.target, v)
+            self.group_store.remove_value(self.database, self.target, v)
 
     def summary(self) -> str:
         return f"Merge tag group '{self.source}' into '{self.target}' ({len(self._before)} process(es) retagged)"
 
-    def audit_databases(self) -> list[str] | None:
-        return _key_models(self._before) or None
 
-    def _carriers(self) -> list[str]:
-        """The keys carrying any value of the group that is merged away — what the merge retags."""
-        return [key for key, tags in self.tag_store.load_map().items() if any(t["dimension"] == self.source for t in tags)]
+class AdoptTagGroupsCommand(Command):
+    """Take over another model's tag groups: a group this model lacks arrives with its colour and
+    values, one it has gains the values it lacks. What two models need to be broken down side by side —
+    the same group names and value strings — without retyping them. A copy: the two lists are
+    independent afterwards. Undo removes what this execution added."""
 
-    def scope_models(self) -> list[str] | None:
-        """The models whose assignments the merge rewrites; the groups are workspace vocabulary."""
-        return _key_models(self._carriers())
+    action = "adopt_tag_groups"
+    audit_attr = "database"
+    # The other model is read once, on the first execution; a redo applies the same groups again, so
+    # the step itself touches this model's vocabulary only.
+    local_to_model = True
+
+    def __init__(self, group_store: TagGroupStore, database: str, source: str):
+        self.group_store = group_store
+        self.database = database
+        self.source = source
+        self._taken: list[dict] | None = None
+        self._added: dict = {}
+
+    def execute(self) -> dict:
+        if self._taken is None:
+            self._taken = [dict(g, values=list(g["values"])) for g in self.group_store.list_groups(self.source)]
+        self._added = self.group_store.adopt(self.database, self._taken)
+        groups, values = list(self._added.get("groups") or {}), self._added.get("values") or {}
+        if not groups and not values:
+            return {"unchanged": True, "groups": [], "values": {}}
+        return {"groups": groups, "values": values}
+
+    def undo(self) -> None:
+        self.group_store.drop_adopted(self.database, self._added)
+
+    def summary(self) -> str:
+        groups = len(self._added.get("groups") or [])
+        values = sum(len(v) for v in (self._added.get("values") or {}).values())
+        return f"Take over tag groups from '{self.source}' ({groups} group(s), {values} value(s) added)"
+
+    def audit_related(self) -> str | None:
+        return self.source
 
 
 def _with_stale_notes(out: dict, database: str, before: list[tuple[str, dict | None]]) -> dict:
@@ -3782,10 +3804,10 @@ class CommandBus:
         # Where the field begins. An unattributed line *before* the first attributed one is history
         # from before entries named their model — the "earlier history" block. One *after* it was
         # written by code that names every model it changes, so it changed none: a workspace-wide
-        # action (a tag group or a tag value created). It went into every model's "earlier history"
-        # under a label that was wrong for it (106 tag actions); it now comes back marked `workspace`
-        # and stands in its place in time — every view of the app is model-scoped,
-        # so leaving it out would make it visible nowhere.
+        # action (a tag group or a tag value created while those were the workspace's). It went into
+        # every model's "earlier history" under a label that was wrong for it (106 tag actions); it
+        # now comes back marked `workspace` and stands in its place in time — every view of the app is
+        # model-scoped, so leaving it out would make it visible nowhere.
         field_from = next((i for i, e in enumerate(raw) if audit_store.is_attributed(e)), len(raw))
         out: list[AuditEntry] = []
         for position, item in enumerate(raw):

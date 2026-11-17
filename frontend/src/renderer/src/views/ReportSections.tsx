@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api } from '../lib/api'
 import { fetchQuery, useQuery } from '../lib/server/useQuery'
-import { studyRoute } from '../lib/server/routes'
+import { studyRoute, type TagFamily } from '../lib/server/routes'
+import { familiesOffered } from './results/splitBy'
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
 import { CoverOverlay } from './CoverSettings'
 import { AccordionGroup, useSingleOpen } from '../components/Accordion'
@@ -94,7 +95,7 @@ export default function ReportSections({
   /** Named parameter sets; each one ticked becomes a variant the report compares. */
   scenarios: { id: string; name: string }[]
   /** Tag families that exist, each with the databases some activity of it is actually tagged in. */
-  dimensions: { name: string; databases?: string[] }[]
+  dimensions: TagFamily[]
   methods: PickerMethod[]
   /** False while the page is hidden. See the effect on it: the page no longer unmounts, so the
    *  false→true edge is what re-asks whether the model moved under the written chapters. */
@@ -699,11 +700,9 @@ export default function ReportSections({
    * among its options shows blank, which would read as "the report lost its breakdown".
    */
   const breakdownFamilies = (() => {
-    const dbs = new Set((report.subjects ?? []).map((s) => s.database).filter(Boolean))
+    const dbs = new Set((report.subjects ?? []).flatMap((s) => (s.database ? [s.database] : [])))
     const chosen = (report.aggregate_by ?? '').startsWith('tag:') ? (report.aggregate_by ?? '').slice(4) : ''
-    return dimensions
-      .filter((d) => d.name === chosen || (d.databases ?? []).some((db) => dbs.has(db)))
-      .map((d) => d.name)
+    return familiesOffered(dimensions, dbs, chosen)
   })()
   const writableSecs = report.sections.filter((s) => WRITABLE.has(s.kind))
   /** The chapter a single Write is running on, if that is what `writing` holds — it also carries the

@@ -15,8 +15,8 @@ export default function TagMenu({
   onNewValue
 }: {
   pos: { x: number; y: number }
-  /** `used`: the open model carries tags of this group (lib/tagGroupsUsed.ts) — listed first, marked. */
-  groups: { name: string; color: string; values: string[]; used?: boolean }[]
+  /** The open model's tag groups, in its own order. */
+  groups: { name: string; color: string; values: string[] }[]
   current: Record<string, string>
   /** Per group, the value a box inherits while its inputs hold none themselves (lib/occurrences.ts). */
   inherited?: Record<string, string>
@@ -66,11 +66,6 @@ export default function TagMenu({
                 <span className="tagmenu-dot" style={{ background: g.color }} />
                 <span className="tagmenu-group" title={g.name}>
                   <span className="tagmenu-group-name">{g.name}</span>
-                  {g.used ? (
-                    <span className="tag-used-chip" title="This model carries tags of this group">
-                      used
-                    </span>
-                  ) : null}
                 </span>
                 <select
                   className="search-sel"

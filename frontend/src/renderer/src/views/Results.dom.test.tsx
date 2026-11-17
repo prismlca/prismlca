@@ -64,7 +64,7 @@ const routes = (db: string): Routes => ({
   [`GET /api/v1/model/activities/${db}`]: [{ code: 'root', name: 'PET bottle production' }],
   [`GET /api/v1/model/reference/${db}`]: { candidates: [{ code: 'root' }] },
   'GET /api/v1/scenarios': [],
-  'GET /api/v1/model/tag-groups': { groups: [] }
+  'GET /api/v1/model/tag-groups/in-use': { groups: [] }
 })
 
 const DBS = [{ name: 'ecoinvent-3.12', node_count: 26000, read_only: true, kind: 'background' }]

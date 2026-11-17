@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from prism_lca.engine import commands, guardrails
 from prism_lca.engine.commands import Command
 from prism_lca.engine.library import LIBRARY_DB, ensure_library
+from prism_lca.engine.tags import TagStore
 
 
 def _fg(client: TestClient, token, name: str | None = None) -> str:
@@ -120,38 +121,52 @@ def test_comparison_links_are_the_users_to_make(client, token, project):
 
 
 def _tag(client: TestClient, token, db: str, code: str, value: str) -> None:
-    body = {"keys": [{"database": db, "code": code}], "group": "Phase", "value": value}
+    body = {"keys": [{"database": db, "code": code}], "group": "Supplier", "value": value}
     assert client.post("/api/v1/model/tags/set", json=body, headers=token).status_code == 200
+
+
+def _values(client: TestClient, token, db: str, *values: str) -> None:
+    """The values ``Supplier`` offers in ``db`` — a group belongs to one model."""
+    for v in values:
+        r = client.post("/api/v1/model/tag-groups/values", json={"database": db, "group": "Supplier", "value": v}, headers=token)
+        assert r.status_code == 200, r.text
 
 
 def _tags(client: TestClient, token, db: str, code: str) -> list[dict]:
     return client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json()
 
 
-def test_a_tag_merge_is_refused_while_another_model_carries_the_value(client, token, project):
+def test_a_tag_merge_in_the_fenced_model_leaves_another_model_alone(client, token, project):
+    """A model's tag vocabulary is its own: a fenced chat merges and deletes in its model even when another
+    model carries the same value — that model's tags and groups are not touched — and is refused in the
+    other model, without learning its name (V502)."""
     _fg(client, token, "A")
     _fg(client, token, "B")
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token).status_code == 200
-    for v in ("Use", "Usage"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
     a, b = _code(client, token, "A"), _code(client, token, "B")
-    _tag(client, token, "A", a, "Usage")
-    _tag(client, token, "B", b, "Usage")
+    for db, code in (("A", a), ("B", b)):
+        _tag(client, token, db, code, "Usage")
+        _values(client, token, db, "Use")
     chat = _fenced(token, "A")
-    merge = {"group": "Phase", "value": "Usage", "into": "Use"}
+    merge = {"group": "Supplier", "value": "Usage", "into": "Use"}
 
-    r = client.post("/api/v1/model/tag-groups/values/merge", json=merge, headers=chat)
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={**merge, "database": "B"}, headers=chat)
     _refused(r)
-    # The other model is refused without being named: the chat is not to learn the names of the
-    # user's other studies from an error (V502).
     msg = r.json()["error"]["message"]
     assert "another model" in msg and "‘B’" not in msg
-    assert _tags(client, token, "B", b) == [{"dimension": "Phase", "value": "Usage"}]
 
-    _tag(client, token, "B", b, "Use")
-    r = client.post("/api/v1/model/tag-groups/values/merge", json=merge, headers=chat)
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={**merge, "database": "A"}, headers=chat)
     assert r.status_code == 200, r.text
-    assert _tags(client, token, "A", a) == [{"dimension": "Phase", "value": "Use"}]
+    assert r.json()["retagged"] == 1
+    assert _tags(client, token, "A", a) == [{"dimension": "Supplier", "value": "Use"}]
+    assert _tags(client, token, "B", b) == [{"dimension": "Supplier", "value": "Usage"}]
+    groups_b = client.get("/api/v1/model/tag-groups?database=B", headers=token).json()["groups"]
+    assert [(g["name"], g["values"]) for g in groups_b] == [("Supplier", ["Usage", "Use"])]
+
+    r = client.post("/api/v1/model/tag-groups/delete", json={"database": "A", "name": "Supplier"}, headers=chat)
+    assert r.status_code == 200, r.text
+    assert _tags(client, token, "A", a) == []
+    assert _tags(client, token, "B", b) == [{"dimension": "Supplier", "value": "Usage"}]
+    _refused(client.post("/api/v1/model/tag-groups/delete", json={"database": "B", "name": "Supplier"}, headers=chat))
 
 
 def test_undo_stays_in_the_fenced_model(client, token, project):
@@ -161,19 +176,21 @@ def test_undo_stays_in_the_fenced_model(client, token, project):
     _refused(client.post("/api/v1/model/undo", json={"database": "B"}, headers=chat))
     _refused(client.post("/api/v1/model/undo", json={}, headers=chat))  # the workspace-wide stack
 
-    # A workspace-wide step that reached into A and B — the user's merge — is not the chat's to take back.
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token).status_code == 200
-    for v in ("Use", "Usage"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
+    # The user's merge in B is B's step: the chat's Undo in A passes it by and takes back A's own step.
     a, b = _code(client, token, "A"), _code(client, token, "B")
     _tag(client, token, "A", a, "Usage")
     _tag(client, token, "B", b, "Usage")
+    _values(client, token, "B", "Use")
     merged = client.post(
-        "/api/v1/model/tag-groups/values/merge", json={"group": "Phase", "value": "Usage", "into": "Use"}, headers=token
+        "/api/v1/model/tag-groups/values/merge",
+        json={"database": "B", "group": "Supplier", "value": "Usage", "into": "Use"},
+        headers=token,
     )
     assert merged.status_code == 200, merged.text
-    _refused(client.post("/api/v1/model/undo", json={"database": "A"}, headers=chat))
-    assert _tags(client, token, "B", b) == [{"dimension": "Phase", "value": "Use"}]
+    r = client.post("/api/v1/model/undo", json={"database": "A"}, headers=chat)
+    assert r.status_code == 200, r.text
+    assert _tags(client, token, "A", a) == []
+    assert _tags(client, token, "B", b) == [{"dimension": "Supplier", "value": "Use"}]
 
 
 def test_provenance_is_written_into_the_fenced_model_only(client, token, project):
@@ -230,22 +247,28 @@ def test_redo_does_not_bring_back_a_link_the_chat_may_not_make(client, token, pr
 
 
 def test_tag_keys_are_split_from_the_right_like_the_store_does(client, token, project):
-    """A model name may hold a slash; a code does not. A merge reaching model ‘A/B’ is not model ‘A’'s."""
+    """A model name may hold a slash; a code does not. A merge in model ‘A’ does not reach the tags of
+    model ‘A/B’, though their keys start with ‘A/’ — and a merge in ‘A/B’ is not ‘A’'s to make."""
     r = client.post("/api/v1/databases/foreground", json={"name": "A/B"}, headers=token)
     if r.status_code != 200:
         import pytest
 
         pytest.skip(f"model names with a slash are refused here: {r.text}")
     _fg(client, token, "A")
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token).status_code == 200
-    for v in ("Use", "Usage"):
-        client.post("/api/v1/model/tag-groups/values", json={"group": "Phase", "value": v}, headers=token)
-    slashed = _code(client, token, "A/B")
-    _tag(client, token, "A/B", slashed, "Usage")
-    merge = {"group": "Phase", "value": "Usage", "into": "Use"}
-    _refused(client.post("/api/v1/model/tag-groups/values/merge", json=merge, headers=_fenced(token, "A")))
-    r = client.post("/api/v1/model/tag-groups/values/merge", json=merge, headers=_fenced(token, "A/B"))
+    slashed, plain = _code(client, token, "A/B"), _code(client, token, "A")
+    for db, code in (("A/B", slashed), ("A", plain)):
+        _tag(client, token, db, code, "Usage")
+        _values(client, token, db, "Use")
+    merge = {"group": "Supplier", "value": "Usage", "into": "Use"}
+    _refused(client.post("/api/v1/model/tag-groups/values/merge", json={**merge, "database": "A/B"}, headers=_fenced(token, "A")))
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={**merge, "database": "A"}, headers=_fenced(token, "A"))
     assert r.status_code == 200, r.text
+    assert r.json()["retagged"] == 1
+    # Read from the store: the tag route cannot take a model name with a slash in its path.
+    assert TagStore().list_for("A/B", slashed) == [{"dimension": "Supplier", "value": "Usage"}]
+    r = client.post("/api/v1/model/tag-groups/values/merge", json={**merge, "database": "A/B"}, headers=_fenced(token, "A/B"))
+    assert r.status_code == 200, r.text
+    assert TagStore().list_for("A/B", slashed) == [{"dimension": "Supplier", "value": "Use"}]
 
 
 def test_undo_does_not_take_back_a_step_that_reached_beyond_the_model(client, token, project):

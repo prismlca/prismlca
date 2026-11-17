@@ -505,11 +505,7 @@
    elsewhere (lib/occurrences.ts). */
 .pnode-tag.inherited { border-style: dashed; font-style: italic; }
 
-/* A tag group the open model uses (lib/tagGroupsUsed.ts): listed first and marked by this chip, in the Tags
-   window and in a box's tag menu. Green like a tag, but quiet: it labels the group, it is not a tag. The menu is
-   a little wider than it was so the name cell holds a name and the chip; a long name is still cut short. */
-.tag-used-chip { display: inline-block; flex: none; font-size: var(--fs-label); font-weight: 500; line-height: 1.4;
-  padding: 0 6px; border-radius: 999px; background: var(--green-soft); color: var(--green-ink); }
+/* A box's tag menu: wide enough for a group name of a few words; a longer one is still cut short. */
 .tagmenu { max-width: 360px; }
 .tagmenu-group { display: flex; align-items: center; gap: 4px; flex-basis: 146px; }
 .tagmenu-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

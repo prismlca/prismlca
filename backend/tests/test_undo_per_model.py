@@ -80,6 +80,33 @@ def test_it_reaches_past_another_models_local_steps_and_leaves_them(two_models):
     assert _step(client, token, "undo", "B").status_code == 200
 
 
+def test_a_tag_step_in_another_model_does_not_hold_the_undo(two_models):
+    """Tags and their vocabulary are a model's own, so tagging in B and merging B's values are B's local
+    steps: Undo in A reaches past them, and B's tags stay exactly as B left them."""
+    client, token = two_models
+    code = _new_process(client, token, "B")  # not local, so it goes first
+    _set(client, token, "A", 1.0)
+    _set(client, token, "A", 2.0)
+    r = client.post("/api/v1/model/tags/set", headers=token,
+                    json={"keys": [{"database": "B", "code": code}], "group": "Supplier", "value": "Acme"})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/v1/model/tag-groups/values", headers=token,
+                    json={"database": "B", "group": "Supplier", "value": "ACME"})
+    assert r.status_code == 200, r.text
+    r = client.post("/api/v1/model/tag-groups/values/merge", headers=token,
+                    json={"database": "B", "group": "Supplier", "value": "Acme", "into": "ACME"})
+    assert r.status_code == 200, r.text
+
+    assert _history(client, token, "A")["can_undo"] is True
+    assert _step(client, token, "undo", "A").status_code == 200
+    assert _value(client, token, "A") == 1.0
+    tags = client.get(f"/api/v1/model/tags/B/{code}", headers=token).json()
+    assert tags == [{"dimension": "Supplier", "value": "ACME"}], "B's merge was taken back from A"
+    # …and B's own undo still finds B's merge.
+    assert _step(client, token, "undo", "B").status_code == 200
+    assert client.get(f"/api/v1/model/tags/B/{code}", headers=token).json() == [{"dimension": "Supplier", "value": "Acme"}]
+
+
 def test_a_step_that_is_not_local_still_holds_the_undo(two_models):
     client, token = two_models
     _set(client, token, "A", 1.0)
@@ -287,10 +314,12 @@ def test_a_step_whose_model_is_gone_is_not_held_on_another_page(client, token, p
 
 def test_the_positive_list_is_exactly_the_reviewed_one():
     """A tripwire: a command joins the list only after its execute/undo was checked for touching
-    nothing outside its own model. The two that made the first design
-    unsafe — move to library (its undo deletes the library dataset, and Brightway cuts every link to
-    it) and a tag-group merge (its undo strips values from the shared vocabulary) — must stay off it,
-    as must anything that creates or deletes a process another model could link to."""
+    nothing outside its own model. The tag steps are on it: a model's tag vocabulary is its own
+    (engine/tag_groups.py), so tagging, deleting or merging a group or a value, and taking over another
+    model's groups, change that model and no other (a selection across two models is attributed to both
+    and is no local step for that reason). Move to library stays off it — its undo deletes the library
+    dataset, and Brightway cuts every link to it — as does anything that creates or deletes a process
+    another model could link to."""
     import inspect
 
     from prism_lca.engine import commands
@@ -308,9 +337,11 @@ def test_the_positive_list_is_exactly_the_reviewed_one():
         "DeleteParameterCommand", "CreateParamGroupCommand", "CreateScenarioCommand",
         "UpdateScenarioCommand", "DuplicateScenarioCommand", "DeleteScenarioCommand",
         "SetScenarioValueCommand", "ImportScenariosCommand", "SetStudyMetaCommand",
+        "TagActivitiesCommand", "SetTagCommand", "RemoveTagCommand", "DeleteTagGroupCommand",
+        "RemoveTagValueCommand", "MergeTagValueCommand", "MergeTagGroupCommand", "AdoptTagGroupsCommand",
     }
-    for barrier in ("MoveToLibraryCommand", "MergeTagGroupCommand", "CreateActivityCommand",
-                    "DeleteActivityCommand", "CopyToForegroundCommand", "SetTagCommand", "LinkModelsCommand"):
+    for barrier in ("MoveToLibraryCommand", "CreateActivityCommand", "DeleteActivityCommand",
+                    "CopyToForegroundCommand", "LinkModelsCommand"):
         assert barrier not in local
 
 

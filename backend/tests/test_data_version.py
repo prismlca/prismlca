@@ -57,3 +57,13 @@ def test_both_directories_are_stamped_when_new(tmp_path):
     data, bw = tmp_path / "data", tmp_path / "bw"
     assert data_version.check_and_stamp([data, bw], "0.9.0") is None
     assert (data / data_version.STAMP_FILE).exists() and (bw / data_version.STAMP_FILE).exists()
+
+
+def test_an_older_format_opens_and_is_stamped_with_this_one(tmp_path):
+    """An older directory is this version's to read: what changed is converted where it is read (the tag
+    groups of format 1, for one), so the stamp only records that this version has written here now."""
+    assert data_version.DATA_SCHEMA > 1
+    older = json.dumps({"schema": data_version.DATA_SCHEMA - 1, "written_by": "0.8.0"})
+    (tmp_path / data_version.STAMP_FILE).write_text(older, encoding="utf-8")
+    assert data_version.check_and_stamp(tmp_path, "0.9.0") is None
+    assert data_version.read_schema(tmp_path) == (data_version.DATA_SCHEMA, "0.9.0")

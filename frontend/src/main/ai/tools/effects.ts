@@ -128,7 +128,7 @@ export const TOOL_EFFECTS: Record<string, Record<string, ToolEffect>> = {
   },
   // SetParameterCommand / SetParametersCommand / DeleteParameterCommand are all undoable.
   edit_parameter: { set: 'write', delete: 'write' },
-  // Tag groups and values are only created (additive); assignments are SetTagCommand (undoable).
+  // A model's own tag groups and values are only created (additive); assignments are SetTagCommand (undoable).
   edit_tags: {
     create_group: 'write',
     add_value: 'write',

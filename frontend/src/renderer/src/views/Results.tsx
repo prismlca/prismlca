@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type DatabaseInfo } from '../lib/api'
 import { useQuery } from '../lib/server/useQuery'
-import { type TagGroup } from '../lib/server/routes'
+import { tagFamiliesRoute, type TagFamily } from '../lib/server/routes'
 
 // Stable fallback: `?? []` would be a fresh array each render and rattle every dependent memo.
-const NO_GROUPS: TagGroup[] = []
+const NO_FAMILIES: TagFamily[] = []
 // The same for unset view fields that feed the chart memos (colours, the subject lists): each handed
 // out a fresh `{}`/`[]` on every render, so the colour memos recomputed every time and every chart was
 // torn down and rebuilt — on each keystroke in the indicator filter.
@@ -30,7 +30,7 @@ import { SubjectsPanel } from './results/SubjectsPanel'
 import { useSubjectSelection } from './results/useSubjectSelection'
 import { useResultsOpening } from './results/useResultsOpening'
 import { buildColorMap } from './results/subjectColors'
-import { familiesInUse, resolveSplit } from './results/splitBy'
+import { familiesOffered, resolveSplit } from './results/splitBy'
 import { fmtPct, pngName, ZOOM_SCALE } from './results/chartUtils'
 import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
 import { useIndicatorPicking } from './results/useIndicatorPicking'
@@ -119,11 +119,13 @@ export default function Results({
   // '' until chosen, and then the model's first tag family, else ISIC.
   const [stacked, setStacked] = usePersisted('prism.ov.stacked', false)
   const [chosenSplit, setStackBy] = useViewField(activeDb, 'results', 'stackBy', '')
-  // Shared cache: Workbench's tag-group edits invalidate this key, so the picker here is never a
-  // stale copy from mount time (it used to be — one fetch per view, no cross-view refresh).
-  const tagQuery = useQuery('/api/v1/model/tag-groups')
-  const tagGroups = tagQuery.data?.groups ?? NO_GROUPS
-  const stackBy = resolveSplit(chosenSplit, tagGroups, activeDb) // 'isic'|'cpc'|'tag:<group>'
+  // The tag families in use in the open model and in every model a subject comes from. A group belongs
+  // to its model; what lines two models up in one split is the same group name, so the families are
+  // asked for by model and matched by name. Shared cache: tag edits anywhere invalidate the key.
+  const subjectDbs = useMemo(() => [...new Set(subjects.map((s) => s.database))].sort(), [subjects])
+  const tagQuery = useQuery(activeDb ? tagFamiliesRoute(activeDb, subjectDbs) : null)
+  const tagFamilies = tagQuery.data?.groups ?? NO_FAMILIES
+  const stackBy = resolveSplit(chosenSplit, tagFamilies, activeDb) // 'isic'|'cpc'|'tag:<group>'
   // One group of the rail open at a time. Subjects first: nothing else means anything until this page
   // knows what it is comparing.
   const [grp] = useSingleOpen('prism.res.grp', 'subjects')
@@ -173,7 +175,7 @@ export default function Results({
   const methKey = picked.map((p) => p.key).join('|')
   /**
    * Tag families worth splitting by: those some activity of a selected subject's database actually
-   * carries. A family is project config from the moment it is created, so the picker used to
+   * carries. A family exists from the moment it is created, so the picker used to
    * offer every one of them whatever was selected — and splitting by an untagged family draws a single
    * bar called "untagged", which reads as a broken chart rather than as an empty answer.
    *
@@ -184,15 +186,15 @@ export default function Results({
    * The family currently chosen stays listed even when it drops out of the selection: a select whose
    * value is not among its options shows blank, and that looks like the setting was lost.
    */
-  const splitFamilies = useMemo(() => {
-    const inUse = familiesInUse(tagGroups, new Set(subjects.map((s) => s.database)))
-    const chosen = stackBy.startsWith('tag:') ? stackBy.slice(4) : ''
-    return tagGroups.filter((g) => g.name === chosen || inUse.includes(g))
-  }, [tagGroups, subjects, stackBy])
+  const splitFamilies = useMemo(
+    () =>
+      familiesOffered(tagFamilies, new Set(subjectDbs), stackBy.startsWith('tag:') ? stackBy.slice(4) : ''),
+    [tagFamilies, subjectDbs, stackBy]
+  )
   // All split dimensions the UI can show (computed in ONE backend pass, so switching 'split by'
   // is instant — no recompute). ISIC/CPC + one per tag family that is actually in use.
   const stackDims = useMemo(
-    () => ['isic', 'cpc', ...splitFamilies.map((g) => `tag:${g.name}`)],
+    () => ['isic', 'cpc', ...splitFamilies.map((name) => `tag:${name}`)],
     [splitFamilies]
   )
   const dimsKey = stackDims.join('|')
@@ -206,7 +208,7 @@ export default function Results({
       .every((id) => subjects.some((s) => s.scenario === id))
   // And the tag families have answered: an unchosen split defaults to one of them, and a run started
   // before would compute the split without the family the chart then switches to.
-  const inputsReady = scenariosReady && (tagQuery.data !== undefined || tagQuery.error != null)
+  const inputsReady = scenariosReady && (!activeDb || tagQuery.data !== undefined || tagQuery.error != null)
   const { matrix, stackData, busy, stackBusy, stale, progress, lastSecs, calculate, cancelCalc } =
     useCompareRun({
       activeDb,
@@ -666,9 +668,9 @@ export default function Results({
                   <select value={stackBy} onChange={(e) => setStackBy(e.target.value)}>
                     <option value="isic">ISIC classification</option>
                     <option value="cpc">CPC classification</option>
-                    {splitFamilies.map((g) => (
-                      <option key={g.name} value={`tag:${g.name}`}>
-                        Tag: {g.name}
+                    {splitFamilies.map((name) => (
+                      <option key={name} value={`tag:${name}`}>
+                        Tag: {name}
                       </option>
                     ))}
                   </select>

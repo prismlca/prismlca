@@ -5,8 +5,8 @@ The failure this replaces is measurable and was shipped: `bundle.write_audit()` 
 while looking like a successful complete export. The same search in the model view would file
 `Set parameter 'tube_mass' = 0.4` under whichever model happened to share a word with it.
 
-So: the entry carries `database` (what changed), `related` (where it came from) and, for
-the two genuinely project-wide commands with model-wide consequences, `databases`. Nothing
+So: the entry carries `database` (what changed), `related` (where it came from) and, for a
+step that changed several models at once (a tag selection across models), `databases`. Nothing
 here infers anything, and the tests that matter most are the ones proving the *absence* of
 inference: an old line stays unattributed, and a model whose name appears in someone else's summary
 does not collect it.
@@ -69,7 +69,7 @@ def test_a_command_files_its_entry_under_the_model_it_changed(client, token, pro
 
 def test_the_model_lifecycle_notes_name_their_model(client, token, project):
     """The six `note()` callers are hand-wired; no tripwire can see them, so they get their own
-    assertion. Creating a tag group stays unattributed on purpose — it changes no model."""
+    assertion. Creating a tag group is a note too, and names the model the group belongs to."""
     del project
     _model(client, token, "Life")
     r = client.post(
@@ -82,7 +82,7 @@ def test_the_model_lifecycle_notes_name_their_model(client, token, project):
         headers=token,
     )
     assert r.status_code == 200, r.text
-    r = client.post("/api/v1/model/tag-groups", json={"name": "Stage", "color": "#123456"},
+    r = client.post("/api/v1/model/tag-groups", json={"database": "Life", "name": "Supplier", "color": "#123456"},
                     headers=token)
     assert r.status_code == 200, r.text
     r = client.post("/api/v1/databases/foreground/delete", json={"database": "Renamed"},
@@ -97,7 +97,7 @@ def test_the_model_lifecycle_notes_name_their_model(client, token, project):
     # The NEW name — append-only means the line belongs to the model as it is called from here on.
     assert _last(entries, "rename_model")["database"] == "Renamed"
     assert _last(entries, "delete_model")["database"] == "Renamed"
-    assert "database" not in _last(entries, "create_tag_group")  # project-wide
+    assert _last(entries, "create_tag_group")["database"] == "Life"  # the model the group belongs to
 
 
 def test_a_cross_model_copy_is_a_change_in_one_and_provenance_in_the_other(client, token, project):
@@ -120,46 +120,50 @@ def test_a_cross_model_copy_is_a_change_in_one_and_provenance_in_the_other(clien
     assert any(e["action"] == "copy_to_foreground" for e in _audit(client, token, database="Src"))
 
 
-def test_deleting_a_tag_group_names_every_model_it_stripped(client, token, project):
-    """The one case where a list is right: the group is project-wide, its cascade is not.
-    `database: None` would be formally correct and practically a lie — the models changed, and their
-    own history would say nothing about it."""
+def test_deleting_a_tag_group_changes_its_own_model_only(client, token, project):
+    """A tag group belongs to one model, so deleting it is a change in that model and nowhere else: the
+    same group in another model keeps its tags and its values, and the line stands in the history of the
+    model it changed — not in the other one's, which carries a group of the same name."""
     del project
     _model(client, token, "One")
     _model(client, token, "Two")
     _model(client, token, "Three")
     a = _activity(client, token, "One", "a")
     b = _activity(client, token, "Two", "b")
-    assert client.post("/api/v1/model/tag-groups", json={"name": "Stage", "color": "#123456"},
-                       headers=token).status_code == 200
     for db, code in (("One", a), ("Two", b)):
         r = client.post(
             "/api/v1/model/tags/set",
-            json={"keys": [{"database": db, "code": code}], "group": "Stage", "value": "use"},
+            json={"keys": [{"database": db, "code": code}], "group": "Supplier", "value": "acme"},
             headers=token,
         )
         assert r.status_code == 200, r.text
 
-    r = client.post("/api/v1/model/tag-groups/delete", json={"name": "Stage"}, headers=token)
+    r = client.post("/api/v1/model/tag-groups/delete", json={"database": "One", "name": "Supplier"}, headers=token)
     assert r.status_code == 200, r.text
-    assert r.json()["untagged"] == 2, "nothing was untagged, so there is nothing to attribute"
+    assert r.json()["untagged"] == 1, "only One's assignment goes"
+    assert client.get(f"/api/v1/model/tags/Two/{b}", headers=token).json() == [
+        {"dimension": "Supplier", "value": "acme"}
+    ]
+    two = client.get("/api/v1/model/tag-groups?database=Two", headers=token).json()["groups"]
+    assert [(g["name"], g["values"]) for g in two] == [("Supplier", ["acme"])]
 
     entry = _last(_audit(client, token), "delete_tag_group")
-    assert entry["databases"] == ["One", "Two"]  # not Three: it carried no assignment
-    assert "database" not in entry  # the action itself belongs to no single model
-    # It reaches the affected models' views and no others.
+    assert entry["database"] == "One"
+    assert "databases" not in entry
     assert any(e["action"] == "delete_tag_group" for e in _audit(client, token, database="One"))
-    assert not any(e["action"] == "delete_tag_group" for e in _audit(client, token, database="Three"))
+    for other in ("Two", "Three"):
+        assert not any(e["action"] == "delete_tag_group" for e in _audit(client, token, database=other))
 
 
 def test_a_tag_across_two_models_is_attributed_to_neither(client, token, project):
-    """A selection can cross models, and one of the two would be a smaller version of the same lie."""
+    """A selection can cross models, and one of the two would be a smaller version of the same lie. The
+    step names both in `databases` instead: it changed both."""
     del project
     _model(client, token, "Left")
     _model(client, token, "Right")
     left = _activity(client, token, "Left", "l")
     right = _activity(client, token, "Right", "r")
-    assert client.post("/api/v1/model/tag-groups", json={"name": "G", "color": "#123456"},
+    assert client.post("/api/v1/model/tag-groups", json={"database": "Left", "name": "G", "color": "#123456"},
                        headers=token).status_code == 200
     r = client.post(
         "/api/v1/model/tags/set",
@@ -168,7 +172,9 @@ def test_a_tag_across_two_models_is_attributed_to_neither(client, token, project
         headers=token,
     )
     assert r.status_code == 200, r.text
-    assert "database" not in _last(_audit(client, token), "set_tag")
+    across = _last(_audit(client, token), "set_tag")
+    assert "database" not in across
+    assert across["databases"] == ["Left", "Right"]
 
     # …while a selection inside one model is attributed to it.
     r = client.post(
@@ -394,24 +400,40 @@ def test_imported_history_is_filed_under_the_model_it_landed_in(client, token, p
 
 
 def test_a_workspace_wide_action_is_not_a_models_earlier_history(client, token, project):
-    """A tag group or tag value names no model because it changes none — not because it predates the
-    field. Shown in a model's "earlier history" block, 106 of them read as that model's past under a
-    label saying they were written before entries named their model. They stand in
-    every model's list instead, in their place in time, marked `workspace`."""
+    """A line written after lines began naming their model, and naming none itself, is a workspace-wide
+    action, not old history: the tag groups and values created while those were the workspace's are such
+    lines, and they stay in the log. Shown in a model's "earlier history" block, they read as that
+    model's past under a label saying they were written before entries named their model. They stand in
+    every model's list instead, in their place in time, marked `workspace`. A tag group created now
+    names its model like any other change to it, and stays out of the other models' lists."""
     del project
     _model(client, token, "W")
+    _model(client, token, "V")
     _set_param(client, token, "W", "p", 1.0)
-    r = client.post("/api/v1/model/tag-groups", json={"name": "Phase"}, headers=token)
+    # The line as it stands in a log from the time the tag groups were the workspace's.
+    with audit_store.path().open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"index": _audit(client, token)[-1]["index"] + 1,
+                             "timestamp": "2026-09-01T18:00:00+00:00", "source": "user",
+                             "action": "create_tag_group", "summary": "Create tag group 'Phase'",
+                             "undoable": False}) + "\n")
+    audit_store.reset_cache()
+    r = client.post("/api/v1/model/tag-groups", json={"database": "W", "name": "Supplier"}, headers=token)
     assert r.status_code == 200, r.text
+
     whole = _audit(client, token)
-    assert any("Phase" in e["summary"] and not audit_store.is_attributed(e) for e in whole), (
-        "the tag action is meant to stay unattributed — and visible in the whole-project log"
+    assert any("'Phase'" in e["summary"] and not audit_store.is_attributed(e) for e in whole), (
+        "the old line is meant to stay unattributed — and visible in the whole-project log"
     )
     mine = _audit(client, token, database="W")
-    phase = [e for e in mine if "Phase" in e["summary"]]
+    phase = [e for e in mine if "'Phase'" in e["summary"]]
     assert len(phase) == 1 and phase[0].get("workspace") is True, "the workspace action is missing or unmarked"
-    assert mine.index(phase[0]) > max(i for i, e in enumerate(mine) if e.get("database") == "W"), (
-        "it is not in its place in time"
-    )
+    assert mine.index(phase[0]) > max(
+        i for i, e in enumerate(mine) if e.get("database") == "W" and e["action"] == "set_parameter"
+    ), "it is not in its place in time"
+    created = [e for e in mine if e["summary"] == "Create tag group 'Supplier'"]
+    assert len(created) == 1 and created[0]["database"] == "W" and not created[0].get("workspace")
+    theirs = _audit(client, token, database="V")
+    assert [e.get("workspace") for e in theirs if "'Phase'" in e["summary"]] == [True]  # in every model's list
+    assert not any(e["summary"] == "Create tag group 'Supplier'" for e in theirs)
     # The marker is computed on read and never written to the file.
     assert "workspace" not in audit_store.path().read_text(encoding="utf-8")

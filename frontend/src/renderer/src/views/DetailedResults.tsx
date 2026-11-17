@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, isSuperseded, type DatabaseInfo } from '../lib/api'
 import { useQuery } from '../lib/server/useQuery'
-import { scenariosRoute, type TagGroup } from '../lib/server/routes'
+import { scenariosRoute, tagFamiliesRoute, type TagFamily } from '../lib/server/routes'
 
 // Stable fallback: `?? []` would be a fresh array each render and rattle every dependent memo.
-const NO_GROUPS: TagGroup[] = []
+const NO_FAMILIES: TagFamily[] = []
 import { useSettings, fmtSig } from '../lib/settings'
 import { usePersisted } from '../lib/persist'
 import { useViewField } from '../lib/modelView'
@@ -22,6 +22,7 @@ import { barOption, groupedContributionOption } from '../lib/charts/reportFigure
 import { figureInk, PRISM_PALETTE } from '../lib/reportColors'
 import { NumberInput } from '../components/NumberInput'
 import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
+import { familiesOffered } from './results/splitBy'
 import { useThemeKey } from '../lib/charts/useThemeKey'
 import {
   isicColor,
@@ -452,8 +453,6 @@ export default function DetailedResults({
   const [methodKey, setMethodKey] = useViewField(activeDb, 'detailed', 'methodKey', '')
   const [cutoffPct, setCutoffPct] = useViewField(activeDb, 'detailed', 'cutoff', 0.5)
   const [maxDepth, setMaxDepth] = useViewField(activeDb, 'detailed', 'maxDepth', 8)
-  // Shared cache — tag-group edits elsewhere invalidate the key, so this picker never goes stale.
-  const tagGroups = useQuery('/api/v1/model/tag-groups').data?.groups ?? NO_GROUPS
   const [groupBy, setGroupBy] = useViewField(activeDb, 'detailed', 'groupBy', '') // tag group to aggregate by, '' = off
   const [flowsMode, setFlowsMode] = usePersisted('prism.dr.flows', true) // elementary-flows side panel (default on)
   const [data, setData] = useState<ContribResponse | null>(null)
@@ -558,10 +557,13 @@ export default function DetailedResults({
    * "untagged" group. An ecoinvent process contributes none, which is right: nobody tags the background.
    * The family in use stays listed even if the subject moves away from it, or the select would show blank.
    */
+  // Asked for the subject's own model: a tag group belongs to its model, and the subject may be a
+  // process of another one. Shared cache — tag edits elsewhere invalidate the key.
+  const subjectDb = subject?.database ?? ''
+  const tagFamilies = useQuery(subjectDb ? tagFamiliesRoute(subjectDb) : null).data?.groups ?? NO_FAMILIES
   const groupFamilies = useMemo(
-    () =>
-      tagGroups.filter((g) => g.name === groupBy || (g.databases ?? []).some((d) => d === subject?.database)),
-    [tagGroups, subject?.database, groupBy]
+    () => familiesOffered(tagFamilies, new Set([subjectDb]), groupBy),
+    [tagFamilies, subjectDb, groupBy]
   )
 
   const familyMap = useMemo(() => groupMethodsByFamily(methods), [methods])
@@ -949,9 +951,9 @@ export default function DetailedResults({
               <span>Group by</span>
               <select className="search-sel" value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
                 <option value="">— off —</option>
-                {groupFamilies.map((g) => (
-                  <option key={g.name} value={g.name}>
-                    {g.name}
+                {groupFamilies.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
                   </option>
                 ))}
               </select>

@@ -162,9 +162,11 @@ def test_a_new_input_carries_its_tags_in_one_undo_step(client, token, project):
 def test_the_vocabulary_commands_reach_input_tags(client, token, project):
     w = _world(client, token)
     _set(client, token, [{"uid": w["u_steel"]}], "Raw material")
-    client.post("/api/v1/model/tag-groups/values", json={"group": PHASE, "value": "Raw materials"}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": w["db"], "group": PHASE, "value": "Raw materials"},
+                headers=token)
     r = client.post("/api/v1/model/tag-groups/values/merge",
-                    json={"group": PHASE, "value": "Raw material", "into": "Raw materials"}, headers=token)
+                    json={"database": w["db"], "group": PHASE, "value": "Raw material", "into": "Raw materials"},
+                    headers=token)
     assert r.status_code == 200, r.text
     assert _split(client, token, w["db"], w["R"]) == pytest.approx({"Production": 2.0, "Raw materials": 3.0})
     _undo(client, token)
@@ -330,16 +332,29 @@ def test_the_spreadsheet_round_trip_keeps_input_tags(client, token, project):
     assert _split(client, token, dst, w["R"]) == pytest.approx({"Production": 2.0, "Raw materials": 3.0})
 
 
-def test_moving_a_process_to_the_library_moves_its_phase_onto_the_inputs(client, token, project):
+def test_moving_a_process_to_the_library_leaves_its_tags_behind(client, token, project):
+    """The library carries no tags, and nothing is written in their place: the input that now draws on the
+    library copy stays untagged, so what the copy brings counts under the phase of the process using it.
+    The result says how many tags stayed behind; undo brings the process back with its own tags and those
+    of its inputs."""
     w = _world(client, token)
+    _set(client, token, [{"database": w["db"], "code": w["R"]}], "Use")
+    _set(client, token, [{"uid": w["u_steel"]}], "Raw materials")
+    before = {"Production": 2.0, "Raw materials": 3.0}
+    assert _split(client, token, w["db"], w["R"]) == pytest.approx(before)
     r = client.post("/api/v1/model/activities/to-library", json={"database": w["db"], "code": w["M"]}, headers=token)
     assert r.status_code == 200, r.text
-    # The library carries no tags; Manufacturing's Production now sits on the model input drawing on it.
-    assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == [{"dimension": PHASE, "value": "Production"}]
-    assert _split(client, token, w["db"], w["R"]) == pytest.approx({"Production": 5.0})
-    _undo(client, token)
+    assert r.json()["tags_dropped"] == 2  # Manufacturing's own phase and its steel's
+    assert "no tags" in r.json()["note"]
     assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == []
-    assert _split(client, token, w["db"], w["R"]) == pytest.approx({"Production": 5.0})
+    assert _split(client, token, w["db"], w["R"]) == pytest.approx({"Use": 5.0})
+    _undo(client, token)
+    assert client.get(f"/api/v1/model/tags/{w['db']}/{w['M']}", headers=token).json() == [
+        {"dimension": PHASE, "value": "Production"}
+    ]
+    assert _input_tags(client, token, w["db"], w["M"], w["u_steel"]) == [{"dimension": PHASE, "value": "Raw materials"}]
+    assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == []
+    assert _split(client, token, w["db"], w["R"]) == pytest.approx(before)
 
 
 def test_localizing_one_box_moves_only_its_inputs_and_keeps_the_split(client, token, project):
@@ -436,21 +451,37 @@ def test_a_blank_tag_on_a_new_input_writes_nothing(client, token, project):
     assert len([e for e in detail["exchanges"] if e["type"] == "technosphere"]) == 2
 
 
-def test_the_library_move_merges_tags_per_dimension_and_undo_restores_them(client, token, project):
+def test_the_library_move_writes_nothing_into_the_models_that_use_the_process(client, token, project):
+    """Another model draws on the process with a tag of its own on that input, and the process's model draws
+    on it untagged (an input from its own model cannot carry one). Afterwards both inputs carry exactly
+    what they carried before — the process's tags arrive in neither, in no dimension — and nothing of the
+    other model's tags or groups has changed. Undo puts the process's tags back."""
+    from prism_lca.engine.tags import TagStore
+
     w = _world(client, token)
-    # The model input drawing on Manufacturing cannot carry a tag while Manufacturing is in the model, so
-    # give the process a second dimension instead and check both arrive, and that undo clears them.
     _set(client, token, [{"database": w["db"], "code": w["M"]}], "Lid", group="Part")
+    other = "fg-" + uuid.uuid4().hex[:6]
+    assert client.post("/api/v1/databases/foreground", json={"name": other}, headers=token).status_code == 200
+    bottling = _create(client, token, other, "Bottling")
+    u_x = _edge(client, token, other, bottling, w["db"], w["M"])
+    assert _set(client, token, [{"uid": u_x}], "Use").status_code == 200
+    tags_before = TagStore().snapshot_database(other)
+    groups_before = client.get(f"/api/v1/model/tag-groups?database={other}", headers=token).json()
+
     r = client.post("/api/v1/model/activities/to-library", json={"database": w["db"], "code": w["M"]}, headers=token)
     assert r.status_code == 200, r.text
-    assert sorted((t["dimension"], t["value"]) for t in _input_tags(client, token, w["db"], w["R"], w["u_m"])) == [
-        (PHASE, "Production"), ("Part", "Lid")]
-    # A value the input says itself in one dimension stays; the other dimension still arrives.
-    _set(client, token, [{"uid": w["u_m"]}], "Use")
-    assert {t["dimension"]: t["value"] for t in _input_tags(client, token, w["db"], w["R"], w["u_m"])}[PHASE] == "Use"
-    _undo(client, token)
-    _undo(client, token)
+    assert r.json()["relinked"] == 2
+    assert r.json()["tags_dropped"] == 2  # Production and Lid
     assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == []
+    assert _input_tags(client, token, other, bottling, u_x) == [{"dimension": PHASE, "value": "Use"}]
+    assert TagStore().snapshot_database(other) == tags_before
+    assert client.get(f"/api/v1/model/tags/{w['db']}/{w['R']}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tag-groups?database={other}", headers=token).json() == groups_before
+
+    _undo(client, token)
+    own = client.get(f"/api/v1/model/tags/{w['db']}/{w['M']}", headers=token).json()
+    assert sorted((t["dimension"], t["value"]) for t in own) == [(PHASE, "Production"), ("Part", "Lid")]
+    assert _input_tags(client, token, other, bottling, u_x) == [{"dimension": PHASE, "value": "Use"}]
 
 
 def test_a_box_of_the_library_or_another_model_is_a_reference_on_the_canvas(client, token, project):

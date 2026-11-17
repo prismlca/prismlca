@@ -58,21 +58,51 @@ class TagStore(JsonFileStore):
                 return t["value"]
         return None
 
-    def databases_by_dimension(self) -> dict[str, list[str]]:
-        """Per tag dimension, the databases in which some activity actually carries a value of it.
+    def _model_keys(self, data: dict, database: str) -> list[str]:
+        """The keys of this model's processes and inputs **that exist**.
 
-        What a *split by* needs to know. A dimension exists as project config the moment it is created, so
-        the picker used to offer every one of them for every model — and splitting a contribution by a
-        dimension nobody has tagged yields one group called "untagged", which looks like a broken chart
-        rather than an empty answer. Read from the tag map, whose keys are already ``<database>/<code>``,
-        so this costs one file read and no Brightway query.
+        Deleting a process or an input leaves its tags in the file, so that the undo brings them back
+        with it. Such a key is nobody's tag: it must not make a value look carried, nor keep a group in
+        a split. So the keys are checked against the model's own process codes and, for the tags of
+        inputs, against its exchange uids — two narrow queries, the second only when the model has
+        input tags at all. Checking the codes also settles a model whose name starts another's
+        ("A/B/x" of a model "A/B", see :meth:`_own_codes`).
         """
-        out: dict[str, set[str]] = {}
-        for key, tags in self._load().items():
-            database = key.rsplit("/", 1)[0]
+        from prism_lca.engine.bootstrap import get_bd
+
+        prefix = f"{database}/"
+        under = [k for k in data if k.startswith(prefix)]
+        if not under or database not in get_bd().databases:
+            return []
+        from bw2data.backends import ActivityDataset as AD
+        from bw2data.backends import ExchangeDataset as ED
+
+        codes = {code for (code,) in AD.select(AD.code).where(AD.database == database).tuples()}
+        parts = {key: self.split_code(key[len(prefix):]) for key in under}
+        uids: set[str] = set()
+        if any(uid for _base, uid in parts.values()):
+            rows = ED.select(ED.data).where(ED.output_database == database).tuples()
+            uids = {str(row.get("prism_uid")) for (row,) in rows if isinstance(row, dict) and row.get("prism_uid")}
+        return [key for key, (base, uid) in parts.items() if base in codes and (uid is None or uid in uids)]
+
+    def model_items(self, database: str) -> dict[str, list[dict]]:
+        """``{key: tags}`` of this model's processes and inputs — what a change to the model's tag
+        vocabulary may touch, and nothing of any other model."""
+        data = self._load()
+        return {key: data[key] for key in self._model_keys(data, database)}
+
+    def carried(self, database: str) -> dict[str, list[str]]:
+        """Per tag dimension, the values some process or input of this model carries, in the order they
+        are met. What the model's vocabulary must at least hold, and what a *split by* would produce
+        groups for: a dimension nobody has tagged yields one group called "untagged", which looks like a
+        broken chart rather than an empty answer."""
+        out: dict[str, list[str]] = {}
+        for tags in self.model_items(database).values():
             for t in tags:
-                out.setdefault(t["dimension"], set()).add(database)
-        return {dim: sorted(dbs) for dim, dbs in out.items()}
+                values = out.setdefault(t["dimension"], [])
+                if t["value"] not in values:
+                    values.append(t["value"])
+        return out
 
     def list_for(self, database: str, code: str) -> list[dict]:
         return self._load().get(self._key(database, code), [])
@@ -138,29 +168,20 @@ class TagStore(JsonFileStore):
                     data.pop(key, None)
             self._save(data)
 
-    def remove_dimension(self, dimension: str) -> None:
-        """Cascade: drop every tag of ``dimension`` across all activities (group deleted)."""
-        with self._lock:
-            data = self._load()
-            changed = False
-            for key in list(data.keys()):
-                kept = [t for t in data[key] if t["dimension"] != dimension]
-                if len(kept) != len(data[key]):
-                    changed = True
-                    if kept:
-                        data[key] = kept
-                    else:
-                        data.pop(key, None)
-            if changed:
-                self._save(data)
+    def remove_dimension(self, database: str, dimension: str) -> None:
+        """Cascade: drop every tag of ``dimension`` in this model (group deleted)."""
+        self._strip(database, lambda t: t["dimension"] == dimension)
 
-    def remove_dimension_value(self, dimension: str, value: str) -> None:
-        """Cascade: drop tags matching (dimension, value) across all activities (value deleted)."""
+    def remove_dimension_value(self, database: str, dimension: str, value: str) -> None:
+        """Cascade: drop the tags matching (dimension, value) in this model (value deleted)."""
+        self._strip(database, lambda t: t["dimension"] == dimension and t["value"] == value)
+
+    def _strip(self, database: str, gone) -> None:  # noqa: ANN001 - a predicate over one tag
         with self._lock:
             data = self._load()
             changed = False
-            for key in list(data.keys()):
-                kept = [t for t in data[key] if not (t["dimension"] == dimension and t["value"] == value)]
+            for key in self._model_keys(data, database):
+                kept = [t for t in data[key] if not gone(t)]
                 if len(kept) != len(data[key]):
                     changed = True
                     if kept:

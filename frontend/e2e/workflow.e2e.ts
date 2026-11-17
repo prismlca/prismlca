@@ -108,6 +108,66 @@ test('a model is built, calculated, changed, undone and still there after a rest
   expect(running.rendererErrors).toEqual([])
 })
 
+test('tag groups belong to their model: kept over a restart, unseen by the next model, taken over on request', async () => {
+  let { page } = running!
+  // The model from the test before is open on its canvas. It gets a group, a tag, and the tag on its process.
+  await openTags(page)
+  const tags = page.locator('.tagman-modal')
+  await tags.getByPlaceholder('New group name (e.g. Life-cycle phase)').fill('Component')
+  await tags.getByRole('button', { name: 'Add group' }).click()
+  await tags.getByPlaceholder('New tag…').fill('Body')
+  await tags.getByRole('button', { name: 'Add a tag' }).click()
+  await expect(tags.locator('.tagman-chip', { hasText: 'Body' })).toHaveClass(/unused/)
+  await tags.getByRole('button', { name: 'Close' }).click()
+
+  await processBox(page, 'bottle').getByTitle('Assign tags').click()
+  await page.locator('.tagmenu select.search-sel').selectOption('Body')
+  await expect(processBox(page, 'bottle').locator('.pnode-tag', { hasText: 'Body' })).toBeVisible()
+  await page.locator('.ctx-backdrop').click()
+
+  await quit(running!, install)
+  running = await launch(install)
+  page = running.page
+  await page.locator('.navitem', { hasText: 'Model' }).click()
+  await expect(processBox(page, 'bottle').locator('.pnode-tag', { hasText: 'Body' })).toBeVisible()
+  await openTags(page)
+  await expect(page.locator('.tagman-name', { hasText: 'Component' })).toBeVisible()
+  // Carried by the process now, so no longer marked as unused.
+  await expect(page.locator('.tagman-chip', { hasText: 'Body' })).not.toHaveClass(/unused/)
+  await page.locator('.tagman-modal').getByRole('button', { name: 'Close' }).click()
+
+  // A second model starts without tag groups — the first model's are its own.
+  await page.getByTitle('Create another model, or duplicate an existing one').first().click()
+  await page.getByLabel('Model name (e.g. pet-bottle-2025)').fill('e2e-can')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  await expect(processBox(page, 'bottle')).toBeHidden()
+  await openTags(page)
+  const second = page.locator('.tagman-modal')
+  await expect(second.getByText('No tag groups yet — create one below.')).toBeVisible()
+
+  // Taken over, they arrive as vocabulary: the group and its tag, which nothing here carries yet.
+  await second.getByLabel('Model to take the tag groups from').selectOption('e2e-bottle')
+  await second.getByRole('button', { name: 'Take over' }).click()
+  await expect(second.locator('.tagman-name', { hasText: 'Component' })).toBeVisible()
+  await expect(second.locator('.tagman-chip', { hasText: 'Body' })).toHaveClass(/unused/)
+  await second.getByRole('button', { name: 'Close' }).click()
+
+  // One step of this model, and Undo takes it back.
+  await expect(page.getByRole('button', { name: 'Undo' })).toHaveAttribute('title', /Take over tag groups/)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await openTags(page)
+  await expect(page.locator('.tagman-modal').getByText('No tag groups yet — create one below.')).toBeVisible()
+  await page.locator('.tagman-modal').getByRole('button', { name: 'Close' }).click()
+  expect(running.rendererErrors).toEqual([])
+})
+
+async function openTags(page: Page): Promise<void> {
+  await page
+    .getByTitle('Manage tag groups and values (assign tags via the tag button on a process box)')
+    .click()
+  await expect(page.locator('.tagman-modal')).toBeVisible()
+}
+
 const GWP100 = '★ CML v4.8 2016 · climate change · global warming potential (GWP100)'
 
 function processBox(page: Page, name: string): Locator {

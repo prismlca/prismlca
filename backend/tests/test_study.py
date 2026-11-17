@@ -255,9 +255,7 @@ def test_the_comparison_brief_carries_the_frame_and_the_structure_but_no_results
     )
     assert r.status_code == 200, r.text
     code = r.json()["activity"]["code"]
-    client.post(
-        "/api/v1/model/tag-groups", json={"name": "Life-cycle phase", "values": ["Packaging production"]}, headers=token
-    )
+    client.post("/api/v1/model/tag-groups", json={"database": db, "name": "Life-cycle phase"}, headers=token)
     client.post(
         "/api/v1/model/tags",
         json={"database": db, "code": code, "dimension": "Life-cycle phase", "value": "Packaging production"},

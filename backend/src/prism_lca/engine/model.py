@@ -951,7 +951,7 @@ def partition_by_tag_group(database: str, dimension: str) -> dict:
 
     bd = get_bd()
     database = _db_or_404(bd, database)
-    group = next((g for g in TagGroupStore().list_groups() if g["name"] == dimension), None)
+    group = next((g for g in TagGroupStore().list_groups(database) if g["name"] == dimension), None)
     if group is None:
         raise PrismError(f"Tag group '{dimension}' does not exist.", code="unknown_tag_group", status_code=404)
 

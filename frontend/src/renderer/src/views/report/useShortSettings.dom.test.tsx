@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The short report's setup from its two homes: the variants it compares belong to the open model, the look
- * of the report to the app. Held app-wide, the variants travelled to the next model, where its rail could
- * not show them and nobody could untick them.
+ * The short report's setup from its two homes: the variants it compares and the tag groups it breaks down by
+ * belong to the open model, the look of the report to the app. Held app-wide, the variants travelled to the
+ * next model, where its rail could not show them and nobody could untick them.
  */
 import { act, renderHook } from '@testing-library/react'
 import { useState } from 'react'
@@ -49,6 +49,28 @@ describe('the short report settings', () => {
     // And back: A's variants are where they were left.
     rerender({ db: 'Model A' })
     expect(result.current.settings.compare).toEqual([{ scenario: 'a-only' }])
+  })
+
+  it('keeps the tag groups it breaks down and colours by with the model', () => {
+    const { result, rerender } = renderHook(({ db }) => useShortSettings(db), {
+      initialProps: { db: 'Model D' as string | null }
+    })
+    act(() => result.current.update({ breakdowns: ['tag:Component'], colour_by: 'tag:Component' }))
+    expect(result.current.settings.breakdowns).toEqual(['tag:Component'])
+    expect(result.current.settings.colour_by).toBe('tag:Component')
+
+    // Another model has its own tag groups: a group named in D means nothing here.
+    rerender({ db: 'Model E' })
+    expect(result.current.settings.breakdowns).toEqual([])
+    expect(result.current.settings.colour_by).toBe('')
+    // Clearing the colouring is a value too, not "no change".
+    act(() => result.current.update({ colour_by: 'share' }))
+    act(() => result.current.update({ colour_by: '' }))
+    expect(result.current.settings.colour_by).toBe('')
+
+    rerender({ db: 'Model D' })
+    expect(result.current.settings.breakdowns).toEqual(['tag:Component'])
+    expect(result.current.settings.colour_by).toBe('tag:Component')
   })
 
   it('drops a process variant the rail has no checkbox for', () => {

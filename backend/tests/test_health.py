@@ -396,8 +396,8 @@ def test_an_untagged_buyer_of_recyclate_is_left_alone(client, token, project):
 
 # ---- how the tagged life-cycle phases hang together -----------------------
 def _tag(client, token, db, code, group, value) -> None:
-    client.post("/api/v1/model/tag-groups", json={"name": group}, headers=token)
-    client.post("/api/v1/model/tag-groups/values", json={"group": group, "value": value}, headers=token)
+    client.post("/api/v1/model/tag-groups", json={"database": db, "name": group}, headers=token)
+    client.post("/api/v1/model/tag-groups/values", json={"database": db, "group": group, "value": value}, headers=token)
     client.post(
         "/api/v1/model/tags/set",
         json={"keys": [{"database": db, "code": code}], "group": group, "value": value},

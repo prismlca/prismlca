@@ -1,9 +1,9 @@
 """Foreground modelling endpoints — all mutations go through the command bus (undo/audit)."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import MethodRef, require_token
@@ -524,74 +524,118 @@ class SetTagRequest(BaseModel):
 
 
 class TagGroupRequest(BaseModel):
+    database: str
     name: str
     color: str | None = None
     source: str = "user"
 
 
 class TagValueRequest(BaseModel):
+    database: str
     group: str
     value: str
     source: str = "user"
 
 
-@router.get("/tag-groups", summary="List tag groups (dimensions) with their allowed values")
-async def list_tag_groups(request: Request) -> dict:
-    """Each group also says in which databases it is actually used.
+def _tag_model(database: str) -> str:
+    """The model a tag-group request names: it has to exist and be a model — a background database and
+    the library carry no tags, so they have no groups either."""
+    name = model.resolve_db_name(database)
+    if name not in get_bd().databases or tag_scope.tag_kind(name) != tag_scope.MODEL:
+        raise PrismError(f"'{database}' is not a model.", code="database_not_found", status_code=404)
+    return name
 
-    `databases` is what lets a *split by* offer only dimensions that would produce groups: a dimension is
-    project config from the moment it is created, so without this every picker offered every one of them,
-    and choosing an untagged dimension drew a chart with a single "untagged" bar. Sent with the list rather
-    than behind a second endpoint — every caller that draws the picker needs it, and it is one dict.
-    """
-    used = _tags().databases_by_dimension()
+
+@router.get("/tag-groups", summary="List a model's tag groups (dimensions) with their values")
+async def list_tag_groups(request: Request, database: str) -> dict:
+    """The groups of one model, each with ``unused``: the values no process or input of the model
+    carries. A vocabulary is prepared before it is used, so such a value is no error — but one that
+    stays unused is what the Tags window offers to remove."""
+    # Reading completes the list from the tags and may save it: one workspace from start to end.
+    with commands.PROJECT_LOCK:
+        name = _tag_model(database)
+        carried = _tags().carried(name)
+        groups = _tag_groups().list_groups(name, carried)
     return {
-        "groups": [{**g, "databases": used.get(g["name"], [])} for g in _tag_groups().list_groups()]
+        "database": name,
+        "groups": [
+            {**g, "used": g["name"] in carried, "unused": [v for v in g["values"] if v not in carried.get(g["name"], [])]}
+            for g in groups
+        ],
     }
 
 
-@router.post("/tag-groups", summary="Create a tag group (dimension)")
+@router.get("/tag-groups/in-use", summary="The tag groups some process of the given models carries")
+async def tag_groups_in_use(request: Request, database: Annotated[list[str], Query()]) -> dict:
+    """What a *split by* can offer for these models: per group name, the models (of those asked for)
+    in which some process or input carries a value of it.
+
+    Read from the tags, not from the models' group lists: a group exists the moment it is created, and
+    splitting a contribution by a group nobody has tagged draws a chart with a single "untagged" bar.
+    Groups are matched across models by name — the same name in two models is one entry — in the order
+    of the first model that carries them.
+    """
+    store, groups = _tags(), _tag_groups()
+    out: dict[str, list[str]] = {}
+    with commands.PROJECT_LOCK:  # see list_tag_groups
+        for name in dict.fromkeys(model.resolve_db_name(d) for d in database):
+            if name not in get_bd().databases or tag_scope.tag_kind(name) != tag_scope.MODEL:
+                continue  # a background dataset among the subjects of a comparison has no tags
+            carried = store.carried(name)
+            for g in groups.list_groups(name, carried):
+                if g["name"] in carried:
+                    out.setdefault(g["name"], []).append(name)
+    return {"groups": [{"name": n, "databases": dbs} for n, dbs in out.items()]}
+
+
+@router.post("/tag-groups", summary="Create a tag group (dimension) in a model")
 async def create_tag_group(request: Request, body: TagGroupRequest) -> dict:
-    result = _tag_groups().create_group(body.name, body.color)
+    name = _tag_model(body.database)
+    model_scope.assert_model_write(name)
+    result = _tag_groups().create_group(name, body.name, body.color)
     # The source comes from the caller like it does everywhere else. Hard-coding "user" here put the
     # assistant's own tag groups in the audit log under the user's name, right beside the tag
     # assignments it was correctly credited with — which reads as the user having done half of it.
-    # No `database`: a tag group is project-wide, and its cascade only reaches models when a group
-    # or a value is *removed* (which is a Command, and carries `databases`). Creating one changes no
-    # model, so claiming one here would be the inference this field exists to replace.
-    _bus(request).note(body.source, "create_tag_group", f"Create tag group '{body.name}'")
+    # A note, not an undo step: a vocabulary is prepared before it is used, and an empty group or an
+    # unused value is removed where it is listed.
+    _bus(request).note(body.source, "create_tag_group", f"Create tag group '{result['name']}'", database=name)
     return result
 
 
-@router.post("/tag-groups/delete", summary="Delete a tag group (removes its tags everywhere; undoable)")
+@router.post("/tag-groups/delete", summary="Delete a tag group of a model (removes its tags there; undoable)")
 async def delete_tag_group(request: Request, body: TagGroupRequest) -> dict:
-    cmd = commands.DeleteTagGroupCommand(_tag_groups(), _tags(), body.name)
+    cmd = commands.DeleteTagGroupCommand(_tag_groups(), _tags(), _tag_model(body.database), body.name)
     # source from the caller like everywhere else — this call site and values/remove were the two
     # that hard-coded "user" and put assistant deletions under the user's name.
     return _bus(request).execute(cmd, source=body.source)
 
 
-@router.post("/tag-groups/values", summary="Add an allowed value to a tag group")
+@router.post("/tag-groups/values", summary="Add a value to a tag group of a model")
 async def add_tag_value(request: Request, body: TagValueRequest) -> dict:
+    name = _tag_model(body.database)
+    model_scope.assert_model_write(name)
     store = _tag_groups()
-    known = any(g["name"] == body.group and body.value.strip() in g["values"] for g in store.list_groups())
-    result = store.add_value(body.group, body.value)
+    known = any(g["name"] == body.group and body.value.strip() in g["values"] for g in store.list_groups(name))
+    result = store.add_value(name, body.group, body.value)
     # The assistant's "assign" adds its value before every assignment, a no-op once it exists. Only a value
     # that is really new is an event: otherwise the audit fills with "Add value 'Production'" per process.
     if not known:
-        _bus(request).note(  # project-wide, see create_tag_group
-            body.source, "add_tag_value", f"Add value '{body.value}' to tag group '{body.group}'"
+        _bus(request).note(  # see create_tag_group
+            body.source, "add_tag_value", f"Add value '{body.value}' to tag group '{body.group}'", database=name
         )
     return result
 
 
-@router.post("/tag-groups/values/remove", summary="Remove a value from a group (untags it everywhere; undoable)")
+@router.post(
+    "/tag-groups/values/remove", summary="Remove a value from a group of a model (untags it there; undoable)"
+)
 async def remove_tag_value(request: Request, body: TagValueRequest) -> dict:
-    cmd = commands.RemoveTagValueCommand(_tag_groups(), _tags(), body.group, body.value)
+    cmd = commands.RemoveTagValueCommand(_tag_groups(), _tags(), _tag_model(body.database), body.group, body.value)
     return _bus(request).execute(cmd, source=body.source)  # see delete_tag_group
 
 
 class TagValueMergeRequest(BaseModel):
+    database: str
     group: str
     value: str
     into: str
@@ -599,6 +643,7 @@ class TagValueMergeRequest(BaseModel):
 
 
 class TagGroupMergeRequest(BaseModel):
+    database: str
     name: str
     into: str
     source: str = "user"
@@ -606,13 +651,33 @@ class TagGroupMergeRequest(BaseModel):
 
 @router.post("/tag-groups/values/merge", summary="Merge a value into another of the same group (retags; undoable)")
 async def merge_tag_value(request: Request, body: TagValueMergeRequest) -> dict:
-    cmd = commands.MergeTagValueCommand(_tag_groups(), _tags(), body.group, body.value, body.into)
+    cmd = commands.MergeTagValueCommand(
+        _tag_groups(), _tags(), _tag_model(body.database), body.group, body.value, body.into
+    )
     return _bus(request).execute(cmd, source=body.source)
 
 
-@router.post("/tag-groups/merge", summary="Merge a tag group into another (values and tags move; undoable)")
+@router.post("/tag-groups/merge", summary="Merge a tag group of a model into another (values and tags move; undoable)")
 async def merge_tag_group(request: Request, body: TagGroupMergeRequest) -> dict:
-    cmd = commands.MergeTagGroupCommand(_tag_groups(), _tags(), body.name, body.into)
+    cmd = commands.MergeTagGroupCommand(_tag_groups(), _tags(), _tag_model(body.database), body.name, body.into)
+    return _bus(request).execute(cmd, source=body.source)
+
+
+class TagGroupAdoptRequest(BaseModel):
+    database: str
+    #: The model whose groups are taken over.
+    source_model: str
+    source: str = "user"
+
+
+@router.post("/tag-groups/adopt", summary="Take over another model's tag groups (undoable)")
+async def adopt_tag_groups(request: Request, body: TagGroupAdoptRequest) -> dict:
+    """A new model starts without tag groups. This copies another model's — names, colours, values in
+    their order — so two models can be broken down side by side without retyping a vocabulary."""
+    if model_scope.fence() is not None:
+        # The other model's vocabulary is that model's study text; a chat reads only its own model.
+        raise model_scope.outside_error([body.source_model], model_scope.fence() or "")
+    cmd = commands.AdoptTagGroupsCommand(_tag_groups(), _tag_model(body.database), _tag_model(body.source_model))
     return _bus(request).execute(cmd, source=body.source)
 
 

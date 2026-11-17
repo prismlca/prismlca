@@ -112,7 +112,7 @@ def context_in_phase_order(database: str, report: dict) -> dict:
     Production, Use. The written chapter follows the table faithfully ("the first substantive module
     is End-of-Life — Empty Container"), so a report walked its own life cycle backwards (V249).
 
-    The order comes from the tag group's own `values` list — the sequence the modeller created them
+    The order comes from the model's tag group's own `values` list — the sequence the modeller created them
     in, which for a life-cycle dimension *is* the life cycle. Untagged processes keep alphabetical
     order after the tagged ones, and a report with no breakdown dimension is unchanged.
     """
@@ -128,7 +128,7 @@ def context_in_phase_order(database: str, report: dict) -> dict:
     group_store = TagGroupStore()
     try:
         tag_map = tag_store.load_map()
-        group = next((g for g in group_store.list_groups() if g.get("name") == dimension), None)
+        group = next((g for g in group_store.list_groups(database) if g.get("name") == dimension), None)
     except Exception as exc:  # noqa: BLE001 — an order is a nicety; an unreadable file must not stop a render.
         _log.swallowed(exc, "context_in_phase_order")
         return context

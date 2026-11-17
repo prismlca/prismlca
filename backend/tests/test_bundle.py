@@ -138,6 +138,7 @@ def test_a_model_export_carries_the_sections_of_the_model_preset(client, token, 
             "library.json",
             "parameters.json",
             "tags.json",
+            "tag_groups.json",
             "scenarios.json",
             "study.json",
             "view.json",
@@ -679,6 +680,19 @@ def test_every_golden_bundle_still_imports(client, token, project, fixture):
     )
     assert r.status_code == 200, r.text
     assert r.json()["activities"] >= 1
+    # None of these carries the groups: the model gets them from the tags it carries.
+    with zipfile.ZipFile(io.BytesIO(fixture.read_bytes())) as zf:
+        assert "tag_groups.json" not in zf.namelist()
+        carried: dict[str, list[str]] = {}
+        for tags in json.loads(zf.read("tags.json"))["tags"].values():
+            for t in tags:
+                carried.setdefault(t["dimension"], [])
+                if t["value"] not in carried[t["dimension"]]:
+                    carried[t["dimension"]].append(t["value"])
+    landed = r.json()["database"]
+    groups = client.get(f"/api/v1/model/tag-groups?database={landed}", headers=token).json()["groups"]
+    assert {g["name"]: g["values"] for g in groups} == carried
+    assert all(g["color"] and g["used"] for g in groups)
 
 
 # --- the library section: the user's own datasets travel with the model -----------------------

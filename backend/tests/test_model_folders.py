@@ -141,16 +141,18 @@ def test_setting_a_tag_registers_its_dimension_and_value(client, token, project)
 
     assert client.post(
         "/api/v1/model/tags/set",
-        json={"keys": [{"database": db, "code": code}], "group": "Lebenswegphase", "value": "Herstellung"},
+        json={"keys": [{"database": db, "code": code}], "group": "Lieferant", "value": "Hersteller A"},
         headers=token,
     ).status_code == 200
 
-    groups = client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]
-    mine = next((g for g in groups if g["name"] == "Lebenswegphase"), None)
+    groups = client.get(f"/api/v1/model/tag-groups?database={db}", headers=token).json()["groups"]
+    mine = next((g for g in groups if g["name"] == "Lieferant"), None)
     assert mine is not None, [g["name"] for g in groups]
-    assert "Herstellung" in mine["values"]
+    assert "Hersteller A" in mine["values"]
     # …and it is reported as used by this model, which is what makes a picker offer it.
-    assert db in mine["databases"]
+    assert mine["used"] is True
+    in_use = client.get(f"/api/v1/model/tag-groups/in-use?database={db}", headers=token).json()["groups"]
+    assert {"name": "Lieferant", "databases": [db]} in in_use
 
 
 def test_clearing_a_tag_does_not_invent_a_dimension(client, token, project):
@@ -161,7 +163,7 @@ def test_clearing_a_tag_does_not_invent_a_dimension(client, token, project):
         json={"keys": [{"database": db, "code": code}], "group": "Nothing", "value": ""},
         headers=token,
     ).status_code == 200
-    groups = [g["name"] for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]]
+    groups = [g["name"] for g in client.get(f"/api/v1/model/tag-groups?database={db}", headers=token).json()["groups"]]
     assert "Nothing" not in groups
 
 
@@ -175,7 +177,7 @@ def test_undo_of_a_tag_keeps_the_dimension(client, token, project):
         headers=token,
     )
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    groups = [g["name"] for g in client.get("/api/v1/model/tag-groups", headers=token).json()["groups"]]
+    groups = [g["name"] for g in client.get(f"/api/v1/model/tag-groups?database={db}", headers=token).json()["groups"]]
     assert "Phase X" in groups
 
 
@@ -190,20 +192,21 @@ def test_a_second_spelling_of_one_dimension_joins_the_first(project):
     from prism_lca.engine.tag_groups import TagGroupStore, same_dimension
 
     store = TagGroupStore()
-    store.create_group("Life-cycle phase")
+    store.create_group("M", "Life-cycle phase")
 
     # A tag WRITE never fails over a naming question — it joins the group that already means this.
     for spelling in ("Life cycle phase", "Lebenswegphase", "Phase", "Phase du cycle de vie"):
-        assert store.find_or_create(spelling)["name"] == "Life-cycle phase", spelling
-    assert [g["name"] for g in store.list_groups()] == ["Life-cycle phase"]
+        assert store.find_or_create("M", spelling)["name"] == "Life-cycle phase", spelling
+    assert [g["name"] for g in store.list_groups("M")] == ["Life-cycle phase"]
 
     # An explicit create is refused like a duplicate, and the message names the group to use.
     with pytest.raises(PrismError) as e:
-        store.create_group("Lebenswegphase")
+        store.create_group("M", "Lebenswegphase")
     assert "Life-cycle phase" in str(e.value)
+    assert e.value.code == "group_dimension_exists"
 
     # A genuinely different dimension is untouched — guessing at synonyms in general would merge
     # dimensions somebody meant to keep apart.
-    assert store.create_group("Supplier")["name"] == "Supplier"
-    assert store.find_or_create("Material")["name"] == "Material"
+    assert store.create_group("M", "Supplier")["name"] == "Supplier"
+    assert store.find_or_create("M", "Material")["name"] == "Material"
     assert not same_dimension("Supplier", "Life-cycle phase")

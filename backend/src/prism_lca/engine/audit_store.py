@@ -354,8 +354,8 @@ def attributed_to(entry: dict, database: str, timeline: Lifecycle | None = None)
     Three fields answer yes, and each for its own reason:
 
     * ``database`` — this is where something changed.
-    * ``databases`` — a project-wide action with a consequence *in* this model (a deleted tag group
-      strips assignments from every model it touched).
+    * ``databases`` — one step that changed several models, this one among them (a tag set on a
+      selection that spans two models).
     * ``related`` — the model this change came *from* (``Copy 'x' from A into B``: the entry is a
       change in B and a provenance line in A, and a reviewer standing in A must see that its
       substance left the building).

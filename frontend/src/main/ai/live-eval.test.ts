@@ -281,8 +281,6 @@ describe.skipIf(!LIVE)('live evals', () => {
   afterAll(async () => {
     if (backend && scratchDb)
       await api('POST', '/api/v1/databases/foreground/delete', { database: scratchDb })
-    // Tag groups live in the project, so they outlive the scratch model and have to go explicitly.
-    if (backend && tagGroup) await api('POST', '/api/v1/model/tag-groups/delete', { name: tagGroup })
     if (report.length) {
       const sum = (f: (r: Row) => number): number => report.reduce((s, r) => s + f(r), 0)
       const prompt = sum((r) => r.prompt)
@@ -421,17 +419,15 @@ describe.skipIf(!LIVE)('live evals', () => {
           unit: 'kg'
         })
       }
-      // Tag groups are PROJECT-scoped, not model-scoped, so this scenario needs a name that cannot
-      // collide with the user's own groups: asserting on something like "…phase" matched a group that
-      // already existed, which made the check pass no matter what the model did — and appended the
-      // model's value to real user data.
+      // A name of the run's own, so the assertion can only be met by what the model did in this turn:
+      // the group belongs to the scratch model and goes with it.
       const r = await turn(
         'tags',
         `Create a tag group "${tagGroup}" with the value "Production", then tag the process "eval widget" with it.`
       )
       expect(r.tools).toContain('edit_tags')
       const { groups } = await get<{ groups: Array<{ name: string; values: string[] }> }>(
-        '/api/v1/model/tag-groups'
+        `/api/v1/model/tag-groups?database=${encodeURIComponent(scratchDb)}`
       )
       const made = groups.find((g) => g.name === tagGroup)
       expect(made, `the model did not create the tag group "${tagGroup}"`).toBeDefined()
