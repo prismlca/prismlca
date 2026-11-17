@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import threading
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import MethodRef, require_token
-from prism_lca.engine import calc_jobs, lca, montecarlo, scenarios
+from prism_lca.engine import calc_jobs, inventory_per_unit, lca, montecarlo, scenarios
 from prism_lca.engine import compare as compare_engine
 from prism_lca.engine.scenarios import ScenarioStore
 from prism_lca.errors import PrismError
@@ -281,7 +282,9 @@ class InventoryRequest(BaseModel):
     amount: float = 1.0
     #: Substring filter on the dataset name or its reference product.
     query: str | None = None
-    limit: int = 40
+    top_n: int = 40
+    #: "all" = the whole supply chain; "foreground" = the model's processes and their direct background draws.
+    scope: Literal["all", "foreground"] = "all"
     scenario: str | None = None
 
 
@@ -290,7 +293,9 @@ def inventory(request: Request, body: InventoryRequest) -> dict:
     """How much of every technosphere product one functional unit pulls in — the answer to
     "how many grams of glycerine are in one tube", which previously existed only as hand arithmetic."""
     with scenarios.applied(ScenarioStore(), body.database, body.scenario):
-        return lca.technosphere_inventory(body.database, body.code, body.amount, body.query, body.limit)
+        return inventory_per_unit.technosphere_inventory(
+            body.database, body.code, body.amount, body.query, body.top_n, body.scope
+        )
 
 
 class MonteCarloRequest(BaseModel):

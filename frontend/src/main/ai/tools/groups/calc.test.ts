@@ -112,6 +112,34 @@ describe('explain_result mode="matrix"', () => {
   })
 })
 
+describe('explain_result mode="inventory"', () => {
+  it('forwards query, scope and top_n to the inventory endpoint', async () => {
+    const api = vi.fn<ToolCtx['api']>(async () => ({ scope: 'foreground', inventory: [] }))
+    await tool('explain_result').run(
+      { mode: 'inventory', code: 'tube', query: 'glycerine', scope: 'foreground', top_n: 10 },
+      ctx(api)
+    )
+    expect(api).toHaveBeenCalledTimes(1)
+    const [, path, body] = api.mock.calls[0] as unknown as [string, string, Record<string, unknown>]
+    expect(path).toBe('/api/v1/calc/inventory')
+    expect(body).toMatchObject({
+      database: 'Model A',
+      code: 'tube',
+      query: 'glycerine',
+      scope: 'foreground',
+      top_n: 10
+    })
+  })
+
+  it('declares every argument the inventory result points to', () => {
+    // The backend's note on a cut list says "narrow them with 'query' or raise 'top_n'" and, for the whole
+    // chain, "pass scope='foreground'". A hint at an argument the schema lacks sends a model in circles.
+    const props = (tool('explain_result').spec.function.parameters as any).properties
+    for (const name of ['query', 'top_n', 'scope']) expect(props[name], name).toBeDefined()
+    expect(props.scope.enum).toEqual(['all', 'foreground'])
+  })
+})
+
 describe('calculate', () => {
   it('passes direct_split and method_family through', async () => {
     const api = vi.fn<ToolCtx['api']>(async () => ({ results: [] }))

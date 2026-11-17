@@ -45,9 +45,9 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/params.py": 1298,  # 1273
     "prism_lca/search/service.py": 1215,  # 1190, after the filter diagnosis moved to facets.py
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
-    # 1274 — raised by 11 for release_cached: closing the files of cached factorisations needs the cache,
-    # which is private to this module; another module reaching into it would be the worse cut.
-    "prism_lca/engine/lca.py": 1310,
+    # 1245, after the inventory per functional unit moved to inventory_per_unit.py. `release_cached` and
+    # `inventory_method` stay here: both need the factorisation cache, which is private to this module.
+    "prism_lca/engine/lca.py": 1270,
     "prism_lca/engine/dataimport/session.py": 1274,  # 1249
     # 1068, after the unknown sections, the background lookups and the reports section moved out
     "prism_lca/engine/bundle.py": 1093,
