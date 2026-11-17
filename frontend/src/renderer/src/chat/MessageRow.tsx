@@ -8,6 +8,7 @@ import { ToolTraceList } from './ToolTraceList'
 import { attachExtent } from './chatFormat'
 import { splitAskTranscript } from './askTranscript'
 import { AnsweredQuestions } from './AnsweredQuestions'
+import { AnswerSources } from './WebSources'
 
 /**
  * One finished message of the transcript.
@@ -46,6 +47,8 @@ export const MessageRow = memo(function MessageRow({
         />
       ) : null}
       {m.role === 'assistant' ? <AssistantText text={m.content} onJump={onJump} /> : m.content}
+      {/* The pages the provider's web search found and the answer cites — read from the stored trace. */}
+      {m.role === 'assistant' ? <AnswerSources traces={m.tools} /> : null}
       {/* The reason a run failed, as stored with its answer: the message the window showed at the time
           is gone after a reload, and "why did this not work yesterday" was unanswerable. */}
       {m.role === 'assistant' && m.error ? <div className="chat-error">Error: {m.error}</div> : null}

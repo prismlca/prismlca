@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-17",
+    "title": "Web searches show their sources",
+    "details": "When the assistant searches the web through your provider, its answer now lists the pages it cites, and where the provider reports them, one line below opens what it searched for and which pages came back. The assistant also keeps that record in later turns, so asked where a figure came from it can name its search, and the model review sees the searches too."
+  },
+  {
+    "date": "2026-11-17",
     "title": "Scenarios renamed in place, small effects explained",
     "details": "The assistant can now rename a scenario or rewrite its description without deleting it, so the scenario keeps its id, its place and its overrides. When a comparison moves the result by less than 1 %, the note names the exchange the scenario reaches, the parameters in between and that exchange's share of the result; it asks to bind a quantity only where a binding is missing."
   },

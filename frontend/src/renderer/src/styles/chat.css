@@ -618,3 +618,20 @@
    flex item that may shrink, it cuts the name with an ellipsis instead and keeps its chevron. */
 .chat-model-wrap { display: flex; }
 .chat-bar-model { min-width: 0; }
+
+/* The provider's web lookups (chat/WebSources.tsx): the pages an answer cites, under it, and the searches
+   behind them — one line per page, the passage it cites on hover. */
+.chat-sources { margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--border); font-size: var(--fs-sec); }
+.chat-sources-h { font-size: var(--fs-label); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; color: var(--faint); margin: 2px 0; }
+.chat-sources-list { margin: 0 0 4px; padding-left: 20px; line-height: 1.45; }
+.chat-sources-list li, .chat-web-results li { overflow-wrap: anywhere; }
+.chat-sources-searches > summary { cursor: pointer; color: var(--faint); list-style: none; padding: 1px 0; }
+.chat-sources-searches > summary::marker, .chat-sources-searches > summary::-webkit-details-marker { display: none; }
+.chat-sources-searches > summary::before { content: '▸ '; font-size: 9px; color: var(--border-strong); }
+.chat-sources-searches[open] > summary::before { content: '▾ '; }
+.chat-sources-searches > summary:hover { color: var(--ink); }
+.chat-web { display: flex; flex-direction: column; gap: 5px; margin: 3px 0 5px; font-size: var(--fs-sec); }
+.chat-web-query { color: var(--ink); font-weight: 600; }
+.chat-web-results { margin: 1px 0 0; padding-left: 18px; line-height: 1.45; }
+.chat-web-none { color: var(--faint); padding-left: 2px; }
+.chat-web-host { color: var(--faint); }

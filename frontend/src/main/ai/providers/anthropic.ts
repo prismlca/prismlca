@@ -40,12 +40,13 @@ import { clampMaxTokens, type ReasoningEffort } from '../../../shared/aiDefaults
 import { ANTHROPIC_CACHE_WRITE_FACTOR, ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH, priceFor } from '../directModels'
 import { getModels } from '../models'
 import { contextOverflow } from './contextOverflow'
+import { askedBefore, citationsOf, searchesOf } from './anthropicSearch'
+import { searchNote } from './searchNote'
 import {
   AiProviderError,
   type AccumTool,
   type ChatMessage,
   type ChatTransport,
-  type Citation,
   type StreamChatOpts,
   type StreamEvent
 } from './types'
@@ -312,7 +313,11 @@ function assistantBlocks(
           input: parseArgs(c.function.arguments)
         })
   } else {
-    blocks = blocksOf(m.content).filter((b) => b.type === 'text')
+    // The searches of a rebuilt round are named ahead of its text: their own blocks are not sent.
+    const note = searchNote(m.web)
+    blocks = [...(note ? [{ type: 'text', text: note }] : []), ...blocksOf(m.content)].filter(
+      (b) => b.type === 'text'
+    )
     for (const b of blocks) delete b.cache_control
     for (const c of calls)
       blocks.push({
@@ -440,6 +445,9 @@ interface AnthropicState {
   stopped: boolean
   /** An `error` event mid-stream: raised from `finish`, AFTER its usage went to the ledger. */
   failure?: AiProviderError
+  /** Search texts of the searches the request's replayed rounds made, by call id — a result in this
+   *  reply may answer one of them (see searchesOf). */
+  asked: Map<string, string>
 }
 
 /** A refusal's reason as Anthropic states it (`stop_details`: a category such as "bio" or "cyber", and
@@ -515,35 +523,6 @@ function sendUsage(state: AnthropicState): StreamEvent[] {
   return [usageEvent(state.model, state.usage, state.firstPrompt)]
 }
 
-/** Every page the search returned, cited ones first with the passage the model cited. */
-function citationsOf(blocks: Record<string, unknown>[]): Citation[] {
-  const pages = new Map<string, Citation>()
-  for (const b of blocks)
-    if (b.type === 'text' && Array.isArray(b.citations))
-      for (const c of b.citations)
-        if (isObj(c) && c.type === 'web_search_result_location' && typeof c.url === 'string' && c.url) {
-          const page = pages.get(c.url) ?? { url: c.url }
-          if (typeof c.title === 'string' && c.title) page.title = c.title
-          if (!page.excerpt && typeof c.cited_text === 'string' && c.cited_text) page.excerpt = c.cited_text
-          pages.set(c.url, page)
-        }
-  for (const b of blocks)
-    if (b.type === 'web_search_tool_result' && Array.isArray(b.content))
-      for (const r of b.content)
-        if (
-          isObj(r) &&
-          r.type === 'web_search_result' &&
-          typeof r.url === 'string' &&
-          r.url &&
-          !pages.has(r.url)
-        )
-          pages.set(r.url, {
-            url: r.url,
-            ...(typeof r.title === 'string' && r.title ? { title: r.title } : {})
-          })
-  return [...pages.values()]
-}
-
 export const anthropicTransport: ChatTransport<AnthropicState> = {
   name: 'anthropic',
   unreachable: 'Anthropic unreachable — check your internet connection.',
@@ -597,7 +576,8 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
     json: new Map(),
     usage: {},
     sentUsage: false,
-    stopped: false
+    stopped: false,
+    asked: askedBefore(opts.messages)
   }),
 
   interpret(raw: unknown, state: AnthropicState): StreamEvent[] {
@@ -714,6 +694,8 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
     const blocks = order.map((i) => state.blocks.get(i)!)
     const citations = citationsOf(blocks)
     if (citations.length) events.push({ type: 'citations', citations })
+    const searches = searchesOf(blocks, state.asked)
+    if (searches.length) events.push({ type: 'web_searches', searches })
     const calls: AccumTool[] = order
       .filter((i) => state.blocks.get(i)?.type === 'tool_use')
       .map((i) => {

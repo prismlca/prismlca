@@ -807,6 +807,36 @@ describe('review_model', () => {
     expect(out.note).toContain('not an independent review')
   })
 
+  it('hands the reviewer the web searches the chat ran, and nothing about them when it ran none', async () => {
+    // "Whether the 24 kg is a retailer's figure is not visible in the dossier": the search behind it was.
+    const reviewWith = async (webLookups?: ToolCtx['webLookups']): Promise<string> => {
+      let dossier = ''
+      const ctx: ToolCtx = {
+        api: async () => ({ ok: true }),
+        ui: async () => ({}),
+        activeDb: 'demo-model',
+        webLookups,
+        review: async (o) => {
+          dossier = o.dossier
+          return { text: 'ok', outcome: 'ok' as const, reasoning_chars: 0, attempts: 1, ms: 1 }
+        }
+      }
+      await TOOL_BY_NAME.review_model.run({}, ctx)
+      return dossier
+    }
+    const searched = await reviewWith(() => [
+      {
+        searches: [
+          { query: 'avasco Atlas Gewicht', results: [{ url: 'https://g.ch/1', title: 'Atlas 175' }] }
+        ]
+      }
+    ])
+    expect(searched).toContain('WEB SEARCHES IN THIS CHAT')
+    expect(searched).toContain('- "avasco Atlas Gewicht" → Atlas 175 (https://g.ch/1)')
+    expect(await reviewWith(() => [])).not.toContain('WEB SEARCHES')
+    expect(await reviewWith(undefined)).not.toContain('WEB SEARCHES')
+  })
+
   it('names the missing hotspot analysis when no code/method is given', async () => {
     const { dossier, paths, out } = await dossierFor({})
     expect(paths).not.toContain('/api/v1/calc/contribution')

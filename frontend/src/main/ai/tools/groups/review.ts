@@ -11,6 +11,7 @@ import { unopenedHotspots } from '../advice/opened'
 import { previousReviewOf, previousReviewSection } from './reviewHistory'
 import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './reviewFailure'
 import { indicatorsSection, pickedMethods } from './reviewIndicators'
+import { searchesSection } from './reviewSearches'
 import { afterReviewNote, outcomesAnswer, reviewerIdentity } from './reviewAnswer'
 import { scoredFor } from '../advice/scored'
 
@@ -231,6 +232,8 @@ export const reviewTools: Tool[] = [
             'it against the process list before reporting it as missing.'
           : '',
         indicators,
+        // What the provider's web search found inside the assistant's replies (reviewSearches.ts).
+        searchesSection(ctx.webLookups?.() ?? []),
         selfDescriptions.length
           ? 'WHAT THE BIGGEST DATASETS SAY ABOUT THEMSELVES (their own dataset comment; for a ' +
             'market, the producer it mostly buys from): check each sentence against the product ' +

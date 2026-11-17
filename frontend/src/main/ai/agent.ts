@@ -14,7 +14,13 @@ import {
   projectTokens,
   type DroppedResult
 } from './contextBudget'
-import { AiProviderError, assistantToolTurn, type ChatMessage, type ProviderReplay } from './providers/types'
+import {
+  AiProviderError,
+  assistantToolTurn,
+  type ChatMessage,
+  type ProviderReplay,
+  type WebRecord
+} from './providers/types'
 import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import type { AgentEvent, AttachmentMeta, ToolTrace } from '../../shared/ipc'
 import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } from './tools'
@@ -46,7 +52,7 @@ import { refusalNote } from './stopNotes'
 import { aiLog } from './aiLog'
 import { localDate } from './localTime'
 import { createRunTelemetry } from './roundLog'
-import { describeWebLookups } from './webLookups'
+import { describeWebLookups, RoundLookups } from './webLookups'
 import { logProviderError, storedError } from './providerErrorLog'
 
 import {
@@ -694,9 +700,6 @@ export interface AgentResult {
 
 export { withUnknownFields } from './execute'
 
-/** Trace-row name for the provider-side web lookups of a round. Not a tool: nothing dispatches on it. */
-export const WEB_LOOKUPS_ROW = 'web_lookups'
-
 export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<AgentResult> {
   // Provider-aware: an id belonging to the inactive provider (a stored choice after a switch)
   // resolves to the ACTIVE provider's default instead of travelling to the wrong API.
@@ -859,6 +862,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const ctx = session.ctx
   ctx.chatId = req.chatId
   ctx.reviewModel = reviewerModel(req.reviewModel)
+  // The provider's web lookups this chat's carried rounds and this turn's recorded, for the review dossier.
+  ctx.webLookups = () => messages.flatMap((m) => (m.web ? [m.web] : []))
   if (req.chatTitle) ctx.chatTitle = req.chatTitle
 
   // The chat's plan: the tool reads and writes it here, the IPC persists it, the renderer draws it.
@@ -1117,8 +1122,31 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     }
   }
 
-  // Declared before `onUsage`: the usage handler appends the provider-side web lookups to it.
   const trace: ToolTrace[] = []
+  // The provider's web lookups of the round in flight. Nothing else in the stream shows them, and the
+  // model's own account of them is unreliable (in one run it said "never used the web" over rounds with
+  // three passes). One row in the trace, before the round's own calls, so the chat says what happened.
+  const lookups = new RoundLookups()
+  const endLookups = (): WebRecord | undefined => {
+    const done = lookups.take()
+    if (!done) return undefined
+    const { name, preview, resultChars, searches, cited } = done.row
+    deps.emit({ chatId: req.chatId, type: 'tool', name, phase: 'start' })
+    deps.emit({
+      chatId: req.chatId,
+      type: 'tool',
+      name,
+      phase: 'done',
+      preview,
+      resultChars,
+      searches,
+      cited
+    })
+    trace.push(done.row)
+    return done.record
+  }
+  /** The web lookups of the latest reply, carried by the answer unless its round message holds them (finish). */
+  let answerWeb: WebRecord | undefined
 
   /** Account a round's spend, trip the cost circuit breaker, and hand the figures to the round's log line. */
   const onUsage = (usage: {
@@ -1131,29 +1159,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     generation_id?: string
     server_tool_use?: Record<string, number>
   }): void => {
-    // Web lookups the provider ran INSIDE this reply (OpenRouter server tools). Nothing in the stream
-    // shows them otherwise — the model's own account of them is unreliable (in one run it said
-    // "never used the web" over rounds with three passes) — and each one re-ran the whole
-    // conversation through the model, which is why the round's prompt count and cost are higher
-    // (V398). One row in the trace, before the round's own calls, so the chat says what happened.
-    const web = describeWebLookups(usage.server_tool_use)
-    if (web) {
-      deps.emit({ chatId: req.chatId, type: 'tool', name: WEB_LOOKUPS_ROW, phase: 'start' })
-      deps.emit({
-        chatId: req.chatId,
-        type: 'tool',
-        name: WEB_LOOKUPS_ROW,
-        phase: 'done',
-        preview: web.preview,
-        resultChars: web.preview.length
-      })
-      trace.push({
-        name: WEB_LOOKUPS_ROW,
-        status: 'ok',
-        preview: web.preview,
-        resultChars: web.preview.length
-      })
-    }
+    // Web lookups the provider ran INSIDE this reply: each re-ran the whole conversation through the
+    // model, which is why the round's prompt count and cost are higher (V398). Counted here, named
+    // in the round's trace row once its reply is complete (endLookups).
+    lookups.count(usage.server_tool_use)
     // costOf includes the output tokens, reasoning included. The report writer and the sub-agents
     // have booked these since V166; the chat loop never did, so the ledger held a model's prompts
     // and its price and nothing about what it produced. That is the wrong half to lose on a
@@ -1174,7 +1183,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       })
     }
     // The round's log line (roundLog.ts) is written when its stream ends; it takes the figures from here.
-    telemetry.usage(usage, web?.short)
+    telemetry.usage(usage, describeWebLookups(usage.server_tool_use)?.short)
   }
 
   const maxRounds = Math.max(1, req.maxRounds ?? DEFAULT_MAX_ROUNDS)
@@ -1264,8 +1273,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const finish = async (out: RunOutcome, aborted: boolean): Promise<AgentResult> => {
     closeOpenCalls(messages)
     const last = messages[messages.length - 1]
+    const web = answerWeb && !messages.some((m) => m.web === answerWeb) ? { web: answerWeb } : {}
     if (finalText && !(last?.role === 'assistant' && last.content === finalText))
-      messages.push({ role: 'assistant', content: finalText })
+      messages.push({ role: 'assistant', content: finalText, ...web })
     await keepTranscript(
       req.chatId,
       turnId,
@@ -1296,6 +1306,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       let roundText = ''
       let toolCalls: Array<{ id: string; name: string; arguments: string }> | null = null
       let replay: ProviderReplay | undefined
+      let web: WebRecord | undefined
       /** Reasoning of the round just streamed — read after it ends, to price an empty response. */
       let roundReasoningChars = 0
 
@@ -1403,6 +1414,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               // The provider refused or could not be reached before the round's first word. The run bar
               // counts down to the next attempt and says when it starts — the wait used to read as thinking.
               if (ev.phase === 'send') {
+                endLookups() // the failed attempt's lookups were billed, but its reply is gone: a row, no record
                 telemetry.resend()
                 reasoningChars = 0
                 reasoningSent = 0
@@ -1421,14 +1433,18 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               }
             } else if (ev.type === 'usage') {
               onUsage(ev.usage)
-            } else if (ev.type === 'tool_calls') {
+            } else if (ev.type === 'web_searches') lookups.searched(ev.searches)
+            else if (ev.type === 'citations') lookups.cite(ev.citations)
+            else if (ev.type === 'tool_calls') {
               toolCalls = ev.calls
               replay = ev.replay
             }
           }
+          answerWeb = web = endLookups()
           telemetry.end()
           break
         } catch (e) {
+          endLookups() // what a failed attempt looked up was billed: its row stays
           // Said in the log before anything else decides about it — also when the round recovers — and
           // the round's own line closed, with what it billed before it failed. Not Stop, and not the
           // spend ceiling refusing to send: neither is the provider's error.
@@ -1547,7 +1563,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         // The model is done — but the user said something meanwhile. Their words become the next
         // round instead of waiting for a turn that would start without the tool transcript in view.
         if (deps.takeSteering && finishReason !== 'length') {
-          messages.push({ role: 'assistant', content: roundText })
+          messages.push({ role: 'assistant', content: roundText, ...(web ? { web } : {}) })
           if (deliverSteering()) continue
           messages.pop()
         }
@@ -1573,7 +1589,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       }
 
       // Record the assistant's tool-call turn.
-      messages.push(assistantToolTurn(roundText || null, toolCalls, replay))
+      messages.push(assistantToolTurn(roundText || null, toolCalls, replay, web))
 
       const imageParts: ChatMessage[] = []
       /** Each call's key on its live events — round and position, unique in the run even where a host
