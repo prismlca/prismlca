@@ -716,7 +716,7 @@ describe('what an early review pinned down', () => {
     sent.length = 0
     chat.rounds = [{ text: 'Prose.' }]
     await writeSection({ brief: { ...brief, cautions: ['Never write that one variant is better.'] } })
-    // The backend always sent them; the writer never forwarded them — the ISO 14044 §7.3.3 guard was mute.
+    // The backend always sent them; the writer never forwarded them — the ISO 14044 guard was mute.
     expect(String(sent[0].messages[0].content)).toContain('Never write that one variant is better.')
   })
 

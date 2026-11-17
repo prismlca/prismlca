@@ -698,7 +698,7 @@ Format of each ADR: **Context · Decision · Alternatives · Consequences**.
 - **Decision — it reads as if a person wrote it**: The invariants forbid naming the assistant, a
   language model, tools, automated checks, internal reviews, research runs or the software in any
   written chapter — negations included — and a researched fact is stated with its source. The one
-  exception is a critical review under ISO 14044 §7.3.3, which names a person on record. Written text
+  exception is a critical review under ISO 14044, which names a person on record. Written text
   carries no headings, tables or links, no absolute value judgements and no claims of climate
   neutrality.
 - **Decision — literature, export, short report**: The introduction and the interpretation may call

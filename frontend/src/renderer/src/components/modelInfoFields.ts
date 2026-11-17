@@ -137,7 +137,7 @@ export const SECTIONS: Array<{ id: string; title: string; std: string; fields: F
     // The review fields carry the clause that makes them matter: a published comparative assertion
     // without a critical review has to say so, and only the answer here can say that it does not have
     // to. The description beside it cannot — its honest content is usually a negation.
-    std: 'ISO 14044 §7.3.3',
+    std: 'ISO 14044',
     fields: [
       { key: 'author', label: 'Author(s)', half: true, placeholder: 'Who wrote the study' },
       { key: 'organisation', label: 'Carried out by', half: true, placeholder: 'Your organisation' },
@@ -147,7 +147,7 @@ export const SECTIONS: Array<{ id: string; title: string; std: string; fields: F
         // A closed choice rather than a reading of the text beside it: "was there a critical review?"
         // is a yes/no, and the sentence authors write into the description is nearly always a
         // negation ("no critical review — internal screening study"). Reading that as a yes switched
-        // off the very ISO 14044 §7.3.3 note it described. Unanswered counts as "not confirmed", so
+        // off the very ISO 14044 note it described. Unanswered counts as "not confirmed", so
         // the note is printed until somebody states otherwise.
         key: 'critical_review_done',
         label: 'Critical review carried out?',
@@ -158,7 +158,7 @@ export const SECTIONS: Array<{ id: string; title: string; std: string; fields: F
           { code: 'yes', label: 'Yes — a critical review was carried out' }
         ],
         title:
-          'Whether a critical review under ISO 14044 §7 actually took place. A report that compares variants and is intended for disclosure to the public has to state a missing review, and only "Yes" removes that statement — the description beside this can name a review, it cannot confirm one.'
+          'Whether a critical review under ISO 14044 actually took place. A report that compares variants and is intended for disclosure to the public has to state a missing review, and only "Yes" removes that statement — the description beside this can name a review, it cannot confirm one.'
       },
       {
         key: 'critical_review',

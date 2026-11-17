@@ -228,7 +228,7 @@ _INVARIANTS = (
     "given from research is stated as a fact with its source — \"typical yields are around X "
     "(source)\" — never as \"research showed\". A weakness the checks or the review surfaced is "
     "stated as a weakness of the study — \"the end-of-life stage rests on a single assumption\" — "
-    "never as \"the review found\". A critical review under ISO 14044 §7.3.3 is the one exception "
+    "never as \"the review found\". A critical review under ISO 14044 is the one exception "
     "and a different thing entirely: that is a named human reviewer on record, and where the study "
     "records one it is named as such.\n"
     # The invariants forbade every FORM (emoji, heading, table, list, value judgement) and described no
@@ -552,7 +552,7 @@ def cautions(report: dict[str, Any], data: dict[str, Any]) -> list[str]:
     options = report.get("options") or {}
     subjects = [s for s in data.get("subjects") or [] if s.get("results")]
 
-    # ISO 14044 §6/§7.3.3: a comparative assertion disclosed to the public needs a critical review. The
+    # ISO 14044: a comparative assertion disclosed to the public needs a critical review. The
     # document already carries the note; the writer needs to know so the wording stays inside the study.
     # Read through the same helper as the note and the limitations chapter — a brief that says the
     # prohibition does not apply while the document prints the note would send the writer past it.
@@ -1651,7 +1651,7 @@ def check_proposal(
                     + "). Write about the study, not about the work that produced it: a fact from research is "
                     "stated with its source, a weakness a check surfaced is stated as a weakness of the study, "
                     "and the software, its tools and any model are never named. A critical review under ISO "
-                    "14044 §7.3.3 is the one exception, and only where the study records a named reviewer."
+                    "14044 is the one exception, and only where the study records a named reviewer."
                 ),
             }
         )

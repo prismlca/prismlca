@@ -4,7 +4,7 @@ The decision was that a report does not volunteer "this was not calculated" by d
 defensively and pads the interpretation. So the Limitations chapter is opt-in, and adding it *is* the
 switch — there is no second, hidden setting.
 
-The exception is normative. ISO 14044 §7.3.3 requires a comparative assertion disclosed to the public
+The exception is normative. ISO 14044 requires a comparative assertion disclosed to the public
 to have been critically reviewed by interested parties. A report that makes such a comparison, says it
 is for publication and stays silent about the review claims a conformity it does not have. That note is
 therefore emitted outside the section list, where deleting a chapter cannot reach it.
@@ -88,7 +88,7 @@ def test_the_chapter_does_not_invent_absences_that_may_be_filled_later():
 def test_the_iso_note_appears_for_a_public_comparison_without_a_review():
     data = {"study": {}, "subjects": [_subject("A"), _subject("B")]}
     out = render_blocks(rc.critical_review_note(data, {"options": {"intended_public": True}}, "en"))
-    assert "ISO 14044 §7.3.3" in out
+    assert "ISO 14044 requires" in out
     assert "critical review" in out
 
 
@@ -97,7 +97,7 @@ def test_the_iso_note_stays_away_unless_all_three_conditions_hold():
     public = {"options": {"intended_public": True}}
     # Not marked for publication — an internal comparison is nobody else's business.
     assert rc.critical_review_note({"study": {}, "subjects": two}, {"options": {}}, "en") == []
-    # Not a comparison — §7.3.3 is about comparative assertions.
+    # Not a comparison — the note is about comparative assertions.
     assert rc.critical_review_note({"study": {}, "subjects": [_subject("A")]}, public, "en") == []
     # A review is confirmed, so there is nothing to disclose.
     confirmed = {"study": {"critical_review_done": "yes"}, "subjects": two}
@@ -111,7 +111,7 @@ def test_the_note_is_emitted_outside_the_section_list():
     report = {"lang": "en", "options": {"intended_public": True}, "sections": []}
     data = {"study": {}, "subjects": [_subject("A"), _subject("B")]}
     blocks, _ = blocks_for(report, {}, {}, None, data, None, [_subject("A"), _subject("B")])
-    assert "ISO 14044 §7.3.3" in render_blocks(blocks)
+    assert "ISO 14044 requires" in render_blocks(blocks)
 
 
 def test_the_note_follows_the_report_language():
@@ -139,12 +139,12 @@ NEGATIONS = (
 def test_a_field_that_denies_a_review_does_not_switch_off_the_note(said):
     data = {"study": {"critical_review": said}, "subjects": [_subject("A"), _subject("B")]}
     out = render_blocks(rc.critical_review_note(data, {"options": {"intended_public": True}}, "en"))
-    assert "ISO 14044 §7.3.3" in out
+    assert "ISO 14044 requires" in out
 
 
 def test_the_measured_case_carries_the_note_in_the_document():
     """The mould-remover run: marked for disclosure, three variants compared, "Keine kritische Prüfung
-    (interne Screening-Studie)." in the field — and 29 pages with no §7.3.3 note anywhere. Asserted on
+    (interne Screening-Studie)." in the field — and 29 pages with no critical-review note anywhere. Asserted on
     the assembled document, not on the check, because that is where it was missing."""
     from prism_lca.engine.report_render import blocks_for
 
@@ -153,7 +153,7 @@ def test_the_measured_case_carries_the_note_in_the_document():
     data = {"study": {"critical_review": "Keine kritische Prüfung (interne Screening-Studie)."},
             "subjects": three}
     blocks, _ = blocks_for(report, {}, {}, None, data, None, three)
-    assert "ISO 14044 §7.3.3" in render_blocks(blocks)
+    assert "ISO 14044 requires" in render_blocks(blocks)
 
 
 @pytest.mark.parametrize(
@@ -171,7 +171,7 @@ def test_the_note_and_the_declared_limitation_never_disagree(study):
     """One fact, two sentences, one reading. They used to read the same field in opposite directions,
     so a study that denied a review lost both — the normative note *and* the caveat."""
     data = {"study": study, "subjects": [_subject("A"), _subject("B")]}
-    noted = "ISO 14044 §7.3.3" in render_blocks(
+    noted = "ISO 14044 requires" in render_blocks(
         rc.critical_review_note(data, {"options": {"intended_public": True}}, "en")
     )
     declared = "No critical review" in render_blocks(rc.limitations_blocks(data, "en", "Limitations"))
@@ -288,3 +288,31 @@ def test_a_method_name_quoted_back_at_the_reader_cannot_break_the_document():
     out = render_blocks(blocks)
     assert "names IPCC 2021" in out and "EF v3.1 \\<internal\\>" in out
     assert _typeset(blocks).startswith(b"%PDF")
+
+
+def test_no_text_cites_a_clause_7_of_iso_14044():
+    """ISO 14044 ends with clause 6; "§7.3.3" is ISO 14040's numbering. The product cited it as ISO 14044 in
+    the printed notes, the recommended sentence for the critical-review field, the tool descriptions and Model
+    info, so where it speaks of the critical review it now names the standard without a clause."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    # "ISO 14044 §7.3.3", "ISO 14044:2006 § 7", "ISO 14044 clause 7", and § written as a JSON escape.
+    pattern = re.compile(r"14044(?::\d{4})?\s*(?:§|\\u00a7|clause|section|Abschnitt)\s*7\b", re.IGNORECASE)
+    suffixes = {".py", ".json", ".md", ".ts", ".tsx", ".typ"}
+    paths = [
+        path
+        for base in (root / "backend" / "src", root / "frontend" / "src")
+        for path in base.rglob("*")
+        if path.suffix in suffixes and "node_modules" not in path.parts
+    ] + [root / "docs" / "ai-tool-manifest.json"]
+    hits = [
+        f"{path.relative_to(root)}:{n}"
+        for path in paths
+        for n, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1)
+        if pattern.search(line)
+    ]
+    assert hits == [], hits
+    assert pattern.search("ISO 14044:2006 § 7.3.3") and pattern.search("ISO 14044 clause 7")
+    assert not pattern.search("ISO 14044 §6.2") and not pattern.search("ISO 14044 §4.5.2")

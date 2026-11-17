@@ -47,14 +47,14 @@ FIELDS = (
     #: Who reviewed the study and when, in the author's words — a description, not the answer.
     "critical_review",
     #: Whether a critical review was carried out at all: "yes" or "no". The structured half of the
-    #: record above, and the only thing the report reads when it decides whether ISO 14044 §7.3.3
+    #: record above, and the only thing the report reads when it decides whether ISO 14044
     #: applies (see `report_checks.critical_review_recorded`).
     #:
     #: It exists because the prose could not answer the question (V191). The honest content of the
     #: field is usually a *negation* — "Keine kritische Prüfung (interne Screening-Studie)" — so
-    #: reading "field not empty" as "there was a review" silenced the §7.3.3 note exactly where it was
+    #: reading "field not empty" as "there was a review" silenced the ISO 14044 note exactly where it was
     #: required. Of every study on record here, not one filled the field affirmatively; the text had
-    #: only ever switched the note off falsely, including one that spelled out that §7.3.3 *would*
+    #: only ever switched the note off falsely, including one that spelled out that ISO 14044 *would*
     #: require a review.
     #:
     #: Only the literal "yes" counts as confirmation. Unset, "no" and anything unrecognised all mean

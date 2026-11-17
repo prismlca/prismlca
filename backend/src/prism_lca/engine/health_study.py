@@ -10,7 +10,7 @@ from __future__ import annotations
 #: The wording the health check gives for a study without a critical review. The review tool's answer to a
 #: review without a result gives the same sentence (frontend `tools/groups/reviewFailure.ts`, where a test
 #: holds the two together), so the assistant is never told two different things about the same field.
-NO_CRITICAL_REVIEW = "No critical review according to ISO 14044 §7.3.3 was carried out."
+NO_CRITICAL_REVIEW = "No critical review according to ISO 14044 was carried out."
 
 
 def unrecorded_scope_note(database: str) -> str | None:
@@ -68,7 +68,7 @@ def claimed_review_note(database: str) -> str | None:
         "model's review log — where every review by the assistant's AI reviewer (review_model) is kept — "
         "holds none. If the sentence means that reviewer, it claims a check that never happened, and a reader "
         "takes it as one the numbers passed: rewrite it to say only what was actually done; where there was no "
-        "critical review by independent experts (ISO 14044 §7.3.3), `critical_review` says: "
+        "critical review by independent experts (ISO 14044), `critical_review` says: "
         f'"{NO_CRITICAL_REVIEW}" If it means a review by people, leave it as it is: the log knows only the AI '
         "reviewer's reviews."
     )

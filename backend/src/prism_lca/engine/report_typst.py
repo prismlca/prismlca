@@ -60,7 +60,7 @@ def goal_scope_blocks(study: dict, lang: str = "en", title: str | None = None) -
     # empty row says nothing; this one is the exception, because its absence is itself the reportable
     # fact — a report that omits the line lets the reader assume there was a review.
     #
-    # Just the fact, though: "Not recorded", not the standard's requirement. What §7.3.3 demands of a
+    # Just the fact, though: "Not recorded", not the standard's requirement. What ISO 14044 demands of a
     # public comparative assertion is already said twice, by `critical_review_note` (which cannot be
     # removed) and by the limitations chapter. Saying it a third time here is the padding this report
     # was criticised for.

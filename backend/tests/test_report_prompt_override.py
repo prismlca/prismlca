@@ -90,7 +90,7 @@ def test_the_project_default_structure_carries_the_prompts(client, token, projec
 
 # ---- the brief now warns before writing, instead of the gate objecting afterwards ------------
 def test_the_brief_names_the_reason_a_comparative_claim_is_not_allowed():
-    """C7: the document already carried the ISO 14044 §7.3.3 note; the writer never knew. A writer told
+    """C7: the document already carried the ISO 14044 note; the writer never knew. A writer told
     afterwards has to rewrite the sentence — one told beforehand does not write it."""
     from prism_lca.engine.report_prompts import cautions
 

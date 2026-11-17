@@ -377,7 +377,7 @@ export const modelTools: Tool[] = [
               )
             },
             critical_review: str(
-              'The critical review by independent experts (ISO 14044 §7.3.3): who reviewed the study and ' +
+              'The critical review by independent experts (ISO 14044): who reviewed the study and ' +
                 'when. review_model is an AI second opinion, not such a review — never record it here. ' +
                 'Leaving it empty is meaningful: a public comparative assertion without a recorded review ' +
                 'has to say so.'

@@ -22,7 +22,7 @@ type Review = Awaited<ReturnType<NonNullable<ToolCtx['review']>>>
 
 /** What `critical_review` says when there was no critical review — the sentence the health check gives too
  *  (backend `health_study.NO_CRITICAL_REVIEW`; a test holds the two together). */
-export const NO_CRITICAL_REVIEW = 'No critical review according to ISO 14044 §7.3.3 was carried out.'
+export const NO_CRITICAL_REVIEW = 'No critical review according to ISO 14044 was carried out.'
 
 /** The half every failed review says: nothing was judged, and where that leaves the study fields. A model
  *  once wrote "an internal AI second opinion was obtained" into critical_review after both attempts had

@@ -72,7 +72,7 @@ export default function ReportHeadGroup({
         </select>
       </div>
       {/* Marking a report for publication is not cosmetic: a comparative assertion disclosed to the
-            public requires a critical review under ISO 14044 §7.3.3, and if none is recorded on the study
+            public requires a critical review under ISO 14044, and if none is recorded on the study
             the report has to say so. That note is added outside the chapter list, so it cannot be dropped
             by deleting a chapter. */}
       <label className="rsec-public">
@@ -92,7 +92,7 @@ export default function ReportHeadGroup({
         Intended for disclosure to the public
         <em>
           {' '}
-          — with more than one subject this adds the ISO 14044 §7.3.3 note unless a critical review is
+          — with more than one subject this adds the note ISO 14044 requires unless a critical review is
           recorded in the model info.
         </em>
       </label>
