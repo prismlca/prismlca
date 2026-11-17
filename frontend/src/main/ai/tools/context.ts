@@ -20,6 +20,7 @@
 import type { ChatPlan } from '../../../shared/plan'
 import type { ModelScope } from '../modelScope'
 import type { ScoredRecord } from './advice/scored'
+import type { WebRecord } from '../providers/types'
 
 export interface ToolCtx {
   /** Authenticated backend call; resolves the JSON body or throws a readable error. */
@@ -175,6 +176,10 @@ export interface ToolCtx {
    * whose reasons this conversation has not seen.
    */
   chatId?: string
+  /** The provider's web lookups inside this chat's replies, oldest first, as far as its carried rounds
+   *  hold them (webLookups.ts) — the review dossier lists them. Absent in an MCP session, whose client
+   *  runs its own searches. */
+  webLookups?: () => WebRecord[]
 }
 
 export interface Tool {

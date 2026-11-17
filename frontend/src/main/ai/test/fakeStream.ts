@@ -45,6 +45,9 @@ export interface ScriptedRound {
   finish?: string
   /** What the provider said about it (a refusal's reason). */
   finishDetail?: string
+  /** Events a transport sends once its reply is complete — the pages it cites, its web searches —
+   *  played after the usage and the finish, before the calls. */
+  after?: StreamEvent[]
 }
 
 /** What the code under test actually sent — snapshot per streamChat call, messages deep-copied so
@@ -99,6 +102,7 @@ class ScriptedChat {
     const finish = round.finish ?? this.defaultFinish
     if (finish)
       yield { type: 'finish', reason: finish, ...(round.finishDetail ? { detail: round.finishDetail } : {}) }
+    for (const ev of round.after ?? []) yield ev
     if (round.calls?.length && (!this.gateCallsOnTools || opts.tools?.length))
       yield { type: 'tool_calls', calls: round.calls }
   }

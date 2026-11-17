@@ -1,10 +1,20 @@
 /**
- * The provider-side web lookups of one reply, in words.
+ * The provider-side web lookups of one reply: in words, and as the chat records them.
  *
- * OpenRouter runs its web search and page fetch inside a reply and reports only counters. The chat's
- * trace row, the round's log line and the log line of a research or review request all name them the
- * same way, from here.
+ * The provider runs its web search (and OpenRouter its page fetch) inside a reply. OpenRouter reports
+ * only counters; Anthropic and OpenAI also name what was searched for, and Anthropic which pages came
+ * back. The chat's trace row, the round's log line and the log line of a research or review request all
+ * name them the same way, from here; the round's record (`WebRecord`) rides on its message, where a later
+ * request reads it back (providers/searchNote.ts) and the review dossier lists it.
  */
+import type { ToolTrace } from '../../shared/ipc'
+import type { CitedPage, Citation, WebRecord, WebSearch } from './providers/types'
+
+/** Trace-row name for the provider-side web lookups of a round. Not a tool: nothing dispatches on it. */
+export const WEB_LOOKUPS_ROW = 'web_lookups'
+
+/** Longest cited passage kept: enough to show the sentence a figure came from. */
+const EXCERPT_CHARS = 300
 
 /**
  * Put OpenRouter's `server_tool_use` counters into words. `web_search_requests` and
@@ -41,4 +51,72 @@ export function describeWebLookups(
     `conversation again, so this round's input tokens and cost cover ${total + 1} passes, not one. ` +
     `Settings → AI → Chat caps how many lookups one reply may run.`
   return { short, preview, total }
+}
+
+/**
+ * One round's web lookups as they stream in — the counters from its usage reports, the searches and the
+ * pages it cites from the reply — handed over once when the round's reply is complete. A paused reply that
+ * is continued reports each pass; they add up to one round.
+ */
+export class RoundLookups {
+  private counts: Record<string, number> = {}
+  private searches: WebSearch[] = []
+  private cited = new Map<string, CitedPage>()
+
+  count(use: Record<string, number> | undefined): void {
+    for (const [key, raw] of Object.entries(use ?? {})) {
+      const n = typeof raw === 'number' ? raw : Number(raw)
+      if (Number.isFinite(n) && n > 0) this.counts[key] = (this.counts[key] ?? 0) + n
+    }
+  }
+
+  searched(list: WebSearch[]): void {
+    this.searches.push(...list)
+  }
+
+  /** The pages the reply cites, once each — a page the search only returned is not a citation. */
+  cite(list: Citation[]): void {
+    for (const c of list) {
+      if (c.uncited || !c.url || this.cited.has(c.url)) continue
+      const excerpt = c.excerpt?.replace(/\s+/g, ' ').trim().slice(0, EXCERPT_CHARS)
+      this.cited.set(c.url, {
+        url: c.url,
+        ...(c.title ? { title: c.title } : {}),
+        ...(excerpt ? { excerpt } : {})
+      })
+    }
+  }
+
+  /** The round's record and its trace row, or null when the provider looked nothing up and the reply
+   *  cites nothing; either way the next round starts empty. */
+  take(): { record: WebRecord; row: ToolTrace } | null {
+    const counts = Object.keys(this.counts).length ? this.counts : undefined
+    const searches = this.searches
+    const cited = [...this.cited.values()]
+    this.counts = {}
+    this.searches = []
+    this.cited = new Map()
+    const described = describeWebLookups(counts)
+    if (!described && !searches.length && !cited.length) return null
+    const n = searches.length
+    const preview =
+      described?.preview ??
+      (n
+        ? `${n} web ${n === 1 ? 'search' : 'searches'} — run by the provider inside this reply.`
+        : 'No lookup in this reply — it cites pages an earlier search returned.')
+    const record: WebRecord = {
+      ...(counts ? { counts } : {}),
+      ...(n ? { searches } : {}),
+      ...(cited.length ? { cited } : {})
+    }
+    const row: ToolTrace = {
+      name: WEB_LOOKUPS_ROW,
+      status: 'ok',
+      preview,
+      resultChars: preview.length,
+      ...(n ? { searches } : {}),
+      ...(cited.length ? { cited } : {})
+    }
+    return { record, row }
+  }
 }

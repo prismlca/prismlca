@@ -43,6 +43,28 @@ export interface ToolTrace {
   /** A line the row shows even when collapsed — the attribution a data provider requires to be
    *  displayed (the distances tool: openrouteservice / OpenStreetMap / Mapbox). */
   notice?: string
+  /** The provider's web lookups row only (main/ai/webLookups.ts): what the reply searched for and which
+   *  pages came back, and the pages it cites. The answer's list of sources is read from here. */
+  searches?: WebSearch[]
+  cited?: CitedPage[]
+}
+
+/** One web search the provider ran inside a reply: what it searched for and which pages came back. */
+export interface WebSearch {
+  /** The search text, where the provider names it (Anthropic, OpenAI); OpenRouter reports only counts. */
+  query?: string
+  /** The pages returned to the model, in its order — address and title, never the page text. Absent
+   *  where the provider does not report them (OpenAI), empty where none came back. */
+  results?: Array<{ url: string; title?: string }>
+  /** The provider's reason a search returned nothing (`max_uses_exceeded`, `too_many_requests`, …). */
+  error?: string
+}
+
+/** A page a reply cites, as the provider marked it — with the passage it cites, where it gives one. */
+export interface CitedPage {
+  url: string
+  title?: string
+  excerpt?: string
 }
 
 export type AgentEvent =
@@ -75,6 +97,8 @@ export type AgentEvent =
       resultChars?: number
       itemsFailed?: number
       notice?: string
+      searches?: WebSearch[]
+      cited?: CitedPage[]
     }
   // The model is thinking and has produced this many characters of reasoning in the current round.
   // Only the count crosses the wire — never the text; see StreamEvent in providers/types.ts.

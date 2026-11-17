@@ -44,6 +44,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { searchNote } from './searchNote'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
 
@@ -274,7 +275,8 @@ function assistantSteps(m: ChatMessage): unknown[] {
   }
   const steps: unknown[] = []
   if (calls.length) steps.push({ type: 'thought', signature: SKIP_SIGNATURE })
-  const text = contentToText(m.content)
+  // Another provider's web searches, named ahead of the text (searchNote.ts).
+  const text = [searchNote(m.web), contentToText(m.content)].filter(Boolean).join('\n\n')
   if (text) steps.push({ type: 'model_output', content: [{ type: 'text', text }] })
   steps.push(...calls.map(callStep))
   return steps

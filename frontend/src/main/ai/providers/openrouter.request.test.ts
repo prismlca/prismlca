@@ -179,6 +179,47 @@ describe('what the transcript carries for other providers', () => {
     expect(body.messages[1].replay).toBeUndefined()
     expect(body.messages[1].tool_calls).toHaveLength(1)
   })
+
+  it('names a round’s web lookups ahead of its text instead of sending the record', () => {
+    // The server tools' results never come back in a later request; without the line, the model
+    // reads its own sources with no lookup behind them.
+    const call = { id: 'c1', type: 'function' as const, function: { name: 'f', arguments: '{}' } }
+    const body = JSON.parse(
+      openrouterTransport.buildRequest(
+        {
+          ...base,
+          messages: [
+            { role: 'user', content: 'How heavy?' },
+            {
+              role: 'assistant',
+              content: 'Looked it up.',
+              tool_calls: [call],
+              web: { counts: { web_search_requests: 2 }, cited: [{ url: 'https://g.ch/1', title: 'Atlas' }] }
+            },
+            { role: 'tool', tool_call_id: 'c1', content: 'ok' },
+            {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{ ...call, id: 'c2' }],
+              web: { counts: { web_search_requests: 1 } }
+            },
+            { role: 'tool', tool_call_id: 'c2', content: 'ok' },
+            { role: 'assistant', content: 'No search here.' }
+          ]
+        },
+        'k'
+      ).body
+    ) as { messages: Array<Record<string, unknown>> }
+    expect(body.messages[1].web).toBeUndefined()
+    expect(body.messages[1].content).toBe(
+      '[Web search record kept by PrismLCA. In this reply the provider looked things up on the web for you ' +
+        '(2 web searches). It reports neither what was searched for nor the pages that came back.\n' +
+        'Cited in this reply:\n- Atlas (https://g.ch/1)]\n\nLooked it up.'
+    )
+    // A round without text gets the line alone.
+    expect(body.messages[3].content).toMatch(/^\[Web search record kept by PrismLCA\. .*\(1 web search\)/)
+    expect(body.messages[5].content).toBe('No search here.')
+  })
 })
 
 describe('reasoning blocks across a tool round', () => {
