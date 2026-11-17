@@ -120,6 +120,31 @@ def test_the_model_building_skill_names_services_not_only_materials():
     assert "78 %" in body
 
 
+def test_the_model_building_skill_sends_forming_to_its_step_not_to_the_average():
+    """Roll-formed and punched shelf profiles were booked as average metal working, three times out of three.
+
+    That dataset is a whole metal-goods factory per kilogram — process heat, building, scrap — and scores
+    about as much as the steel it is applied to; it carried a third of each result, where the forming itself
+    takes a few tenths of a kWh per kilogram. Every model followed the one metal example in the skill's list
+    of processing services. The list names real steps now, and the rule says when the average fits: only
+    when the steps cannot be named.
+    """
+    from prism_lca.engine.builtin_skills import BUILTIN_SKILLS
+
+    raw = next(s for s in BUILTIN_SKILLS if s["id"] == "builtin-model-building")["content"]
+    body = " ".join(raw.split())  # the skill is hard-wrapped; the phrases straddle line breaks
+    assert "(injection moulding, metal working" not in body
+    assert "deep drawing" in body
+    assert "Search a processing step by what is done to the part" in body
+    assert "*Average metal working* is no such step" in body
+    assert "only when you cannot name the steps" in body
+    assert "is its electricity, a few tenths of a kWh per kilogram, and, where relevant, its scrap" in body
+    # The web search is offered as an option, and only to a chat that has it: a guide to a source the model
+    # cannot reach invites it to try.
+    web = "<!-- if web -->\n  Where the step matters to the result, a web search for what such a line uses"
+    assert web in raw
+
+
 def test_the_review_skill_says_to_bring_the_prose_along_after_a_review():
     """V116/V115: a review finding lands on something described twice — inventory and prose.
 
