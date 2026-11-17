@@ -13,6 +13,7 @@
  *   - the answer is verifiable (mass balance + mandatory sources).
  */
 import { CitationBook, isProviderLink, type Evidence } from './citationBook'
+import { clipNote, settleLinks, type NotedLinks } from './researchNote'
 import { AiProviderError, type ChatMessage, type Citation } from './providers/types'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
@@ -189,12 +190,11 @@ export interface BomItem {
  * zero-mass parts and a quarter to a third of the parts missing outright — and the
  * parser used to delete the first kind silently and let the second pass as a clean list.
  */
-export interface UnresolvedComponent {
+export interface UnresolvedComponent extends NotedLinks {
   component: string
   material?: string
   /** `no_mass`: the leg found the part but no figure; `zero_mass`: it wrote 0, which is a ghost. */
   reason: 'no_mass' | 'zero_mass'
-  note?: string
 }
 
 /**
@@ -287,7 +287,7 @@ export function parseBomAnswer(parsed: unknown): { items: BomItem[]; unresolved:
         component,
         ...(material ? { material } : {}),
         reason: Number.isFinite(mass) ? 'zero_mass' : 'no_mass',
-        ...(r.note ? { note: String(r.note).slice(0, 300) } : {})
+        ...(r.note ? clipNote(String(r.note)) : {})
       })
       continue
     }
@@ -675,6 +675,9 @@ export async function researchBom(opts: {
       deadLinks++
     }
   }
+  // The addresses an unresolved component's note names get the same treatment: the page, not the
+  // provider's link to it, and no link that leads nowhere.
+  unresolved = unresolved.map((u) => settleLinks(u, (url) => book.page(url)))
   const sources = [...new Set(items.map((i) => i.source_url).filter((u): u is string => !!u))]
   // The engine's record against the model's: an item whose URL the search never returned is marked,
   // not dropped — the leg may have opened the page directly or written it from memory, and the

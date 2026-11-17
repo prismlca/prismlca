@@ -45,6 +45,16 @@ describe('evidence from the engine', () => {
     expect(book.size).toBe(1)
   })
 
+  it('answers for a written address with its page: a provider’s link resolved, a dead one null', () => {
+    const book = new CitationBook()
+    const link = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ1'
+    const dead = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/MANGLED'
+    book.add([{ url: 'https://maker.example/sheet.pdf', via: [link] }])
+    expect(book.page(link)).toBe('https://maker.example/sheet.pdf')
+    expect(book.page('https://shop.example/p')).toBe('https://shop.example/p')
+    expect(book.page(dead)).toBeNull()
+  })
+
   it('tells a provider’s citation link from a page, so a dead one is not kept as a source', () => {
     expect(isProviderLink('https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9')).toBe(true)
     expect(isProviderLink('https://bottledwater.org/report.pdf')).toBe(false)

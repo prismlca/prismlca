@@ -69,6 +69,14 @@ export class CitationBook {
     const alias = this.aliases.get(key)
     return !this.byKey.has(key) && alias ? (this.byKey.get(alias)?.url ?? url) : url
   }
+  /**
+   * The page a written address stands for, or null when it leads to none: a provider's link becomes
+   * the page the engine resolved it to, and one the book cannot resolve is no address to hand on.
+   */
+  page(url: string): string | null {
+    const page = this.canonical(url)
+    return isProviderLink(page) && !this.has(page) ? null : page
+  }
   private keyOf(url: string): string {
     const key = urlKey(url)
     return this.byKey.has(key) ? key : (this.aliases.get(key) ?? key)

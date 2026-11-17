@@ -103,6 +103,25 @@ describe('parseBomItems', () => {
     ])
   })
 
+  // The note of a part without a mass is where the leg says what it did find and where the figure
+  // would be. It used to stop after 300 characters in the middle of a word, unmarked, and the model
+  // read the stump as the whole answer — "the datasheet could not be retrieved".
+  it('hands on a long note of an unresolved part marked as cut, with its address whole', () => {
+    const url = 'https://www.maker.example/downloads/datasheets/barrow-150.pdf'
+    const lead = 'No frame mass is published for this product. '
+    const note = `${lead}${'The datasheet gives tube sizes only. '.repeat(25)}Datasheet: ${url}`
+    expect(note.length).toBeGreaterThanOrEqual(1000)
+    const { unresolved } = parseBomAnswer([
+      { component: 'frame', material: 'steel tube', mass_kg: null, note }
+    ])
+    expect(unresolved).toHaveLength(1)
+    expect(unresolved[0].see_also).toEqual([url])
+    expect(unresolved[0].note!.length).toBeGreaterThan(700)
+    expect(unresolved[0].note).toMatch(
+      /tube sizes only\. … \[note cut here: \d+ more characters not shown; the links it names are in see_also\]$/
+    )
+  })
+
   it('returns an empty list for non-list input instead of throwing', () => {
     expect(parseBomItems(null)).toEqual([])
     expect(parseBomItems({ nope: true })).toEqual([])
