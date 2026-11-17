@@ -112,9 +112,9 @@ point at, one process per real step; and tags carry the phases:
 
 2. **Beneath the delivered product, one chain in the order the product is made**, each process holding
    exactly the inputs its step consumes:
-   - *Manufacturing* takes the materials, the processing services (injection moulding, metal working,
-     extrusion), its energy, its scrap and the freight that brings its materials in, where section 4 says
-     to book one. Material and processing sit **next to each other** in the same
+   - *Manufacturing* takes the materials, the processing services (injection moulding, deep drawing,
+     wire drawing, extrusion), its energy, its scrap and the freight that brings its materials in, where
+     section 4 says to book one. Material and processing sit **next to each other** in the same
      process: a processing dataset covers the work, not the material, and the material is its second input.
      A product of several parts may have a process per part, consumed by an assembly step.
    - *Distribution* takes the manufactured product plus transport and packaging.
@@ -222,6 +222,15 @@ follow the steps above.
   geography proxy in the exchange comment. `lookup` kind="geographies" lists the regions a database actually
   holds, with plain names, and whether each is a country or an aggregate — use it to find a code ("europe"
   finds RER) or to check that one exists before you filter on it.
+- **Search a processing step by what is done to the part** — rolling, drawing, pressing, punching.
+  *Average metal working* is no such step but a whole metal-goods factory, scoring about as much per kilogram
+  as the steel itself (a third of the result on shelf profiles): take it only when you cannot name the steps,
+  and call it a proxy in the exchange comment. A light step without a dataset of its own (roll forming,
+  bending, punching sheet) is its electricity, a few tenths of a kWh per kilogram, and, where relevant, its
+  scrap.
+<!-- if web -->
+  Where the step matters to the result, a web search for what such a line uses can replace that estimate.
+<!-- endif -->
 - **Transport is a decision, not a default.** A *market* already includes average transport to the
   consumer — do not book generic delivery on top of one. Book explicit transport where it is not in the
   data: when a *production* dataset is linked directly, when a known leg differs from the market's average
