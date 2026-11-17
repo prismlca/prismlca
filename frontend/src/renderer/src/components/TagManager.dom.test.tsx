@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import TagManager from './TagManager'
 
 const handlers = () => ({
@@ -13,6 +13,7 @@ const handlers = () => ({
   onRemoveValue: vi.fn(),
   onMergeValue: vi.fn(),
   onMergeGroup: vi.fn(),
+  describeMerge: vi.fn(async () => ''),
   confirm: vi.fn()
 })
 
@@ -66,5 +67,33 @@ describe('the Tags window', () => {
     fireEvent.change(screen.getByLabelText('Model to take the tag groups from'), { target: { value: 'Can' } })
     fireEvent.click(take)
     expect(h.onAdopt).toHaveBeenCalledWith('Can')
+  })
+
+  it('says in the merge confirm what else the merge takes along, and merges on confirm', async () => {
+    const h = handlers()
+    h.describeMerge.mockResolvedValue('The Results split uses “Life-cycle phase” and will use “Part”.')
+    render(<TagManager {...h} groups={GROUPS} />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Merge into…' })[0])
+    fireEvent.change(screen.getByLabelText('Merge group Life-cycle phase into'), {
+      target: { value: 'Part' }
+    })
+    await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
+    expect(h.describeMerge).toHaveBeenCalledWith('Life-cycle phase', null, 'Part')
+    const spec = h.confirm.mock.calls[0][0]
+    expect(spec.message).toContain(
+      'disappears. The Results split uses “Life-cycle phase” and will use “Part”. Undoable.'
+    )
+    spec.onConfirm()
+    expect(h.onMergeGroup).toHaveBeenCalledWith('Life-cycle phase', 'Part')
+  })
+
+  it('asks about a value merge with nothing to add when no report cites the value', async () => {
+    const h = handlers()
+    render(<TagManager {...h} groups={GROUPS} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Merge tag Use' }))
+    fireEvent.change(screen.getByLabelText('Merge tag Use into'), { target: { value: 'Production' } })
+    await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
+    expect(h.describeMerge).toHaveBeenCalledWith('Life-cycle phase', 'Use', 'Production')
+    expect(h.confirm.mock.calls[0][0].message).toMatch(/disappears from the group\. Undoable\.$/)
   })
 })

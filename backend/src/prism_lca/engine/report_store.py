@@ -24,6 +24,7 @@ existing reports — a default change must not rewrite finished documents.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from prism_lca.engine import report_claims
@@ -956,6 +957,16 @@ class ReportStore(JsonFileStore):
 
     def snapshot_database(self, database: str) -> list[dict[str, Any]] | None:
         return self._load().get(database)
+
+    def edit_reports(self, database: str, change: Callable[[list[dict[str, Any]]], bool]) -> None:
+        """Change a model's stored reports in place, under the lock; saved only when `change` says it changed
+        something. For an edit the backend makes on its own across every report of a model — a merged tag
+        group carried along (`tag_references`) — where the per-field routes above would each load and save."""
+        with self._lock:
+            data = self._load()
+            reports = data.get(database)
+            if isinstance(reports, list) and change(reports):
+                self._save(data)
 
     def restore_database(self, database: str, reports: list[dict[str, Any]] | None) -> None:
         with self._lock:

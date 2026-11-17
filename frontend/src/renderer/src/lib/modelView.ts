@@ -19,7 +19,7 @@
  * on one model is not worth a conflict algorithm.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { api } from './api'
+import { api, ApiError } from './api'
 import { renameDatabaseInView } from './subjectKey'
 
 /** How long a section sits still before it goes to the backend: dragging a node across the canvas
@@ -141,7 +141,7 @@ export function viewSync(db: string): ModelView {
   return seed
 }
 
-function put(db: string): void {
+function put(db: string, retried = false): void {
   if (switching) return // nothing goes out while the backend moves
   const body = live.get(db)
   const t = timers.get(db)
@@ -159,13 +159,18 @@ function put(db: string): void {
   // Its own entry, so an earlier PUT finishing later cannot clear the bookkeeping of this one.
   const mine = { rev }
   sentRev.set(db, mine)
-  const sent = api('PUT', `/api/v1/views/${encodeURIComponent(db)}`, { view: body })
+  const sent = api('PUT', `/api/v1/views/${encodeURIComponent(db)}`, { view: body, rev: seenRev.get(db) })
     .then(() => {
       // Only if nothing was written meanwhile, and only in the workspace it was written in.
       if (gen === generation && (revs.get(db) ?? 0) === rev) dirty.delete(db)
     })
-    .catch(() => {
-      /* offline or backend restarting — still marked, so the next write or flush sends it again */
+    .catch((e: unknown) => {
+      // The backend changed the view since it was read here — a merged tag group took the saved breakdowns
+      // along — and this whole copy would have put the old name back. Read again, which keeps what was
+      // written here on top of the new state, and send that. Once: a second refusal waits for the next write.
+      if (e instanceof ApiError && e.code === 'view_changed' && !retried && gen === generation)
+        void viewFetch(db).then(() => put(db, true))
+      /* otherwise offline or backend restarting — still marked, so the next write or flush sends it again */
     })
     .finally(() => {
       if (sentRev.get(db) === mine) sentRev.delete(db)
@@ -240,6 +245,7 @@ export function endWorkspaceSwitch(id: number): void {
   revs.clear()
   sentRev.clear()
   inflight.clear()
+  seenRev.clear()
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i)
@@ -261,6 +267,9 @@ const dirty = new Map<string, Map<string, Set<string> | null>>()
  *  what is marked — and the counter of the PUT now on its way, so a flush does not send it twice. */
 const revs = new Map<string, number>()
 const sentRev = new Map<string, { rev: number }>()
+/** Per model, the backend's revision of its view as last read here (`ViewStore.revision`): sent with every
+ *  write, so a write from a copy older than a change the backend made itself is refused, not stored. */
+const seenRev = new Map<string, number>()
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
 
@@ -343,6 +352,9 @@ export function renameCachedView(from: string, to: string): void {
   dirty.delete(from)
   revs.delete(from)
   sentRev.delete(from)
+  // The backend counts its own edits per model name; under the new one this window has read nothing yet.
+  seenRev.delete(from)
+  seenRev.delete(to)
   if (marks) {
     dirty.set(to, marks)
     revs.set(to, (revs.get(to) ?? 0) + 1)
@@ -441,6 +453,7 @@ export function forgetView(db: string): void {
   dirty.delete(db)
   revs.delete(db)
   sentRev.delete(db)
+  seenRev.delete(db)
   try {
     localStorage.removeItem(cacheKey(db))
   } catch {
@@ -471,11 +484,12 @@ export async function viewFetch(db: string): Promise<ModelView> {
 async function _viewFetch(db: string): Promise<ModelView> {
   const asked = generation
   try {
-    const r = await api<{ view: ModelView }>('GET', `/api/v1/views/${encodeURIComponent(db)}`)
+    const r = await api<{ view: ModelView; rev?: number }>('GET', `/api/v1/views/${encodeURIComponent(db)}`)
     // Asked in the workspace left behind: the answer is that workspace's, not this one's.
     if (asked !== generation || switching) return {}
     const answer = r?.view ?? {}
     hydrated.add(db)
+    if (typeof r?.rev === 'number') seenRev.set(db, r.rev)
     // What the user set while the GET was out stays set: the answer replaced the live state whole, the
     // pending PUT then read that reset state, and a baseline switched off during the round trip came
     // back on and was saved so. The write timer keeps running and sends the merge.
@@ -499,13 +513,17 @@ async function _viewFetch(db: string): Promise<ModelView> {
       stored[name] = merged
     }
     if (Object.keys(stored).length) {
-      live.set(db, stored)
-      try {
-        localStorage.setItem(cacheKey(db), JSON.stringify(stored))
-      } catch {
-        /* quota */
+      const before = live.get(db)
+      const next = keepUnchanged(before, stored)
+      if (next !== before) {
+        live.set(db, next)
+        try {
+          localStorage.setItem(cacheKey(db), JSON.stringify(next))
+        } catch {
+          /* quota */
+        }
+        emit(db)
       }
-      emit(db)
     } else {
       const local = viewSync(db)
       if (Object.keys(local).length) put(db) // one-time migration of this browser's arrangement
@@ -515,6 +533,56 @@ async function _viewFetch(db: string): Promise<ModelView> {
   }
   fetched.add(db)
   return viewSync(db)
+}
+
+/**
+ * Read a model's view again because the backend may have changed it on its own: a merged tag group takes
+ * the saved breakdowns along (the Results split, the Detailed grouping, the short report's), and so does
+ * the undo of a merge. Called after every model change, from whichever side it came. The copy held here
+ * would otherwise keep the old name on screen, and its next write — of any section — would send it back.
+ *
+ * Only for a model this window has read already: any other one is read when a panel or the canvas asks
+ * for it. A read still on its way may predate the change, so a new one follows it.
+ */
+export function refreshView(db: string): void {
+  if (!fetched.has(db) || switching) return
+  const running = inflight.get(db)
+  void (running ? running.then(() => viewFetch(db)) : viewFetch(db)).catch(() => {})
+}
+
+/** Deep equality of two JSON values, key order aside — the server sorts a view's keys, this side does not. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => sameJson(x, b[i]))
+    )
+  }
+  if (!isObj(a) || !isObj(b)) return false
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => k in b && sameJson(a[k], b[k]))
+}
+
+/**
+ * `next`, with each section — and each field of an object section — that equals its counterpart in `prev`
+ * kept as `prev`'s own object; `prev` itself when nothing differs. A read that changed nothing must not hand
+ * the panels new arrays and objects: what their effects watch is a field's identity, and a recalculation
+ * would follow every model change.
+ */
+function keepUnchanged(prev: ModelView | undefined, next: ModelView): ModelView {
+  if (!prev) return next
+  if (sameJson(prev, next)) return prev
+  const out: ModelView = {}
+  for (const [name, value] of Object.entries(next)) {
+    const before = prev[name]
+    if (sameJson(before, value)) out[name] = before
+    else if (isObj(before) && isObj(value))
+      out[name] = Object.fromEntries(
+        Object.entries(value).map(([k, v]) => [k, sameJson(before[k], v) ? before[k] : v])
+      )
+    else out[name] = value
+  }
+  return out
 }
 
 /**

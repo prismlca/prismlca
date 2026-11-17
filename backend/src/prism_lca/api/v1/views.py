@@ -8,7 +8,9 @@ lives, not about making it a modelling decision.
 
 Whole-entry PUT rather than a patch API: the renderer holds the view in memory anyway (it draws
 from it), so it always has the complete picture, and one debounced write per model beats a call per
-dragged node. Sections the client does not send are left alone — see `ViewStore.put`.
+dragged node. Sections the client does not send are left alone — see `ViewStore.put`. The one change the
+renderer does not hold is one the backend made itself (a merged tag group renames the saved breakdowns): the
+revision the client read at guards that, see `ViewStore.revision`.
 """
 from __future__ import annotations
 
@@ -28,12 +30,16 @@ class ViewRequest(BaseModel):
     know, and it is kept rather than refused; an explicit `null` clears a section."""
 
     view: dict = Field(default_factory=dict)
+    #: The revision the client read the view at (`ViewStore.revision`). Sent, a write over a change the
+    #: backend made since is refused with `view_changed`; left out, the write goes through as it always did.
+    rev: int | None = None
 
 
 @router.get("/{database}", summary="A model's stored view state (canvas, colours, results setup)")
 async def get_view(request: Request, database: str) -> dict:
     del request  # the store reads the active project itself
-    return {"schema": SCHEMA, "database": database, "view": ViewStore().get(database)}
+    store = ViewStore()
+    return {"schema": SCHEMA, "database": database, "view": store.get(database), "rev": store.revision(database)}
 
 
 @router.put("/{database}", summary="Store a model's view state (sections not sent are left alone)")
@@ -45,5 +51,6 @@ async def put_view(request: Request, database: str, payload: ViewRequest) -> dic
     if database not in get_bd().databases:
         raise PrismError(f"Database '{database}' does not exist.", code="database_not_found",
                          status_code=404)
-    entry = ViewStore().put(database, payload.view)
-    return {"schema": SCHEMA, "database": database, "view": entry}
+    store = ViewStore()
+    entry = store.put(database, payload.view, payload.rev)
+    return {"schema": SCHEMA, "database": database, "view": entry, "rev": store.revision(database)}

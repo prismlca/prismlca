@@ -522,3 +522,93 @@ describe('a rename correction while a PUT is out', () => {
     }
   })
 })
+
+describe('reading a view again after the backend changed it', () => {
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 10; i++) await Promise.resolve()
+  }
+
+  it('takes the backend’s new split and keeps every unchanged section and field as the same object', async () => {
+    getResponse = {
+      view: { results: { stackBy: 'tag:Bauteil', picked: ['a'] }, layout: { pos: { n: { x: 1, y: 2 } } } }
+    }
+    await mv.viewFetch('F1')
+    const before = mv.viewSync('F1')
+    calls.length = 0
+    // A merged tag group took the split along on the backend; key order there is the server's own.
+    getResponse = {
+      view: { layout: { pos: { n: { y: 2, x: 1 } } }, results: { picked: ['a'], stackBy: 'tag:Component' } }
+    }
+    mv.refreshView('F1')
+    await settle()
+    expect(calls).toEqual([{ method: 'GET', path: '/api/v1/views/F1', body: undefined }])
+    const after = mv.viewSync('F1')
+    expect((after.results as { stackBy: string }).stackBy).toBe('tag:Component')
+    expect(after.layout).toBe(before.layout)
+    expect((after.results as { picked: string[] }).picked).toBe(
+      (before.results as { picked: string[] }).picked
+    )
+  })
+
+  it('keeps the very same view when nothing changed, so no panel sees a new value', async () => {
+    getResponse = { view: { results: { stackBy: 'isic', picked: ['a'] } } }
+    await mv.viewFetch('F2')
+    const before = mv.viewSync('F2')
+    mv.refreshView('F2')
+    await settle()
+    expect(mv.viewSync('F2')).toBe(before)
+  })
+
+  it('keeps a field written here and not yet stored over the backend’s older answer', async () => {
+    getResponse = { view: { results: { stackBy: 'tag:Bauteil', picked: ['a'] } } }
+    await mv.viewFetch('F3')
+    mv.viewSet('F3', 'results', { stackBy: 'isic', picked: ['a'] })
+    getResponse = { view: { results: { stackBy: 'tag:Component', picked: ['a'] } } }
+    mv.refreshView('F3')
+    await settle()
+    expect((mv.viewSync('F3').results as { stackBy: string }).stackBy).toBe('isic')
+  })
+
+  it('leaves a model alone that this window has not read', async () => {
+    calls.length = 0
+    mv.refreshView('never-opened')
+    await settle()
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('a write the backend refuses because it changed the view itself', () => {
+  it('reads again and sends the new state with what was written here on top', async () => {
+    const w = window as unknown as { prism: { api: (m: string, p: string, b?: unknown) => Promise<unknown> } }
+    const original = w.prism.api
+    const puts: Array<{ view: Record<string, unknown>; rev?: number }> = []
+    let server = { view: { results: { stackBy: 'tag:Bauteil', picked: ['a'] } }, rev: 0 }
+    w.prism.api = async (method: string, path: string, body?: unknown) => {
+      calls.push({ method, path, body })
+      if (method === 'GET') return { status: 200, body: server }
+      const sent = body as { view: Record<string, unknown>; rev?: number }
+      if (!path.endsWith('/W1')) return { status: 200, body: { view: sent.view } } // another test's late write
+      puts.push(sent)
+      if (sent.rev !== server.rev)
+        return { status: 409, body: { error: { code: 'view_changed', message: 'changed' } } }
+      return { status: 200, body: { view: sent.view, rev: server.rev } }
+    }
+    const settle = async (): Promise<void> => {
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+    }
+    try {
+      await mv.viewFetch('W1')
+      // The merge on the backend: the split follows the group, and the revision moves.
+      server = { view: { results: { stackBy: 'tag:Component', picked: ['a'] } }, rev: 1 }
+      mv.viewSet('W1', 'results', { stackBy: 'tag:Bauteil', picked: ['a', 'b'] }) // a tick, from the old copy
+      mv.flushViews()
+      await settle()
+      expect(puts).toHaveLength(2)
+      expect(puts[0].rev).toBe(0)
+      expect(puts[1]).toEqual({ view: { results: { stackBy: 'tag:Component', picked: ['a', 'b'] } }, rev: 1 })
+      expect(mv.viewSync('W1').results).toEqual({ stackBy: 'tag:Component', picked: ['a', 'b'] })
+    } finally {
+      w.prism.api = original
+    }
+  })
+})
