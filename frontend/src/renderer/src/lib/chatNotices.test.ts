@@ -69,6 +69,16 @@ describe('chatNotices', () => {
     expect(chatNotices()[0].excerpt).toBe(answer)
   })
 
+  it('quotes the answer without its Markdown marks, and an error message as it came', () => {
+    const answer = '## Ergebnis\n\n**Rund 75 kg** CO2-Äq. pro Schubkarre, davon\n\n- *Rahmen*: 45 kg'
+    handleChatEvent({ chatId: 'a', type: 'done', text: answer })
+    handleChatEvent({ chatId: 'b', type: 'error', message: 'Unknown model **x** (`max_tokens`)' })
+    expect(chatNotices().map((n) => n.excerpt)).toEqual([
+      'Unknown model **x** (`max_tokens`)',
+      'Ergebnis: Rund 75 kg CO2-Äq. pro Schubkarre, davon Rahmen: 45 kg'
+    ])
+  })
+
   it('falls back to the whole text when the turn has no mark or nothing follows it', () => {
     expect(closingAnswer('Notes.\n\nAnswer.')).toBe('Notes.\n\nAnswer.')
     expect(closingAnswer('Answer.', 0)).toBe('Answer.')

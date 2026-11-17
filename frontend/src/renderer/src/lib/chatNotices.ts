@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { AiEvent } from './ai'
+import { plainFromMarkdown } from './markdownPlain'
 
 /**
  * Chats that ended a turn while nobody was looking (V406).
@@ -18,7 +19,7 @@ export interface ChatNotice {
   /** The model the chat works on; null when this window never learnt it (e.g. a run older than a reload). */
   database: string | null
   kind: 'done' | 'error'
-  /** The start of the closing answer, or the error message, on one line. */
+  /** The start of the closing answer as plain text (its Markdown marks removed), or the error message, on one line. */
   excerpt: string
   at: number
 }
@@ -76,7 +77,11 @@ export function handleChatEvent(ev: AiEvent, now: number = Date.now()): void {
       chatId: ev.chatId,
       database: chatModels.get(ev.chatId) ?? null,
       kind: ev.type,
-      excerpt: excerptOf(ev.type === 'done' ? closingAnswer(ev.text, ev.answerFrom) : ev.message),
+      // The answer is Markdown and the banner is one line of text, so its marks come off; an error
+      // message is plain text in the chat too and is quoted as it is.
+      excerpt: excerptOf(
+        ev.type === 'done' ? plainFromMarkdown(closingAnswer(ev.text, ev.answerFrom)) : ev.message
+      ),
       at: now
     }
     // One row per chat, newest first: a later turn of the same chat replaces its older notice.
