@@ -131,6 +131,11 @@ export type AgentEvent =
       chatId: string
       type: 'done'
       text: string
+      /** Where in `text` the closing answer begins: behind the last tool round, the last line the user
+       *  sent while the run worked and the notice of a request sent again. `text` is everything the
+       *  turn wrote, in order — answered questions and the notes between tool rounds come first.
+       *  Whoever shows one line of a finished turn starts here. */
+      answerFrom?: number
       cost?: number
       /** The part of `cost` the research agents billed. */
       researchCost?: number
