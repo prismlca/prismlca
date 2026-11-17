@@ -18,7 +18,11 @@ from prism_lca.config import get_settings
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
-from prism_lca.engine.market_suppliers import market_main_supplier_comment, same_product_inputs
+from prism_lca.engine.market_suppliers import (
+    market_main_supplier_comment,
+    market_main_supplier_inputs,
+    same_product_inputs,
+)
 from prism_lca.engine.notfound import not_found_hint
 from prism_lca.engine.pedigree import gsd_from_pedigree
 from prism_lca.engine.uid_hint import is_near, uid_not_found
@@ -340,6 +344,9 @@ def activity_detail(act, review: bool = False) -> dict:
     supplier = market_main_supplier_comment(act)
     if supplier:
         activity["main_supplier_comment"] = supplier
+    supplier_inputs = market_main_supplier_inputs(act)
+    if supplier_inputs:
+        activity["main_supplier_inputs"] = supplier_inputs
     if review:
         activity["review"] = _review_fields(act)
     return {"activity": activity, "exchanges": exchanges}
