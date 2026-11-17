@@ -37,6 +37,8 @@ describe('an edit_exchange batch', () => {
     expect(ignoredNote([])).toBeNull()
     expect(expandBatch({ ...call, comment: 'why' }).ignored).toEqual(['comment'])
     expect(ignoredNote(['comment'])?.not_applied).toEqual(['comment'])
+    // Not under `hint`: the batch answer it is merged into says there which items to send again.
+    expect(ignoredNote(['comment'])).not.toHaveProperty('hint')
   })
 
   it('tells an item that lacks a value where the one given at the top went', () => {

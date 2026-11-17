@@ -58,12 +58,19 @@ export function expandBatch(a: any): ExchangeBatch {
   return { items, ignored, inheritedDb }
 }
 
-/** The note for per-exchange fields given at the top level, or null when there were none. */
+/**
+ * The note for per-exchange fields given at the top level, or null when there were none.
+ *
+ * It has a key of its own because it is merged into the batch answer, whose `hint` already says, when some
+ * items failed, that the rest were applied and only the failed ones are to be sent again. Under the same key
+ * this note replaced that sentence, and a caller that resent the whole batch doubled every input that had
+ * gone through.
+ */
 export function ignoredNote(ignored: string[]): Record<string, unknown> | null {
   if (!ignored.length) return null
   return {
     not_applied: ignored,
-    hint:
+    not_applied_note:
       `${ignored.map((k) => `"${k}"`).join(', ')} names a single exchange and was given for the ` +
       'whole batch, so it was not applied to anything. Put it on the items it belongs to. ' +
       `Fields that may sit at the top level and act as defaults: ${BATCH_WIDE.join(', ')}.`
