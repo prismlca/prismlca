@@ -104,7 +104,7 @@ export function AiModelsPanel(): JSX.Element {
   const model = as.model
   // '' = follow the chat model, which is what almost everyone wants and what this used to do silently.
   const writerModel = as.writerModel
-  // '' = each sub-agent keeps its own cheap default (see subagent.ts). Separate settings, because
+  // '' = each sub-agent keeps its own cheap default (see subagent.ts and critic.ts). Separate settings, because
   // the jobs reward different things — see the hints under the fields. The context summariser has
   // none: it writes what the chat model then works from, so the chat model writes it.
   const researchModel = as.researchModel

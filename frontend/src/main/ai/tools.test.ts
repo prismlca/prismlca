@@ -15,6 +15,7 @@ vi.mock('electron', () => ({
 
 import { withUnknownFields } from './agent'
 import { UNOPENED_LINKS_SHOWN } from './tools/advice/linkReminder'
+import { noteScored } from './tools/advice/scored'
 import {
   MUTATING_TOOLS,
   TOOL_BY_NAME,
@@ -673,6 +674,46 @@ describe('review_model', () => {
     expect(dossier).toContain('compare bottles')
     expect(out.review).toContain('Blocking')
     expect(out.gaps).toEqual([])
+  })
+
+  it('names every indicator scored for the model and says whether the reviewer is the chat model', async () => {
+    // One run scored eight indicators and the dossier named only the hotspot method; the reviewer then
+    // judged the goal too broad for one indicator. And a model reviewing itself was not told so.
+    const gwp = ['IPCC 2021', 'climate change', 'GWP100']
+    const acid = ['EF v3.1', 'acidification', 'AE']
+    const scored = new Map()
+    noteScored(
+      scored,
+      'calculate',
+      { code: 'fu', method: acid },
+      'demo-model',
+      JSON.stringify({ results: [{ method: acid }] })
+    )
+    let dossier = ''
+    const ctx: ToolCtx = {
+      api: async (_m, path) => {
+        if (path === '/api/v1/views/demo-model')
+          return { view: { results: { picked: [{ key: 'w', method: ['EF v3.1', 'water use', 'UDP'] }] } } }
+        if (path.startsWith('/api/v1/study')) return { goal: 'potential environmental impacts' }
+        return { ok: true }
+      },
+      ui: async () => ({}),
+      activeDb: 'demo-model',
+      model: 'vendor/m1',
+      reviewModel: 'vendor/m1',
+      scored,
+      review: async (o) => {
+        dossier = o.dossier
+        return { text: 'ok', outcome: 'ok' as const, reasoning_chars: 0, attempts: 1, ms: 1 }
+      }
+    }
+    const out = JSON.parse((await TOOL_BY_NAME.review_model.run({ code: 'fu', method: gwp }, ctx)) as string)
+    expect(dossier).toContain('INDICATORS SCORED FOR THIS MODEL')
+    expect(dossier).toContain('- EF v3.1 | acidification | AE')
+    expect(dossier).toContain('- EF v3.1 | water use | UDP')
+    expect(dossier).toContain('- IPCC 2021 | climate change | GWP100  ← the hotspot analysis above')
+    expect(out).toMatchObject({ reviewer: 'vendor/m1', self_review: true })
+    expect(out.note).toContain('not an independent review')
   })
 
   it('names the missing hotspot analysis when no code/method is given', async () => {
@@ -2342,7 +2383,7 @@ describe('provenance logging (research + review)', () => {
         {
           api: async (_m: string, path: string, body: any) => (
             posts.push({ path, body }),
-            { recorded: 1, open: 1 }
+            { recorded: 1, open: 1, findings: 2, no_outcome_yet: [{ id: 'F2', finding: 'tyres' }] }
           ),
           ui: async () => ({}),
           activeDb: 'demo-model',
@@ -2355,6 +2396,9 @@ describe('provenance logging (research + review)', () => {
     )
     expect(reviewed).toBe(false)
     expect(out.open).toBe(1)
+    // The finding never answered comes back by name — the log itself cannot be read back.
+    expect(out.no_outcome_yet).toEqual([{ id: 'F2', finding: 'tyres' }])
+    expect(out.note).toContain("1 of the review's 2 findings have no recorded outcome yet")
     expect(posts[0].path).toBe('/api/v1/provenance/review/resolutions')
     expect(posts[0].body.resolutions[0].resolution).toBe('open')
   })

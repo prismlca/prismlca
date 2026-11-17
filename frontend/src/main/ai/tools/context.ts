@@ -19,6 +19,7 @@
 
 import type { ChatPlan } from '../../../shared/plan'
 import type { ModelScope } from '../modelScope'
+import type { ScoredRecord } from './advice/scored'
 
 export interface ToolCtx {
   /** Authenticated backend call; resolves the JSON body or throws a readable error. */
@@ -73,6 +74,12 @@ export interface ToolCtx {
    * advice/opened.ts, which also counts a market as opened when a producer behind it is in here.
    */
   inspected?: Set<string>
+  /**
+   * The LCIA indicators this run has scored, per model (advice/scored.ts). Owned by the run and seeded
+   * from the carried transcript like `inspected`; the review dossier names them all, not just the one
+   * its hotspot analysis uses.
+   */
+  scored?: ScoredRecord
   /**
    * Background searches this run has already run, keyed by the query's content words (the backend
    * returns them as `content_terms`). Owned by the run, like `inspected`.

@@ -10,6 +10,9 @@ import { linkedHotspots, needsALook } from '../advice/hotspots'
 import { unopenedHotspots } from '../advice/opened'
 import { previousReviewOf, previousReviewSection } from './reviewHistory'
 import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './reviewFailure'
+import { indicatorsSection, pickedMethods } from './reviewIndicators'
+import { afterReviewNote, outcomesAnswer, reviewerIdentity } from './reviewAnswer'
+import { scoredFor } from '../advice/scored'
 
 export const reviewTools: Tool[] = [
   {
@@ -18,7 +21,7 @@ export const reviewTools: Tool[] = [
       function: {
         name: 'review_model',
         description:
-          'Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model\'s review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with "resolutions" to record each finding\'s outcome — fixed things are visible in the model, but "rejected, because …" and "still open" exist nowhere else, and the report prints the open ones in its Limitations chapter. With "resolutions" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.',
+          'Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model\'s review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with "resolutions" to record each finding\'s outcome by its id (the review tags its findings [F1], [F2], …); the answer lists the findings that still have none — fixed things are visible in the model, but "rejected, because …" and "still open" exist nowhere else, and the report prints the open ones in its Limitations chapter. With "resolutions" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.',
         parameters: obj(
           {
             database: str('Model to review; defaults to the open model.'),
@@ -34,6 +37,9 @@ export const reviewTools: Tool[] = [
                 'Record-only mode: your outcome per review finding, after you acted on the review. One entry per finding you want the study to be able to show.',
               items: obj(
                 {
+                  id: str(
+                    'The finding\'s id as the review tagged it — "F3". Without it the outcome cannot be matched to its finding.'
+                  ),
                   finding: str('The finding, in one sentence (your words, not a quote of the whole point).'),
                   resolution: {
                     type: 'string',
@@ -64,13 +70,17 @@ export const reviewTools: Tool[] = [
       // log. This is the half of a review that is otherwise unrecoverable — the model shows what was
       // fixed, but "rejected, because …" and "still open" existed only in the conversation.
       if (Array.isArray(a.resolutions) && a.resolutions.length) {
+        // The answer lists the tagged findings that still have no outcome (reviewAnswer.ts): the log
+        // cannot be read back, so counts alone left the ones never answered invisible.
         try {
           return S(
-            await ctx.api('POST', '/api/v1/provenance/review/resolutions', {
-              database: db,
-              resolutions: a.resolutions,
-              ...(typeof a.review_id === 'string' && a.review_id ? { review_id: a.review_id } : {})
-            })
+            outcomesAnswer(
+              await ctx.api('POST', '/api/v1/provenance/review/resolutions', {
+                database: db,
+                resolutions: a.resolutions,
+                ...(typeof a.review_id === 'string' && a.review_id ? { review_id: a.review_id } : {})
+              })
+            )
           )
         } catch (e) {
           return S({ error: e instanceof Error ? e.message : String(e) })
@@ -185,6 +195,16 @@ export const reviewTools: Tool[] = [
         )
       }
 
+      // Every indicator scored for the model, not only the hotspot method (reviewIndicators.ts).
+      const view = await part('results page set-up', () =>
+        ctx.api('GET', `/api/v1/views/${encodeURIComponent(db)}`)
+      )
+      const indicators = indicatorsSection(
+        scoredFor(ctx.scored, db),
+        pickedMethods(view),
+        hotspots && Array.isArray(a.method) ? a.method : null
+      )
+
       // This chat's own previous review of the model, if it ran one (reviewHistory.ts).
       const previous = ctx.chatId
         ? previousReviewOf(
@@ -210,6 +230,7 @@ export const reviewTools: Tool[] = [
             'above. Something not listed there is BELOW the cutoff, not absent from the model — check ' +
             'it against the process list before reporting it as missing.'
           : '',
+        indicators,
         selfDescriptions.length
           ? 'WHAT THE BIGGEST DATASETS SAY ABOUT THEMSELVES (their own dataset comment; for a ' +
             'market, the producer it mostly buys from): check each sentence against the product ' +
@@ -253,11 +274,13 @@ export const reviewTools: Tool[] = [
         } catch {
           /* the review still reaches the model; only the log entry is lost */
         }
+        const who = reviewerIdentity(ctx.reviewModel, ctx.model)
         return S({
           database: db,
           gaps,
           review: review.text,
           review_id: logged.id,
+          ...who,
           ...(review.partial
             ? {
                 cut_off:
@@ -265,16 +288,7 @@ export const reviewTools: Tool[] = [
                   'findings it had not reached are missing.'
               }
             : {}),
-          note:
-            'When a finding makes you change the inventory, a formula or the cut-off: re-read the ' +
-            'process comments and study fields that describe the old state and bring them up to date ' +
-            '— prose written before a fix otherwise contradicts the model it describes. Afterwards, ' +
-            'record each finding\'s outcome by calling review_model again with "resolutions" ' +
-            '([{finding, resolution: fixed|rejected|open, reason}]); the report prints the open ones. ' +
-            'After a structural change (new phase, swapped dataset that carries the result, changed ' +
-            'allocation) run the review again — it sees its previous findings. This is a second opinion ' +
-            'from an AI reviewer, not a critical review in the ISO 14044 sense: it does not go into ' +
-            'critical_review.'
+          note: afterReviewNote(who)
         })
       }
       return S(reviewFailed(subject, gaps, review))

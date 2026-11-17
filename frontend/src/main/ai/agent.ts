@@ -24,7 +24,9 @@ import { findModel } from './models'
 import { effortRejectionRetry } from './chatEffort'
 import { stallNudge } from './toolGuards'
 import { getActiveProvider } from './providers/state'
-import { researchBom, researchWeb, reviewDossier, reviewerModel } from './subagent'
+import { researchBom, researchWeb } from './subagent'
+import { reviewDossier, reviewerModel } from './critic'
+import { seedScored } from './tools/advice/scored'
 import { capToolResult } from './resultBudget'
 import { createToolSession } from './execute'
 import { NOT_IN_CHAT } from './modelScope'
@@ -751,8 +753,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     modelScope: turnContext.scope,
     disabledTools: disabled,
     // The chat model driving this run, for tools that record provenance — the study stamps which
-    // LLM filled its goal & scope (V128), and only main knows the id.
-    model: req.model,
+    // LLM filled its goal & scope (V128), and only main knows the id. The resolved id, not the stored
+    // choice: a choice from the other provider runs on this one's default, and the review compares it
+    // with its reviewer to say whether the model checked its own work.
+    model: model.id,
     // Both switches, not just the app-wide one: a chat whose "+" menu says no web must get no web from
     // the research helpers either — they used to honour only the kill switch in Settings.
     webSearchAllowed: webOn,
@@ -926,6 +930,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       }
     }
   }
+  // The indicators scored in an earlier turn, for the review dossier — read from each call's result.
+  seedScored(ctx.scored, (carried ?? []) as Parameters<typeof seedScored>[1], req.activeDb)
   // Attached files ride WITH the user's turn as extra content parts — a PDF or an image as itself,
   // a spreadsheet as the Markdown the backend converted. `userText` stays the prose the user typed,
   // because that is what the renderer persists and what `keepTranscript` has to match next turn.

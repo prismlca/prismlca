@@ -5,7 +5,7 @@ A model you built yourself is the hardest to see clearly. `review_model` gathers
 reviewer judge it. It changes nothing — acting on the findings is your job.
 
 ## 1. When a review is worth it
-A review is a paid second model reading your whole model — spend it where a finding can still change a
+A review is a paid model pass over your whole model — spend it where a finding can still change a
 conclusion someone will rely on:
 - **Before a report is written** or a result goes out as a study finding.
 - **Before a comparison is drawn.** Comparative claims are what reviewers attack hardest.
@@ -59,7 +59,8 @@ Two duties close the loop:
   shipped a process comment saying the label was "excluded per cut-off" — thirty calls after the
   review had put the label into the inventory.
 - **Record each finding's outcome** by calling `review_model` with `resolutions`
-  (`[{finding, resolution: fixed|rejected|open, reason}]`). Fixed things are visible in the model,
+  (`[{id, finding, resolution: fixed|rejected|open, reason}]`, `id` as the review tagged the finding).
+  Fixed things are visible in the model,
   but "rejected, because …" and "still open" exist nowhere else — and the report prints the open
   ones in its Limitations chapter, so an outcome you do not record is an outcome the study cannot
   show.

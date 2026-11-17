@@ -10,7 +10,7 @@ from prism_lca.engine.report_checks import limitations_blocks
 from prism_lca.engine.report_prompts import brief_facts, build_brief, placeholder_paths
 from prism_lca.engine.report_sources import researched_sources
 from prism_lca.engine.research_log import ResearchLogStore, clean_entry
-from prism_lca.engine.review_log import ReviewLogStore
+from prism_lca.engine.review_log import ReviewLogStore, tagged_findings
 
 ENTRY = {
     "question": "empty weight of the 500 g deposit jar",
@@ -104,13 +104,86 @@ def test_review_log_resolutions_and_staleness(project):
         {"finding": "lid lacks forming steps", "resolution": "open", "reason": "below the 10 % bar"},
         {"finding": "label missing", "resolution": "rejected", "reason": "changed my mind"},
     ])
-    assert got == {"id": made["id"], "recorded": 2, "fixed": 0, "rejected": 1, "open": 1}
+    # A review without tagged findings: the counts, and that which findings lack an outcome cannot be said.
+    assert got == {"id": made["id"], "recorded": 2, "fixed": 0, "rejected": 1, "open": 1, "tagged": False}
 
     view = store.for_report("m4", current_generation=7)
     assert view["stale"] is False and view["resolutions_recorded"] is True
     assert [f["finding"] for f in view["open"]] == ["lid lacks forming steps"]
     assert store.for_report("m4", current_generation=8)["stale"] is True
     assert store.for_report("never-reviewed", 1) is None
+
+
+TAGGED_REVIEW = """### Blocking
+- [F1] Recalculate zinc coating: "1.121 m2" against 64 m2/t.
+**[F2]** The frame is a residual mass.
+
+## Should fix
+1. **[F3]** Functional unit has no lifetime.
+- [F4] Packaging film 0.4 kg; see also [F1] above.
+
+**Worth a look**
+
+**[F5]**
+Tyre end-of-life is missing.
+- [F3] repeated tag is not a second finding.
+"""
+
+
+def test_tagged_findings_are_read_from_the_start_of_a_line_in_any_markup():
+    found = tagged_findings(TAGGED_REVIEW)
+    assert [f["id"] for f in found] == ["F1", "F2", "F3", "F4", "F5"]
+    assert found[0]["finding"].startswith("Recalculate zinc coating")
+    assert found[1]["finding"] == "The frame is a residual mass."
+    assert found[4]["finding"] == "Tyre end-of-life is missing."  # tag alone on its line
+    assert tagged_findings("## Blocking\n- the lid, see [F2]") == []
+
+
+def test_the_resolutions_answer_names_the_findings_without_an_outcome(project):
+    """Eight outcomes for eleven findings used to answer with counts only — the three left over were
+    invisible to the builder, who cannot read the log back."""
+    store = ReviewLogStore()
+    store.record_review("m9", TAGGED_REVIEW, generation=1)
+    got = store.record_resolutions("m9", [
+        {"id": "F1", "finding": "zinc coating area", "resolution": "fixed"},
+        {"id": "[f2]", "finding": "frame residual", "resolution": "rejected", "reason": "by design"},
+        {"finding": "F4: packaging film", "resolution": "open", "reason": "no data"},
+        {"finding": "tyre end-of-life", "resolution": "fixed"},
+        {"id": "F9", "finding": "a finding the review never made", "resolution": "fixed"},
+    ])
+    assert got["findings"] == 5
+    assert [f["id"] for f in got["no_outcome_yet"]] == ["F3", "F5"]
+    assert got["no_outcome_yet"][0]["finding"].startswith("Functional unit has no lifetime")
+    assert got["without_id"] == 1 and got["unknown_ids"] == ["F9"]
+    # The same id recorded again replaces the earlier outcome, whatever the words.
+    again = store.record_resolutions("m9", [
+        {"id": "F3", "finding": "lifetime of the barrow", "resolution": "open", "reason": "user decides"},
+        {"id": "5", "finding": "tyres", "resolution": "fixed"},
+        {"id": "F1", "finding": "zinc coating per m2", "resolution": "fixed"},
+    ])
+    assert again["no_outcome_yet"] == [] and again["recorded"] == 7
+    # The ids number one review's findings; a report has no use for them.
+    assert all("id" not in r for r in store.for_report("m9", 1)["open"])
+
+
+def test_an_outcome_recorded_again_with_its_id_replaces_the_one_without(project):
+    """The answer asks for exactly this; the stale entry must not stay behind for the report."""
+    store = ReviewLogStore()
+    store.record_review("m10", TAGGED_REVIEW, generation=1)
+    store.record_resolutions("m10", [{"finding": "Missing lifetime", "resolution": "open"}])
+    got = store.record_resolutions("m10", [{"id": "F3", "finding": "missing  lifetime", "resolution": "fixed"}])
+    assert got["recorded"] == 1 and got["fixed"] == 1 and got["open"] == 0 and "without_id" not in got
+    # And the other way round: the same words without an id keep the id already on record.
+    store.record_resolutions("m10", [{"finding": "Missing lifetime", "resolution": "rejected", "reason": "x"}])
+    assert store.latest("m10")["resolutions"] == [
+        {"finding": "Missing lifetime", "resolution": "rejected", "reason": "x", "id": "F3"}
+    ]
+    # Two findings answered in the same words stay two outcomes.
+    got = store.record_resolutions("m10", [
+        {"id": "F1", "finding": "see above", "resolution": "fixed"},
+        {"id": "F2", "finding": "see above", "resolution": "fixed"},
+    ])
+    assert got["recorded"] == 3
 
 
 def test_review_endpoints_stamp_the_generation(client, token, project):

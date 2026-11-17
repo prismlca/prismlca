@@ -50,7 +50,7 @@ class ResolutionsRequest(BaseModel):
     database: str
     #: Omitted = the latest review; the usual case, since resolutions follow the review they answer.
     review_id: str | None = None
-    #: ``[{finding, resolution: fixed|rejected|open, reason}]``.
+    #: ``[{id, finding, resolution: fixed|rejected|open, reason}]`` — ``id`` as the review tagged the finding (F3).
     resolutions: list[dict]
 
 

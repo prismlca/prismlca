@@ -1,7 +1,7 @@
 /**
  * The clock of one review: how long the reviewer may take, the one restart it gets, what is kept when
  * time runs out, and the line the run bar shows meanwhile. The critic's prompt and its default model
- * stay with the critic (subagent.ts); this module owns only how a pass over the dossier is run.
+ * stay with the critic (critic.ts); this module owns only how a pass over the dossier is run.
  *
  * The first attempt runs on the reviewer model's own settings — no reasoning effort is imposed. What
  * this adds is the outlier: a reviewer that thinks for ten minutes and more while the chat waits. The

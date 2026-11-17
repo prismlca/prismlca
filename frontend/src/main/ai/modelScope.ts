@@ -128,7 +128,8 @@ export function namedDatabases(args: Record<string, unknown>): Named[] {
  *  `background`, `biosphere`); undefined = no such database. */
 export type KindOf = (name: string) => Promise<{ name: string; kind: string } | undefined>
 
-const fold = (name: string): string => name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+/** A database name as the backend matches it (`_fold_db`): letters and digits only, case folded. */
+export const foldDbName = (name: string): string => name.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
 
 /**
  * The database a name reaches, resolved the way the backend's routes resolve it (`_db_or_404`): exact,
@@ -141,8 +142,8 @@ export function resolveDatabase(
 ): { name: string; kind: string } | undefined {
   const exact = kinds.get(name)
   if (exact !== undefined) return { name, kind: exact }
-  const wanted = fold(name)
-  const hits = wanted ? [...kinds.keys()].filter((n) => fold(n) === wanted) : []
+  const wanted = foldDbName(name)
+  const hits = wanted ? [...kinds.keys()].filter((n) => foldDbName(n) === wanted) : []
   return hits.length === 1 ? { name: hits[0], kind: kinds.get(hits[0]) ?? '' } : undefined
 }
 
@@ -309,7 +310,7 @@ export function ignoredDatabase(
 ): string | null {
   const db = typeof args?.database === 'string' ? args.database.trim() : ''
   const props = (schema?.properties ?? {}) as Record<string, unknown>
-  if (!db || fold(db) === fold(own ?? '') || 'database' in props) return null
+  if (!db || foldDbName(db) === foldDbName(own ?? '') || 'database' in props) return null
   return (
     `${tool} has no "database" argument: it works on the open model "${own ?? ''}" only, so "${db}" would ` +
     `be ignored and the answer would be this model's. To read another model use a tool that takes ` +

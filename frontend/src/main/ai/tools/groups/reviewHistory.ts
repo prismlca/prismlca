@@ -22,7 +22,7 @@ export interface LoggedReview {
   stale?: boolean | null
   /** The reviewer was stopped at its deadline: findings it had not reached are missing. */
   partial?: boolean
-  resolutions?: Array<{ finding?: string; resolution?: string; reason?: string }>
+  resolutions?: Array<{ id?: string; finding?: string; resolution?: string; reason?: string }>
 }
 
 /** The latest review in the log that this chat ran, or null — also for a log that is not a list. */
@@ -46,7 +46,10 @@ export function previousReviewSection(r: LoggedReview): string {
   const cut = r.partial ? ' It was cut off at its deadline, so findings it had not reached are missing.' : ''
   const outcomes = (r.resolutions ?? [])
     .filter((x) => x && typeof x.finding === 'string' && x.finding.trim())
-    .map((x) => `- ${x.resolution ?? 'open'}: ${x.finding}${x.reason ? ` — ${x.reason}` : ''}`)
+    .map(
+      (x) =>
+        `- ${x.id ? `${x.id} ` : ''}${x.resolution ?? 'open'}: ${x.finding}${x.reason ? ` — ${x.reason}` : ''}`
+    )
   return [
     `PREVIOUS REVIEW (run earlier in this chat on this model).${changed}${cut} Its findings:`,
     capText(String(r.review ?? '').trim(), 6_000),

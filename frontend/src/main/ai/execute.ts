@@ -38,6 +38,7 @@ import {
 } from './modelScope'
 import { argumentsProblem, argumentsRefusal } from './toolArguments'
 import { aiLog } from './aiLog'
+import { noteScored } from './tools/advice/scored'
 
 /** Raw backend request, as main's `apiRequest` provides it (status + body, never throws on HTTP errors). */
 export type ApiRaw = (
@@ -281,6 +282,8 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
     // Which datasets have been opened with get_process_details — owned by the session; the chat seeds
     // it from the carried transcript so a dataset read in an earlier turn is not asked for twice.
     inspected: new Set<string>(),
+    // Which indicators have been scored per model — named in the review dossier; seeded like `inspected`.
+    scored: new Map(),
     // Which background searches have already been answered, keyed by content words. Not seeded: a
     // search is cheap to repeat and the note is only worth having while the answer is in view.
     searched: new Map<string, { query: string; hits: number }>(),
@@ -384,6 +387,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
         result = out as string
       }
       const soft = softError(result)
+      if (!soft) noteScored(ctx.scored, name, args, ctx.activeDb, result)
       // A tool name in a field the report prints (V408b): said in the answer, beside the result, in the
       // `warnings` slot every search answer already uses — the one place a model reads first.
       if (!soft && MUTATING_TOOLS.has(name)) {

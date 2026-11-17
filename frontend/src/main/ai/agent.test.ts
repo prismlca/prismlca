@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { announcesUnfinishedWork, failedItems, runawayRepetition, withCacheBreakpoint } from './agent'
 import { compactMessages, compactThreshold, estimateChars } from './contextBudget'
-import { RESEARCH_MODEL, REVIEW_MODEL } from './subagent'
+import { RESEARCH_MODEL } from './subagent'
+import { REVIEW_MODEL } from './critic'
 import { findModel, getModels, setUserModels } from './models'
 
 const AI_MODELS = getModels()

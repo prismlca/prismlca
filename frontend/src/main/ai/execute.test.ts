@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createToolSession, failedItems, softError, type ApiRaw } from './execute'
+import { scoredFor } from './tools/advice/scored'
 
 /** A backend that answers every call with the same body and remembers what it was asked. */
 function fakeApi(body: unknown = { ok: true }, status = 200): { api: ApiRaw; calls: unknown[][] } {
@@ -30,6 +31,19 @@ describe('createToolSession', () => {
     expect(s.ctx.activeDb).toBe('Shampoo')
     expect(s.ctx.inspected).toBeInstanceOf(Set)
     expect(s.ctx.searched).toBeInstanceOf(Map)
+    expect(s.ctx.scored).toBeInstanceOf(Map)
+  })
+
+  it('records the indicators a successful scoring call returned, for the review dossier', async () => {
+    const gwp = ['IPCC 2021', 'climate change', 'GWP100']
+    const { s } = session({
+      apiRaw: async () => ({ status: 200, body: { results: [{ method: gwp, score: 1 }] } })
+    })
+    await s.run('calculate', { code: 'fu', method: gwp })
+    expect([...scoredFor(s.ctx.scored, 'Shampoo').values()]).toEqual(['IPCC 2021 | climate change | GWP100'])
+    // A refused call scored nothing.
+    await s.run('compare', { subjects: [{ database: 'Shampoo', code: 'fu' }] })
+    expect(scoredFor(s.ctx.scored, 'Shampoo').size).toBe(1)
   })
 
   it('sends the session headers with every backend call', async () => {

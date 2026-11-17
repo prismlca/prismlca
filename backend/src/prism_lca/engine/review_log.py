@@ -14,6 +14,7 @@ not undoable, because it is a log of what happened, not a piece of the model.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from prism_lca.engine._store import JsonFileStore, now_z
@@ -32,8 +33,52 @@ RESOLUTIONS = ("fixed", "rejected", "open")
 _SESSION = uuid.uuid4().hex[:12]
 
 
+#: A finding's tag where the reviewer starts the finding — "[F3]" at the beginning of a line, after any
+#: bullet, number, heading or bold markup. A tag further into a line is a reference, not a finding.
+_FINDING_TAG = re.compile(r"^\s*(?:#{1,6}\s*)?(?:[-*+]\s+|\d{1,3}[.)]\s+)?(?:\*\*|__)?\s*\[F(\d{1,3})\]\s*(.*)$")
+#: The id a resolution names: "F3", "[F3]", "f3" or a bare "3".
+_RESOLUTION_ID = re.compile(r"^\s*\[?\s*F?\s*(\d{1,3})\s*\]?\s*$", re.IGNORECASE)
+#: The same id written at the start of the finding text instead ("F3: zinc coating …").
+_LEADING_ID = re.compile(r"^\s*\[?F(\d{1,3})\]?(?=[\s:.)\-\u2013\u2014])", re.IGNORECASE)
+
+
+def _plain(line: str) -> str:
+    """A line of review Markdown as plain text: no emphasis markers, no leading punctuation."""
+    text = re.sub(r"\*\*|__", "", line)
+    return re.sub(r"\s+", " ", text).strip().lstrip(":.-\u2013\u2014 ").strip()
+
+
+def tagged_findings(review: str) -> list[dict]:
+    """The findings a review tagged ``[F1]``, ``[F2]`` …, in order, each with the start of its text.
+
+    The reviewer is asked to tag every finding; a review that did not (an older one, or a reviewer that
+    ignored the rule) yields an empty list, and then nobody can say which findings still lack an outcome.
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    lines = str(review or "").splitlines()
+    for i, line in enumerate(lines):
+        m = _FINDING_TAG.match(line)
+        if not m:
+            continue
+        fid = f"F{int(m.group(1))}"
+        if fid in seen:
+            continue
+        seen.add(fid)
+        # A tag alone on its line (a heading "**[F2]**"): the finding's words are on the next one.
+        text = _plain(m.group(2)) or next((_plain(nxt) for nxt in lines[i + 1 : i + 3] if _plain(nxt)), "")
+        out.append({"id": fid, "finding": text[:200]})
+    return out
+
+
+def _resolution_id(item: dict, finding: str) -> str | None:
+    """The finding id a resolution names — in ``id``, or at the start of its finding text."""
+    m = _RESOLUTION_ID.match(str(item.get("id") or "")) or _LEADING_ID.match(finding)
+    return f"F{int(m.group(1))}" if m else None
+
+
 def clean_resolutions(items: object) -> list[dict]:
-    """Normalise ``[{finding, resolution, reason}]``; unknown resolutions become ``open``."""
+    """Normalise ``[{id, finding, resolution, reason}]``; unknown resolutions become ``open``."""
     if not isinstance(items, list):
         return []
     out: list[dict] = []
@@ -48,10 +93,68 @@ def clean_resolutions(items: object) -> list[dict]:
             "finding": finding[:400],
             "resolution": resolution if resolution in RESOLUTIONS else "open",
         }
+        fid = _resolution_id(item, finding)
+        if fid:
+            entry["id"] = fid
         reason = str(item.get("reason") or "").strip()
         if reason:
             entry["reason"] = reason[:600]
         out.append(entry)
+    return out
+
+
+def _same_words(a: str, b: str) -> bool:
+    return " ".join(a.casefold().split()) == " ".join(b.casefold().split())
+
+
+def _merge_resolutions(stored: list[dict], incoming: list[dict]) -> list[dict]:
+    """The later statement about a finding replaces the earlier one, in place.
+
+    The same finding is the same id; or, where one of the two carries no id, the same words. Two
+    entries with different ids are never merged, whatever they say: "see above" may answer two
+    findings. Without the second rule, an outcome first recorded without an id and then again with
+    one — what the answer asks for — stayed in the log twice, and the report printed the stale one.
+    """
+    out = [dict(r) for r in stored]
+    for item in incoming:
+        fid = item.get("id")
+        hits = [
+            i for i, r in enumerate(out)
+            if (fid and r.get("id") == fid)
+            or ((not fid or not r.get("id")) and _same_words(r["finding"], item["finding"]))
+        ]
+        if not hits:
+            out.append(item)
+            continue
+        kept = out[hits[0]].get("id")
+        out[hits[0]] = {**item, "id": fid or kept} if (fid or kept) else item
+        for i in reversed(hits[1:]):
+            del out[i]
+    return out
+
+
+def _without_id(resolution: dict) -> dict:
+    return {k: v for k, v in resolution.items() if k != "id"}
+
+
+def _coverage(review: str, resolutions: list[dict]) -> dict:
+    """Which of the review's tagged findings have no outcome yet, for the answer to a resolutions call."""
+    findings = tagged_findings(review)
+    if not findings:
+        return {"tagged": False}
+    known = {f["id"] for f in findings}
+    named = {r["id"] for r in resolutions if r.get("id")}
+    out: dict = {
+        "findings": len(findings),
+        "no_outcome_yet": [f for f in findings if f["id"] not in named],
+    }
+    # Outcomes the ids cannot place: they may answer a finding listed above, or nothing at all.
+    without = sum(1 for r in resolutions if not r.get("id"))
+    if without:
+        out["without_id"] = without
+    unknown = sorted(named - known, key=lambda x: int(x[1:]))
+    if unknown:
+        out["unknown_ids"] = unknown
     return out
 
 
@@ -130,8 +233,13 @@ class ReviewLogStore(JsonFileStore):
     def record_resolutions(self, database: str, items: list, review_id: str | None = None) -> dict:
         """Attach the builder's per-finding outcomes to a review (default: the latest one).
 
-        A finding recorded twice keeps the later statement — the builder may fix something it first
-        marked open, and the log should read like the final state, not like a diff.
+        A finding recorded twice — the same id, or without one the same text — keeps the later statement:
+        the builder may fix something it first marked open, and the log should read like the final state,
+        not like a diff.
+
+        The answer says which of the review's tagged findings still have no outcome. Counts alone could not:
+        eleven findings, eight outcomes and "nothing open" read the same as eleven of eleven, and the
+        builder cannot read the log back to tell.
         """
         with self._lock:
             cleaned = clean_resolutions(items)
@@ -148,14 +256,13 @@ class ReviewLogStore(JsonFileStore):
                     return {"error": f"no review with id {review_id!r} — omit review_id for the latest"}
             else:
                 entry = stored[-1]
-            merged = {r["finding"]: r for r in entry.get("resolutions") or []}
-            for item in cleaned:
-                merged[item["finding"]] = item
-            entry["resolutions"] = list(merged.values())[:MAX_RESOLUTIONS]
+            entry["resolutions"] = _merge_resolutions(entry.get("resolutions") or [], cleaned)[:MAX_RESOLUTIONS]
             data[database] = stored
             self._save(data)
-            counts = {k: sum(1 for r in entry["resolutions"] if r["resolution"] == k) for k in RESOLUTIONS}
-            return {"id": entry["id"], "recorded": len(entry["resolutions"]), **counts}
+            resolutions = entry["resolutions"]
+            counts = {k: sum(1 for r in resolutions if r["resolution"] == k) for k in RESOLUTIONS}
+            return {"id": entry["id"], "recorded": len(resolutions), **counts,
+                    **_coverage(entry.get("review") or "", resolutions)}
 
     def for_report(self, database: str, current_generation: int | None = None) -> dict | None:
         """The compact shape a report snapshot carries: dates, staleness, and the builder's verdicts.
@@ -179,8 +286,10 @@ class ReviewLogStore(JsonFileStore):
                 if generation is None or current_generation is None
                 else generation != current_generation
             ),
-            "open": [r for r in resolutions if r.get("resolution") == "open"],
-            "rejected": [r for r in resolutions if r.get("resolution") == "rejected"],
+            # Without the finding ids: they number one review's findings and mean nothing in a document,
+            # and a stored report compares this shape to tell whether the review moved since.
+            "open": [_without_id(r) for r in resolutions if r.get("resolution") == "open"],
+            "rejected": [_without_id(r) for r in resolutions if r.get("resolution") == "rejected"],
             "fixed": sum(1 for r in resolutions if r.get("resolution") == "fixed"),
             "resolutions_recorded": bool(resolutions),
             "reviews": len(self.list(database)),

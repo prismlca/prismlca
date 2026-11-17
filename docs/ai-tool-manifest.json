@@ -1259,7 +1259,7 @@
       "name": "review_model",
       "label": "Review the model critically",
       "group": "Research",
-      "description": "Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model's review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with \"resolutions\" to record each finding's outcome — fixed things are visible in the model, but \"rejected, because …\" and \"still open\" exist nowhere else, and the report prints the open ones in its Limitations chapter. With \"resolutions\" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.",
+      "description": "Get a second opinion from a separate AI reviewer on a finished product system — what an LCA reviewer would challenge. Collects the evidence itself (structural health check, biggest contributors, the goal & scope on record, the background datasets used) and has a separate reviewer judge it: system boundaries vs. what is actually modelled, plausibility of the proxy datasets, whether the impact method variant fits the stated goal, signs on treatment processes, and hotspots so dominant that one assumption decides the result. It never changes the model; each review is kept in the model's review log, stamped against the model state, so the report can say whether the model changed afterwards. It is not a critical review in the ISO 14044 sense and never goes into model_info critical_review. Pass code and method to include the hotspot analysis; without them the review covers structure and goal & scope only. Every finding cites a figure from the evidence, so treat an unquoted claim as absent rather than as a warning. AFTER acting on the findings, call this tool again with \"resolutions\" to record each finding's outcome by its id (the review tags its findings [F1], [F2], …); the answer lists the findings that still have none — fixed things are visible in the model, but \"rejected, because …\" and \"still open\" exist nowhere else, and the report prints the open ones in its Limitations chapter. With \"resolutions\" present nothing is re-reviewed; the call only records. After a structural change (new phase, swapped dataset that carries the result, changed allocation) run the review again — it sees its previous findings.",
       "surface": "subagent",
       "mutating": false,
       "parameters": {
@@ -1294,6 +1294,10 @@
             "items": {
               "type": "object",
               "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The finding's id as the review tagged it — \"F3\". Without it the outcome cannot be matched to its finding."
+                },
                 "finding": {
                   "type": "string",
                   "description": "The finding, in one sentence (your words, not a quote of the whole point)."

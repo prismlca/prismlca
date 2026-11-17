@@ -29,7 +29,7 @@ export interface AiIpcDeps {
 export type RunControllers = Map<string, AbortController>
 
 /** A stored model choice that belongs to the INACTIVE provider reads as "not set" — the role's
- *  provider default takes over (subagent.ts/reportWriter.ts resolve it), instead of an id
+ *  provider default takes over (subagent.ts, critic.ts and reportWriter.ts resolve it), instead of an id
  *  travelling to an API that answers 404 for it. The choice itself stays stored for the switch
  *  back. OpenRouter keeps today's permissive reading: any non-empty id passes through. */
 export const modelForActive = (id: string | undefined): string => {
