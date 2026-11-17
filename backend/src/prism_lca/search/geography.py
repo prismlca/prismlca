@@ -1,9 +1,9 @@
 """The geography proxy chain: which regions stand in for a target region, and in what order.
 
-One chain serves the search ranking, the order of a collapsed hit's variants, the substance-number search
-and provider linking: exact region first, then the regions that contain it, then the global proxies —
-``DE → RER → Europe without Switzerland → GLO → RoW``, ``US → RNA → GLO → RoW``,
-``CA-QC → CA → RNA → GLO → RoW``.
+One chain serves the search ranking, the variant that represents a collapsed hit and the order of its
+other variants, the substance-number search and provider linking: exact region first, then the regions
+that contain it, then the global proxies — ``DE → RER → Europe without Switzerland → GLO → RoW``,
+``US → RNA → GLO → RoW``, ``CA-QC → CA → RNA → GLO → RoW``.
 
 Which country lies on which continent comes from the Unicode CLDR (``assets/geo/regions.json``, built by
 ``scripts/build_regions.py``; licence in ``assets/geo/NOTICE.md``), never from an ecoinvent file. Only the
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable, Iterable
 from functools import cache
 from pathlib import Path
 
@@ -109,3 +110,28 @@ def geo_rank(loc: str | None, target: str | None) -> int:
         return chain.index(loc)
     proxy = _europe_proxy_rank(loc, target, chain) if target else None
     return proxy if proxy is not None else len(chain) + 1
+
+
+#: Where :func:`preference` puts a region that stands in for none of the targets: behind every chain.
+_OUTSIDE_EVERY_CHAIN = 1 << 16
+
+
+def preference(targets: Iterable[str]) -> Callable[[str | None], tuple[int, int]]:
+    """A sort key for regions by how well they stand in for SEVERAL target regions at once.
+
+    A region's key is the best place it takes in any target's proxy chain, ties going to the target named
+    first: for ``["BE", "DE"]`` that is BE, DE, then RER and "Europe without Switzerland", then GLO and
+    RoW. A region in no chain sorts behind all of them. With one target it orders exactly as
+    :func:`geo_rank` does; with none, every region is equal and the caller's own tie-break decides.
+    """
+    chains = [(t, len(geo_chain(t))) for t in dict.fromkeys(targets) if t]
+
+    def key(loc: str | None) -> tuple[int, int]:
+        best = (_OUTSIDE_EVERY_CHAIN, 0)
+        for i, (target, size) in enumerate(chains):
+            rank = geo_rank(loc, target)
+            if rank < size:
+                best = min(best, (rank, i))
+        return best
+
+    return key

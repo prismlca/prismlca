@@ -29,6 +29,9 @@ class SearchRequest(BaseModel):
     databases: list[str] | None = None
     activity_types: list[str] | None = None  # any of P / M / G (empty = all)
     geographies: list[str] | None = None  # region filter, multi-select (empty = all)
+    #: Regions the caller would prefer without asking for them — the study's, in the assistant's search. They
+    #: only choose which variant shows a collapsed hit (search/collapse.py); ``geographies`` overrides them.
+    prefer_geographies: list[str] | None = None
     #: Unit filter: only datasets in one of these units (empty = all). Always a hard filter, also for one unit —
     #: unlike a single region there is no proxy to rank behind it. Set by the search panel; the assistant's
     #: tool does not offer it.
@@ -312,6 +315,7 @@ def search_activities(request: Request, body: SearchRequest) -> dict:
         body.databases or ([body.database] if body.database else _workspace_backgrounds()),
         activity_types=body.activity_types,
         geographies=body.geographies,
+        prefer_geographies=body.prefer_geographies,
         units=body.units,
         collapse_geo=body.collapse_geo,
         limit=limit,

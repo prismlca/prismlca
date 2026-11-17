@@ -78,6 +78,33 @@ def test_unmatched_terms_reads_euro6_and_euro_6_alike():
     assert unmatched_terms("EURO6 passenger car", hits) == ["6", "euro6"]
 
 
+def test_a_norm_written_as_one_word_is_found_where_a_hit_writes_it_apart():
+    """"euro6" against the lorry that IS EURO 6: three runs warned "No hit carries the specifier(s) 'euro6'"
+    about the first hit, because the joined word was compared whole."""
+    hits = ["market for transport, freight, lorry, >32 metric ton, diesel, EURO 6 transport RER"]
+    assert unmatched_terms("transport freight lorry greater than 32 metric ton EURO6", hits) == []
+    assert unmatched_terms("lorry euro6", hits) == []
+
+
+def test_the_parts_of_a_joined_norm_have_to_stand_together_in_one_hit():
+    """The counter-cases: EURO 5 is no EURO 6 because a "6" stands elsewhere — in another hit, or in the same
+    one but not after "EURO" — and the spelled-apart query still warns when only EURO 5 exists."""
+    elsewhere = ["lorry, 16-32 metric ton, EURO 5 RER", "van, 6 metric ton, EURO 4 GLO"]
+    assert unmatched_terms("lorry euro6", elsewhere) == ["euro6"]
+    same_hit = ["lorry, 6 axles, EURO 5 RER"]
+    assert unmatched_terms("lorry euro6", same_hit) == ["euro6"]
+    assert unmatched_terms("lorry EURO 6", ["lorry, EURO 5 RER"]) == ["6"]
+    assert unmatched_terms("lorry euro6", ["lorry, 6 EURO 5 RER"]) == ["euro6"]  # the order is part of it
+
+
+def test_a_joined_designation_is_not_found_at_the_start_of_a_longer_one():
+    """Side by side means whole words: "R134a" is another refrigerant than "R134", and "EURO 6d" is a sub-class
+    the joined query did not name."""
+    assert unmatched_terms("refrigerant R134", ["market for refrigerant R134a GLO"]) == ["r134"]
+    assert unmatched_terms("car euro6", ["passenger car, EURO 6d RER"]) == ["euro6"]
+    assert unmatched_terms("refrigerant R134", ["market for refrigerant R 134 GLO"]) == []
+
+
 def test_unmatched_terms_survives_an_empty_result_set():
     assert unmatched_terms("EURO 6 car", []) == ["6"]
     assert unmatched_terms("", ["anything"]) == []

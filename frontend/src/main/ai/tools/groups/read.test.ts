@@ -144,7 +144,10 @@ describe('search_background filters', () => {
   const run = async (args: Record<string, unknown>) => {
     const api = vi.fn<ToolCtx['api']>(async () => ({ results: [] }))
     await tool.run(args, { api, ui: vi.fn(), activeDb: 'M', backgroundDbs: ['eco'] } as unknown as ToolCtx)
-    return api.mock.calls.map((c) => c[2] as Record<string, unknown>)
+    // Only the searches: the tool also reads the study's region (searchRegions.ts).
+    return api.mock.calls
+      .filter((c) => c[1] === '/api/v1/search/activities')
+      .map((c) => c[2] as Record<string, unknown>)
   }
 
   it('sends activity types and the geo-collapse switch only when given', async () => {

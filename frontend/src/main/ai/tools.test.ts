@@ -1102,7 +1102,11 @@ describe('tool argument affordances', () => {
   it('searches the databases the caller names, over the released default (V383)', async () => {
     const bodies: Array<Record<string, unknown>> = []
     const ctx = {
-      ...ctxWith(async (_m, _p, body) => (bodies.push(body as Record<string, unknown>), { hits: [] })),
+      // Only the searches: the tool also reads the study's region (searchRegions.ts).
+      ...ctxWith(async (_m, p, body) => {
+        if (p === '/api/v1/search/activities') bodies.push(body as Record<string, unknown>)
+        return { hits: [] }
+      }),
       backgroundDbs: ['ecoinvent-3.12-cutoff', 'bafu-2026-v1'],
       libraryDbs: []
     }

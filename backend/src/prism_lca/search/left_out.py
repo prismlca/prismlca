@@ -15,6 +15,9 @@ the search panel does not — a person scrolls on and picks):
 - ``outside_region``: with a region, the best `OUTSIDE_SHOWN` activities that have no variant in it, in the
   order the search gives them without the region preference. Always, not only when they score higher — a
   higher similarity is no verdict on the material either; these rows only make sure the reader can judge.
+  Each row shows the activity in its variant nearest the region (search/collapse.py), with the activity's
+  best score: the tap-water market of a German study was offered in BR while "Europe without Switzerland"
+  existed.
 
 ONE region is a ranking preference, so the pool already holds the rows outside it. Two or more are a hard
 filter that kept everything else out of the pool; the outside rows then come from a second pass in which only
@@ -25,6 +28,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
+from prism_lca.search.collapse import region_key, representative
 from prism_lca.search.facets import Filters
 from prism_lca.search.ranking import TYPE_BOOST, WEAK_TRIGGER
 
@@ -149,6 +153,12 @@ def report(
 
     picked = sorted(best.values(), key=lambda r: (-_unpreferred(r), str(r.get("code") or "")))[:OUTSIDE_SHOWN]
     similar_out -= {key(r) for r in picked}
+    nearest = region_key(dict.fromkeys(str(g) for g in geographies or () if g))
+
+    def shown_as(row: dict) -> dict:
+        """The row in its variant nearest the region — every variant of an outside activity lies outside."""
+        rep = representative(variants(key(row)[0]).get(activity(row)) or [], row.get("code"), nearest)
+        return row if rep is None else {**row, "code": rep.get("code"), "geo": rep.get("geography")}
 
     out: dict = {}
     parts: list[str] = []
@@ -163,7 +173,7 @@ def report(
     if parts:
         out["more"] = ", ".join(parts)
     if picked:
-        out["outside_region"] = [_compact(r) for r in picked]
+        out["outside_region"] = [_compact(shown_as(r)) for r in picked]
         many = "The" if len(picked) == 1 else str(len(picked))
         out["outside_region_note"] = f"{many} best outside {label}; more may exist."
     return out
