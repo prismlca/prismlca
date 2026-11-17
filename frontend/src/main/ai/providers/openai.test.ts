@@ -112,6 +112,16 @@ describe('the request body', () => {
       { type: 'function', name: 'do_it', description: 'does it', parameters: { type: 'object' } },
       { type: 'web_search' }
     ])
+    // The pages each search returned: the chat lists them and a later turn names them (searchNote.ts).
+    expect(body.include).toEqual(['web_search_call.action.sources'])
+  })
+
+  it('asks for no search pages when the request has no web search', async () => {
+    const fetchMock = vi.fn(async () => sse([completed()]))
+    vi.stubGlobal('fetch', fetchMock)
+    await run({ messages: [{ role: 'user', content: 'hi' }] })
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body.include).toBeUndefined()
   })
 
   it('sends a model of the other provider nowhere — the id degrades to the OpenAI default', async () => {
