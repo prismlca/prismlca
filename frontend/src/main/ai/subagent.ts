@@ -1122,6 +1122,10 @@ Rules:
 - If the goal & scope is empty, say so first: without it nothing else can be assessed properly.
 - Be terse. No praise, no restating the dossier, no closing summary.`
 
+/** The model a review goes to: the review model chosen in Settings, or the active provider's default. */
+export const reviewerModel = (chosen?: string): string =>
+  chosen || providerDefaults(getActiveProvider()).review
+
 /**
  * Judge a prepared dossier: one model pass, no tools, no web search.
  *
@@ -1147,7 +1151,7 @@ export async function reviewDossier(opts: {
   return runReview({
     ...opts,
     system: REVIEW_SYSTEM,
-    model: opts.model ?? providerDefaults(getActiveProvider()).review
+    model: reviewerModel(opts.model)
   })
 }
 

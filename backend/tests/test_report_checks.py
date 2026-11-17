@@ -611,6 +611,15 @@ def test_naming_the_health_check_alone_is_not_a_claim_of_a_review():
     assert claimed_review_not_run(data, "de") == []
 
 
+def test_a_review_said_to_have_failed_is_not_claimed():
+    """An honest sentence after a failed review — "the AI review timed out" — names the review it denies;
+    the report must not answer it with "the study states that an internal model review was carried out"."""
+    from prism_lca.engine.report_checks import claimed_review_not_run
+
+    for text in ("An AI review was not carried out.", "Die KI-Zweitmeinung ist wegen Zeitüberschreitung abgebrochen."):
+        assert claimed_review_not_run(_study(text), "de") == [], text
+
+
 def test_denying_a_review_is_not_claiming_one():
     from prism_lca.engine.report_checks import claimed_review_not_run
 

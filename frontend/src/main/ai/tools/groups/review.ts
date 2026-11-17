@@ -9,6 +9,7 @@ import { S, capText } from '../format'
 import { linkedHotspots, needsALook } from '../advice/hotspots'
 import { unopenedHotspots } from '../advice/opened'
 import { previousReviewOf, previousReviewSection } from './reviewHistory'
+import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './reviewFailure'
 
 export const reviewTools: Tool[] = [
   {
@@ -89,12 +90,6 @@ export const reviewTools: Tool[] = [
           return null
         }
       }
-      const study = await part('goal & scope', () =>
-        ctx.api('GET', `/api/v1/study?database=${encodeURIComponent(db)}`)
-      )
-      const health = await part('health check', () =>
-        ctx.api('GET', `/api/v1/model/health/${encodeURIComponent(db)}`)
-      )
       // WITH the exchanges: without them the dossier is process names, units and locations, and the
       // reviewer cannot see a single quantity, formula or sign. It then reports what it cannot find
       // — "no manufacturing energy node appears above cutoff", "the mass balance is not
@@ -102,6 +97,22 @@ export const reviewTools: Tool[] = [
       // assistant a round to disprove.
       const activities = await part('process list', () =>
         ctx.api('GET', `/api/v1/model/activities/${encodeURIComponent(db)}?with_exchanges=true`)
+      )
+      // First, because it decides whether the reviewer runs at all: this chat's review of the same model
+      // came back without a result, and the same reviewer would take the same time again (reviewFailure.ts).
+      const subject = {
+        chatId: ctx.chatId,
+        db,
+        model: activities ? modelFingerprint(activities) : null,
+        reviewer: ctx.reviewModel ?? ''
+      }
+      const earlier = notRunAgain(subject)
+      if (earlier) return S(earlier)
+      const study = await part('goal & scope', () =>
+        ctx.api('GET', `/api/v1/study?database=${encodeURIComponent(db)}`)
+      )
+      const health = await part('health check', () =>
+        ctx.api('GET', `/api/v1/model/health/${encodeURIComponent(db)}`)
       )
       const hotspots =
         a.code && a.method
@@ -218,6 +229,7 @@ export const reviewTools: Tool[] = [
 
       const review = await ctx.review({ dossier })
       if (review.outcome === 'ok') {
+        reviewSucceeded(subject)
         // Into the review log, stamped server-side against the model state. Best-effort: losing the
         // log entry must never cost the review itself.
         let logged: { id?: string } = {}
@@ -256,38 +268,7 @@ export const reviewTools: Tool[] = [
             'critical_review.'
         })
       }
-      // Not a review. This branch once returned the single sentence "The reviewer returned
-      // nothing.", the model read it as "no findings" and shipped the study unreviewed. Say which of
-      // the two it is, and say plainly that the model system has NOT been reviewed.
-      const stats =
-        `${Math.round(review.ms / 1000)} s, ${Math.round(review.reasoning_chars / 1000)}k characters of ` +
-        `reasoning, finish_reason=${review.finish_reason ?? 'not stated'}`
-      // Out of time: asking again would cost the same quarter of an hour, so the model goes on without it.
-      if (review.outcome === 'timeout')
-        return S({
-          database: db,
-          gaps,
-          review: null,
-          review_failed: 'timeout',
-          detail: `The reviewer wrote nothing before its deadline in ${review.attempts} attempts (${stats}).`,
-          note:
-            'The review timed out — continue without it and tell the user. Nothing was judged, so do ' +
-            'not present the study as reviewed.'
-        })
-      return S({
-        database: db,
-        gaps,
-        review: null,
-        review_failed: review.outcome, // 'empty' | 'error'
-        detail:
-          review.outcome === 'error'
-            ? `The reviewer could not be reached (${review.error ?? 'stream failed'}).`
-            : `The reviewer produced no text in ${review.attempts} attempts (${stats}).`,
-        note:
-          'This is a FAILED review, not a clean one: nothing was judged, so no conclusion about the ' +
-          'model may be drawn from it. Either call review_model again, or record in the study ' +
-          'metadata that no critical review was carried out — do not present the study as reviewed.'
-      })
+      return S(reviewFailed(subject, gaps, review))
     }
   }
 ]

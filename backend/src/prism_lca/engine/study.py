@@ -76,6 +76,20 @@ FIELDS = (
     "ai_model",
 )
 
+#: The study's own free-text fields, in the order the report prints them — author prose that the report
+#: reads for what it claims: a method it names (until V181 only `limitations` was read), an internal
+#: review it says was carried out (review_claims.py).
+AUTHOR_TEXT_FIELDS = (
+    "goal",
+    "scope",
+    "functional_unit",
+    "system_boundaries",
+    "cutoff_criteria",
+    "allocation",
+    "system_allocation",
+    "critical_review",
+)
+
 #: The answers `critical_review_done` accepts — a closed choice, so the question cannot be answered by
 #: accident. Anything else is refused at the API instead of being stored as a third, unread meaning.
 CRITICAL_REVIEW_ANSWERS = ("yes", "no")

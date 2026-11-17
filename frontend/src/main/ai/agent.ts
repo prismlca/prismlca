@@ -24,7 +24,7 @@ import { findModel } from './models'
 import { effortRejectionRetry } from './chatEffort'
 import { stallNudge } from './toolGuards'
 import { getActiveProvider } from './providers/state'
-import { researchBom, researchWeb, reviewDossier } from './subagent'
+import { researchBom, researchWeb, reviewDossier, reviewerModel } from './subagent'
 import { capToolResult } from './resultBudget'
 import { createToolSession } from './execute'
 import { NOT_IN_CHAT } from './modelScope'
@@ -854,6 +854,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   })
   const ctx = session.ctx
   ctx.chatId = req.chatId
+  ctx.reviewModel = reviewerModel(req.reviewModel)
   if (req.chatTitle) ctx.chatTitle = req.chatTitle
 
   // The chat's plan: the tool reads and writes it here, the IPC persists it, the renderer draws it.
