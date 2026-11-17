@@ -1,6 +1,29 @@
 from __future__ import annotations
 
+import os
+import threading
 import uuid
+from pathlib import Path
+
+import pytest
+
+
+def _open_files_under(folder: Path) -> list[str] | None:
+    """The files below ``folder`` this process still has open, or None where /proc cannot say (Windows,
+    macOS). A file that was deleted while open is listed too, as ``… (deleted)``: on Linux that works, on
+    Windows it is the delete that fails."""
+    fds = Path("/proc/self/fd")
+    if not fds.is_dir():
+        return None
+    still_open = []
+    for fd in fds.iterdir():
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue
+        if target.startswith(str(folder)):
+            still_open.append(target)
+    return sorted(still_open)
 
 
 def test_projects_require_token(client):
@@ -118,9 +141,6 @@ def test_a_workspace_calculated_in_can_be_deleted_with_nothing_of_it_left_open(c
     """bw2calc keeps a database's processed ZIP files open while its LCA is cached, and Windows refuses to
     delete an open file, so deleting a workspace right after a calculation in it fails there. /proc shows on
     Linux what would still be open on Windows; on Windows the delete itself is the check."""
-    import os
-    from pathlib import Path
-
     from test_calc import _seed_calc
 
     from prism_lca.engine.bootstrap import get_bd
@@ -137,14 +157,65 @@ def test_a_workspace_calculated_in_can_be_deleted_with_nothing_of_it_left_open(c
     r = client.delete(f"/api/v1/projects/{name}", headers=token)
     assert r.status_code == 200, r.text
     assert not folder.exists()
-    fds = Path("/proc/self/fd")
-    if fds.is_dir():
-        still_open = []
-        for fd in fds.iterdir():
-            try:
-                target = os.readlink(fd)
-            except OSError:
-                continue
-            if target.startswith(str(folder)):
-                still_open.append(target)
-        assert still_open == []
+    assert _open_files_under(folder) in ([], None)
+
+
+def test_a_workspace_with_a_model_and_a_parameter_can_be_deleted_with_nothing_of_it_left_open(client, token):
+    """The sequence that failed on Windows: a model is created — an `async` route, so it reads the
+    workspace's parameters on the server's event loop — and the workspace is deleted from a worker thread.
+    The event loop's connection to `parameters.db` has to be gone by then."""
+    from prism_lca.engine.bootstrap import get_bd
+
+    name = "param-" + uuid.uuid4().hex[:8]
+    assert client.post("/api/v1/projects", json={"name": name}, headers=token).status_code == 200
+    folder = Path(get_bd().projects.dir)
+    assert client.post("/api/v1/databases/foreground", json={"name": "M"}, headers=token).status_code == 200
+    r = client.post("/api/v1/params", json={"database": "M", "name": "p", "amount": 1.0}, headers=token)
+    assert r.status_code == 200, r.text
+
+    r = client.delete(f"/api/v1/projects/{name}", headers=token)
+    assert r.status_code == 200, r.text
+    assert not folder.exists()
+    assert _open_files_under(folder) in ([], None)
+
+
+@pytest.mark.parametrize("deleted_from", ["inside", "another workspace"])
+def test_a_workspace_another_thread_has_read_can_be_deleted_with_nothing_of_it_left_open(
+    client, token, deleted_from
+):
+    """A SQLite connection belongs to the thread that opened it, and Brightway's switch closes only those of
+    the thread that switches. Here a thread reads the workspace's parameters and stays alive, as the
+    server's event loop and its worker threads do: its connection must not outlive the workspace — whether
+    the workspace is deleted while it is the active one or after another one was opened."""
+    from bw2data.parameters import ProjectParameter
+
+    from prism_lca.engine.bootstrap import get_bd
+
+    name = "read-" + uuid.uuid4().hex[:8]
+    assert client.post("/api/v1/projects", json={"name": name}, headers=token).status_code == 200
+    folder = Path(get_bd().projects.dir)
+    has_read, may_end = threading.Event(), threading.Event()
+
+    def reader() -> None:
+        list(ProjectParameter.select())  # opens this thread's own connection
+        has_read.set()
+        may_end.wait(60)
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+    try:
+        assert has_read.wait(60), "the other thread never read the workspace"
+        before = _open_files_under(folder)
+        if before is not None:
+            assert any(t.endswith("parameters.db") for t in before), "nothing was open to begin with"
+        if deleted_from == "another workspace":
+            other = "other-" + uuid.uuid4().hex[:8]
+            assert client.post("/api/v1/projects", json={"name": other}, headers=token).status_code == 200
+
+        r = client.delete(f"/api/v1/projects/{name}", headers=token)
+        assert r.status_code == 200, r.text
+        assert not folder.exists()
+        assert _open_files_under(folder) in ([], None)
+    finally:
+        may_end.set()
+        thread.join(60)

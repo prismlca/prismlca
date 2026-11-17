@@ -19,7 +19,11 @@ export function useLivePrices(
   enabled: boolean
 ): { rows: AiModelInfo[]; loading: boolean } {
   const [prices, setPrices] = useState<Record<string, Price>>({})
-  const [loading, setLoading] = useState(false)
+  // The request whose answer (or failure) has arrived, forgotten as soon as that request is left. "Loading"
+  // is read from it while rendering rather than set by the effect below: an effect runs after the rows are
+  // on screen, and until it had run they showed a dash — "no permitted provider" — for a price that was
+  // only on its way.
+  const [answered, setAnswered] = useState('')
   // Bumped by every key change; the main process decides what a key means (no key, no prices).
   const [keyGen, setKeyGen] = useState(0)
   useEffect(() => {
@@ -37,25 +41,25 @@ export function useLivePrices(
 
   // One request per change of ids or key; the cleanup retires the previous one, so an answer that comes
   // back late never overwrites a newer one.
+  const request = ids ? `${keyGen}\n${ids}` : ''
   useEffect(() => {
-    if (!ids) {
-      setLoading(false)
-      return
-    }
+    if (!request) return
     let live = true
-    setLoading(true)
     void aiOpenRouterPrices()
       .then((p) => {
         if (live) setPrices(p)
       })
       .catch(() => undefined)
       .finally(() => {
-        if (live) setLoading(false)
+        if (live) setAnswered(request)
       })
     return () => {
       live = false
+      // Coming back to the same models and key asks again, and that is a request of its own.
+      setAnswered('')
     }
-  }, [ids, keyGen])
+  }, [request])
+  const loading = request !== '' && answered !== request
 
   const rows = useMemo(
     () => models.map((m) => (m.pricing || !prices[m.id] ? m : { ...m, pricing: prices[m.id] })),

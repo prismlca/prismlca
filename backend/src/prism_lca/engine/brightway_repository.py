@@ -1,6 +1,7 @@
 """Brightway 2.5 implementation of the repository interface."""
 from __future__ import annotations
 
+import gc
 import importlib.metadata as _md
 import logging
 
@@ -186,6 +187,14 @@ class BrightwayRepository(LcaRepository):
         from prism_lca.engine import lca
 
         lca.release_cached(name)
+        # The same goes for the workspace's SQLite files. Brightway's switch closes the connections of the
+        # thread that switches; every other thread that read the workspace — the server's event loop runs
+        # the `async` routes, its worker threads the rest — keeps its own until the database object they
+        # belong to is collected. The switch collects them one database late, so the last one, the parameter
+        # database, is still there: `parameters.db` stays open and the rmtree below fails on it. Nothing
+        # refers to those objects any more, so one collection closes what is left — also for a workspace
+        # that was left earlier and is deleted from another one.
+        gc.collect()
         # de facto via Brightway — removes both the DB row and the on-disk data directory.
         bd.projects.delete_project(name, delete_dir=True)
 
