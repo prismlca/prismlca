@@ -362,6 +362,63 @@ describe('consolidated tools', () => {
     for (const r of setFormula.results) expect(r.error).toContain('"formula" at the top level of the batch')
   })
 
+  it('refuses set_comment without a comment instead of removing the one the exchange has', async () => {
+    // A missing comment travelled as "" and the backend reads "" as "remove". With the comment written
+    // once above the list, every item arrived without one: three comments gone, three successes reported.
+    const calls: Array<{ path: string; body: any }> = []
+    const ctx = {
+      api: async (_method: string, path: string, body: unknown) => {
+        calls.push({ path, body })
+        return { exchange: { uid: 'u' } }
+      },
+      ui: async () => ({ ok: true }),
+      activeDb: 'demo-model'
+    } as unknown as ToolCtx
+    const run = async (args: Record<string, unknown>): Promise<any> =>
+      JSON.parse(String(await TOOL_BY_NAME['edit_exchange'].run(args, ctx)))
+    const writes = (): any[] =>
+      calls.filter((c) => c.path === '/api/v1/model/exchanges/comment').map((c) => c.body.comment)
+
+    const batch = await run({
+      activity_code: 'barrow',
+      action: 'set_comment',
+      comment: 'Mass from supplier sheet',
+      exchanges: [{ uid: 'a' }, { uid: 'b' }, { uid: 'c' }]
+    })
+    expect(batch.failed).toBe(3)
+    for (const r of batch.results) {
+      expect(r.error).toContain(
+        'action="set_comment" also requires: comment (pass "" to remove the comment).'
+      )
+      expect(r.error).toContain('"comment" at the top level of the batch is not applied')
+    }
+    expect(writes()).toEqual([])
+
+    // An item with its own comment goes through; only the one without is refused.
+    const mixed = await run({
+      activity_code: 'barrow',
+      action: 'set_comment',
+      comment: 'Mass from supplier sheet',
+      exchanges: [{ uid: 'a', comment: 'Tray mass from supplier sheet.' }, { uid: 'b' }]
+    })
+    expect(mixed.results.map((r: any) => r.ok)).toEqual([true, false])
+    expect(writes()).toEqual(['Tray mass from supplier sheet.'])
+
+    // A single call without a comment, or with null: the error says only what is missing.
+    for (const comment of [undefined, null]) {
+      const single = await run({ activity_code: 'barrow', action: 'set_comment', uid: 'a', comment })
+      expect(single.error).toBe(
+        'action="set_comment" also requires: comment (pass "" to remove the comment).'
+      )
+    }
+    expect(writes()).toEqual(['Tray mass from supplier sheet.'])
+
+    // Removing a comment on purpose still works, single and per item.
+    await run({ activity_code: 'barrow', action: 'set_comment', uid: 'a', comment: '' })
+    await run({ activity_code: 'barrow', action: 'set_comment', exchanges: [{ uid: 'b', comment: '' }] })
+    expect(writes()).toEqual(['Tray mass from supplier sheet.', '', ''])
+  })
+
   it('names the arguments this tool actually has when the process is unidentified', async () => {
     // It used to answer "Pass either \"code\" or \"name\"" — two parameters `edit_exchange` does not
     // have. The model retried with the words it was given and failed again.

@@ -55,6 +55,11 @@ describe('an edit_exchange batch', () => {
     expect(
       topLevelOnly(expandBatch({ ...call, amount: 1, formula: 'n' }).ignored, 'amount', 'formula')
     ).toContain('"amount" and "formula" at the top level of the batch are not applied')
+    // A comment above the list: said there, so the item without one is told; "" is no statement.
+    expect(topLevelOnly(expandBatch({ ...call, comment: 'why' }).ignored, 'comment')).toContain(
+      '"comment" at the top level of the batch is not applied'
+    )
+    expect(topLevelOnly(expandBatch({ ...call, comment: '' }).ignored, 'comment')).toBe('')
   })
 
   it('treats a call without a list as one item', () => {

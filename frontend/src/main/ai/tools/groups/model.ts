@@ -782,6 +782,14 @@ export const modelTools: Tool[] = [
             )
           return alsoComment(await IMPL.set_exchange_formula({ ...base, uid, formula: it.formula }, ctx))
         }
+        // The same rule for a comment: `undefined` reached the backend as "" and removed the comment, and
+        // a batch with its comment written once above the list removed every item's while answering
+        // success.
+        if (typeof it.comment !== 'string')
+          throw new Error(
+            'action="set_comment" also requires: comment (pass "" to remove the comment).' +
+              topLevelOnly(ignored, 'comment')
+          )
         return JSON.parse(String(await IMPL.set_exchange_comment({ ...base, uid, comment: it.comment }, ctx)))
       }
 
