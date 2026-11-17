@@ -5,6 +5,7 @@ import io
 import json
 import tarfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -126,11 +127,17 @@ def test_the_bytes_written_are_capped_by_the_free_space(tmp_path, monkeypatch):
 
 
 def test_room_keeps_the_reserve_free(tmp_path, monkeypatch):
-    monkeypatch.setattr(backup_archive, "RESERVE", 0)
-    free = backup_archive.room_on(tmp_path)
-    backup_archive.assert_room(free, tmp_path)
+    # The disk's free space as a fixed figure: measured, it moves whenever anything else writes to the
+    # disk between two readings (another test run filling /tmp), and the boundary below is exact to the byte.
+    free = 10 * 1024**3
+    monkeypatch.setattr(
+        backup_archive.shutil, "disk_usage", lambda where: SimpleNamespace(total=2 * free, used=free, free=free)
+    )
+    room = free - backup_archive.RESERVE
+    assert backup_archive.room_on(tmp_path) == room
+    backup_archive.assert_room(room, tmp_path)
     with pytest.raises(PrismError) as exc:
-        backup_archive.assert_room(free + 10**9, tmp_path)
+        backup_archive.assert_room(room + 1, tmp_path)
     assert exc.value.code == "backup_no_room"
 
 
