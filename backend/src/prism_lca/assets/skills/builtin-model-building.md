@@ -452,8 +452,10 @@ process that entered the result at 42 % of its mass — both invisible without t
    processes or life-cycle phases) is built, whatever the request — and again before it goes into a report
    or a comparison; not after single-value edits, and not for a quick figure from a one- or two-process
    model. It gathers its own evidence and runs its own hotspot
-   analysis, and it is a DIFFERENT model, which is the point: once it caught a wrong background dataset the
-   builder kept reading past. Present the findings, act on them, and record the outcomes with
+   analysis, and it reads the model without the assumptions you built it on: once it caught a wrong
+   background dataset the builder kept reading past. Its answer names the model that reviewed; when that
+   is your own (`self_review`), it was a self-check — never call it independent or a second model's opinion.
+   Present the findings, act on them, and record the outcomes with
    `resolutions` — the *Critical review* skill has the details.
 7. Reference the processes you created with `[Label](prism:process/<code>)` chips.
 8. If decisions changed the goal & scope (boundaries, FU, geography, reference year), update it via `model_info`.

@@ -1,7 +1,7 @@
 /**
  * The second reader of a drafted chapter: one model pass over the chapter as the document will print
  * it, against the same facts the writer had. No tools — it reads, it does not search — and a second
- * draw when the first comes back empty, the lesson the model reviewer already paid for (subagent.ts).
+ * draw when the first comes back empty, the lesson the model reviewer already paid for (reviewRun.ts).
  *
  * Its points are not believed on sight. Every issue has to quote the chapter, and a quote that is not
  * in the printed text is dropped here, in code: a reader that invents a sentence to object to costs a

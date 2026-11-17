@@ -18,7 +18,7 @@ const LOG: LoggedReview[] = [
     stale: true,
     resolutions: [
       { finding: 'widget proxy', resolution: 'fixed' },
-      { finding: 'lid mass', resolution: 'rejected', reason: 'the supplier sheet gives 12 g' }
+      { id: 'F2', finding: 'lid mass', resolution: 'rejected', reason: 'the supplier sheet gives 12 g' }
     ]
   },
   { id: 'r3', chat: 'chat-b', review: 'Worth a look: someone else’s point.', stale: false },
@@ -43,7 +43,7 @@ describe('previousReviewSection', () => {
     expect(s).not.toContain('cut off')
     expect(s).toContain('Blocking: the widget proxy.')
     expect(s).toContain('- fixed: widget proxy')
-    expect(s).toContain('- rejected: lid mass — the supplier sheet gives 12 g')
+    expect(s).toContain('- F2 rejected: lid mass — the supplier sheet gives 12 g')
     expect(s).toMatch(/"fixed" against the dossier/)
     expect(s).toMatch(/"rejected" finding again only with evidence/)
   })
@@ -100,7 +100,7 @@ describe('review_model and the previous review', () => {
   it("hands a re-review in the same chat that chat's previous findings, and logs the new one with the chat", async () => {
     const { dossier, posts } = await run('chat-a')
     expect(dossier).toContain('PREVIOUS REVIEW')
-    expect(dossier).toContain('- rejected: lid mass')
+    expect(dossier).toContain('- F2 rejected: lid mass')
     expect(dossier).not.toContain('someone else')
     expect(posts.find((p) => p.path === '/api/v1/provenance/review')?.body.chat).toBe('chat-a')
   })
