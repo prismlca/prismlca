@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
 }))
 
 import { withUnknownFields } from './agent'
-import { UNOPENED_LINKS_SHOWN } from './tools/advice/hotspots'
+import { UNOPENED_LINKS_SHOWN } from './tools/advice/linkReminder'
 import {
   MUTATING_TOOLS,
   TOOL_BY_NAME,

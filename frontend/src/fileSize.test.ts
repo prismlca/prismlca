@@ -46,7 +46,7 @@ const CEILINGS: Record<string, number> = {
   'main/ai/reportWriter.ts': 882, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts), the continuation (writer/answers.ts) and the lookup context (writer/lookupCtx.ts) moved out
   'renderer/src/views/Results.tsx': 1086, // 1061
   'renderer/src/views/Overview.tsx': 889, // 864
-  'main/ai/tools/groups/model.ts': 862 // 837
+  'main/ai/tools/groups/model.ts': 850 // 825 — the link-time reminder moved to advice/linkReminder.ts
 }
 
 const EXEMPT: Record<string, string> = {

@@ -10,26 +10,9 @@ import { resolveCode } from '../resolve'
 import { uidNotFound } from '../uidHint'
 import { trimUnitNotes } from '../advice/warnings'
 import { IMPL, delegate } from '../impl'
-import { type LinkedInput, UNOPENED_LINKS_SHOWN, unopenedLinks } from '../advice/hotspots'
+import { type LinkedInput, withLinkReminder } from '../advice/linkReminder'
 import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './exchangeBatch'
 import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
-
-/**
- * What edit_exchange says beside a link to a background dataset nobody has opened. Without it, models
- * moved on after linking — searching for the next input or asking the user about masses — and opened
- * nothing; with it, they open the carrying datasets (say PP, steel and moulding of a hose cart) in one
- * call. It must not override the plan: small auxiliaries after the main materials were checked are left
- * alone, and the last sentence keeps a user's "don't spend calls on checking" above the nudge — without
- * it the nudge won; with it the model calculates and flags the unopened inputs as provisional.
- */
-export const openBeforeRelying = (n: number): string =>
-  `You linked ${n} background dataset(s) this chat has not opened yet (not_yet_opened). Open the ones ` +
-  'that will carry the result — the main material, the energy, anything you expect at a tenth of the ' +
-  'total or more — with get_process_details before you build further on them (one call takes a ' +
-  '"codes" list; summary=true shows the biggest inputs): a name does not say what a dataset contains or ' +
-  'what it was built for. Small auxiliaries can wait; after calculating, explain_result names the ' +
-  'unopened ones that turned out to matter. If the user has told you not to check datasets, follow ' +
-  'that, and name the unopened ones in your answer.'
 
 /**
  * The batch list — plus the top-level entry when the model filled BOTH. Both shapes are in the schema
@@ -818,26 +801,11 @@ export const modelTools: Tool[] = [
         const note = ignoredNote(ignored)
         return trimUnitNotes(note ? S({ ...JSON.parse(out), ...note }) : out, ctx)
       }
-      /** The link-time reminder (see unopenedLinks): background datasets linked here, never opened. */
-      const withLinks = (out: string): string => {
-        const unread = unopenedLinks(linked, db, ctx.inspected)
-        if (!unread.length) return out
-        try {
-          return S({
-            ...JSON.parse(out),
-            not_yet_opened: unread.slice(0, UNOPENED_LINKS_SHOWN),
-            ...(unread.length > UNOPENED_LINKS_SHOWN
-              ? { not_yet_opened_more: unread.length - UNOPENED_LINKS_SHOWN }
-              : {}),
-            open_before_relying: openBeforeRelying(unread.length)
-          })
-        } catch {
-          return out
-        }
-      }
+      /** The link-time reminder: background datasets linked here that nobody has opened. */
+      const withLinks = (out: string): Promise<string> => withLinkReminder(out, linked, db, ctx)
       if (items.length === 1) {
         try {
-          return withNote(withLinks(S(await one(items[0]))))
+          return withNote(await withLinks(S(await one(items[0]))))
         } catch (e) {
           return withNote(S({ error: e instanceof Error ? e.message : String(e) }))
         }
@@ -851,7 +819,7 @@ export const modelTools: Tool[] = [
           )
         )
       )
-      return withNote(withLinks(batchResult(results)))
+      return withNote(await withLinks(batchResult(results)))
     }
   }
 ]

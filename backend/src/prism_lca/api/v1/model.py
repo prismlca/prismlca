@@ -21,6 +21,7 @@ from prism_lca.engine import (
 )
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.consumers import find_consumers
+from prism_lca.engine.market_suppliers import suppliers_of
 from prism_lca.engine.notfound import background_holder, read_elsewhere_note
 from prism_lca.engine.tag_groups import TagGroupStore
 from prism_lca.engine.tags import TagStore
@@ -197,6 +198,21 @@ def get_activity(
 def consumers(database: str, input_database: str, input_code: str, whole_database: bool = False) -> dict:
     """In a background database only with ``whole_database=true`` — see ``engine/consumers.py``."""
     return find_consumers(database, input_database, input_code, whole_database=whole_database)
+
+
+class DatasetRef(BaseModel):
+    database: str
+    code: str
+
+
+class MarketSuppliersRequest(BaseModel):
+    datasets: list[DatasetRef]
+
+
+@router.post("/market-suppliers", summary="The producers behind each market among the given datasets")
+def market_suppliers(body: MarketSuppliersRequest) -> dict:
+    """A read. Datasets that are not markets have no entry — see ``engine/market_suppliers.py``."""
+    return {"markets": suppliers_of([(d.database, d.code) for d in body.datasets])}
 
 
 @router.get("/activities/{database}/{code}/metadata", summary="Comments + metadata of an activity")

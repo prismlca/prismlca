@@ -437,7 +437,7 @@ def test_a_market_carries_its_main_suppliers_comment():
     specific phrase class, so it also covers the "calibrated on another product" case that no phrase
     list can.
     """
-    from prism_lca.engine.model import market_main_supplier_comment
+    from prism_lca.engine.market_suppliers import market_main_supplier_comment
 
     def producer(code, comment, share):
         a = _FakeActivity(("ei", code), name=f"battery production {code}", location="GLO", comment=comment)
@@ -470,7 +470,7 @@ def test_a_market_carries_its_main_suppliers_comment():
 
 def test_a_producer_borrows_no_comment_and_neither_does_a_commentless_market():
     """Only markets inherit — a producer's comment is its own — and boilerplate-plus-silence stays silent."""
-    from prism_lca.engine.model import market_main_supplier_comment
+    from prism_lca.engine.market_suppliers import market_main_supplier_comment
 
     producer = _FakeActivity(
         ("ei", "prod"), name="battery production, NiMH", location="GLO", comment="Its own words."

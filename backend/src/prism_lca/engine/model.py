@@ -18,6 +18,7 @@ from prism_lca.config import get_settings
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
+from prism_lca.engine.market_suppliers import market_main_supplier_comment, same_product_inputs
 from prism_lca.engine.notfound import not_found_hint
 from prism_lca.engine.pedigree import gsd_from_pedigree
 from prism_lca.engine.uid_hint import is_near, uid_not_found
@@ -429,19 +430,8 @@ def service_only_note(act) -> str:
     if own:
         return " ".join(own)
     # A market: find the supplier of the same product it mostly draws on, and ask that one.
-    product = act.get("reference product")
-    if not product:
-        return ""
     best_amount, best_sentences = 0.0, []
-    for e in act.technosphere():
-        try:
-            supplier = e.input
-        except Exception as exc:  # noqa: BLE001 - a broken link must never fail a read
-            _log.swallowed(exc, "service_only_note")
-            continue
-        if supplier.get("reference product") != product or supplier.key == act.key:
-            continue
-        amount = e.get("amount") or 0
+    for supplier, amount in same_product_inputs(act, "service_only_note"):
         if amount <= best_amount:
             continue
         sentences = _service_sentences(supplier.get("comment") or "")
@@ -452,57 +442,6 @@ def service_only_note(act) -> str:
                 f"{round(amount * 100)}% of this market, states: " + " ".join(sentences)
             ]
     return " ".join(best_sentences)
-
-
-#: How a market's name says it is one — the same rule the search indexer uses (search/indexer.py).
-_MARKET_PREFIXES = ("market group for ", "market for ")
-
-
-def market_main_supplier_comment(act) -> dict | None:
-    """For a market: the comment of the supplier it mostly consists of, with name and share.
-
-    A market's own comment is boilerplate ("Each market represents the consumption mix…") and the
-    sentence that decides a dataset choice sits one level down, on the producer. Measured on a
-    solar-lamp run: ``market for battery, NiMH, rechargeable`` carried 41 % of the result,
-    and the producer behind it says "This dataset represents the production of 1 kg of a NiMH battery
-    for laptop applications … as used in a Fujitsu-Siemens laptop, model: C4135". Reading that
-    sentence took a second lookup nobody made. This puts it in the market's own detail answer, so the
-    one lookup a model does make (or the review dossier makes for it) carries the calibration
-    sentence — the same market inheritance :func:`service_only_note` already does for the narrower
-    "processing only" case, generalised to the whole producer comment without judging its text.
-
-    Markets only (by the indexer's own name rule): on a production dataset the comment IS the
-    activity's comment, and inheriting a supplier's story onto a producer would attribute words to
-    the wrong dataset. The largest same-product supplier, because that is what the market mostly is;
-    transport and losses inside the market have different products and never qualify.
-    """
-    name = (act.get("name") or "").lower()
-    if not name.startswith(_MARKET_PREFIXES):
-        return None
-    product = act.get("reference product")
-    if not product:
-        return None
-    best, best_amount = None, 0.0
-    for e in act.technosphere():
-        try:
-            supplier = e.input
-        except Exception as exc:  # noqa: BLE001 - a broken link must never fail a read
-            _log.swallowed(exc, "market_main_supplier_comment")
-            continue
-        if supplier.get("reference product") != product or supplier.key == act.key:
-            continue
-        amount = e.get("amount") or 0
-        if amount > best_amount:
-            best, best_amount = supplier, amount
-    comment = (best.get("comment") or "").strip() if best is not None else ""
-    if not comment:
-        return None
-    return {
-        "name": best.get("name"),
-        "location": best.get("location"),
-        "share": round(best_amount, 4),
-        "comment": comment,
-    }
 
 
 def activity_metadata(database: str, code: str) -> dict:
