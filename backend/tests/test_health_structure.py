@@ -126,3 +126,92 @@ def test_a_clean_star_has_one_way_in_per_phase(client, token, project):
         _edge(client, token, db, main, _create(client, token, db, name))
 
     assert "counted_twice_via_two_paths" not in _codes(client, token, db)
+
+
+# ---- a process reached twice below the reference process -------------------------------------------
+def _barrow(client, token, db) -> dict[str, str]:
+    """The four-assembly shape of a wheelbarrow run, cut to two: the assemblies hung under the delivery
+    step, then a final-assembly step put in between — and the direct links left standing."""
+    p = {name: _create(client, token, db, name) for name in
+         ("wheelbarrow, life cycle", "delivery", "final assembly", "tray", "frame", "end of life")}
+    _edge(client, token, db, p["wheelbarrow, life cycle"], p["delivery"])
+    _edge(client, token, db, p["wheelbarrow, life cycle"], p["end of life"])
+    for part in ("tray", "frame"):
+        _edge(client, token, db, p["delivery"], p[part])
+        _edge(client, token, db, p["final assembly"], p[part])
+    return p
+
+
+def test_a_step_put_in_between_with_the_direct_links_left_counts_the_parts_twice(client, token, project):
+    db = _fg(client, token)
+    p = _barrow(client, token, db)
+    _edge(client, token, db, p["delivery"], p["final assembly"])
+
+    twice = [f for f in _findings(client, token, db) if f["code"] == "counted_twice_via_two_paths"]
+    assert sorted(f["activity"]["name"] for f in twice) == ["frame", "tray"]
+    message = next(f["message"] for f in twice if f["activity"]["name"] == "tray")
+    assert "'delivery' takes it directly (1 kg) and again through 'final assembly'" in message
+    assert all(f["severity"] == "warning" for f in twice)
+
+
+def test_a_part_used_at_two_levels_with_other_amounts_is_not_flagged(client, token, project):
+    """Screws in the final assembly and in the wheel beneath it, 8 and 4: a real use at each level."""
+    db = _fg(client, token)
+    p = {name: _create(client, token, db, name) for name in ("product", "assembly", "wheel", "screws")}
+    _edge(client, token, db, p["product"], p["assembly"])
+    _edge(client, token, db, p["assembly"], p["wheel"])
+    _edge(client, token, db, p["assembly"], p["screws"], 8)
+    _edge(client, token, db, p["wheel"], p["screws"], 4)
+    assert "counted_twice_via_two_paths" not in _codes(client, token, db)
+
+
+def test_a_background_dataset_taken_at_two_levels_is_not_flagged(client, token, project):
+    from prism_lca.engine.bootstrap import get_bd
+
+    get_bd().Database("bg-elec").write({
+        ("bg-elec", "kwh"): {
+            "name": "market for electricity, low voltage", "reference product": "electricity, low voltage",
+            "unit": "kilowatt hour", "location": "DE",
+            "exchanges": [{"input": ("bg-elec", "kwh"), "type": "production", "amount": 1.0}],
+        },
+    })
+    db = _fg(client, token)
+    p = {name: _create(client, token, db, name) for name in ("product", "assembly", "subassembly")}
+    _edge(client, token, db, p["product"], p["assembly"])
+    _edge(client, token, db, p["assembly"], p["subassembly"])
+    for consumer in ("assembly", "subassembly"):
+        client.post(
+            "/api/v1/model/exchanges",
+            json={"activity_database": db, "activity_code": p[consumer], "input_database": "bg-elec",
+                  "input_code": "kwh", "amount": 1.0},
+            headers=token,
+        )
+    assert "counted_twice_via_two_paths" not in _codes(client, token, db)
+
+
+def _reached_twice(client, token, db, touching) -> list[dict]:
+    r = client.post(f"/api/v1/model/reached-twice/{db}", json={"touching": touching}, headers=token)
+    assert r.status_code == 200, r.text
+    return r.json()["reached_twice"]
+
+
+def test_the_doubles_a_new_link_is_part_of_are_named_with_both_links(client, token, project):
+    db = _fg(client, token)
+    p = _barrow(client, token, db)
+    _edge(client, token, db, p["delivery"], p["final assembly"])
+
+    found = _reached_twice(client, token, db, [[p["delivery"], p["final assembly"]]])
+    assert sorted(t["input"] for t in found) == ["frame", "tray"]
+    tray = next(t for t in found if t["input"] == "tray")
+    assert tray["process"] == "delivery" and tray["amount"] == 1 and tray["unit"] == "kg"
+    assert tray["also_through"] == "delivery → final assembly → tray"
+    assert len(tray["direct_uids"]) == 1 and len(tray["through_uids"]) == 1
+    assert tray["direct_uids"] != tray["through_uids"]
+    # A link on neither route of a double is not part of one.
+    assert _reached_twice(client, token, db, [[p["wheelbarrow, life cycle"], p["end of life"]]]) == []
+    assert len(_reached_twice(client, token, db, [])) == 2
+
+
+def test_reached_twice_of_an_unknown_model_is_a_404(client, token, project):
+    r = client.post("/api/v1/model/reached-twice/no-such-model", json={"touching": []}, headers=token)
+    assert r.status_code == 404

@@ -15,6 +15,7 @@ import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './excha
 import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
 import { actionOf } from './exchangeAction'
 import { SAME_INPUT_NOTE, watchSameInput } from './sameInput'
+import { watchReachedTwice } from './reachedTwice'
 
 /**
  * The batch list — plus the top-level entry when the model filled BOTH. Both shapes are in the schema
@@ -459,6 +460,7 @@ export const modelTools: Tool[] = [
       if (!db) return NO_MODEL
       const { items, ignored, inheritedDb } = expandBatch(a)
       const sameInput = watchSameInput(ctx, db)
+      const reachedTwice = watchReachedTwice(ctx, db)
 
       /** Background datasets this call linked (add / replace_input), for the reminder in withLinks. */
       const linked: LinkedInput[] = []
@@ -617,13 +619,15 @@ export const modelTools: Tool[] = [
             commented: Boolean(it.comment),
             ...(dimensionCheck ? { dimension_check: dimensionCheck } : {})
           }
-          await sameInput.after(
-            answer,
-            resolved.code,
-            parsed?.exchange?.input?.database ?? it.input_database,
-            parsed?.exchange?.input?.code ?? it.input_code,
-            { uid, amount, formula: it.formula, comment: it.comment }
-          )
+          const inputDb = parsed?.exchange?.input?.database ?? it.input_database
+          const inputCode = parsed?.exchange?.input?.code ?? it.input_code
+          await sameInput.after(answer, resolved.code, inputDb, inputCode, {
+            uid,
+            amount,
+            formula: it.formula,
+            comment: it.comment
+          })
+          if (uid) reachedTwice.added(resolved.code, inputDb, inputCode)
           return answer
         }
 
@@ -712,12 +716,9 @@ export const modelTools: Tool[] = [
             throw e
           }
           await IMPL.remove_exchange({ ...base, uid }, ctx)
-          noteLink(
-            parsed?.exchange,
-            it.new_input_database ?? it.input_database ?? cur?.input?.database,
-            newCode,
-            it.type ?? cur?.type
-          )
+          const newDb = it.new_input_database ?? it.input_database ?? cur?.input?.database
+          noteLink(parsed?.exchange, newDb, newCode, it.type ?? cur?.type)
+          if (newUid) reachedTwice.added(resolved.code, parsed?.exchange?.input?.database ?? newDb, newCode)
           return {
             replaced: uid,
             uid: newUid,
@@ -788,7 +789,8 @@ export const modelTools: Tool[] = [
       const withNote = (out: string): string => {
         const note = {
           ...ignoredNote(ignored),
-          ...(sameInput.seen ? { same_input_note: SAME_INPUT_NOTE } : {})
+          ...(sameInput.seen ? { same_input_note: SAME_INPUT_NOTE } : {}),
+          ...reachedTwice.note()
         }
         return trimUnitNotes(Object.keys(note).length ? S({ ...JSON.parse(out), ...note }) : out, ctx)
       }
@@ -797,7 +799,7 @@ export const modelTools: Tool[] = [
       if (items.length === 1) {
         try {
           const out = await one(items[0])
-          await sameInput.settle()
+          await Promise.all([sameInput.settle(), reachedTwice.settle()])
           return withNote(await withLinks(S(out)))
         } catch (e) {
           return withNote(S({ error: e instanceof Error ? e.message : String(e) }))
@@ -812,7 +814,7 @@ export const modelTools: Tool[] = [
           )
         )
       )
-      await sameInput.settle()
+      await Promise.all([sameInput.settle(), reachedTwice.settle()])
       return withNote(await withLinks(batchResult(results)))
     }
   }

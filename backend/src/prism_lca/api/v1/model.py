@@ -16,6 +16,7 @@ from prism_lca.engine import (
     model,
     model_graph,
     model_scope,
+    reached_twice,
     step_owner,
     tag_references,
     tag_scope,
@@ -810,6 +811,19 @@ async def audit(
 @router.get("/health/{database}", summary="Model-health linter (structural checks)")
 def model_health(database: str) -> dict:
     return health.lint_database(database)
+
+
+class ReachedTwiceRequest(BaseModel):
+    #: Links as [consumer code, provider code]; only the doubles they are part of are returned.
+    touching: list[tuple[str, str]] = []
+
+
+@router.post(
+    "/reached-twice/{database}",
+    summary="Processes that take one input directly and, with the same amount, through another step",
+)
+def model_reached_twice(database: str, body: ReachedTwiceRequest) -> dict:
+    return {"reached_twice": reached_twice.report(database, body.touching)}
 
 
 # --- provider linking ------------------------------------------------------

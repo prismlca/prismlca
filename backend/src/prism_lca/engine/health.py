@@ -33,6 +33,7 @@ from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_structure import two_ways_in, unreached
 from prism_lca.engine.health_study import claimed_review_note, unrecorded_scope_note
 from prism_lca.engine.model import _db_or_404
+from prism_lca.engine.reached_twice import flows_of
 from prism_lca.engine.tags import TagStore
 
 _SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
@@ -1297,18 +1298,21 @@ def _rule_duplicate_supply(ctx: LintContext, a: _Activity) -> list[dict]:
                 for r in same[:4]
             )
             if one_dataset:
-                # Two exchanges to the SAME provider compute exactly as one with their sum, so this
-                # is never a numerical error — and it has a perfectly ordinary cause: two fractions
-                # taking the same route (corrugated board and pallet wood both to municipal
-                # incineration). Reported as tidiness, not as a defect; calling it "counted twice"
-                # would train people to ignore the far more dangerous case below.
+                # Two exchanges to the SAME provider compute exactly as one with their sum, and that
+                # has a perfectly ordinary cause: two fractions taking the same route (corrugated board
+                # and pallet wood both to municipal incineration). Reported as tidiness, not as a
+                # defect; calling it "counted twice" would train people to ignore the far more
+                # dangerous case below. But the sum is only right when it is meant: an edit that adds
+                # a second exchange instead of changing the first doubles the input, so the message
+                # must not promise a right result and talk the reader out of looking.
                 out.append(
                     _finding(
                         "info",
                         "duplicate_input",
                         f"'{product}' is supplied by the same dataset {len(same)} times ({where}). The "
-                        "amounts add up, so the result is right either way — merge them if they are one "
-                        "thing.",
+                        "amounts add up and all of them count: right for separate uses (two fractions "
+                        "to the same treatment), twice too much if one input was entered twice — then "
+                        "delete the extra one.",
                         a.act,
                         same[0]["uid"],
                     )
@@ -1749,10 +1753,16 @@ def _name_of(ctx: LintContext):
     return lambda key: (_resolve(ctx.bd, key) or {}).get("name") or key[1]
 
 
+def _unit_of(ctx: LintContext):
+    return lambda key: (_resolve(ctx.bd, key) or {}).get("unit") or ""
+
+
 def _rule_two_ways_in(ctx: LintContext) -> list[dict]:
-    # One process reached by two paths from the reference process.
+    # One process reached twice: by the reference process and another step, or directly and through a
+    # step beneath with the same amount.
     out: list[dict] = []
-    for severity, code, message, key in two_ways_in(ctx.adjacency, _name_of(ctx)):
+    flows = flows_of(ctx.database, ((a.akey, a.exchanges) for a in ctx.activities))
+    for severity, code, message, key in two_ways_in(flows, _name_of(ctx), _unit_of(ctx)):
         node = _resolve(ctx.bd, key)
         if node is not None:
             out.append(_finding(severity, code, message, node))

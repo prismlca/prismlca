@@ -111,6 +111,8 @@ def test_the_same_dataset_twice_is_tidiness_not_an_error(client, token, project)
     assert len(dup) == 1
     assert dup[0]["severity"] == "info"
     assert "add up" in dup[0]["message"]
+    # …and does not promise the sum is right: one input entered twice doubles it.
+    assert "entered twice" in dup[0]["message"]
     assert h["ok"] is True
 
 
