@@ -200,6 +200,17 @@ def _migrate_study_files(*, prefer_legacy: bool = False) -> None:
         _log.swallowed(exc, "migrate_study_files")
 
 
+def _finish_interrupted_deletions() -> None:
+    """A workspace deletion the last run did not get to finish — see ``engine.workspace_removal``. Before
+    any workspace is opened: opening one creates its folder, and the folder is what tells them apart."""
+    try:
+        from prism_lca.engine import workspace_removal
+
+        workspace_removal.recover()
+    except Exception as exc:  # noqa: BLE001 - never block startup; the next start retries
+        _log.swallowed(exc, "finish_interrupted_deletions")
+
+
 def _hygiene() -> None:
     """What the active project must not accumulate — see ``engine.hygiene``. Startup and every switch."""
     from prism_lca.engine import hygiene
@@ -271,6 +282,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.settings = settings
     app.state.repository = BrightwayRepository()
+    _finish_interrupted_deletions()
     # Land on a project that has data rather than bw2data's empty 'default'.
     app.state.repository.ensure_working_project()
     # The command bus is built here rather than below with the other stores because the recovery on
