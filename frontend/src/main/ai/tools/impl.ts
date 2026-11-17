@@ -6,12 +6,8 @@ import { geoName, isAggregate } from '../../../shared/geographyNames'
 import { AI, S, cap, oneScenario } from './format'
 import { formulaKept } from './formulaKept'
 import { ruleFor } from './paramRule'
-import {
-  NEEDS_A_LOOK,
-  NEEDS_A_LOOK_FLOOR,
-  NEEDS_A_LOOK_TOP_N,
-  unopenedLinkedHotspots
-} from './advice/hotspots'
+import { NEEDS_A_LOOK, NEEDS_A_LOOK_FLOOR, NEEDS_A_LOOK_TOP_N } from './advice/hotspots'
+import { unopenedHotspots } from './advice/opened'
 
 /**
  * Single-purpose implementations behind the consolidated tools. They are NOT registered as tools:
@@ -207,7 +203,7 @@ export const IMPL: Record<string, Tool['run']> = {
       for (const ch of n.ch ?? []) walk(ch)
     }
     walk(r?.tree)
-    const unread = unopenedLinkedHotspots(r?.tree, fg, ctx.inspected)
+    const unread = await unopenedHotspots(ctx, r?.tree, fg)
     flat.push(...[...byKey.values()].map((v) => (v.paths > 1 ? v : ({ ...v, paths: undefined } as any))))
     flat.sort((x, y) => Math.abs(y.direct) - Math.abs(x.direct))
     // The 25 was fixed and undocumented, so the only way to learn of it was the footnote on a

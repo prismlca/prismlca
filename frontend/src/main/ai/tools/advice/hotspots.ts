@@ -77,41 +77,14 @@ export function needsALook(linked: LinkedHotspot[]): LinkedHotspot[] {
   )
 }
 
-export type LinkedInput = { name?: string; database: string; code: string }
-
-/** Most datasets one link call names in its reminder; a 20-item batch should not echo 20 rows. */
-export const UNOPENED_LINKS_SHOWN = 12
-
-/**
- * The reminder at link time, one step before the one above (16.10.2026). That one speaks after a
- * calculation — by then the dataset is linked, scaled and often commented, and the 2026-10-05 hose-cart
- * run's own critique was "never opened the PP market (36 %)": the check came after the building. Here
- * the share is not known yet, so the reminder names every unopened link of THIS call and leaves the
- * judgement which of them will carry the result with the model; the post-calculation list stays the
- * backstop with real shares. Datasets of the model itself are not background and are left out.
- */
-export function unopenedLinks(
-  linked: LinkedInput[],
-  foregroundDb: string,
-  inspected: Set<string> | undefined
-): LinkedInput[] {
-  if (!inspected) return []
-  const seen = new Set<string>()
-  return linked.filter((l) => {
-    const key = inspectedKey(l.database, l.code)
-    if (l.database === foregroundDb || inspected.has(key) || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
+/** The datasets that deserve a look and are not in `opened` — the run's record as advice/opened.ts widens it. */
 export function unopenedLinkedHotspots(
   tree: any,
   foregroundDb: string,
-  inspected: Set<string> | undefined
+  opened: Set<string> | undefined
 ): LinkedHotspot[] {
-  if (!inspected) return []
+  if (!opened) return []
   return needsALook(linkedHotspots(tree, foregroundDb)).filter(
-    (v) => !inspected.has(inspectedKey(v.database, v.code))
+    (v) => !opened.has(inspectedKey(v.database, v.code))
   )
 }

@@ -6,7 +6,8 @@
 import type { Tool } from '../context'
 import { num, obj, str, strArr } from '../schema'
 import { S, capText } from '../format'
-import { linkedHotspots, needsALook, unopenedLinkedHotspots } from '../advice/hotspots'
+import { linkedHotspots, needsALook } from '../advice/hotspots'
+import { unopenedHotspots } from '../advice/opened'
 import { previousReviewOf, previousReviewSection } from './reviewHistory'
 
 export const reviewTools: Tool[] = [
@@ -125,7 +126,12 @@ export const reviewTools: Tool[] = [
       // the review was the only channel that changed the model's behaviour: its PWB point triggered a
       // −38.9 % correction, while the NiMH battery beside it — same defect, 41 % of the result — was
       // never mentioned by anyone and shipped.
-      const unopened = unopenedLinkedHotspots(hotspots?.tree, db, ctx.inspected)
+      // A fact only while it can be measured: when the app cannot say which producers stand behind
+      // the linked markets, a market whose producer was read would be handed over as never looked
+      // at. Then the section is left out and named as a gap, like any other part that failed.
+      const unopened =
+        (await part('datasets nobody looked at', () => unopenedHotspots(ctx, hotspots?.tree, db, 'throw'))) ??
+        []
 
       // What the biggest datasets say about themselves, quoted INTO the dossier — because the
       // reviewer cannot look anything up. "DATASETS NOBODY LOOKED AT" (below) tells it that nobody

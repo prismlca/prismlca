@@ -69,7 +69,8 @@ export interface ToolCtx {
    * Background datasets this run has opened with `get_process_details`, as `database` + NUL + `code` (see inspectedKey).
    * Injected and seeded by the agent from the carried transcript, so a dataset read in an earlier
    * turn still counts as read. The contribution list uses it to say which of the datasets that
-   * actually carry the result have never been looked at — see `contribution`.
+   * actually carry the result have never been looked at — see `contribution`. Readers ask through
+   * advice/opened.ts, which also counts a market as opened when a producer behind it is in here.
    */
   inspected?: Set<string>
   /**
@@ -90,6 +91,11 @@ export interface ToolCtx {
    * never does, and it rode along on 13 of 75 answers in one run (V282).
    */
   unitNoteSaid?: boolean
+  /**
+   * Whether this run has already explained the link-time reminder (advice/linkReminder.ts). MUTABLE like
+   * `unitNoteSaid`: the first answer naming unopened links carries the paragraph, later ones one sentence.
+   */
+  linkReminderExplained?: boolean
   /**
    * The user has already confirmed THIS call on an approval card (MCP sessions, approval mode): a
    * tool that would ask again before an irreversible step — the custom-method deletes — skips its
