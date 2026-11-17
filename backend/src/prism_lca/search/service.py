@@ -15,10 +15,10 @@ from prism_lca.engine.bootstrap import get_bd
 from prism_lca.errors import PrismError
 from prism_lca.search import abbrev
 from prism_lca.search.builds import IndexBuilds
+from prism_lca.search.collapse import activity, collapse_hits, forget_variants, variants_map
 from prism_lca.search.embeddings import EmbeddingProvider, get_embedding_provider
 from prism_lca.search.facets import Filters, filter_notes, unit_counts
 from prism_lca.search.fusion import RRF_K, reciprocal_rank_fusion
-from prism_lca.search.geography import geo_rank
 from prism_lca.search.identifiers import Identifiers
 from prism_lca.search.index import VectorIndex
 from prism_lca.search.index_location import index_base
@@ -46,23 +46,6 @@ logger = logging.getLogger(__name__)
 #: Hard ceiling on the hits one answer may carry, whatever the scaling below computes. Mirrors the
 #: cap the API applies to the requested limit, so a scaled request cannot quietly exceed it.
 MAX_HITS = 150
-
-#: How many geo-variants a collapsed hit carries when nothing narrowed the request. Enough to see
-#: that a dataset is regionalised and to recognise the usual suspects (GLO, RoW, RER, a country or
-#: two); far short of the 175 that ecoinvent's electricity markets would otherwise inline. Ask with
-#: a `geographies` filter to get exactly the ones you want — that path is not capped (V235).
-VARIANTS_SHOWN = 12
-
-#: Which regions a capped variant list shows first when the caller named none. The order is the
-#: proxy order a practitioner would try: GLO is a real global average, RER and its
-#: without-Switzerland sibling are the European aggregates, and RoW is a RESIDUAL — whatever is
-#: left after the modelled regions — so it is the weakest of the four and comes last.
-#:
-#: There used to be no order at all: the representative first, then whatever sequence the
-#: index happened to hold. That is why "market for electricity, medium voltage" could show twelve
-#: of its 175 regions without Germany among them (V347) — twelve arbitrary ones say much less than
-#: three chosen ones.
-DEFAULT_VARIANT_ORDER = ("GLO", "RER", "Europe without Switzerland", "RoW")
 
 
 class SearchService:
@@ -191,26 +174,13 @@ class SearchService:
                     continue
                 index = self._require_index(db_name)
                 self._bm25_for(self._cache_key(db_name), index)
-                self._variants_map(index, db_name)
+                variants_map(index, db_name)
                 warmed.append(db_name)
             self._variants.warm(warmed, started_in)
             self._markets.warm(warmed, started_in)
             logger.info("search indexes warmed up")
         except Exception:  # pragma: no cover - a cold first search is the worst case, as before
             logger.exception("index warmup failed; the first search will load lazily")
-
-    @staticmethod
-    def _forget_variants(index: VectorIndex) -> None:
-        """Drop the memoised geo-variant map after the index's rows changed.
-
-        It is built once from the whole index and then kept on it. Without this, a dataset imported
-        into the library is missing its region from every collapsed hit until a restart, and one
-        that was deleted stays selectable in the variant list.
-        """
-        try:
-            del index._prism_variants
-        except AttributeError:
-            pass
 
     def _bm25_for(self, key: str, index: VectorIndex) -> Bm25Index:
         if key not in self._bm25_cache:
@@ -431,7 +401,7 @@ class SearchService:
             index.save(base)
             self._cache[key] = index
             self._bm25_cache.pop(key, None)  # the corpus grew, so its IDF statistics are stale
-            self._forget_variants(index)
+            forget_variants(index)
         self._variants.forget(key)
         result["added"] = len(texts)
         return result
@@ -454,7 +424,7 @@ class SearchService:
                 index.save(base)
                 self._cache[key] = index
                 self._bm25_cache.pop(key, None)
-                self._forget_variants(index)
+                forget_variants(index)
         if gone:
             self._variants.forget(key)
         return {"database": db_name, "removed": gone}
@@ -842,109 +812,6 @@ class SearchService:
         """The units in the index with their row counts, most frequent first, for the unit filter."""
         return unit_counts(self._require_index(db_name).meta)
 
-    @staticmethod
-    def _activity(m: dict) -> tuple:
-        """What makes geo-variants one activity: name, reference product, type — and unit. The unit is the
-        same in every region of an ecoinvent or BAFU product; a library may differ, and a variant picked in
-        another unit than the hit shows would carry the wrong unit into the model."""
-        return m.get("name"), m.get("product"), m.get("atype"), m.get("unit")
-
-    def _variants_map(self, index: VectorIndex, db_name: str) -> dict[tuple, list[dict]]:
-        """Map each activity (see `_activity`) → ALL of its geo-variants in the database.
-
-        Built from the full index (not just the ranked pool), so a collapsed result lists every
-        region the activity exists in — not only the handful that scored into the top results."""
-        cached = getattr(index, "_prism_variants", None)
-        if cached is not None:
-            return cached
-        m: dict[tuple, list[dict]] = {}
-        for e in index.meta:
-            key = self._activity(e)
-            m.setdefault(key, []).append(
-                {
-                    "code": e.get("code"),
-                    "geography": e.get("geo"),
-                    "database": e.get("database", db_name),
-                }
-            )
-        try:
-            index._prism_variants = m  # memoise on the index (replaced on reindex)
-        except Exception as exc:  # pragma: no cover - slotted index → recompute next time
-            _log.swallowed(exc, "_variants_map")
-        return m
-
-    @staticmethod
-    def _order_variants(variants: list[dict], rep_code, target_geo: str | None) -> list[dict]:
-        """Representative first, then the regions most likely to be usable as a proxy.
-
-        With a target region that is the ranking's own proxy chain (:func:`geo_rank`): the region
-        itself, then the European aggregates for a European target, then GLO and RoW. Without one
-        it is :data:`DEFAULT_VARIANT_ORDER`. Everything else follows alphabetically, so the same
-        search twice gives the same list.
-        """
-        def key(v: dict) -> tuple:
-            geo = v.get("geography") or ""
-            if v.get("code") == rep_code:
-                return (0, 0, "")
-            if target_geo:
-                return (1, geo_rank(geo, target_geo), geo)
-            if geo in DEFAULT_VARIANT_ORDER:
-                return (1, DEFAULT_VARIANT_ORDER.index(geo), geo)
-            return (1, len(DEFAULT_VARIANT_ORDER), geo)
-
-        return sorted(variants, key=key)
-
-    def _collapse_geo(
-        self, ranked: list[dict], indices: dict[str, VectorIndex], limit: int,
-        geos: set | None = None, variants_cap: int | None = None,
-        target_geo: str | None = None,
-    ) -> list[dict]:
-        """Collapse geo-variants of the same activity into one result carrying its geographies, so
-        the list isn't flooded with one process repeated per region. The best-ranked variant is the
-        representative; ``limit`` groups kept.
-
-        The group key carries the DATABASE. Two databases can hold an activity of the same name and
-        reference product — ecoinvent and BAFU both have electricity markets — and they are not the
-        same dataset: collapsing them together would produce one hit whose listed regions came from
-        two different inventories, and picking one of those regions would silently cross databases.
-
-        The list is **capped**, and that cap is the point. ecoinvent's electricity markets exist in
-        175 regions; unrolled inline, a single hit for "market for electricity, medium voltage"
-        weighs 17,846 characters — more than an eight-query batch's whole budget, so the rest of the
-        answer is truncated away before the second hit begins. That is what happened on a
-        real run, and the assistant then mis-transcribed a 32-character code out of the wall
-        of them (V235). A filtered request still gets every variant it asked for: the cap applies to
-        what nobody narrowed. ``variants_total`` says what was left out, so a caller that needs the
-        rest knows there is a rest to ask for.
-        """
-        # The cap protects the assistant's context (see above). The search panel is read by a person
-        # who picks one region from a list, so it asks for the whole list (`variants_cap=0`): with the
-        # cap, "market for electricity, medium voltage" offered 12 of its 175 regions and Germany was
-        # not among them (V347).
-        cap = VARIANTS_SHOWN if variants_cap is None else max(0, int(variants_cap))
-        groups: dict[tuple, dict] = {}
-        order: list[tuple] = []
-        for h in ranked:
-            db_name = str(h.get("database") or "")
-            key = (db_name, *self._activity(h))
-            if key in groups:
-                continue
-            index = indices.get(db_name)
-            vmap = self._variants_map(index, db_name) if index is not None else {}
-            variants = vmap.get(self._activity(h)) or [
-                {"code": h.get("code"), "geography": h.get("geo"), "database": db_name}
-            ]
-            if geos:  # a region filter narrows the offered variants to the chosen regions
-                variants = [v for v in variants if v.get("geography") in geos]
-            total = len(variants)
-            if not geos:
-                variants = self._order_variants(variants, h.get("code"), target_geo)
-                if cap and total > cap:
-                    variants = variants[:cap]
-            groups[key] = {**h, "variants": variants, "variants_total": total}
-            order.append(key)
-        return [groups[k] for k in order[:limit]]
-
     def _open_indexes(self, wanted: list[str], provider) -> tuple[list[tuple[str, VectorIndex]], list[str]]:
         """The indexes of the selected databases a search can use, and the databases skipped for having
         none. A database that cannot answer is skipped rather than failing the search; none at all is an
@@ -986,11 +853,13 @@ class SearchService:
         reserve: int = 3,
         literal: bool = False,
         beyond_limit: bool = False,
+        prefer_geographies: list[str] | None = None,
     ) -> dict:
         """One query, several databases, ONE ranked list.
 
         ``activity_types``, several ``geographies`` and ``units`` are hard filters (`facets.Filters`);
-        one geography is a ranking preference instead. ``beyond_limit`` adds what the cut left out
+        one geography is a ranking preference instead. ``prefer_geographies`` (the study's regions, in the
+        assistant's search) only chooses which variant shows a collapsed hit when ``geographies`` is empty. ``beyond_limit`` adds what the cut left out
         (`more`, `outside_region`; search/left_out.py) — for the assistant, whose list is short.
 
         An abbreviation in the query ("PET", "rPET", "HDPE-Granulat") is also searched spelled out the
@@ -1047,6 +916,9 @@ class SearchService:
         # fallbacks. SEVERAL selected regions are an explicit multi-select hard filter.
         geos = filters.geos or None
         target_geo = geographies[0] if geographies and len(geographies) == 1 else None
+        # The regions a collapsed hit is shown in (search/collapse.py): the ones asked for, in their order,
+        # else the ones the caller would prefer — the study's — which change nothing else about the search.
+        prefer = [g for g in geographies or () if g] or [g for g in prefer_geographies or () if g]
 
         indices = {name: index for name, index in entries}
         total = self._scaled_limit(entries, limit, limit_cap)
@@ -1084,7 +956,7 @@ class SearchService:
             reserved = len(ensured) - len(ranked)
             ranked = ensured
             groups = (
-                self._collapse_geo(ranked, indices, rank_limit + reserved, geos, variants_cap, target_geo)
+                collapse_hits(ranked, indices, rank_limit + reserved, geos, variants_cap, prefer)
                 if collapse_geo else ranked
             )
             seen = {str(g.get("database") or "") for g in groups}
@@ -1108,8 +980,8 @@ class SearchService:
 
         ranked = self._apply_reserve(groups, total, reserve_n)
         if found := self._identifiers.find(query, entries, filters):
-            collapse = lambda rows: self._collapse_geo(rows, indices, len(rows), geos, variants_cap,  # noqa: E731
-                                                       target_geo) if collapse_geo else rows
+            collapse = lambda rows: collapse_hits(rows, indices, len(rows), geos, variants_cap,  # noqa: E731
+                                                  prefer) if collapse_geo else rows
             ranked = found.pin(ranked, collapse, target_geo, reserve_n)
 
         facets = {"P": 0, "M": 0, "G": 0}
@@ -1174,8 +1046,8 @@ class SearchService:
                 rows = self._fused_candidates(query, qvec, variant, entries, f, pool)
                 return adjust_transport_modes(intent, rows) if intent else rows
 
-            left = left_out(candidates, ranked, filters=filters, geographies=geographies, activity=self._activity,
-                            variants=lambda db: self._variants_map(indices[db], db) if db in indices else {},
+            left = left_out(candidates, ranked, filters=filters, geographies=geographies, activity=activity,
+                            variants=lambda db: variants_map(indices[db], db) if db in indices else {},
                             wider=wider)
         notes = filter_notes(query, entries, filters, hits, target_geo, listed=left.get("outside_region", ()))
 

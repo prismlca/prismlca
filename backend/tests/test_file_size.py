@@ -43,7 +43,7 @@ CEILINGS: dict[str, int] = {
     # chapter read; a second home for one of those sources would split the list it exists to keep whole.
     "prism_lca/engine/report_staleness.py": 1594,
     "prism_lca/engine/params.py": 1298,  # 1273
-    "prism_lca/search/service.py": 1215,  # 1190, after the filter diagnosis moved to facets.py
+    "prism_lca/search/service.py": 1105,  # 1080, after the folding of regional variants moved to collapse.py
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
     # 1245, after the inventory per functional unit moved to inventory_per_unit.py. `release_cached` and
     # `inventory_method` stay here: both need the factorisation cache, which is private to this module.

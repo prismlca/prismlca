@@ -11,7 +11,8 @@ import { resolveCode } from '../resolve'
 import { scopedDatabaseList } from '../../modelScope'
 import { inspectedKey } from '../advice/hotspots'
 import { detailsBatch } from './detailsBatch'
-import { alreadyAsked, withSearchWarnings, type SearchScope } from '../advice/warnings'
+import { alreadyAsked, withPlaceHint, withSearchWarnings, type SearchScope } from '../advice/warnings'
+import { searchRegions } from '../searchRegions'
 import type { ToolCtx } from '../context'
 
 /**
@@ -340,6 +341,7 @@ export const readTools: Tool[] = [
       // Declared before `one` uses it: a single query returns before this line would run otherwise,
       // and a closure reaching into a temporal dead zone is a footgun for the next reader.
       const filed: Array<{ answer: unknown; geo: unknown; scope?: SearchScope }> = []
+      const regions = searchRegions(ctx)
       const one = async (q: Q, record = true): Promise<unknown> => {
         // 0 is "not set". Below MIN_LIMIT is raised: limits of 5 and 4 held nothing past the requested
         // region, and four runs read that as "no dataset" (V462).
@@ -376,6 +378,12 @@ export const readTools: Tool[] = [
         // Per-query filter wins; the call-level one stays the default for the rest.
         const geo = q.geographies ?? a.geographies
         if (geo) body.geographies = geo
+        const named = Array.isArray(geo) ? geo.length > 0 : Boolean(geo)
+        const searched =
+          (body.databases as string[] | undefined) ?? (body.database ? [String(body.database)] : [])
+        // No region asked for: a folded hit is still shown in the study's region where it has one.
+        const study = named ? [] : await regions.ofStudy(searched)
+        if (study.length) body.prefer_geographies = study
         const qTypes = q.activity_types ? normaliseActivityTypes(q.activity_types) : types
         // Refused, like the call-level filter — dropping it ran the query over every type without a
         // word.
@@ -395,13 +403,22 @@ export const readTools: Tool[] = [
         if (asked !== undefined && asked < MIN_LIMIT && answer && typeof answer === 'object')
           (answer as Record<string, unknown>).limit_raised_to = MIN_LIMIT
         const scope = {
-          databases:
-            (body.databases as string[] | undefined) ?? (body.database ? [String(body.database)] : []),
+          databases: searched,
           types: (body.activity_types as string[] | undefined) ?? [],
           literal: body.literal === true
         }
         if (!record) filed.push({ answer, geo, scope })
-        return withSearchWarnings(alreadyAsked(answer, geo, ctx, record, scope), geo)
+        const repeat = alreadyAsked(answer, geo, ctx, record, scope)
+        const earlier = named ? undefined : repeat?.already_searched?.earlier_query
+        const placed =
+          typeof earlier === 'string'
+            ? withPlaceHint(
+                repeat,
+                await regions.inText(q.query, searched),
+                await regions.inText(earlier, searched)
+              )
+            : repeat
+        return withSearchWarnings(placed, geo)
       }
       if (list.length === 1) return S(await one(list[0]))
       // A batch judges every query against what stood BEFORE the call, then files them all — see

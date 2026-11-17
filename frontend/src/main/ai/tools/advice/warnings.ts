@@ -85,9 +85,36 @@ export function alreadyAsked(
       earlier_results: before.hits,
       note:
         `You already searched these words in this chat ("${before.query}", ${before.hits} results) ` +
-        'and the database has not changed since. Repeating a search cannot make a dataset appear. ' +
+        'and the database has not changed since. This is a notice, not a refusal: the hits below are ' +
+        "this search's answer. Repeating a search cannot make a dataset appear. " +
         'If none of the results is the material, that is the answer: pick the closest proxy, write ' +
         'why it stands in into the exchange comment, and record the gap as a limitation.'
+    }
+  }
+}
+
+/**
+ * A repeat whose new word may be a place: "market for electricity medium voltage DE" after the same query
+ * without "DE". A dataset's region is a field of its own, so a place in the query text does not choose it; told
+ * only that it repeated itself, a model settles for a proxy while the German market is one argument away.
+ * `places` and `earlier` are the regions the two queries name (searchRegions.ts); only the ones the new query
+ * adds are named. Conditional throughout, because a region code can be a word too — "PE" is Peru and
+ * polyethylene, and the search may read it as the plastic — and because nothing here compares the two answers.
+ */
+export function withPlaceHint(result: any, places: string[], earlier: string[]): any {
+  const added = places.filter((p) => !earlier.includes(p))
+  const note = result?.already_searched?.note
+  if (!added.length || typeof note !== 'string') return result
+  const one = added.length === 1
+  return {
+    ...result,
+    already_searched: {
+      ...result.already_searched,
+      places_in_query: added,
+      note:
+        `${note} If what your query adds (${added.join(', ')}) is meant as ${one ? 'a region' : 'regions'}: ` +
+        "the query text does not choose a dataset's region, a field of its own does. Send the query without " +
+        `${one ? 'it' : 'them'} and with "geographies": ${JSON.stringify(added)}.`
     }
   }
 }

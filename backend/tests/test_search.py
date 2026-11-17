@@ -4,6 +4,7 @@ import time
 import uuid
 
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.search.collapse import order_variants, region_key
 from prism_lca.search.facets import NO_FILTERS
 from prism_lca.search.service import SearchService
 
@@ -260,7 +261,7 @@ def test_europe_minus_a_country_stands_in_for_rer_unless_it_leaves_the_target_ou
 def test_a_wide_geo_variant_list_is_capped_and_says_how_many_there_are(client, token, project):
     """ecoinvent's electricity markets exist in 175 regions. Unrolled inline, one hit outweighed a
     whole eight-query batch's budget and the rest of the answer was truncated away."""
-    from prism_lca.search.service import VARIANTS_SHOWN
+    from prism_lca.search.collapse import VARIANTS_SHOWN
 
     bd = get_bd()
     db = "syn-" + uuid.uuid4().hex[:6]
@@ -804,14 +805,14 @@ def test_variants_are_chosen_not_taken_in_index_order():
     ]
     # No region asked for: the global average first, then the European aggregates, the residual
     # last, and everything else alphabetically so the same search twice reads the same.
-    order = SearchService._order_variants(variants, "c-de", None)
+    order = order_variants(variants, "c-de", region_key())
     assert [v["geography"] for v in order][:5] == [
         "DE", "GLO", "RER", "Europe without Switzerland", "RoW",
     ]
     assert [v["geography"] for v in order][5:] == ["AT", "PL"]
 
     # A region asked for: the ranking's own proxy chain decides.
-    order = SearchService._order_variants(variants, "c-glo", "AT")
+    order = order_variants(variants, "c-glo", region_key(["AT"]))
     assert [v["geography"] for v in order][:4] == ["GLO", "AT", "RER", "Europe without Switzerland"]
 
 

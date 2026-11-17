@@ -34,6 +34,8 @@ WEAK_TRIGGER = 0.429
 
 #: Letters and digits of any script: "Gütertransport" is one word to these checks, not "g" and "tertransport".
 _TOKEN_RE = re.compile(r"[^\W_]+")
+#: A run of digits or a run of letters: the parts of "euro6", "m2", "4x4".
+_RUN_RE = re.compile(r"\d+|[^\W\d_]+")
 
 
 def _tokens(text: str) -> set[str]:
@@ -45,8 +47,7 @@ def _tokens(text: str) -> set[str]:
         out.add(raw)
         # "euro6" -> {"euro6", "euro", "6"}; harmless for pure words, and it is what makes the
         # spelling of a norm irrelevant to the check below.
-        for part in re.findall(r"\d+|[^\W\d_]+", raw):
-            out.add(part)
+        out.update(_RUN_RE.findall(raw))
     return out
 
 
@@ -97,15 +98,47 @@ def unmatched_terms(query: str, hit_texts: list[str]) -> list[str]:
     near-miss changes the dataset's meaning, while ordinary words differ harmlessly between a query
     and a dataset title ("car" vs "passenger car"). Conservative on purpose — a warning that fires
     on normal prose would be read past, and then it protects nothing.
+
+    A term written as one word ("euro6") is carried by a hit that writes its letter and digit runs as whole
+    words side by side ("EURO 6"): it is the same norm. Not by a hit holding them in different places —
+    "EURO 5 … 6 metric ton" — nor as the start of a longer designation: "R134" is not "R134a".
     """
     if not query:
         return []
     hay: set[str] = set()
+    runs: list[list[list[str]]] = []
     for text in hit_texts:
         hay |= _tokens(text)
-    missing = [t for t in _tokens(query) if any(c.isdigit() for c in t) and t not in hay]
+        runs.append(_runs(text))
+    missing = [
+        t for t in _tokens(query)
+        if any(c.isdigit() for c in t) and t not in hay and not _side_by_side(_RUN_RE.findall(t), runs)
+    ]
     # Deterministic order so the field is stable across identical requests (and in tests).
     return sorted(missing)
+
+
+
+def _runs(text: str) -> list[list[str]]:
+    """A text's words in reading order, each as its letter and digit runs — "EURO 6, R134a" is
+    ``[["euro"], ["6"], ["r", "134", "a"]]``."""
+    return [_RUN_RE.findall(raw) for raw in _TOKEN_RE.findall(unicodedata.normalize("NFKC", text).lower())]
+
+
+def _side_by_side(parts: list[str], texts: list[list[list[str]]]) -> bool:
+    """Whether one text holds ``parts`` (two or more) next to each other and in this order, starting and ending
+    on word boundaries — "EURO 6" holds "euro6", "R134a" does not hold "r134"."""
+    n = len(parts)
+    if n < 2:
+        return False
+    for words in texts:
+        flat = [part for word in words for part in word]
+        bounds = {0}
+        for word in words:
+            bounds.add(max(bounds) + len(word))
+        if any(flat[i:i + n] == parts and i + n in bounds for i in bounds):
+            return True
+    return False
 
 
 # Words that say nothing about whether a MATERIAL exists: ecoinvent's own structural vocabulary,
