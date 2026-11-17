@@ -42,7 +42,7 @@ Before adding processes, make sure you know:
 - **The people the report's title page prints**: **author**, **organisation** (who carried the study
   out), **commissioner** (who it was for) and **critical_review** (who reviewed it, if anyone). Write what
   you were told, negative answers included. Whether a critical review took place is a yes/no only the user
-  sets in Model info, so no sentence of yours can switch off the ISO 14044 §7.3.3 note a published
+  sets in Model info, so no sentence of yours can switch off the ISO 14044 note a published
   comparative assertion needs — you never have to phrase around it.
 
 **Set the study `language` at the start and honour it.** Default English; take the user's wish, otherwise

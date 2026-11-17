@@ -543,7 +543,7 @@ class ReportStore(JsonFileStore):
             "subjects": subjects or [],
             "methods": methods or [],
             "options": {
-                # Drives the ISO 14044 §7.3.3 note for a public comparative assertion. Three earlier
+                # Drives the ISO 14044 note for a public comparative assertion. Three earlier
                 # placeholder flags (`state_absent`, `comparative`, `for_publication`) were never read by
                 # anything and are gone: `comparative` is derivable from the subject count, and stating
                 # absent things turned out to be the presence of the Limitations chapter.

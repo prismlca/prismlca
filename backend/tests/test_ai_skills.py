@@ -25,7 +25,7 @@ def test_the_model_building_skill_asks_for_the_people_the_report_prints():
     body = next(s for s in BUILTIN_SKILLS if s["id"] == "builtin-model-building")["content"]
     for field in ("author", "organisation", "commissioner", "critical_review"):
         assert field in body, field
-    assert "7.3.3" in body  # an empty review field is a reportable fact, not an omission
+    assert "ISO 14044 note" in body  # an empty review field is a reportable fact, not an omission
 
 
 def test_the_scenario_skill_shows_how_to_test_a_dataset_choice():

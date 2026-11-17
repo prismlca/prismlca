@@ -582,13 +582,13 @@ def critical_review_recorded(study: dict[str, Any]) -> bool:
     """Whether this study states that a critical review was carried out — read in exactly one place.
 
     The question is a yes/no, and until V191 it was answered from the free-text field `critical_review`
-    by two rules pointing opposite ways: the §7.3.3 note treated *any* text as "there was a review",
+    by two rules pointing opposite ways: the ISO 14044 note treated *any* text as "there was a review",
     while the limitations chapter treated an *empty* field as "there was none". So a study that wrote
     one honest sentence lost both statements at once.
 
     And the sentence authors write there is almost always a negation — "Keine kritische Prüfung
     (interne Screening-Studie)". Of every study recorded here, not one filled the field affirmatively;
-    one of them wrote out that a public comparative assertion *would* require a review under §7.3.3,
+    one of them wrote out that a public comparative assertion *would* require a review under ISO 14044,
     and that very sentence suppressed the note saying so. The suppression had therefore never once
     fired for the case it exists for.
 
@@ -628,7 +628,7 @@ def limitations_blocks(data: dict[str, Any], lang: str, title: str) -> list[dict
         items.append(t("limits.no_uncertainty", lang))
     if not (data.get("data_quality") or {}):
         items.append(t("limits.no_data_quality", lang))
-    # The same reading as the §7.3.3 note below, from the same helper: these two sentences are the two
+    # The same reading as the ISO 14044 note below, from the same helper: these two sentences are the two
     # halves of one fact, and while each read the free text for itself they contradicted each other.
     if not critical_review_recorded(data.get("study") or {}):
         items.append(t("limits.no_critical_review", lang))
@@ -691,7 +691,7 @@ def limitations_blocks(data: dict[str, Any], lang: str, title: str) -> list[dict
 
 
 def critical_review_note(data: dict[str, Any], report: dict[str, Any], lang: str) -> list[dict]:
-    """ISO 14044 §7.3.3 — the one statement about something absent that is not the author's to suppress.
+    """ISO 14044 — the one statement about something absent that is not the author's to suppress.
 
     A comparative assertion disclosed to the public requires a critical review by interested parties.
     That is a requirement of the standard, not a matter of tone: a report that makes such a comparison,

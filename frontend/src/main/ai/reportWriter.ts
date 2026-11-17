@@ -128,7 +128,7 @@ export interface WriteBrief {
    */
   printed_names?: Record<string, string>
   /**
-   * Facts about THIS report's situation the writer must respect before writing — the ISO 14044 §7.3.3
+   * Facts about THIS report's situation the writer must respect before writing — the ISO 14044
    * comparative-assertion guard, the weak-difference threshold, "one subject compares nothing". The
    * backend has always sent them; not forwarding them meant the writer produced exactly the sentences
    * the gate then flagged, and the flags are advisory — nothing but the author's eye caught them.

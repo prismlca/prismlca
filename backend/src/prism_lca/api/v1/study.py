@@ -36,7 +36,7 @@ class StudyRequest(BaseModel):
     #: Who reviewed the study and when — the description. What the report acts on is the answer below.
     critical_review: str | None = None
     #: Whether a critical review was carried out: "yes" | "no". A closed choice, and the only input to
-    #: the ISO 14044 §7.3.3 note; the prose above cannot answer it, because its honest content is
+    #: the ISO 14044 note; the prose above cannot answer it, because its honest content is
     #: usually a negation (V191). An empty string means "not answered", like `language`.
     critical_review_done: str | None = None
     date: str | None = None

@@ -1282,7 +1282,7 @@ def blocks_for(
             block[field] = re.sub(r"(?<!\\)@([A-Za-z][A-Za-z0-9-]*)", fix, value)
 
     # Outside the section list on purpose: a comparative assertion meant for publication has to declare
-    # a missing critical review (ISO 14044 §7.3.3), and a normative disclosure must not be removable by
+    # a missing critical review (ISO 14044), and a normative disclosure must not be removable by
     # deleting a chapter. It appears only when the report is marked for publication.
     blocks += report_checks.critical_review_note(data, report, lang)
 

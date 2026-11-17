@@ -147,7 +147,7 @@ def test_whether_a_critical_review_happened_is_a_closed_choice_the_author_owns(c
     Two properties are worth pinning. It is closed — a third spelling would be stored and then read as
     "not confirmed", which is safe but silent. And it is the *author's*: confirming that an independent
     review took place is a statement about the world outside the model, and the one statement that
-    switches off the ISO 14044 §7.3.3 note, so an assistant may describe a review but never confirm one.
+    switches off the ISO 14044 note, so an assistant may describe a review but never confirm one.
     """
     db = "model-a"
     r = client.post("/api/v1/study", json={"database": db, "critical_review_done": "YES"}, headers=token)
