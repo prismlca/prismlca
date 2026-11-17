@@ -21,7 +21,7 @@ from contextlib import contextmanager
 
 from openpyxl import Workbook
 
-from prism_lca.engine import lca, param_window, params, scenario_lookup, workbooks
+from prism_lca.engine import lca, param_window, params, scenario_lookup, scenario_reach, workbooks
 from prism_lca.engine._store import JsonFileStore
 from prism_lca.engine.model import new_uid
 from prism_lca.errors import PrismError, scenario_calc_error
@@ -110,7 +110,11 @@ class ScenarioStore(JsonFileStore):
             self._write(data)
             return entry
 
-    def update(self, scenario_id: str, name: str, description: str, overrides: dict) -> dict:
+    def update(
+        self, scenario_id: str, name: str, description: str, overrides: dict | None
+    ) -> dict:
+        """``overrides=None`` keeps the stored set as it is, unchecked: renaming a scenario or rewording its
+        description must not be refused because a parameter's rule changed after the overrides were set."""
         with self._lock:
             data = self._load()
             if scenario_id not in data:
@@ -121,8 +125,10 @@ class ScenarioStore(JsonFileStore):
                 raise PrismError("Scenario name must not be empty.", code="invalid_name")
             if self._name_clash(data, name, database, ignore_id=scenario_id):
                 raise PrismError(f"A scenario named '{name}' already exists.", code="scenario_exists", status_code=409)
+            kept = overrides is None
             data[scenario_id] = {"id": scenario_id, "name": name, "description": description or "",
-                                 "overrides": check_overrides(database, overrides or {}, scenario=name),
+                                 "overrides": dict(data[scenario_id].get("overrides") or {}) if kept
+                                 else check_overrides(database, overrides, scenario=name),
                                  "database": database}
             self._write(data)
             return data[scenario_id]
@@ -752,53 +758,6 @@ def compute(store: ScenarioStore, database: str, code: str, method, scenario_id:
             param_window.restore_and_close(database, baseline, frame)
 
 
-#: Below this relative change a scenario row carries a note naming the exchanges its overrides reach.
-#: One run created its scenarios on parameters that were still typed as constants on the
-#: exchanges, compared them, read −0.1 % / +0.2 %, spent 187 s on a 16-indicator comparison of the same
-#: dead variants — and only the model's own doubt caught it. Nothing said a word (V332).
-SMALL_DELTA_PCT = 1.0
-
-
-def _reach_note(usage: dict[str, list[dict]], overrides: dict, unreachable: set[str] | None = None) -> str:
-    """Why a variant may have moved so little: which exchange formulas its overrides actually reach.
-
-    ``unreachable`` is `params.unreachable_parameters` — the transitive answer. `usage` only sees a
-    parameter named ON an exchange; one that feeds another parameter's formula (a = 100, b = "2*a",
-    the exchange uses b) reaches the result just as well, and the note used to call that variant
-    unable to move anything while the row beside it showed it moving."""
-    names = sorted(overrides or {})
-    reached: list[str] = []
-    for name in names:
-        for use in usage.get(name, []):
-            label = f"'{use.get('input')}' in '{use.get('activity_name')}'"
-            if label not in reached:
-                reached.append(label)
-    quoted = ", ".join(f"'{n}'" for n in names)
-    if not reached:
-        through = [n for n in names if unreachable is not None and n not in unreachable]
-        if through:
-            listed = ", ".join(f"'{n}'" for n in through)
-            return (
-                f"Δ below {SMALL_DELTA_PCT:g} % — {listed} reach exchange formulas only through other "
-                "parameters (nothing on an exchange names them directly). If those are the intended "
-                "levers, the small effect is the finding. If the quantity you meant to vary is still a "
-                'typed constant on its exchange, bind it (edit_exchange action="set_formula") and '
-                "compare again."
-            )
-        return (
-            f"Δ below {SMALL_DELTA_PCT:g} % — no exchange formula references {quoted}; this variant "
-            "cannot move the result. Bind the quantity to the parameter (edit_exchange "
-            'action="set_formula") and compare again, or drop the scenario.'
-        )
-    shown = ", ".join(reached[:4]) + (f" and {len(reached) - 4} more" if len(reached) > 4 else "")
-    return (
-        f"Δ below {SMALL_DELTA_PCT:g} % — {quoted} reach {len(reached)} exchange formula(s): {shown}. "
-        "If the quantity you meant to vary is still a typed constant on its exchange, that constant "
-        'does not follow the parameter: bind it (edit_exchange action="set_formula") and compare again. '
-        "If those are the intended levers, the small effect is the finding."
-    )
-
-
 def compare_many(
     store: ScenarioStore, database: str, code: str, methods: list, scenario_ids: list[str], amount: float = 1.0
 ) -> dict:
@@ -816,6 +775,7 @@ def compare_many(
     # baseline and the scenarios before it had been calculated. Only a check — each scenario is still read
     # right before it is applied, so an edit made while this waited for the lock is the one scored.
     store.require(database, scenario_ids)
+    reach = scenario_reach.Reach(database, code, amount)
     labels = ["(baseline)"]
     overrides_by: list[dict] = [{}]
     replaced_by: list[dict[str, str]] = [{}]
@@ -831,7 +791,12 @@ def compare_many(
         frame = param_window.open_window(database, "comparison", "a scenario comparison", baseline, {})
         try:
             params.apply_values(database, baseline, base_formulas)
-            first = [lca.compute_lcia(database, code, m, amount) for m in methods]
+            first = []
+            for m in methods:
+                first.append(lca.compute_lcia(database, code, m, amount))
+                if scenario_ids:
+                    # A note on a small Δ quotes baseline shares: read while the baseline is factorised.
+                    reach.capture(m)
             units = [r["unit"] for r in first]
             scores.append([r["score"] for r in first])
             for sid in scenario_ids:
@@ -856,8 +821,6 @@ def compare_many(
     # caller to divide — so the "-21 %" in a written answer was arithmetic done by hand, outside
     # anything that can be checked. Absolute and relative, with the relative one omitted rather than
     # faked when the baseline is zero.
-    usage: dict[str, list[dict]] | None = None
-    unreachable: set[str] | None = None
     out: list[dict] = []
     for j, m in enumerate(methods):
         results = [{"scenario": labels[i], "score": scores[i][j]} for i in range(len(labels))]
@@ -870,11 +833,8 @@ def compare_many(
                 row["replaces_formula"] = replaced_by[i]
             if base_score:
                 row["delta_pct"] = 100.0 * (row["score"] - base_score) / abs(base_score)
-                if abs(row["delta_pct"]) < SMALL_DELTA_PCT:
-                    if usage is None:
-                        usage = params.formula_usage(database)
-                        unreachable = set(params.unreachable_parameters(database))
-                    row["note"] = _reach_note(usage, overrides_by[i], unreachable)
+                if abs(row["delta_pct"]) < scenario_reach.SMALL_DELTA_PCT:
+                    row["note"] = reach.note(m, overrides_by[i])
         out.append(
             {"database": database, "code": code, "method": list(m), "amount": amount,
              "unit": units[j], "baseline_score": base_score, "results": results}

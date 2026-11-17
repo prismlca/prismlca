@@ -2850,18 +2850,28 @@ class UpdateScenarioCommand(Command):
     local_to_model = True
     audit_attr = "database"
 
-    def __init__(self, store, database, scenario_id, name, description="", overrides=None):
+    def __init__(self, store, database, scenario_id, name=None, description=None, overrides=None):
+        """A field left as ``None`` keeps what the scenario has: the assistant renames a scenario or rewords
+        its description without restating its overrides, and without the id changing under it."""
         self.store = store
         self.database = database
         self.scenario_id = scenario_id
         self.name = name
         self.description = description
-        self.overrides = overrides or {}
+        self.overrides = overrides
         self._before: dict | None = None
+        self._after: dict | None = None
 
     def execute(self) -> dict:
         self._before = dict(_scenario_of(self.store, self.scenario_id, self.database))
-        entry = self.store.update(self.scenario_id, self.name, self.description, self.overrides)
+        before = self._before
+        entry = self.store.update(
+            self.scenario_id,
+            before.get("name", "") if self.name is None else self.name,
+            before.get("description", "") if self.description is None else self.description,
+            self.overrides,
+        )
+        self._after = entry
         return {"scenario": entry, "scenarios": self.store.list_all(self.database)}
 
     def undo(self) -> None:
@@ -2870,11 +2880,13 @@ class UpdateScenarioCommand(Command):
 
     def summary(self) -> str:
         old = (self._before or {}).get("name")
-        n = len(self.overrides)
+        after = self._after or {}
+        name = after.get("name", self.name)
+        n = len(after.get("overrides", self.overrides or {}))
         detail = f" ({n} override{'' if n == 1 else 's'})"
-        if old and old != self.name:
-            return f"Rename scenario '{old}' → '{self.name}'{detail}"
-        return f"Update scenario '{self.name}'{detail}"
+        if old and old != name:
+            return f"Rename scenario '{old}' → '{name}'{detail}"
+        return f"Update scenario '{name}'{detail}"
 
 
 class DuplicateScenarioCommand(Command):

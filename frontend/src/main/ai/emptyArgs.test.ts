@@ -184,6 +184,16 @@ describe('withoutEmptyArgs — where empty means something (KEEP_EMPTY)', () => 
     ).not.toHaveProperty('description')
   })
 
+  it('edit_scenario: description "" removes the description on update only', () => {
+    expect(norm('edit_scenario', { action: 'update', id: 's', description: '' })).toHaveProperty(
+      'description',
+      ''
+    )
+    expect(norm('edit_scenario', { action: 'create', name: 'A', description: '' })).not.toHaveProperty(
+      'description'
+    )
+  })
+
   it('search_background: an empty per-query filter lifts the call-level one; a call-level [] is padding', () => {
     const out = norm('search_background', {
       geographies: [],

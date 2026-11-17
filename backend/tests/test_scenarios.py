@@ -179,6 +179,44 @@ def test_scenario_crud_update_duplicate_undo(client, token, project):
     assert sid in [x["id"] for x in _scenarios(client, token)]
 
 
+def test_update_changes_only_the_fields_it_is_given_and_keeps_the_id(client, token, project):
+    """The assistant could not rename a scenario or reword its description, so it deleted the scenario and
+    created it again — a new id, a new place at the end, and an audit line that read like a change of
+    content. An update now leaves out what it does not change, and what it leaves out stays as it was."""
+    _seed(get_bd())
+    _param(client, token, "kwh", amount=2.0)
+    sid = _mk(client, token, "Short haul", description="300 km truck", overrides={"kwh": 3.0})
+    first = [s["id"] for s in _scenarios(client, token)]
+
+    def update(**body):
+        return client.post("/api/v1/scenarios/update", json={"database": DB, "id": sid, **body}, headers=token)
+
+    assert update(name="Short distribution").status_code == 200
+    s = next(x for x in _scenarios(client, token) if x["id"] == sid)
+    assert (s["name"], s["description"], s["overrides"]) == ("Short distribution", "300 km truck", {"kwh": 3.0})
+
+    assert update(description="100 km truck").status_code == 200
+    s = next(x for x in _scenarios(client, token) if x["id"] == sid)
+    assert (s["name"], s["description"], s["overrides"]) == ("Short distribution", "100 km truck", {"kwh": 3.0})
+    assert [x["id"] for x in _scenarios(client, token)] == first  # same id, same place
+
+    # The overrides are not checked again when they are not given: the baseline has since moved onto
+    # the override, which would refuse the set — not the rename.
+    _param(client, token, "kwh", amount=3.0)
+    assert update(overrides={"kwh": 3.0}).status_code != 200
+    assert update(name="Short haul (100 km)", description="").status_code == 200
+    s = next(x for x in _scenarios(client, token) if x["id"] == sid)
+    assert (s["name"], s["description"], s["overrides"]) == ("Short haul (100 km)", "", {"kwh": 3.0})
+
+    summaries = [e.get("summary", "") for e in client.get("/api/v1/model/audit", headers=token).json()]
+    assert "Rename scenario 'Short haul' → 'Short distribution' (1 override)" in summaries
+    assert "Update scenario 'Short distribution' (1 override)" in summaries
+
+    client.post("/api/v1/model/undo", headers=token)
+    s = next(x for x in _scenarios(client, token) if x["id"] == sid)
+    assert (s["name"], s["description"]) == ("Short distribution", "100 km truck")
+
+
 def test_scenarios_are_model_scoped(client, token, project):
     """A scenario created in model A must not appear in model B (per-model isolation)."""
     import uuid
@@ -409,7 +447,7 @@ def test_a_variant_that_barely_moves_names_the_exchanges_its_overrides_reach(cli
 
 def test_a_variant_reaching_the_exchange_through_another_parameter_is_not_called_dead(client, token, project):
     """The note only saw parameters named ON an exchange; one feeding another
-    parameter's formula was declared unable to move a result it had just moved."""
+    parameter's formula was declared unable to move a result it had just moved. It names the chain now."""
     _seed(get_bd())
     _param(client, token, "a", amount=100.0)
     _param(client, token, "b", formula="2*a")
@@ -422,7 +460,7 @@ def test_a_variant_reaching_the_exchange_through_another_parameter_is_not_called
     )
     row = next(x for x in r.json()["results"] if x["scenario"] == "nudge")
     assert row["delta"] > 0
-    assert "through other parameters" in row["note"]
+    assert "'a' reaches 1 exchange: 'electricity' in 'bottle' through b" in row["note"]
     assert "cannot move" not in row["note"]
 
 

@@ -389,6 +389,9 @@ describe('consolidated tools', () => {
     expect((await run('edit_scenario', { action: 'delete', id: 'x' })).calls[0].path).toBe(
       '/api/v1/scenarios/delete'
     )
+    expect((await run('edit_scenario', { action: 'update', id: 'x', name: 'y' })).calls[0].path).toBe(
+      '/api/v1/scenarios/update'
+    )
     expect((await run('edit_parameter', { action: 'set', name: 'mass', value: 1 })).calls[0].path).toBe(
       '/api/v1/params'
     )

@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-17",
+    "title": "Scenarios renamed in place, small effects explained",
+    "details": "The assistant can now rename a scenario or rewrite its description without deleting it, so the scenario keeps its id, its place and its overrides. When a comparison moves the result by less than 1 %, the note names the exchange the scenario reaches, the parameters in between and that exchange's share of the result; it asks to bind a quantity only where a binding is missing."
+  },
+  {
+    "date": "2026-11-17",
     "title": "Tag groups belong to their model",
     "details": "Each model now keeps its own tag groups and tags, so one model's vocabulary no longer appears in another's menus or audit log. The Tags window marks tags no process carries and can take over the groups of another model. To break two models down side by side in Results, use the same group name and the same tag spelling in both. Existing models keep the groups and tags they use."
   },

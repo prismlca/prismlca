@@ -444,6 +444,33 @@ export const IMPL: Record<string, Tool['run']> = {
         await ctx.api('POST', '/api/v1/scenarios/value', { id: a.id, param: a.param, value: a.value, ...AI })
       )
     ),
+  update_scenario: async (a, ctx) => {
+    if (!ctx.activeDb) return S({ error: 'No model is open.' })
+    // Name and description only. The endpoint would take a whole override set too and replace the stored
+    // one with it, so an `overrides` meant as "these as well" would drop the rest; one override is set
+    // with set_value instead, and this says so before anything is sent. `value` alone is not asked about:
+    // without a `param` it names nothing, and some models fill every number field they do not use with 0.
+    if (a.overrides !== undefined || a.param !== undefined)
+      return S({
+        error:
+          'action="update" changes the name and the description only, and nothing was changed. Change an ' +
+          'override with action="set_value" (id, param, value), one call per override.'
+      })
+    if (!a.id) return S({ error: 'action="update" needs the scenario id (from list_scenarios).' })
+    if (a.name === undefined && a.description === undefined)
+      return S({ error: 'action="update" needs a new name, a new description, or both.' })
+    return S(
+      oneScenario(
+        await ctx.api('POST', '/api/v1/scenarios/update', {
+          database: ctx.activeDb,
+          id: a.id,
+          ...(a.name !== undefined ? { name: a.name } : {}),
+          ...(a.description !== undefined ? { description: a.description } : {}),
+          ...AI
+        })
+      )
+    )
+  },
   duplicate_scenario: async (a, ctx) => {
     if (!ctx.activeDb) return S({ error: 'No model is open.' })
     return S(
