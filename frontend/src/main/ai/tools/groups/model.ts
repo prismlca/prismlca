@@ -13,6 +13,8 @@ import { IMPL, delegate } from '../impl'
 import { type LinkedInput, withLinkReminder } from '../advice/linkReminder'
 import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './exchangeBatch'
 import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
+import { actionOf } from './exchangeAction'
+import { SAME_INPUT_NOTE, watchSameInput } from './sameInput'
 
 /**
  * The batch list — plus the top-level entry when the model filled BOTH. Both shapes are in the schema
@@ -455,15 +457,8 @@ export const modelTools: Tool[] = [
     run: async (a, ctx) => {
       const db = fgDb(a, ctx)
       if (!db) return NO_MODEL
-      const routes = {
-        add: 'add_exchange',
-        set_amount: 'set_exchange_amount',
-        set_formula: 'set_exchange_formula',
-        set_comment: 'set_exchange_comment',
-        remove: 'remove_exchange',
-        replace_input: 'add_exchange'
-      } as const
       const { items, ignored, inheritedDb } = expandBatch(a)
+      const sameInput = watchSameInput(ctx, db)
 
       /** Background datasets this call linked (add / replace_input), for the reminder in withLinks. */
       const linked: LinkedInput[] = []
@@ -537,23 +532,7 @@ export const modelTools: Tool[] = [
               'top-level "exchanges" list; the top level then supplies activity_code and action as ' +
               'defaults for all of them.'
           )
-        // An item that names an input and says what it is worth can only be an "add", and this
-        // guesses so rather than refusing. It used to demand an `amount` — which refused exactly the
-        // shape this tool asks for two paragraphs up, because a FORMULA *is* the amount. Measured in
-        // a real run: 21 exchanges in one call, the 3 carrying a number went through and the
-        // 18 carrying a formula came back as `Missing "action"`, costing a round and 9,336 characters
-        // of error to say one thing.
-        const action =
-          String(it?.action ?? '').trim() ||
-          (it?.input_code && (it?.amount !== undefined || it?.formula) ? 'add' : '')
-        if (!Object.hasOwn(routes, action)) {
-          throw new Error(
-            action
-              ? `Unknown action "${action}". Expected one of: ${Object.keys(routes).join(', ')}.`
-              : `Missing "action". Expected one of: ${Object.keys(routes).join(', ')}. ` +
-                `It may be passed ONCE at call level, where it applies to every item of "exchanges".`
-          )
-        }
+        const action = actionOf(it)
         // A uid identifies an exchange on its own — `new_uid()` is a uuid4 — so being told which
         // process it sits on is a lookup, not information. Demanding it anyway cost a whole call in
         // a real run: coming out of a review that named two exchanges in two
@@ -590,6 +569,7 @@ export const modelTools: Tool[] = [
                 topLevelOnly(ignored, 'amount', 'formula')
             )
           if (it.formula) await checkFormulaBeforeAdd(ctx, db, String(it.formula))
+          await sameInput.before(resolved.code)
           const made: any = await IMPL.add_exchange(
             {
               ...base,
@@ -630,13 +610,21 @@ export const modelTools: Tool[] = [
           }
           if (uid && it.comment) await IMPL.set_exchange_comment({ ...base, uid, comment: it.comment }, ctx)
           noteLink(parsed?.exchange, it.input_database, it.input_code, it.type)
-          return {
+          const answer: Record<string, unknown> = {
             uid,
             amount,
             formula: it.formula ?? null,
             commented: Boolean(it.comment),
             ...(dimensionCheck ? { dimension_check: dimensionCheck } : {})
           }
+          await sameInput.after(
+            answer,
+            resolved.code,
+            parsed?.exchange?.input?.database ?? it.input_database,
+            parsed?.exchange?.input?.code ?? it.input_code,
+            { uid, amount, formula: it.formula, comment: it.comment }
+          )
+          return answer
         }
 
         // Doing it twice is the same as doing it once. When nothing carries the old input any more
@@ -796,16 +784,21 @@ export const modelTools: Tool[] = [
         return JSON.parse(String(await IMPL.set_exchange_comment({ ...base, uid, comment: it.comment }, ctx)))
       }
 
-      /** What was handed over and could not be honoured — never silently. */
+      /** What was handed over and could not be honoured — never silently — and what an add met. */
       const withNote = (out: string): string => {
-        const note = ignoredNote(ignored)
-        return trimUnitNotes(note ? S({ ...JSON.parse(out), ...note }) : out, ctx)
+        const note = {
+          ...ignoredNote(ignored),
+          ...(sameInput.seen ? { same_input_note: SAME_INPUT_NOTE } : {})
+        }
+        return trimUnitNotes(Object.keys(note).length ? S({ ...JSON.parse(out), ...note }) : out, ctx)
       }
       /** The link-time reminder: background datasets linked here that nobody has opened. */
       const withLinks = (out: string): Promise<string> => withLinkReminder(out, linked, db, ctx)
       if (items.length === 1) {
         try {
-          return withNote(await withLinks(S(await one(items[0]))))
+          const out = await one(items[0])
+          await sameInput.settle()
+          return withNote(await withLinks(S(out)))
         } catch (e) {
           return withNote(S({ error: e instanceof Error ? e.message : String(e) }))
         }
@@ -819,6 +812,7 @@ export const modelTools: Tool[] = [
           )
         )
       )
+      await sameInput.settle()
       return withNote(await withLinks(batchResult(results)))
     }
   }
