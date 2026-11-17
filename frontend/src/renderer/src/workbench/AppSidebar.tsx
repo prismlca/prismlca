@@ -7,8 +7,9 @@
  * The rail folds down to an icon strip. Folded, the page names live in the rows'
  * `title` — the platform's own hint, which is what every other icon button in this app uses — and
  * the project card is gone: a dropdown, a database name and a kind do not survive 56 px, and the
- * strip stays a strip. Below the navigation the empty panel is itself the way back, so unfolding
- * never depends on hitting the small button again.
+ * strip stays a strip. Below the navigation the empty panel is the way back, and a visible button at
+ * its foot says so: a window narrower than 1400 px opens folded, so many people meet the strip before
+ * they have ever folded it, and nobody thinks of clicking an empty panel they did not empty themselves.
  */
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import {
@@ -112,8 +113,8 @@ export default function AppSidebar({
         <span className="brand-name">
           Prism<b>LCA</b>
         </span>
-        {/* Folded, this button is gone: the whole panel under the navigation is the way back, and a
-            second control for the same thing would only take room the strip does not have. */}
+        {/* Folded, this button is not rendered here: the strip has no room beside the mark, and its
+            counterpart sits at the foot of the strip instead (below). */}
         {collapsed ? null : (
           <button
             type="button"
@@ -169,18 +170,24 @@ export default function AppSidebar({
       </div>
       {/* Folded, everything under the navigation becomes one button back to the full rail; the
           project card is not rendered at all, so its dropdown cannot be reached by Tab from a strip
-          that has no room to show it. `e-resize` is the nearest thing the platform has to "this edge
-          moves" — a drawn double-chevron would be a fixed-size bitmap that a scaled-up system cursor
-          renders wrong. The cursor is the ONLY thing that announces it: no hover
-          wash and no hint — the panel stays the quiet ground it looks like. The
-          label is there for a screen reader, which has no cursor to read. */}
+          that has no room to show it. At the foot of that button, where the project card stood, sits
+          what makes it findable: the fold button's own glyph in a box of its own, with a hint of its
+          own as the fold button has. It is part of the one button rather than a second one (a button
+          cannot hold another), so the strip keeps a single stop for Tab and a single name for a screen
+          reader. The rest of the panel carries no hint and no wash and stays the quiet ground it looks
+          like; `e-resize` is the nearest thing the platform has to "this edge moves" — a drawn
+          double-chevron would be a fixed-size bitmap that a scaled-up system cursor renders wrong. */}
       {collapsed ? (
         <button
           type="button"
           className="side-expand-zone"
           aria-label="Expand sidebar"
           onClick={() => onToggleCollapsed(false)}
-        />
+        >
+          <span className="side-expand" title="Expand sidebar">
+            <SidebarIcon />
+          </span>
+        </button>
       ) : (
         <div className="proj-card">
           <div
