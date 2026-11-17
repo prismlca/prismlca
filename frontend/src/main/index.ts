@@ -400,7 +400,9 @@ function createWindow(splash?: Splash | null): void {
     if (splash) {
       splash.setStatus('Ready.', 100)
       setTimeout(() => {
-        present()
+        // A quit within that second has closed the window already; touching it then throws, and the
+        // error dialog of an uncaught exception keeps the quitting app open.
+        if (!win.isDestroyed()) present()
         splash?.close()
       }, 1000)
     } else {

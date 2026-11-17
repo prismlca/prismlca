@@ -205,16 +205,28 @@ describe('the stdio bridge', () => {
     await c.callTool({ name: 'get_current_model', arguments: {} })
     expect(host.sessions()).toHaveLength(1)
     const exits: number[] = []
-    const shutdown = createShutdown(core, (code) => exits.push(code))
-    shutdown()
-    shutdown() // stdin end + SIGTERM both fire: one shutdown
+    const said: string[] = []
+    const shutdown = createShutdown(
+      core,
+      (code) => exits.push(code),
+      (m) => said.push(m)
+    )
+    shutdown('The client closed standard input')
+    shutdown('Received SIGTERM') // stdin end + SIGTERM both fire: one shutdown
+    // The first trigger is on the log before the session is closed — it is all a user's report has.
+    expect(said).toEqual(['The client closed standard input — ending the session and exiting (code 0).'])
     for (let i = 0; i < 50 && !exits.length; i++) await new Promise((r) => setTimeout(r, 20))
     expect(exits).toEqual([0])
     expect(host.sessions()).toHaveLength(0)
     // A close that never resolves is cut off by the bound.
     const stuck = { close: () => new Promise<void>(() => {}) } as unknown as ProxyCore
     const late: number[] = []
-    createShutdown(stuck, (code) => late.push(code), 30)()
+    createShutdown(
+      stuck,
+      (code) => late.push(code),
+      () => {},
+      30
+    )('The transport closed')
     await new Promise((r) => setTimeout(r, 80))
     expect(late).toEqual([0])
   })

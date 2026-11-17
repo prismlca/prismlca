@@ -12,6 +12,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { McpHost } from '../mcp/server'
 import { bridgeDisplayEnv, bridgeLaunchCommand } from '../mcp/proxyMain'
+import { stderrTail } from '../mcp/stderrTail'
 import {
   CLIENTS,
   claudeCodeAddCommand,
@@ -154,7 +155,8 @@ async function testConnection(): Promise<McpTestResult> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
   delete env.ELECTRON_RUN_AS_NODE
-  const transport = new StdioClientTransport({ command, args, env, stderr: 'ignore' })
+  const transport = new StdioClientTransport({ command, args, env, stderr: 'pipe' })
+  const said = stderrTail(transport.stderr)
   const client = new Client({ name: 'PrismLCA self-test', version: app.getVersion() })
   try {
     await client.connect(transport)
@@ -162,7 +164,11 @@ async function testConnection(): Promise<McpTestResult> {
     const version = client.getServerVersion()?.version ?? '?'
     return { ok: true, tools: tools.length, version, ms: Date.now() - started }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    // The bridge's last lines travel through a pipe of their own; give them the turn they need to arrive.
+    await new Promise((r) => setTimeout(r, 50))
+    const error = e instanceof Error ? e.message : String(e)
+    const tail = said()
+    return { ok: false, error: tail ? `${error}. The bridge's last lines: ${tail}` : error }
   } finally {
     await client.close().catch(() => undefined)
   }

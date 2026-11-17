@@ -43,7 +43,7 @@ export function removeInstall(install: Install): void {
 }
 
 /** The calling environment without anything that would configure the app or its backend. */
-function cleanEnv(): Record<string, string> {
+export function cleanEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
     if (
