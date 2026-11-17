@@ -1,11 +1,17 @@
-"""The provenance count of the health check: which texts cite a source, and which comments are about a figure."""
+"""The provenance count of the health check: which texts cite a source, which parameters and comments are about a
+figure, and how much of the model the cited figures carry."""
 from __future__ import annotations
 
 import re
 import uuid
 from pathlib import Path
 
-from prism_lca.engine.health_provenance import EUROSTAT_TABLES, carries_a_figure, cites_a_source
+from prism_lca.engine.health_provenance import (
+    EUROSTAT_TABLES,
+    _states_a_figure,
+    carries_a_figure,
+    cites_a_source,
+)
 
 # --- which text cites a source -----------------------------------------------------------------
 
@@ -35,6 +41,20 @@ def test_prose_and_bare_domains_are_not_sources():
     assert not cites_a_source("see env_waspac_share for the split")
 
 
+def test_a_page_address_without_its_scheme_is_a_source():
+    """Models copy addresses out of search results without `https://`. With a path, the address names the
+    page the figure is on as exactly as the link would; a wheelbarrow model cited four masses that way."""
+    assert cites_a_source("Article weight 100 g (kox-direct.de/garten/zubehoer-schubkarren/holzgriff)")
+    assert cites_a_source("Datasheet capito-gmbh.com/files/Downloads/Praktica%202025.pdf, 20.7 kg")
+    assert cites_a_source("laut www.example.org/p/12345")
+    assert cites_a_source("müba-shop.de/artikel/72971")
+    # Still not: a bare domain, a domain with nothing after the slash, ratios and units, an e-mail address.
+    assert not cites_a_source("comparable rim (shop.example.com)")
+    assert not cites_a_source("see example-shop.de/ for spare parts")
+    assert not cites_a_source("frame/tray split 6/11 kg, 1.25 mm/sheet, 830 kg/m3, z. B. Stahl/Holz")
+    assert not cites_a_source("ask info@example.de/sales")
+
+
 def test_the_eurostat_tables_are_the_ones_the_tool_queries():
     """The list here decides what counts as cited; the tool's list decides what the model can cite. A table
     added to the tool and missing here would make its figures count as unsourced again."""
@@ -42,6 +62,28 @@ def test_the_eurostat_tables_are_the_ones_the_tool_queries():
     match = re.search(r"EUROSTAT_DATASETS\s*=\s*\[([^\]]*)\]", datasets.read_text(encoding="utf-8"))
     assert match, "EUROSTAT_DATASETS not found in datasets.ts"
     assert set(re.findall(r"'([a-z_]+)'", match.group(1))) == set(EUROSTAT_TABLES)
+
+
+# --- which parameter states a figure ----------------------------------------------------------
+
+
+def test_a_parameter_computed_from_others_states_no_figure():
+    """`1 - eol_steel_recycling` holds the rate's figure a second time; counted, every cited end-of-life rate
+    written with its complement counted twice."""
+    assert not _states_a_figure({"amount": 0.013, "formula": "1 - eol_steel_recycling"})
+    assert not _states_a_figure({"amount": 6.2, "formula": "m_total - m_boards - m_feet"})
+    assert not _states_a_figure({"amount": 6.4, "formula": "n_boards * length * width * thickness * density"})
+    assert not _states_a_figure({"amount": 0.0062, "formula": "m_frame / 1000"})  # a unit conversion
+    assert _states_a_figure({"amount": 0.987, "formula": None})  # typed
+    assert _states_a_figure({"amount": 20.7, "formula": "20.7"})  # a number typed as a formula
+    assert _states_a_figure({"amount": 1.0, "formula": "1"})
+    assert _states_a_figure({"amount": 0.8, "formula": "m_total * 0.04"})  # the 4 % is a figure of its own
+    assert _states_a_figure({"amount": 6.4, "formula": "n_boards * length * width * 0.004 * density"})
+    # A constant expression depends on no other parameter: whatever its numbers, it is the figure itself.
+    for constant in ("10 / 100", "(10)", "100 + 10", "1e3", "max(10, 100)"):
+        assert _states_a_figure({"amount": 1.0, "formula": constant}), constant
+    assert not _states_a_figure({"amount": 0.05, "formula": "m_film2 / 1000"})  # a digit in a name
+    assert not _states_a_figure({"amount": 7.0, "formula": "max(m_total - m_boards, 0)"})
 
 
 # --- which comment is about a figure -----------------------------------------------------------
@@ -172,3 +214,68 @@ def test_the_count_takes_eurostat_codes_and_leaves_out_structure(client, token, 
     assert "2 of 7 parameters" in message  # the link and the Eurostat table
     assert "0 of 2 process/exchange comments" in message  # the 0.4 pieces and the one kilogram
     assert "Eurostat" in message  # the model is told what counts
+
+
+def _set(client, token, db, name, description, **fields) -> None:
+    r = client.post(
+        "/api/v1/params", json={"database": db, "name": name, "description": description, **fields}, headers=token
+    )
+    assert r.status_code == 200, r.text
+
+
+def _quiet(client, token, db) -> bool:
+    findings = client.get(f"/api/v1/model/health/{db}", headers=token).json()["findings"]
+    return not any(f["code"] == "unsourced_figures" for f in findings)
+
+
+def test_the_complement_of_a_cited_rate_is_not_a_second_figure(client, token, project):
+    db = _fg(client, token)
+    _create(client, token, db, "End of life")
+    for material in ("steel", "wood"):
+        _set(client, token, db, f"eol_{material}_rec", "Eurostat env_wastrt DE 2024.", amount=0.9)
+        _set(client, token, db, f"eol_{material}_inc", "Eurostat env_wastrt DE 2024, the rest.",
+             formula=f"1 - eol_{material}_rec")
+    for i in range(5):
+        _set(client, token, db, f"p{i}", "Own estimate.", amount=1.0 + i)
+
+    # Four of nine would have been quiet; two figures of seven are not.
+    assert "2 of 7 parameters" in _provenance(client, token, db)
+
+
+def test_cited_rates_do_not_stand_in_for_unsourced_masses(client, token, project):
+    """Eight cited end-of-life rates of 18 parameters silenced the count on a wheelbarrow model, whatever its
+    masses cited. The masses are weighed in kilograms, so citing a small part does not do either."""
+    db = _fg(client, token)
+    _create(client, token, db, "Wheelbarrow")
+    for material in ("steel", "wood", "rubber", "board"):
+        _set(client, token, db, f"eol_{material}", "Eurostat env_wastrt DE 2024.", amount=0.9, unit="fraction")
+    masses = {"m_total": (20.7, "kg"), "m_tray": (11.0, "kg"), "m_frame": (6.0, "kg"), "m_grips": (200.0, "g"),
+              "m_tyre": (1.4, "kg"), "m_box": (0.42, "kg")}
+    for name, (amount, unit) in masses.items():
+        _set(client, token, db, name, "Typical value.", amount=amount, unit=unit)
+
+    message = _provenance(client, token, db)
+    assert "4 of 10 parameters" in message  # a third: the count alone would be quiet
+    assert "0 percent of the mass" in message
+    assert "do not stand in for the masses" in message
+
+    _set(client, token, db, "m_grips", "100 g each (kox-direct.de/garten/holzgriff)", amount=200.0, unit="g")
+    assert "0 percent" in _provenance(client, token, db)  # 0.2 of 39.7 kg
+
+    _set(client, token, db, "m_total", "Datasheet https://www.example.org/praktica.pdf", amount=20.7, unit="kg")
+    assert _quiet(client, token, db)
+
+
+def test_a_count_short_of_a_third_does_not_blame_the_rates(client, token, project):
+    """When the count itself is short, the masses are reported for orientation, without the sentence about
+    rates standing in for them."""
+    db = _fg(client, token)
+    _create(client, token, db, "Shelf")
+    _set(client, token, db, "m_total", "https://www.example.org/shelf", amount=24.0, unit="kg")
+    for i in range(5):
+        _set(client, token, db, f"d{i}", "Own estimate.", amount=100.0 + i, unit="km")
+
+    message = _provenance(client, token, db)
+    assert "1 of 6 parameters" in message
+    assert "100 percent of the mass" in message
+    assert "stand in" not in message
