@@ -40,3 +40,11 @@ export function heatColor(t: number): string {
     a[2] + (b[2] - a[2]) * f
   )})`
 }
+
+/** A heatmap cell's text: its share of the column's largest magnitude in whole percent, signed like the value.
+ * The colour goes by magnitude alone, so without the sign a credit and a burden of equal size are the same cell.
+ * A share that rounds to 0 % carries no sign — "−0%" reads as a typo, not as a small credit. */
+export function heatLabel(value: number, share: number): string {
+  const pct = Math.round(share * 100)
+  return `${value < 0 && pct > 0 ? '−' : ''}${pct}%`
+}

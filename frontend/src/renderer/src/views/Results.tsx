@@ -407,6 +407,17 @@ export default function Results({
     })()
   }
 
+  // The radar and the heatmap normalise each indicator to its highest subject: over one subject every cell
+  // reads 100 % and every axis is full, which compares nothing. Both need two subjects; the radar also needs
+  // three axes to be a shape rather than a line.
+  const compared = (matrix?.subjects.length ?? 0) >= 2
+  const showRadar = compared && picked.length >= 3
+  // A recalculation can take away the chart the overlay enlarges; the overlay then closes rather than draw it on.
+  const zoomGone = (zoomed?.id === 'radar' && !showRadar) || (zoomed?.id === 'heatmap' && !compared)
+  useEffect(() => {
+    if (zoomGone) setZoomed(null)
+  }, [zoomGone])
+
   // Save every currently-shown chart as its own PNG into ONE folder the user picks once. Handing
   // each PNG to the browser's downloads opened one save dialog per chart — twelve at a time for a
   // full indicator set — so the bytes go to the main process, which asks for a
@@ -419,8 +430,8 @@ export default function Results({
       view === 'normalized' && picked.length > 1
         ? [['normalized', 'normalized comparison']]
         : orderedPicked.map((p) => [p.key, `${p.family} ${p.label}`])
-    if (picked.length >= 3) entries.push(['radar', 'radar_chart'])
-    entries.push(['heatmap', 'heatmap'])
+    if (showRadar) entries.push(['radar', 'radar_chart'])
+    if (compared) entries.push(['heatmap', 'heatmap'])
     const files = entries.flatMap(([id, name]) => {
       const fn = charts.current.get(id)
       return fn ? [{ name: pngName(name), dataUrl: fn() }] : []
@@ -869,55 +880,56 @@ export default function Results({
                 </table>
               </div>
 
-              <div className="results-charts-top">
-                {/* Every axis is normalised to its maximum across the subjects, so over one subject the radar is
-                    a full polygon at 100 % that compares nothing. */}
-                {picked.length >= 3 && matrix.subjects.length >= 2 ? (
-                  <section className="ind-fam-section res-card res-radar radar-wrap">
-                    <div className="ind-fam-head has-sub">Radar</div>
+              {/* Over one subject the row has nothing to compare: it goes as a whole, not as an empty grid. */}
+              {compared ? (
+                <div className="results-charts-top">
+                  {showRadar ? (
+                    <section className="ind-fam-section res-card res-radar radar-wrap">
+                      <div className="ind-fam-head has-sub">Radar</div>
+                      <div className="chart-sub-row">
+                        <span className="chart-sub">normalized to each indicator&rsquo;s maximum</span>
+                      </div>
+                      <button
+                        className="chart-save zoom"
+                        title="Enlarge"
+                        onClick={() => zoomChart('radar', 'Radar — normalized')}
+                      >
+                        <MaximizeIcon />
+                      </button>
+                      <button
+                        className="chart-save"
+                        title="Save this chart as PNG"
+                        onClick={() => saveChart('radar', 'radar_chart')}
+                      >
+                        <SaveIcon />
+                      </button>
+                      {summaryChart('radar', matrix, false)}
+                    </section>
+                  ) : null}
+                  <section className="ind-fam-section res-card res-heat radar-wrap">
+                    <div className="ind-fam-head has-sub">Heatmap</div>
                     <div className="chart-sub-row">
-                      <span className="chart-sub">normalized to each indicator&rsquo;s maximum</span>
+                      <span className="chart-sub">normalized per indicator (100% = highest subject)</span>
+                      <HeatScale />
                     </div>
                     <button
                       className="chart-save zoom"
                       title="Enlarge"
-                      onClick={() => zoomChart('radar', 'Radar — normalized')}
+                      onClick={() => zoomChart('heatmap', 'Heatmap — normalized per indicator')}
                     >
                       <MaximizeIcon />
                     </button>
                     <button
                       className="chart-save"
                       title="Save this chart as PNG"
-                      onClick={() => saveChart('radar', 'radar_chart')}
+                      onClick={() => saveChart('heatmap', 'heatmap')}
                     >
                       <SaveIcon />
                     </button>
-                    {summaryChart('radar', matrix, false)}
+                    {summaryChart('heatmap', matrix, false)}
                   </section>
-                ) : null}
-                <section className="ind-fam-section res-card res-heat radar-wrap">
-                  <div className="ind-fam-head has-sub">Heatmap</div>
-                  <div className="chart-sub-row">
-                    <span className="chart-sub">normalized per indicator (100% = highest subject)</span>
-                    <HeatScale />
-                  </div>
-                  <button
-                    className="chart-save zoom"
-                    title="Enlarge"
-                    onClick={() => zoomChart('heatmap', 'Heatmap — normalized per indicator')}
-                  >
-                    <MaximizeIcon />
-                  </button>
-                  <button
-                    className="chart-save"
-                    title="Save this chart as PNG"
-                    onClick={() => saveChart('heatmap', 'heatmap')}
-                  >
-                    <SaveIcon />
-                  </button>
-                  {summaryChart('heatmap', matrix, false)}
-                </section>
-              </div>
+                </div>
+              ) : null}
 
               {view === 'normalized' && picked.length > 1 ? (
                 <section className="ind-fam-section res-card res-norm norm-wrap">
@@ -1010,7 +1022,7 @@ export default function Results({
             />
           ) : null}
 
-          {zoomed && matrix ? (
+          {zoomed && matrix && !zoomGone ? (
             <div
               className="modal-backdrop"
               onMouseDown={(e) => e.target === e.currentTarget && setZoomed(null)}
