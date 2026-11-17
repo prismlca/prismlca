@@ -32,7 +32,7 @@ def test_a_model_without_a_view_answers_empty(client, token, project):
     del project
     r = client.get("/api/v1/views/nonexistent-model", headers=token)
     assert r.status_code == 200
-    assert r.json() == {"schema": 1, "database": "nonexistent-model", "view": {}}
+    assert r.json() == {"schema": 1, "database": "nonexistent-model", "view": {}, "rev": 0}
 
 
 def test_put_then_get_round_trips(client, token, project):

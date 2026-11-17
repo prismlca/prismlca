@@ -27,6 +27,7 @@ export default function TagManager({
   onRemoveValue,
   onMergeValue,
   onMergeGroup,
+  describeMerge,
   confirm
 }: {
   groups: TagGroup[]
@@ -44,6 +45,9 @@ export default function TagManager({
   onMergeValue: (group: string, value: string, into: string) => void
   /** Fold a whole group into another: values and tags move, the group disappears. */
   onMergeGroup: (name: string, into: string) => void
+  /** What a merge touches besides the tags — a value merge `value`, a group merge `null` — as one sentence
+   *  for its confirm, '' when nothing. Read before the confirm opens, so it can be weighed. */
+  describeMerge: (group: string, value: string | null, into: string) => Promise<string>
   confirm: (spec: ConfirmSpec) => void
 }): JSX.Element {
   const [newGroup, setNewGroup] = useState('')
@@ -115,12 +119,14 @@ export default function TagManager({
                         const into = e.target.value
                         setMerging(null)
                         if (!into) return
-                        confirm({
-                          title: 'Merge tag groups',
-                          message: `Merge "${g.name}" into "${into}"? Its tags move to "${into}" (values are added there as needed) and "${g.name}" disappears. Undoable.`,
-                          confirmLabel: 'Merge',
-                          onConfirm: () => onMergeGroup(g.name, into)
-                        })
+                        void describeMerge(g.name, null, into).then((also) =>
+                          confirm({
+                            title: 'Merge tag groups',
+                            message: `Merge "${g.name}" into "${into}"? Its tags move to "${into}" (values are added there as needed) and "${g.name}" disappears.${also ? ` ${also}` : ''} Undoable.`,
+                            confirmLabel: 'Merge',
+                            onConfirm: () => onMergeGroup(g.name, into)
+                          })
+                        )
                       }}
                     >
                       <option value="">Merge into…</option>
@@ -178,12 +184,14 @@ export default function TagManager({
                             const into = e.target.value
                             setMerging(null)
                             if (!into) return
-                            confirm({
-                              title: 'Merge tags',
-                              message: `Merge "${v}" into "${into}" in "${g.name}"? Every process tagged "${v}" is retagged "${into}"; "${v}" disappears from the group. Undoable.`,
-                              confirmLabel: 'Merge',
-                              onConfirm: () => onMergeValue(g.name, v, into)
-                            })
+                            void describeMerge(g.name, v, into).then((also) =>
+                              confirm({
+                                title: 'Merge tags',
+                                message: `Merge "${v}" into "${into}" in "${g.name}"? Every process tagged "${v}" is retagged "${into}"; "${v}" disappears from the group.${also ? ` ${also}` : ''} Undoable.`,
+                                confirmLabel: 'Merge',
+                                onConfirm: () => onMergeValue(g.name, v, into)
+                              })
+                            )
                           }}
                         >
                           <option value="">into…</option>

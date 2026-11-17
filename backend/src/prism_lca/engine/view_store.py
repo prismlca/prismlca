@@ -28,9 +28,11 @@ from __future__ import annotations
 
 import copy
 import re
-from typing import Any
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 from prism_lca.engine._store import JsonFileStore, read_json
+from prism_lca.errors import PrismError
 
 #: Bumped only for a change a reader cannot handle additively. New sections are new keys, not v2.
 SCHEMA = 1
@@ -229,15 +231,32 @@ class ViewStore(JsonFileStore):
         """The model's whole view entry, `{}` when it has none yet."""
         return self._load()["models"].get(database, {})
 
-    def put(self, database: str, view: dict) -> dict:
+    #: How often the backend itself has changed a model's view (`edit`) since this process started, per view
+    #: file and model. A client reads it with the view and names it when it writes; a write naming an older one
+    #: was made from a copy taken before that change and is refused (`put`), or it would put the copy back.
+    _revisions: ClassVar[dict[tuple[str, str], int]] = {}
+
+    def revision(self, database: str) -> int:
+        return type(self)._revisions.get((str(self._path()), database), 0)
+
+    def put(self, database: str, view: dict, revision: int | None = None) -> dict:
         """Replace the sections the client sent; leave every other key of the entry alone.
 
         Not a blind overwrite: a client that does not know about a section must not be able to delete
         it. That is what makes a newer version's data survive an older version being run once.
+
+        With `revision`, the write is refused when the backend has changed the view since the client read
+        it: the renderer writes its whole copy, so a write queued before a merged tag group took the saved
+        breakdowns along would otherwise send the old group's name back. It reads again and resends.
         """
         with self._lock:
             if not isinstance(view, dict):
                 raise TypeError("A view must be an object.")
+            if revision is not None and revision != self.revision(database):
+                raise PrismError(
+                    f"The view of '{database}' changed since it was read.", code="view_changed", status_code=409,
+                    hint="Read it again and write the change onto the new state.",
+                )
             data = self._load()
             entry = dict(data["models"].get(database, {}))
             for key, value in view.items():
@@ -249,6 +268,19 @@ class ViewStore(JsonFileStore):
             data["schema"] = SCHEMA
             self._save(data)
             return entry
+
+    def edit(self, database: str, change: Callable[[dict], bool]) -> None:
+        """Change one model's entry in place, under the lock; saved only when `change` says it changed
+        something. For an edit the backend makes on its own — a merged tag group carried along
+        (`tag_references`) — where a client's PUT of whole sections is the wrong tool."""
+        with self._lock:
+            data = self._load()
+            entry = data["models"].get(database)
+            if isinstance(entry, dict) and change(entry):
+                data["schema"] = SCHEMA
+                self._save(data)
+                key = (str(self._path()), database)
+                type(self)._revisions[key] = type(self)._revisions.get(key, 0) + 1
 
     def rename_database(self, old: str, new: str) -> None:
         """Follow a renamed model, or its view strands under the dead name (it used to, silently).

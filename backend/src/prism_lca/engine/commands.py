@@ -27,6 +27,7 @@ from prism_lca.engine import (
     model_scope,
     param_references,
     params,
+    tag_references,
 )
 from prism_lca.engine._store import now_iso
 from prism_lca.engine.bootstrap import get_bd
@@ -2179,6 +2180,9 @@ class MergeTagValueCommand(Command):
                 )
         if self.source == self.target:
             raise PrismError("Source and target are the same value.", code="same_value", status_code=400)
+        # Read before the merge and named in the result: a chapter pinned to the value keeps its pin, so it
+        # shows a gap until it is updated (tag_references says why nothing re-points it).
+        citing = tag_references.value_citations(self.database, self.group, self.source)
         self._index = g["values"].index(self.source)
         self._before = {
             key: [dict(t) for t in tags]
@@ -2198,6 +2202,7 @@ class MergeTagValueCommand(Command):
         return {
             "merged": True, "group": self.group, "from": self.source, "into": self.target,
             "retagged": len(self._before),
+            **({"reports_citing": citing, "note": tag_references.citations_note(self.source, citing)} if citing else {}),
         }
 
     def undo(self) -> None:
@@ -2218,7 +2223,8 @@ class MergeTagGroupCommand(Command):
     tagged in the source carries the same value in the target, then the source group is deleted.
     Undo restores the group, every affected activity's complete tag list (snapshot, see
     MergeTagValueCommand) and removes the values this execution added to the target. A model that
-    holds two spellings of one dimension ("Phase" beside "Life-cycle phase") is what this is for."""
+    holds two spellings of one dimension ("Phase" beside "Life-cycle phase") is what this is for. The model's
+    saved breakdowns and reports that named the source name the target afterwards (`tag_references`)."""
 
     action = "merge_tag_group"
     audit_attr = "database"
@@ -2234,12 +2240,14 @@ class MergeTagGroupCommand(Command):
         self._index: int | None = None
         self._before: dict[str, list[dict]] = {}
         self._added_values: list[str] = []
+        self._followed: list[dict] = []
 
     def execute(self) -> dict:
         self._group = None
         self._index = None
         self._before = {}
         self._added_values = []
+        self._followed = []
         groups = self.group_store.list_groups(self.database)
         self._index = next((i for i, g in enumerate(groups) if g["name"] == self.source), None)
         target = next((g for g in groups if g["name"] == self.target), None)
@@ -2271,14 +2279,23 @@ class MergeTagGroupCommand(Command):
             after[key] = out
         self.tag_store.rewrite_lists(after)
         self.group_store.delete_group(self.database, self.source)
+        # The model's saved breakdowns and its reports name the group; they follow it to the target. A report
+        # store that cannot be read stops the merge whole rather than leave them on a group that is gone.
+        try:
+            self._followed = tag_references.follow_group(self.database, self.source, self.target)
+        except Exception:
+            self.undo()
+            raise
         return {
             "merged": True, "from": self.source, "into": self.target,
             "retagged": len(self._before), "values_added": list(self._added_values),
+            "followed": tag_references.followed(self.database, self._followed),
         }
 
     def undo(self) -> None:
         if self._group is None:
             return
+        tag_references.unfollow(self.database, self._followed)
         self.group_store.restore_group(self.database, self._group, self._index)
         self.tag_store.rewrite_lists(self._before)
         for v in self._added_values:

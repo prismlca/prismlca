@@ -17,6 +17,7 @@ from prism_lca.engine import (
     model_graph,
     model_scope,
     step_owner,
+    tag_references,
     tag_scope,
 )
 from prism_lca.engine.bootstrap import get_bd
@@ -661,6 +662,24 @@ async def merge_tag_value(request: Request, body: TagValueMergeRequest) -> dict:
 async def merge_tag_group(request: Request, body: TagGroupMergeRequest) -> dict:
     cmd = commands.MergeTagGroupCommand(_tag_groups(), _tags(), _tag_model(body.database), body.name, body.into)
     return _bus(request).execute(cmd, source=body.source)
+
+
+@router.get("/tag-groups/merge-preview", summary="What a merge of a tag group or value would touch besides the tags")
+async def merge_preview(
+    request: Request, database: str, group: str, value: str | None = None, into: str | None = None
+) -> dict:
+    """Asked before a merge is confirmed. For a group: the saved breakdowns and the reports that name it and
+    would follow it to `into`, and those that split by both and would keep their breakdowns. For a value: the
+    reports whose chapters cite it, which would show a gap."""
+    with commands.PROJECT_LOCK:  # one workspace from start to end, like the reads above
+        name = _tag_model(database)
+        if value is None:
+            return {"database": name, "group": group, **tag_references.group_uses(name, group, into)}
+        citing = tag_references.value_citations(name, group, value)
+        return {
+            "database": name, "group": group, "value": value, "reports_citing": citing,
+            **({"note": tag_references.citations_note(value, citing)} if citing else {}),
+        }
 
 
 class TagGroupAdoptRequest(BaseModel):

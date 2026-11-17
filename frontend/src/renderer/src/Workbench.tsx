@@ -80,6 +80,7 @@ import { usePendingAsks } from './workbench/usePendingAsks'
 import ChatElsewhereBanner from './components/ChatElsewhereBanner'
 import { useTurnFeed } from './chat/turnView'
 import { invalidateModelCaches } from './lib/server/modelCaches'
+import { refreshView } from './lib/modelView'
 import { useAiEditRefresh } from './workbench/useAiEditRefresh'
 import { useRunCalculationOnCanvas } from './workbench/useRunCalculationOnCanvas'
 import { useHistorySteps } from './workbench/useHistorySteps'
@@ -245,6 +246,7 @@ export default function Workbench(): JSX.Element {
       // this step ADDS the cache to the bus, it does not replace the bus. The edit happened whether or
       // not its log could be read, so a failed read must not leave the caches marked current.
       invalidateModelCaches()
+      if (asked) refreshView(asked) // a merged tag group takes the saved breakdowns along (lib/modelView)
     }
   }, [fetchAudit, fetchHistory])
 
@@ -432,6 +434,7 @@ export default function Workbench(): JSX.Element {
     removeTagValue,
     mergeTagValue,
     mergeTagGroup,
+    describeMerge,
     groupByTagGroup,
     hlTag,
     setHlTag,
@@ -1023,6 +1026,7 @@ export default function Workbench(): JSX.Element {
             onRemoveValue={removeTagValue}
             onMergeValue={mergeTagValue}
             onMergeGroup={mergeTagGroup}
+            describeMerge={describeMerge}
             confirm={setConfirm}
           />
         ) : null}
