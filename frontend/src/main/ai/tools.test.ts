@@ -290,8 +290,42 @@ describe('consolidated tools', () => {
     )
     expect(out.succeeded).toBe(2)
     expect(out.not_applied).toEqual(['comment'])
-    expect(out.hint).toContain('"comment"')
-    expect(out.hint).toContain('activity_code') // it names what may sit at the top
+    expect(out.not_applied_note).toContain('"comment"')
+    expect(out.not_applied_note).toContain('activity_code') // it names what may sit at the top
+  })
+
+  it('keeps "the rest were applied" when a batch with a top-level field partly fails', async () => {
+    // Both sentences used to share the key `hint`, and the note about the top-level field replaced the
+    // one about the partial run. What was booked and what is to be sent again then stood only in the
+    // counts and the per-item results — and a caller that resent all four items doubled three inputs.
+    const ctx = {
+      api: async () => ({ exchange: { uid: 'u' } }),
+      ui: async () => ({ ok: true }),
+      activeDb: 'demo-model'
+    } as unknown as ToolCtx
+    const out = JSON.parse(
+      String(
+        await TOOL_BY_NAME['edit_exchange'].run(
+          {
+            activity_code: 'bike',
+            action: 'add',
+            input_database: 'ecoinvent-3.12-cutoff',
+            amount: 1,
+            exchanges: [
+              { input_code: 'steel', amount: 9.2 },
+              { input_code: 'rubber', amount: 1.1 },
+              { input_code: 'paint', amount: 0.3 },
+              { input_code: 'aluminium' }
+            ]
+          },
+          ctx
+        )
+      )
+    )
+    expect([out.succeeded, out.failed]).toEqual([3, 1])
+    expect(out.hint).toBe('Some items failed; the rest were applied. Fix and retry only the failed ones.')
+    expect(out.not_applied).toEqual(['amount'])
+    expect(out.not_applied_note).toContain('"amount" names a single exchange')
   })
 
   it('tells items without an amount that the one at the top of the batch does not reach them', async () => {
