@@ -143,7 +143,6 @@
  "limits.checked": "Checked by the report",
  "limits.no_uncertainty": "No quantitative uncertainty analysis (for example a Monte Carlo simulation) was carried out; the results are point values.",
  "limits.method_mismatch": "Under {field}, the study names {named}, while it was assessed with {used}. One of the two is out of date.",
- "limits.review_not_run": "Under {field}, the study states that an internal model review was carried out. No review is recorded for this model, so either it was never run or its result was not kept.",
  "limits.no_data_quality": "No formal data quality assessment was documented for the datasets used.",
  "limits.no_critical_review": "No critical review as described in ISO 14044 is recorded for this study.",
  "limits.no_sensitivity": "No scenarios were varied, so the sensitivity of the results to the assumptions was not quantified.",

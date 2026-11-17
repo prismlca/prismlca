@@ -1,4 +1,4 @@
-"""Study prose that claims an internal review of the model — one reading for the report and the health check.
+"""Study prose that claims an internal review of the model — read for the health check.
 
 Whether an internal review ran is a fact: every review that returns a result is kept in the model's review
 log (review_log.py). What the study text says about it is prose, and prose can claim a review that never
@@ -6,8 +6,11 @@ ran. A balcony-solar study declared an "automatisierte Modellreview" that was ne
 wheelbarrow study wrote "eine interne KI-gestützte Zweitmeinung (Review) wurde während des Aufbaus
 eingeholt" after both attempts of its review had timed out and the tool had said that nothing was judged.
 
-The report prints a limitation for such a claim and the health check warns about it. Both read the prose
-here, so the two can never disagree about what counts as a claim.
+The health check warns about such a claim, in a sentence that names both readings, because only whoever
+edits the model knows which review is meant: the log holds the assistant's reviewer alone, and "internal
+review" is just as much the word for a review by the author's colleagues. For the same reason the report
+prints nothing from this reading — a misread sentence there would tell a client that the author's own
+review never happened (report_checks.limitations_blocks).
 
 This is a word list because no structure carries the signal: the fields are free text, and a critical
 review by independent experts — which the review log never holds — is exactly what one of them is for.

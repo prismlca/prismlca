@@ -32,6 +32,7 @@ from prism_lca.config import get_settings
 from prism_lca.engine import (
     health,
     lca,
+    report_checks,
     report_graph,
     report_images,
     report_render,
@@ -647,7 +648,7 @@ def _build_render_inputs(
         # Only when a chapter actually asks for it: the linter walks every process of the foreground
         # model, and a report without the checks chapter should not pay for that on every render.
         "health": (
-            health.lint_database(database)
+            report_checks.health_for_report(health.lint_database(database))
             if any(s.get("kind") == "interpretation_checks" for s in report.get("sections") or [])
             else None
         ),

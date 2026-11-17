@@ -576,58 +576,44 @@ def test_the_field_label_is_translated_like_every_other_report_string():
         assert t("field.limitations", lang) != "field.limitations", lang
 
 
-# --- V234: a claimed internal review that never ran ---------------------------------------------
+# --- A claimed internal review: the health check asks, the report prints nothing ---------------------
 
 
-def _study(text: str) -> dict:
-    return {"study": {"critical_review": text}, "review": {}}
-
-
-def test_a_claimed_model_review_that_never_ran_is_named():
-    from prism_lca.engine.report_checks import claimed_review_not_run
-
-    data = _study(
-        "Keine externe kritische Prüfung nach ISO 14044 erfolgt (Screening-Studie). Interne "
-        "Qualitätskontrolle: strukturelle Modellprüfung (Prism Model Health Check) und "
-        "automatisierte Modellreview; Ergebnisse sind als Screeningwerte zu verstehen."
-    )
-    lines = claimed_review_not_run(data, "de")
-    assert len(lines) == 1, lines
-    assert "interne Modellprüfung" in lines[0]
-
-
-def test_a_review_that_did_run_says_nothing():
-    from prism_lca.engine.report_checks import claimed_review_not_run
-
-    data = _study("Interne Qualitätskontrolle: automatisierte Modellreview.")
-    data["review"] = {"created": "2026-08-25T00:00:00"}
-    assert claimed_review_not_run(data, "de") == []
-
-
-def test_naming_the_health_check_alone_is_not_a_claim_of_a_review():
-    from prism_lca.engine.report_checks import claimed_review_not_run
-
-    data = _study("Interne Qualitätskontrolle: strukturelle Modellprüfung (Prism Model Health Check).")
-    assert claimed_review_not_run(data, "de") == []
-
-
-def test_a_review_said_to_have_failed_is_not_claimed():
-    """An honest sentence after a failed review — "the AI review timed out" — names the review it denies;
-    the report must not answer it with "the study states that an internal model review was carried out"."""
-    from prism_lca.engine.report_checks import claimed_review_not_run
-
-    for text in ("An AI review was not carried out.", "Die KI-Zweitmeinung ist wegen Zeitüberschreitung abgebrochen."):
-        assert claimed_review_not_run(_study(text), "de") == [], text
-
-
-def test_denying_a_review_is_not_claiming_one():
-    from prism_lca.engine.report_checks import claimed_review_not_run
-
+def test_a_claimed_internal_review_changes_nothing_in_the_limitations():
+    """A word list cannot tell whose review a sentence means, and the review log knows only the assistant's
+    reviewer. Printed, a misreading told a client that the author's own review never happened — so the chapter
+    reads exactly as for a study that says nothing about a review, whoever's review it was."""
+    silent = rc.limitations_blocks({"study": {}, "review": {}}, "en", "Limitations")
     for text in (
-        "Es fand keine automatisierte Modellreview statt.",
-        "No internal review was carried out.",
+        # People: a review by an internal expert is a critical review under ISO 14044 §6.2.
+        "Internal review by Dr. A of our LCA department (ISO 14044 §6.2), June 2026.",
+        "Revue interne par l'équipe ACV du client.",
+        # People, with a tool.
+        "An AI-assisted review by our consultants was completed in May.",
+        # The assistant's reviewer, which never returned a result: the health check's case, not the report's.
+        "Eine interne KI-gestützte Zweitmeinung (Review) wurde während des Aufbaus eingeholt.",
     ):
-        assert claimed_review_not_run(_study(text), "en") == [], text
+        blocks = rc.limitations_blocks({"study": {"critical_review": text}, "review": {}}, "en", "Limitations")
+        assert blocks == silent, text
+
+
+def test_findings_for_the_author_stay_out_of_what_a_report_carries():
+    """The completeness table, the finding count a chapter may quote and the writers' briefs all read the
+    same health result, so the author-only finding is dropped there and the summary is counted again."""
+    finding = {"severity": "warning", "code": "inventory_gap", "message": "a gap"}
+    health = {
+        "activities": 3,
+        "ok": True,
+        "summary": {"error": 0, "warning": 2, "info": 0},
+        "findings": [finding, {"severity": "warning", "code": "review_claimed_not_run", "message": "for the assistant"}],
+    }
+    out = rc.health_for_report(health)
+    assert out["findings"] == [finding]
+    assert out["summary"] == {"error": 0, "warning": 1, "info": 0} and out["ok"] is True
+    assert out["activities"] == 3
+    assert rc.checks_summary({}, out)["completeness"]["findings"] == 1
+    assert len(health["findings"]) == 2, "the linter's own result is left as it was"
+    assert rc.health_for_report(None) is None
 
 
 # --- M1-M5: the acceptance criteria of a prose review, as a test ---------------------

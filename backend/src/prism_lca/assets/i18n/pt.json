@@ -143,7 +143,6 @@
  "limits.review_open": "Achados em aberto",
  "limits.no_uncertainty": "Não foi realizada uma análise quantitativa de incerteza (por exemplo uma simulação de Monte Carlo); os resultados são valores pontuais.",
  "limits.method_mismatch": "Em {field}, o estudo menciona {named}, mas foi avaliado com {used}. Um dos dois está desatualizado.",
- "limits.review_not_run": "Em {field}, o estudo afirma que foi realizada uma revisão interna do modelo. Não há nenhuma revisão registada para este modelo: ou não foi feita, ou o seu resultado não foi guardado.",
  "limits.no_data_quality": "Não foi documentada uma avaliação formal da qualidade dos dados para os conjuntos de dados utilizados.",
  "limits.no_critical_review": "Não está documentada uma revisão crítica nos termos da ISO 14044 para este estudo.",
  "limits.no_sensitivity": "Não foram variados cenários, pelo que não foi quantificada a sensibilidade dos resultados face aos pressupostos.",

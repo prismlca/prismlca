@@ -25,12 +25,30 @@ from typing import Any
 from prism_lca.engine import report_model as rm
 from prism_lca.engine.report_i18n import fmt_column, fmt_number, t
 from prism_lca.engine.report_tokens import share_text
-from prism_lca.engine.review_claims import claimed_review_fields
 from prism_lca.engine.study import AUTHOR_TEXT_FIELDS
 
 #: Findings at or above this severity are what a completeness check is about. `info` findings are
 #: style notes and would bury the ones that matter.
 _BLOCKING = ("error", "warning")
+
+#: Health findings for whoever edits the model, never for a report's reader. `review_claimed_not_run`
+#: reads the study's prose for a claimed internal review and tells the assistant what to do about it —
+#: "if it means a review by people, leave it as it is" — which, printed in a client's completeness table,
+#: is an instruction to nobody about something that is not the inventory's completeness at all.
+AUTHOR_ONLY_FINDINGS = frozenset({"review_claimed_not_run"})
+
+
+def health_for_report(health: dict | None) -> dict | None:
+    """The linter's result as a report carries it: without the findings meant only for the model's author.
+
+    Dropped where the report's inputs are built, not where the table is drawn, so the table, the finding
+    count a chapter may quote (`checks_summary`), the writers' briefs and an exported bundle agree.
+    """
+    if not health:
+        return health
+    findings = [f for f in health.get("findings") or [] if f.get("code") not in AUTHOR_ONLY_FINDINGS]
+    summary = {sev: sum(1 for f in findings if f.get("severity") == sev) for sev in ("error", "warning", "info")}
+    return {**health, "findings": findings, "summary": summary, "ok": summary["error"] == 0}
 
 
 def _completeness(data: dict[str, Any], health: dict | None, lang: str) -> list[dict]:
@@ -556,28 +574,6 @@ def declared_method_mismatch(data: dict[str, Any], lang: str) -> list[str]:
     return out
 
 
-def claimed_review_not_run(data: dict[str, Any], lang: str) -> list[str]:
-    """Study text that claims an internal model review, where none is on record.
-
-    A balcony-solar study declared "Interne Qualitätskontrolle: strukturelle
-    Modellprüfung (Prism Model Health Check) und automatisierte Modellreview". The health check had
-    indeed run. The review had not — `review_model` was never called in that build — and the
-    sentence would have gone into the printed report unchallenged, in the one field a reader
-    consults to decide how much the numbers can be trusted (V234).
-
-    This is the same shape as :func:`declared_method_mismatch`: author prose against a fact the
-    report already holds. ``data["review"]`` is the outcome of the latest internal review and is
-    empty exactly when none was ever recorded for this model.
-    """
-    if data.get("review"):
-        return []
-    # What counts as a claim is read in review_claims.py, which the health check shares.
-    return [
-        t("limits.review_not_run", lang, field=rm.esc(t(f"field.{field}", lang)))
-        for field in claimed_review_fields(data.get("study") or {})
-    ]
-
-
 def critical_review_recorded(study: dict[str, Any]) -> bool:
     """Whether this study states that a critical review was carried out — read in exactly one place.
 
@@ -636,8 +632,12 @@ def limitations_blocks(data: dict[str, Any], lang: str, title: str) -> list[dict
         items.append(t("limits.no_sensitivity", lang))
     # A declared limitation that contradicts the method selection — author text nothing else checks.
     items += declared_method_mismatch(data, lang)
-    # And the same shape one field over: a claimed internal review that never ran (V234).
-    items += claimed_review_not_run(data, lang)
+    # Deliberately no such check for a claimed internal review. A word list cannot tell whose review a
+    # sentence means: "internal review by our LCA team" is a critical review under ISO 14044 §6.2, and
+    # "an AI-assisted review by our consultants" is people's work too, while the review log knows only
+    # the assistant's reviewer — so a misreading printed here would tell a client that the author's
+    # review never happened. The health check asks instead, while someone who knows can still change
+    # the sentence (review_claims.py).
 
     # The internal review's OUTCOME is limitations material and is printed below. Its *bookkeeping* is
     # not, and used to be: "An internal model review was carried out on <date>. Of its findings, 3
@@ -647,9 +647,8 @@ def limitations_blocks(data: dict[str, Any], lang: str, title: str) -> list[dict
     #
     # A human author writes what is still open, not how many were closed and when. So the counters, the
     # date and the staleness note are gone; `review.open` below stays, because each entry is a
-    # statement about the STUDY. The review is still recorded, still stamped against the model state,
-    # and `claimed_review_not_run` still catches a study that claims a review it never ran — this only
-    # stops the report narrating its own production.
+    # statement about the STUDY. The review is still recorded and still stamped against the model
+    # state — this only stops the report narrating its own production.
     review = data.get("review") or {}
 
     # What the study itself declared, above what the report can check. The four above are the ones
