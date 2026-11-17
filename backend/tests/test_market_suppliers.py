@@ -74,3 +74,168 @@ def test_the_endpoint_answers_for_a_list(client, token, project):
     assert r.status_code == 200
     assert [m["code"] for m in r.json()["markets"]] == ["steel-market"]
     assert len(r.json()["markets"][0]["suppliers"]) == 2
+
+
+def _coating_world(bd, produced: float = 1.0) -> None:
+    """A coating market billed per square metre, two producers behind it, and the steel world beside it."""
+    _world(bd)
+
+    def plain(name: str, unit: str, location: str = "GLO") -> dict:
+        return {"name": name, "unit": unit, "location": location, "reference product": name, "exchanges": []}
+
+    def uses(code: str, amount: float) -> dict:
+        return {"input": ("cg", code), "amount": amount, "type": "technosphere"}
+
+    def coating(code: str, location: str) -> dict:
+        return {
+            "name": "zinc coating, coils", "unit": "square meter", "location": location,
+            "reference product": "zinc coat, coils",
+            "exchanges": [
+                {"input": ("cg", code), "amount": produced, "type": "production"},
+                uses("gas", 17.544341 * produced), uses("water", 4.03 * produced),
+                uses("zinc", 0.679 * produced), uses("acid", 0.34 * produced),
+                uses("power-ras", 0.2339 * produced), uses("power-rna", 0.12 * produced),
+                uses("nitrogen", 0.05 * produced),
+                uses("degreaser", 0.001 * produced),
+            ],
+        }
+
+    bd.Database("cg").write({
+        ("cg", "gas"): plain("market for heat, natural gas", "megajoule"),
+        ("cg", "water"): plain("market for water, deionised", "kilogram"),
+        ("cg", "zinc"): plain("market for zinc", "kilogram"),
+        ("cg", "acid"): plain("market for hydrochloric acid", "kilogram"),
+        # One input bought in two regions, as a RoW producer buys its electricity.
+        ("cg", "power-ras"): plain("market group for electricity, medium voltage", "kilowatt hour", "RAS"),
+        ("cg", "power-rna"): plain("market group for electricity, medium voltage", "kilowatt hour", "RNA"),
+        ("cg", "nitrogen"): plain("market for nitrogen, liquid", "kilogram"),
+        ("cg", "degreaser"): plain("market for degreaser", "kilogram"),
+        ("cg", "coat-row"): coating("coat-row", "RoW"),
+        ("cg", "coat-rer"): coating("coat-rer", "RER"),
+        ("cg", "coat-market"): {
+            "name": "market for zinc coat, coils", "unit": "square meter", "location": "GLO",
+            "reference product": "zinc coat, coils",
+            "exchanges": [
+                {"input": ("cg", "coat-market"), "amount": 1, "type": "production"},
+                {"input": ("cg", "coat-row"), "amount": 0.6694, "type": "technosphere"},
+                {"input": ("cg", "coat-rer"), "amount": 0.3306, "type": "technosphere"},
+            ],
+        },
+    })
+
+
+def test_a_market_per_square_metre_shows_what_its_main_supplier_consumes_for_one(project):
+    """The zinc per square metre is what says which square metre is meant; the market's own inputs are
+    only its two producers. The six largest inputs of the main one, per unit, largest first — and one
+    input bought in two regions counted once, summed, so it does not take two of the six places."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_inputs
+
+    bd = get_bd()
+    _coating_world(bd)
+    got = market_main_supplier_inputs(bd.get_node(database="cg", code="coat-market"))
+    assert got is not None
+    assert (got["name"], got["location"], got["share"], got["per"]) == (
+        "zinc coating, coils", "RoW", 0.6694, "1 square meter"
+    )
+    assert [(i["name"], i["amount"], i["unit"], i["location"]) for i in got["biggest_inputs"]] == [
+        ("market for heat, natural gas", 17.54, "megajoule", "GLO"),
+        ("market for water, deionised", 4.03, "kilogram", "GLO"),
+        ("market for zinc", 0.679, "kilogram", "GLO"),
+        ("market group for electricity, medium voltage", 0.3539, "kilowatt hour", "RAS and 1 more"),
+        ("market for hydrochloric acid", 0.34, "kilogram", "GLO"),
+        ("market for nitrogen, liquid", 0.05, "kilogram", "GLO"),
+    ]
+
+
+def test_supplier_inputs_are_per_one_unit_of_what_the_supplier_produces(project):
+    """A producer that states its inventory for two square metres still answers per one."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_inputs
+
+    bd = get_bd()
+    _coating_world(bd, produced=2.0)
+    got = market_main_supplier_inputs(bd.get_node(database="cg", code="coat-market"))
+    assert {i["name"]: i["amount"] for i in got["biggest_inputs"]}["market for zinc"] == 0.679
+
+
+def test_material_markets_and_producers_get_no_supplier_inputs(project):
+    """A market in kilograms is its material — its supplier says what it is, the inputs add nothing — and
+    a producer's inputs are already its own; neither carries the block, nor the market detail of either."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_inputs
+    from prism_lca.engine.model import activity_detail
+
+    bd = get_bd()
+    _coating_world(bd)
+    steel = bd.get_node(database="bg", code="steel-market")
+    producer = bd.get_node(database="cg", code="coat-row")
+    assert market_main_supplier_inputs(steel) is None
+    assert market_main_supplier_inputs(producer) is None
+    assert "main_supplier_inputs" not in activity_detail(steel)["activity"]
+    assert "main_supplier_inputs" not in activity_detail(producer)["activity"]
+    market = activity_detail(bd.get_node(database="cg", code="coat-market"))["activity"]
+    assert market["main_supplier_inputs"]["biggest_inputs"][2]["amount"] == 0.679
+
+
+def test_the_detail_endpoint_carries_the_supplier_inputs_of_a_market_per_square_metre(client, token, project):
+    _coating_world(get_bd())
+    r = client.get("/api/v1/model/activities/cg/coat-market", headers=token)
+    assert r.status_code == 200
+    block = r.json()["activity"]["main_supplier_inputs"]
+    assert block["per"] == "1 square meter"
+    assert len(block["biggest_inputs"]) == 6
+
+
+def test_inputs_of_the_same_name_but_another_product_stay_apart(project):
+    """Summing is for one product bought in several regions. Two allocated outputs of one process share
+    its name; bought both, they are two inputs and say which product they are."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_inputs
+
+    bd = get_bd()
+
+    def output(code: str, product: str) -> dict:
+        return {"name": "chlor-alkali electrolysis", "unit": "kilogram", "location": "RER",
+                "reference product": product, "exchanges": []}
+
+    bd.Database("ag").write({
+        ("ag", "chlorine"): output("chlorine", "chlorine, gaseous"),
+        ("ag", "lye"): output("lye", "sodium hydroxide"),
+        ("ag", "etch"): {
+            "name": "etching, glass", "unit": "square meter", "location": "RER", "reference product": "etched glass",
+            "exchanges": [
+                {"input": ("ag", "etch"), "amount": 1, "type": "production"},
+                {"input": ("ag", "chlorine"), "amount": 0.2, "type": "technosphere"},
+                {"input": ("ag", "lye"), "amount": 0.3, "type": "technosphere"},
+            ],
+        },
+        ("ag", "etch-market"): {
+            "name": "market for etched glass", "unit": "square meter", "location": "GLO",
+            "reference product": "etched glass",
+            "exchanges": [
+                {"input": ("ag", "etch-market"), "amount": 1, "type": "production"},
+                {"input": ("ag", "etch"), "amount": 1, "type": "technosphere"},
+            ],
+        },
+    })
+    got = market_main_supplier_inputs(bd.get_node(database="ag", code="etch-market"))
+    assert [(i["product"], i["amount"]) for i in got["biggest_inputs"]] == [
+        ("sodium hydroxide", 0.3), ("chlorine, gaseous", 0.2)
+    ]
+
+
+def test_a_market_group_per_square_metre_shows_no_supplier_inputs(project):
+    """A market group buys from markets. Their inputs are producers again — listing them as what one
+    square metre consumes would claim an answer the block does not have, so there is no block."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_inputs
+
+    bd = get_bd()
+    _coating_world(bd)
+    bd.Database("gg").write({
+        ("gg", "coat-group"): {
+            "name": "market group for zinc coat, coils", "unit": "square meter", "location": "GLO",
+            "reference product": "zinc coat, coils",
+            "exchanges": [
+                {"input": ("gg", "coat-group"), "amount": 1, "type": "production"},
+                {"input": ("cg", "coat-market"), "amount": 1.0, "type": "technosphere"},
+            ],
+        },
+    })
+    assert market_main_supplier_inputs(bd.get_node(database="gg", code="coat-group")) is None

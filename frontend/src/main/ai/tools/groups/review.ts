@@ -169,10 +169,19 @@ export const reviewTools: Tool[] = [
             `of this market, states: ${sup.comment}`
           : String(act.comment ?? '')
         const service = act.service_note ? ` SERVICE NOTE: ${capText(String(act.service_note), 300)}` : ''
+        // A market billed per m² or m: the amounts that say what its unit refers to (kg of zinc per m²).
+        // The comment alone can argue both readings, and the reviewer cannot open the producer.
+        const perUnit = act.main_supplier_inputs
+        const inputs = Array.isArray(perUnit?.biggest_inputs)
+          ? ` INPUTS OF ${perUnit.name} [${perUnit.location ?? '?'}] PER ${perUnit.per ?? 'unit'}: ` +
+            perUnit.biggest_inputs
+              .map((i: any) => `${i.amount} ${i.unit ?? ''} ${i.name}${i.product ? ` (${i.product})` : ''}`)
+              .join('; ')
+          : ''
         if (!text.trim() && !service) continue
         selfDescriptions.push(
           `${act.name} [${h.database}] ${Math.round(Math.abs(h.cumulative_share) * 100)} % of the result: ` +
-            `"${capText(text.trim(), 600)}"${service}`
+            `"${capText(text.trim(), 600)}"${service}${capText(inputs, 500)}`
         )
       }
 

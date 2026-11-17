@@ -741,6 +741,77 @@ describe('review_model', () => {
     expect(dossier).not.toContain('DATASETS NOBODY LOOKED AT')
   })
 
+  it('hands the reviewer the inputs per unit of a market billed per square metre', async () => {
+    // A reviewer that holds only the comment of a coating market argues the square metre from words
+    // that contradict each other; the zinc per square metre settles it, and it cannot open the producer.
+    const tree = {
+      db: 'demo-model',
+      c: 'fu',
+      n: 'FU',
+      shr: 1,
+      ch: [{ db: 'ei', c: 'coat', n: 'market for zinc coat, coils', shr: 0.06, ch: [] }]
+    }
+    let dossier = ''
+    await TOOL_BY_NAME.review_model.run(
+      { code: 'fu', method: ['m'] },
+      {
+        api: async (_m, path) => {
+          if (path === '/api/v1/calc/contribution') return { tree }
+          if (path.includes('/model/activities/ei/coat'))
+            return {
+              activity: {
+                name: 'market for zinc coat, coils',
+                comment: 'Each market represents the consumption mix of a product.',
+                main_supplier_comment: {
+                  name: 'zinc coating, coils',
+                  location: 'RoW',
+                  share: 0.67,
+                  comment: 'Data given per tonne are divided by 64 m2/t.'
+                },
+                main_supplier_inputs: {
+                  name: 'zinc coating, coils',
+                  location: 'RoW',
+                  per: '1 square meter',
+                  biggest_inputs: [
+                    { amount: 17.54, name: 'market for heat, natural gas', unit: 'megajoule' },
+                    { amount: 0.679, name: 'market for zinc', unit: 'kilogram' },
+                    // Two outputs of one process share its name; the product tells them apart.
+                    {
+                      amount: 0.3,
+                      name: 'chlor-alkali electrolysis',
+                      product: 'sodium hydroxide',
+                      unit: 'kilogram'
+                    },
+                    {
+                      amount: 0.2,
+                      name: 'chlor-alkali electrolysis',
+                      product: 'chlorine, gaseous',
+                      unit: 'kilogram'
+                    }
+                  ]
+                }
+              }
+            }
+          if (path.startsWith('/api/v1/study')) return {}
+          return { ok: true }
+        },
+        ui: async () => ({}),
+        activeDb: 'demo-model',
+        inspected: new Set([inspectedKey('ei', 'coat')]),
+        review: async (o) => {
+          dossier = o.dossier
+          return { text: 'ok', outcome: 'ok' as const, reasoning_chars: 0, attempts: 1, ms: 1 }
+        }
+      }
+    )
+    expect(dossier).toContain('64 m2/t')
+    expect(dossier).toContain(
+      'INPUTS OF zinc coating, coils [RoW] PER 1 square meter: 17.54 megajoule market for heat, natural gas; ' +
+        '0.679 kilogram market for zinc; 0.3 kilogram chlor-alkali electrolysis (sodium hydroxide); ' +
+        '0.2 kilogram chlor-alkali electrolysis (chlorine, gaseous)'
+    )
+  })
+
   it('says so when no model is open and never calls the reviewer', async () => {
     let called = false
     const out = await TOOL_BY_NAME.review_model.run(
@@ -1510,6 +1581,54 @@ describe('the wall-paint run findings', () => {
     expect(out.biggest_inputs[0].name).toBe('market for acrylic binder')
     expect(out.biggest_inputs[1].name).toBe('market for titanium dioxide')
     expect(out.exchange_count).toBe(4)
+  })
+
+  it('points a market billed per m² to what one unit of it consumes, not to a second call', async () => {
+    // A coating market's own inputs are its two producers, in the summary and in the full list alike.
+    // The kilograms of zinc per square metre — what says which square metre is meant — come from the
+    // backend as main_supplier_inputs; the note has to send the model there.
+    const run = (activity: any): Promise<any> =>
+      TOOL_BY_NAME.get_process_details
+        .run(
+          { database: 'ei', code: 'x', summary: true },
+          {
+            api: async () => ({
+              activity,
+              exchanges: [
+                { type: 'production', amount: 1, input: { name: activity.name } },
+                {
+                  type: 'technosphere',
+                  amount: 0.67,
+                  input: { name: 'zinc coating, coils', unit: 'square meter' }
+                },
+                {
+                  type: 'technosphere',
+                  amount: 0.33,
+                  input: { name: 'zinc coating, coils', unit: 'square meter' }
+                }
+              ]
+            }),
+            ui: async () => ({}),
+            activeDb: 'm'
+          }
+        )
+        .then((r) => JSON.parse(r as string))
+    const coat = await run({
+      name: 'market for zinc coat, coils',
+      unit: 'square meter',
+      main_supplier_inputs: {
+        name: 'zinc coating, coils',
+        per: '1 square meter',
+        biggest_inputs: [{ amount: 0.679, name: 'market for zinc', unit: 'kilogram' }]
+      }
+    })
+    expect(coat.activity.main_supplier_inputs.biggest_inputs[0].amount).toBe(0.679)
+    expect(coat.note).toContain('what 1 square meter consumes is in activity.main_supplier_inputs')
+    expect(coat.note).not.toContain('call again without it')
+    // A market without the block keeps the note it always had.
+    const steel = await run({ name: 'market for steel, unalloyed', unit: 'kilogram' })
+    expect(steel.note).toContain('call again without it for all of them')
+    expect(steel.note).not.toContain('main_supplier_inputs')
   })
 })
 

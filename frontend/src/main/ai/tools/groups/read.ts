@@ -476,7 +476,7 @@ export const readTools: Tool[] = [
       function: {
         name: 'get_process_details',
         description:
-          'Full detail of one or more activities: fields, ISIC/CPC classification, and their exchanges (inputs/outputs) with uids, formulas and comments. "reference_amount" and "treatment" tell you the sign of the reference product — decisive for how an exchange supplying this activity must be signed. READ "service_note" WHEN IT IS THERE: it quotes the dataset saying that it covers the PROCESSING only and NOT the material being processed (extrusion, rolling, drawing, coating, dyeing, canning). Such a dataset is priced per kilogram and looks exactly like a material, but supplies none — the material is a SECOND exchange next to it, and leaving it out silently removes the main ingredient (measured: an aluminium frame modelled with 0.95 kg of "section bar extrusion" alone lost 12.2 of its 22.8 kg CO2e). For a market the note names the supplier it came from. Checking what a market really mixes (which geographies, in what share) is what its exchanges are for. Pass "codes" to look up SEVERAL at once, and summary=true when you only need unit, location, reference product and sign rather than every exchange. detail="review" adds what a critical review asks and the build does not: the dataset\'s system boundary (included activities), product information, synonyms, validity period and source file, and per exchange its production volume and uncertainty distribution — use it when documenting or reviewing a dataset, not when linking one. For a unit conversion (a dataset billed in m³ when you have kilograms) call get_flow_properties instead of assuming a density.',
+          'Full detail of one or more activities: fields, ISIC/CPC classification, and their exchanges (inputs/outputs) with uids, formulas and comments. "reference_amount" and "treatment" tell you the sign of the reference product — decisive for how an exchange supplying this activity must be signed. READ "service_note" WHEN IT IS THERE: it quotes the dataset saying that it covers the PROCESSING only and NOT the material being processed (extrusion, rolling, drawing, coating, dyeing, canning). Such a dataset is priced per kilogram and looks exactly like a material, but supplies none — the material is a SECOND exchange next to it, and leaving it out silently removes the main ingredient (measured: an aluminium frame modelled with 0.95 kg of "section bar extrusion" alone lost 12.2 of its 22.8 kg CO2e). For a market the note names the supplier it came from. Checking what a market really mixes (which geographies, in what share) is what its exchanges are for. A market billed per square meter or meter (a coating, a weld) also carries "main_supplier_inputs": what its main producer consumes for ONE unit. Settle what the unit refers to from these amounts, not from the wording alone: the main material per unit is a layer you can check against the thickness the comment states — 0.68 kg of zinc per m² is 95 µm in all, so about 47 µm a side if the m² is a sheet coated on both faces and 95 µm if it is one face, and a stated 20–45 µm fits the sheet, not one face. Times your quantity it is what your part will carry. Pass "codes" to look up SEVERAL at once, and summary=true when you only need unit, location, reference product and sign rather than every exchange. detail="review" adds what a critical review asks and the build does not: the dataset\'s system boundary (included activities), product information, synonyms, validity period and source file, and per exchange its production volume and uncertainty distribution — use it when documenting or reviewing a dataset, not when linking one. For a unit conversion (a dataset billed in m³ when you have kilograms) call get_flow_properties instead of assuming a density.',
         parameters: obj(
           {
             database: str('Database name; omit for the model open on the canvas.'),
@@ -490,7 +490,7 @@ export const readTools: Tool[] = [
             name: str('Process name instead of the code; must match exactly one process.'),
             location: str('Location, to disambiguate a name used in several regions.'),
             summary: bool(
-              'true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product. Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange.'
+              'true = drop the full exchange list and return the header (name, product, location, unit, reference_amount, treatment, classification, service_note) plus the BIGGEST technosphere inputs, which is what says whether a dataset is a material or already a product (the inputs of a market are its producers; one billed per m² or m adds the inputs of its main producer per unit as main_supplier_inputs). Much smaller; use it when checking units, signs and what a dataset really is, and call again without it when you need every exchange.'
             ),
             detail: str(
               '"review" = add the critical-review fields (system boundary, product information, synonyms, validity, per-exchange production volume and uncertainty). Omit for the normal read.'
@@ -528,15 +528,24 @@ export const readTools: Tool[] = [
             unit: e.input?.unit,
             location: e.input?.location
           }))
+        // A market billed per m² or m lists only its producers here, and so would the full list. What one
+        // unit consumes sits in the activity (main_supplier_inputs, from the backend), and the note
+        // points there instead of to a second call that would show the same two lines.
+        const perUnit = (full.activity ?? full)?.main_supplier_inputs
         return {
           ...(full.found_in ? { found_in: full.found_in, found_in_note: full.found_in_note } : {}),
           activity: full.activity ?? full,
           exchange_count: ex.length,
           biggest_inputs: inputs,
-          note:
-            `summary=true — the ${inputs.length} largest of ${ex.length} exchanges are shown; call again ` +
-            'without it for all of them. READ THESE: a dataset that draws a different named material ' +
-            'in bulk is not that material — it is a product made from it, or a service applied to it.'
+          note: perUnit
+            ? `summary=true — the ${inputs.length} largest of ${ex.length} exchanges are shown. A market ` +
+              `buys from its producers, so these say nothing about one unit; what ${perUnit.per ?? 'one unit'} ` +
+              'consumes is in activity.main_supplier_inputs. Settle what the unit refers to from it before ' +
+              'you book: the main material per unit is a layer you can check against the thickness the ' +
+              'comment states, and times your quantity it is what your part will carry.'
+            : `summary=true — the ${inputs.length} largest of ${ex.length} exchanges are shown; call again ` +
+              'without it for all of them. READ THESE: a dataset that draws a different named material ' +
+              'in bulk is not that material — it is a product made from it, or a service applied to it.'
         }
       }
       const one = async (code: string): Promise<any> => {
