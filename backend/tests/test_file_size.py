@@ -33,8 +33,8 @@ CEILINGS: dict[str, int] = {
     # 1811 — prompts AND the proposal gate, so not exempt. The abbreviations moved to report_abbreviations,
     # the figure rules to report_numbers and their reading of numbers and units to prose_numbers.
     "prism_lca/engine/report_prompts.py": 1836,
-    # 1927 — the provenance count moved to health_provenance.
-    "prism_lca/engine/health.py": 1952,
+    # 1816 — the provenance count moved to health_provenance, the same-product rules to health_supply.
+    "prism_lca/engine/health.py": 1841,
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601
     "prism_lca/engine/model.py": 1452,  # 1427 — markets and their suppliers moved to market_suppliers.py
