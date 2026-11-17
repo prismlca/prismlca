@@ -113,13 +113,15 @@
    shape. Not on the active row: the green pill is already there, and a grey
    box over it would only mute it. */
 .side-collapsed .navitem:not(.disabled):not(.on):hover { background: var(--surface-3); }
-/* Everything under the navigation is the way back to the full rail. `e-resize` is the nearest the
+/* Everything under the navigation is the way back to the full rail, and the box at its foot
+   (.side-expand, at the end of this sheet) is what shows it. `e-resize` is the nearest the
    platform has to "this edge moves"; a drawn double-chevron would be a fixed-size bitmap that a
-   scaled-up system cursor renders wrong. Deliberately WITHOUT a hover wash: the cursor alone
-   announces it, so the panel keeps looking like the ground it is. */
-.side-expand-zone { flex: 1; min-height: 40px; margin-top: 6px; appearance: none; border: none;
-  background: none; border-radius: var(--r-sm); cursor: e-resize; }
-.side-expand-zone:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+   scaled-up system cursor renders wrong. The panel itself stays WITHOUT a hover wash, so it keeps
+   looking like the ground it is. Its focus ring is drawn on the box, not around the whole panel. */
+.side-expand-zone { flex: 1; min-height: 40px; margin-top: 6px; appearance: none; border: none; padding: 0;
+  background: none; border-radius: var(--r-sm); cursor: e-resize;
+  display: flex; align-items: flex-end; justify-content: center; }
+.side-expand-zone:focus-visible { outline: none; }
 @media (prefers-reduced-motion: reduce) { .side-fold { transition: none; } }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -152,3 +154,21 @@
    start the window is maximised under a page laid out at its unmaximised size, where a rail sliding
    open would be the first thing anyone sees. */
 .app-shell:has(.side-snap) { transition: none; }
+
+/* The button at the foot of the folded rail (AppSidebar): the fold button's glyph, standing where the
+   project card stands when the rail is open. It takes the card's material — a translucent, blurred
+   surface with a strong border — because a bare grey glyph is lost over the coloured facets down there.
+   It lights up while the pointer is anywhere on the panel above it as well: that is what ties the empty
+   panel to the button, so the two read as the one control they are. Lit, the glyph takes --green-ink, not
+   --green: it is the one thing that says what the button does, and --green on --green-soft is too faint
+   for it in the light theme — the same pairing as the expand button on a canvas node. */
+.side-expand { display: grid; place-items: center; width: 32px; height: 32px; box-sizing: border-box;
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface-3) 78%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  color: var(--muted); cursor: pointer;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease; }
+.side-expand svg { width: 16px; height: 16px; }
+.side-expand-zone:hover .side-expand { color: var(--green-ink); background: var(--green-soft); border-color: var(--green); }
+.side-expand-zone:focus-visible .side-expand { outline: 2px solid var(--green); outline-offset: 1px; }
+@media (prefers-reduced-motion: reduce) { .side-expand { transition: none; } }
