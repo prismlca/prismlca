@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-17",
+    "title": "Research has its own lookup limit, and shows its cost",
+    "details": "A research request now runs at most eight web lookups (Settings → AI → Limits, “Web lookups per research request”). Before, it ran up to the provider's thirty, and every lookup makes the research model read everything gathered so far again. While a run is going, the run bar shows what its research has cost; the summary of a finished run names that share beside the total."
+  },
+  {
+    "date": "2026-11-17",
     "title": "Opens maximised; narrow windows fold the sidebar",
     "details": "PrismLCA now starts maximised. In a window narrower than 1400 px the sidebar starts folded to its icon strip, so the canvas, the chat and the result tables get the room; click the empty strip below the icons to unfold it. In a narrow chat box the model picker shortens its name instead of running under the Send button."
   },

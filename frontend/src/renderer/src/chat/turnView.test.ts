@@ -135,6 +135,16 @@ describe('the turn view of one chat', () => {
     ).toBe(true)
   })
 
+  it('keeps the research agents’ bill so far, as the last booking gave it', () => {
+    const v = fold([
+      [{ chatId: 'c', type: 'research-cost', usd: 0.3 }, 1],
+      [{ chatId: 'c', type: 'delta', text: 'Reading the sources.' }, 2],
+      [{ chatId: 'c', type: 'research-cost', usd: 0.94 }, 3]
+    ])!
+    expect(v.researchCost).toBe(0.94)
+    expect(v.streaming).toBe('Reading the sources.')
+  })
+
   it('shows what holds for the cache now, and turns a failure that is over into an all-clear', () => {
     const v = fold([
       [warn('stuck'), 1],

@@ -92,6 +92,17 @@ describe('the finished-turn summary line', () => {
     expect(screen.getAllByRole('button')[1]).toHaveTextContent('$2.03')
   })
 
+  it('names the research agents’ share beside the cost of the turn', () => {
+    render(
+      <ToolTraceList traces={[trace(), trace()]} labels={LABELS} summary cost={1.85} researchCost={1.34} />
+    )
+    expect(screen.getByRole('button')).toHaveTextContent('$1.85, of it research $1.34')
+
+    // Nothing to name for a turn without research.
+    render(<ToolTraceList traces={[trace(), trace()]} labels={LABELS} summary cost={0.43} />)
+    expect(screen.getAllByRole('button')[1]).not.toHaveTextContent('research')
+  })
+
   it('opens to the full list, and never collapses a single call', async () => {
     const user = userEvent.setup()
     const { unmount } = render(<ToolTraceList traces={[trace(), trace()]} labels={LABELS} summary />)

@@ -18,6 +18,17 @@ describe('the run bar', () => {
     expect(note.getAttribute('title')).toMatch(/billed at the full input price/)
   })
 
+  it('shows what the research agents have billed so far, once they have billed anything', () => {
+    render(<RunStatus turn={{ ...emptyTurn(0), researchCost: 1.3396 }} labels={{}} />)
+    const note = screen.getByText('research $1.34')
+    expect(note.getAttribute('title')).toMatch(/Settings → AI → Limits/)
+  })
+
+  it('says nothing about research in a run without it', () => {
+    render(<RunStatus turn={emptyTurn(0)} labels={{}} />)
+    expect(screen.queryByText(/research/)).toBeNull()
+  })
+
   it('says nothing about the cache while it works', () => {
     render(<RunStatus turn={emptyTurn(0)} labels={{}} />)
     expect(screen.queryByText(/prompt cache/)).toBeNull()

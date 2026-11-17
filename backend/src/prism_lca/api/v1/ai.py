@@ -39,6 +39,9 @@ class ChatMessage(BaseModel):
     #: USD this turn cost, as OpenRouter billed it. Stored with the message so "what did that answer
     #: cost" survives a reload — the per-model monthly total in Settings cannot answer it.
     cost: float | None = None
+    #: The part of `cost` the research agents billed (research_bom, research_web). Shown beside the
+    #: cost: it can be most of a run. Kept in chat_store.append_messages as well (two places, one field).
+    research_cost: float | None = None
     #: What the turn consumed. Kept for the same reason as the cost, and answering a question the cost
     #: cannot: how much of the prompt the provider served from its prefix cache. `prompt_tokens`
     #: INCLUDES `cached_tokens` — the cached share is a discount on the same prompt, not a second one.

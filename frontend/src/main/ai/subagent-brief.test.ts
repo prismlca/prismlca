@@ -87,6 +87,24 @@ describe('researchBom brief', () => {
     expect(legs()[0].system).toMatch(/write your answer early/)
   })
 
+  // A research request exists to search and read, and it went out without any cap on the provider's
+  // lookups — up to thirty searches and thirty pages, each re-reading everything gathered so far.
+  it('sends every leg with the lookup limit it was given, and with none when there is none', async () => {
+    await researchBom({ product: 'bottle', components: ['body', 'cap'], webLookups: 4 })
+    expect(chat.seen.length).toBeGreaterThanOrEqual(2)
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual(chat.seen.map(() => 4))
+    chat.seen.length = 0
+    await researchWeb({
+      question: 'How much does a 0.5 l PET bottle weigh?',
+      allowUnsourced: true,
+      webLookups: 6
+    })
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual(chat.seen.map(() => 6))
+    chat.seen.length = 0
+    await researchBom({ product: 'bottle', components: ['body'] })
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual(chat.seen.map(() => undefined))
+  })
+
   // A leg's request ran beside the chat's rounds without a trace: nothing said who served it or what it
   // cost. Each now leaves one line, named after the tool it works for.
   it('leaves one log line per leg, named after the tool', async () => {

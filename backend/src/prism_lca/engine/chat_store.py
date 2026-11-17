@@ -326,6 +326,11 @@ class ChatStore(JsonFileStore):
                         cost = m.get("cost")
                         if isinstance(cost, (int, float)) and cost > 0:
                             entry["cost"] = float(cost)
+                        # The research agents' share of it, for the same reason: after a reload the
+                        # summary line could otherwise only give the sum.
+                        research = m.get("research_cost")
+                        if isinstance(research, (int, float)) and not isinstance(research, bool) and research > 0:
+                            entry["research_cost"] = float(research)
                         # Which endpoint served the turn. Kept for the same reason as the cost: it is
                         # the answer to "why was this run four times slower than the last one", and
                         # routing picks per request, so nothing else can reconstruct it afterwards.

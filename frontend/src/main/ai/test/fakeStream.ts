@@ -57,6 +57,7 @@ export interface RecordedCall {
   sessionId?: string
   reasoningEffort?: string
   maxTokens?: number
+  webLookupsCap?: number
   /** Kept by reference, not copied: a test asks whether the caller's own signal arrived. */
   signal?: AbortSignal
 }
@@ -123,6 +124,7 @@ class ScriptedChat {
       sessionId: opts.sessionId,
       reasoningEffort: opts.reasoningEffort,
       maxTokens: opts.maxTokens,
+      webLookupsCap: opts.webLookupsCap,
       signal: opts.signal
     })
     const round = this.rounds.shift() ?? (this.alwaysDelta ? { text: this.fallbackText } : {})

@@ -87,6 +87,8 @@ export interface ChatMessage {
   tools?: ToolTrace[]
   /** USD this turn cost, as OpenRouter billed it. Shown on the turn's collapsed tool trace. */
   cost?: number
+  /** The part of `cost` the research agents billed, shown beside it. */
+  research_cost?: number
   /** What the turn consumed — snake_case because these come back from the chat API as stored.
    *  `prompt_tokens` INCLUDES `cached_tokens`: the cached share is the part of the same prompt the
    *  provider served from its prefix cache. The chat header sums all three over the conversation. */

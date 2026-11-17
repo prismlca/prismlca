@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ChatMessage } from '../lib/ai'
 import { Elapsed } from './ToolTraceList'
 import type { CacheNote, RetryState, TurnView } from './turnView'
-import { compact, contextLabel } from './chatFormat'
+import { compact, contextLabel, usd } from './chatFormat'
 
 /**
  * What this conversation has consumed, added up over its turns.
@@ -120,7 +120,7 @@ const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
  * calls belong with the message, which is what the collapsed summary below keeps.
  */
 export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<string, string> }): JSX.Element {
-  const { live, reasoning, restarts, context, retry, cacheWarning } = turn
+  const { live, reasoning, restarts, context, retry, cacheWarning, researchCost } = turn
   const idx = live.findIndex((t) => !t.status)
   const pending = idx >= 0 ? live[idx] : undefined
   const waiting = !pending && retry?.phase === 'wait' ? retry : undefined
@@ -167,6 +167,16 @@ export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<str
           counted beside it: "reasoning, 0.8k characters · 6:08 min" was once two different clocks. */}
       <Elapsed since={pending ? turn.started[idx] : turn.thinkingAt} />
       {live.length ? <span className="chat-runbar-count">{live.length} calls</span> : null}
+      {/* A run's bill is only shown when it ends. Research is the part that can outgrow the rest of it
+          within minutes, so its share is on the bar as soon as there is one. */}
+      {researchCost ? (
+        <span
+          className="chat-runbar-count"
+          title="What the research agents of this run have billed so far. Settings → AI → Limits bounds a research request."
+        >
+          research {usd(researchCost)}
+        </span>
+      ) : null}
       {/* How full the window is, from the provider's own count of the last request. Claude Code and
           Codex show this in their status lines; here it was only in dev.log. Marked once the
           condensing threshold is crossed, because from then on older tool results are summaries. */}

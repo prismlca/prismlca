@@ -25,9 +25,11 @@ import { join } from 'node:path'
 import {
   asAiProvider,
   clampMaxTokens,
+  clampResearchWebLookups,
   clampWebLookups,
   DEFAULT_MAX_COST_USD,
   DEFAULT_MAX_RESEARCH_QUESTIONS,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MIN_THROUGHPUT,
   DEFAULT_MAX_TOKENS,
@@ -153,6 +155,7 @@ export const DEFAULTS: AppSettings = {
   maxTokens: DEFAULT_MAX_TOKENS,
   writerMaxTokens: DEFAULT_WRITER_MAX_TOKENS,
   maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+  researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS,
   minThroughput: DEFAULT_MIN_THROUGHPUT,
   disabledTools: [],
   zeroDataRetention: DEFAULT_ZERO_DATA_RETENTION,
@@ -276,6 +279,7 @@ export function getSettings(): AppSettings {
   out.maxTokens = clampMaxTokens(out.maxTokens)
   out.writerMaxTokens = clampMaxTokens(out.writerMaxTokens, DEFAULT_WRITER_MAX_TOKENS)
   out.webLookupsPerAnswer = clampWebLookups(out.webLookupsPerAnswer)
+  out.researchWebLookups = clampResearchWebLookups(out.researchWebLookups)
   out.maxCostUsd = Math.max(0, Number(out.maxCostUsd) || 0)
   out.maxRounds = Math.max(1, Math.round(Number(out.maxRounds) || DEFAULT_MAX_ROUNDS))
   if (!Array.isArray(out.disabledTools)) out.disabledTools = []

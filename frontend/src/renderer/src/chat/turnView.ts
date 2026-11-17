@@ -47,6 +47,8 @@ export interface TurnView {
   cacheWarning?: CacheNote
   /** Rounds reported since the cache recovered — set only while an all-clear is shown. */
   roundsSinceRecovery?: number
+  /** What the research agents of this run have billed so far (USD), once they have billed anything. */
+  researchCost?: number
   /**
    * When the current thinking phase began: the turn's start, a restarted round, or the last call's end.
    * Unknown for a run this window has seen nothing of yet (adopted after a reload) — the clock then
@@ -120,9 +122,16 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
     const newer = prev && (prev.runId === null || (prev.runId && prev.runId !== ev.run.runId))
     return newer ? prev : undefined
   }
-  const shown = ['delta', 'reasoning', 'context', 'round-restart', 'retry', 'tool', 'cache-warning'].includes(
-    ev.type
-  )
+  const shown = [
+    'delta',
+    'reasoning',
+    'context',
+    'round-restart',
+    'retry',
+    'tool',
+    'cache-warning',
+    'research-cost'
+  ].includes(ev.type)
   if (!shown) return prev
   // A run this window did not see start (a reload): its view begins with what arrives now.
   const v = prev ?? emptyTurn(now)
@@ -141,6 +150,8 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
         context: { tokens: ev.tokens, window: ev.window, budget: ev.budget },
         ...allClearAged(v)
       }
+    case 'research-cost':
+      return { ...v, researchCost: ev.usd }
     case 'cache-warning':
       // A new failure replaces whatever stood, an all-clear included, and stays until it is over.
       if (ev.pattern !== 'recovered')

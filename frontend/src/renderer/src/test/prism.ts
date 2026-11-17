@@ -12,7 +12,12 @@
  * because `tsconfig.web.json` includes only the preload's `.d.ts` — the global declaration is the
  * one seam the renderer is allowed to see, which is exactly the seam a renderer fixture should copy.
  */
-import { clampMaxTokens, clampMinThroughput, clampResearchQuestions } from '../../../shared/aiDefaults'
+import {
+  clampMaxTokens,
+  clampMinThroughput,
+  clampResearchQuestions,
+  clampResearchWebLookups
+} from '../../../shared/aiDefaults'
 import { DEFAULT_TRANSPORT, sanitiseTransport } from '../../../shared/distanceDefaults'
 import { sanitiseRecentModels } from '../../../shared/startPage'
 
@@ -75,6 +80,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   maxRounds: 150,
   maxTokens: 50_000,
   maxResearchQuestions: 4,
+  researchWebLookups: 8,
   minThroughput: 20,
   disabledTools: [],
   zeroDataRetention: true,
@@ -155,6 +161,8 @@ export function makePrism(routes: Routes = {}, overrides: PrismOverrides = {}): 
     if ('minThroughput' in patch) settings.minThroughput = clampMinThroughput(patch.minThroughput)
     if ('maxResearchQuestions' in patch)
       settings.maxResearchQuestions = clampResearchQuestions(patch.maxResearchQuestions)
+    if ('researchWebLookups' in patch)
+      settings.researchWebLookups = clampResearchWebLookups(patch.researchWebLookups)
     if ('transport' in patch) settings.transport = sanitiseTransport(patch.transport)
     if ('newsAutoLoad' in patch) settings.newsAutoLoad = patch.newsAutoLoad === true
     if ('recentModels' in patch) settings.recentModels = sanitiseRecentModels(patch.recentModels)

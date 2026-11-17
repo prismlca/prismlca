@@ -53,6 +53,8 @@ type Ev = {
   detail?: string
   graph?: boolean
   structure?: boolean
+  usd?: number
+  researchCost?: number
 }
 
 function deps(overrides: Partial<Record<string, unknown>> = {}): {
@@ -668,6 +670,51 @@ describe('runAgent — long-run robustness', () => {
     } finally {
       chat.toolless = summariser
     }
+  })
+
+  it('counts what the research agents billed apart from the chat, and gives them their lookup limit', async () => {
+    // Two questions, each answered from an official source (no second pass), 0.3 each; the chat's own
+    // two rounds bill 0.05 each.
+    const caps: Array<number | undefined> = []
+    const summariser = chat.toolless
+    chat.toolless = (opts) => {
+      if (!opts.webSearch) return summariser?.(opts)
+      caps.push(opts.webLookupsCap)
+      return {
+        text: '- The tub weighs 11 kg (https://example.org/a) [official, high: the datasheet says so]',
+        usage: { cost: 0.3 }
+      }
+    }
+    chat.rounds = [
+      {
+        usage: { cost: 0.05 },
+        calls: [{ id: 'a', name: 'research_web', arguments: JSON.stringify({ questions: ['q1', 'q2'] }) }]
+      },
+      { usage: { cost: 0.05 }, text: 'done' }
+    ]
+    const d = deps()
+    try {
+      const res = await runAgent(request({ maxResearchQuestions: 2, researchWebLookups: 4 }), d.deps)
+      expect(caps).toEqual([4, 4])
+      expect(res.researchCost).toBeCloseTo(0.6)
+      expect(res.cost).toBeCloseTo(0.7)
+      // While the run goes on: the share so far, with every booking.
+      const sent = d.events.flatMap((e) => (e.type === 'research-cost' ? [e.usd] : []))
+      expect(sent).toHaveLength(2)
+      expect(sent[1]).toBeCloseTo(0.6)
+      const done = d.events.find((e) => e.type === 'done')
+      expect(done?.researchCost).toBeCloseTo(0.6)
+    } finally {
+      chat.toolless = summariser
+    }
+  })
+
+  it('names no research share for a run without research', async () => {
+    chat.rounds = [{ usage: { cost: 0.05 }, text: 'done' }]
+    const d = deps()
+    const res = await runAgent(request(), d.deps)
+    expect(res.researchCost).toBeUndefined()
+    expect(d.events.some((e) => e.type === 'research-cost')).toBe(false)
   })
 
   it('ignores the cost limit when it is switched off', async () => {

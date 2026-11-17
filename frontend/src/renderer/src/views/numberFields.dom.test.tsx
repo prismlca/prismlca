@@ -12,6 +12,7 @@ import {
   DEFAULT_MAX_ROUNDS,
   DEFAULT_MAX_TOKENS,
   DEFAULT_MIN_THROUGHPUT,
+  DEFAULT_RESEARCH_WEB_LOOKUPS,
   DEFAULT_WRITER_MAX_TOKENS
 } from '../../../shared/aiDefaults'
 
@@ -34,7 +35,8 @@ afterEach(() => {
     writerMaxTokens: DEFAULT_WRITER_MAX_TOKENS,
     maxRounds: DEFAULT_MAX_ROUNDS,
     minThroughput: DEFAULT_MIN_THROUGHPUT,
-    maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS
+    maxResearchQuestions: DEFAULT_MAX_RESEARCH_QUESTIONS,
+    researchWebLookups: DEFAULT_RESEARCH_WEB_LOOKUPS
   })
   setSettings(DEFAULT_SETTINGS)
 })
@@ -57,6 +59,7 @@ describe('number fields take what is typed', () => {
       ['Max tokens per writer reply', '120000', 'writerMaxTokens'],
       ['Max tool rounds', '37', 'maxRounds'],
       ['Parallel research questions', '3', 'maxResearchQuestions'],
+      ['Web lookups per research request', '4', 'researchWebLookups'],
       [/Preferred provider speed/, '35', 'minThroughput']
     ] as const) {
       const field = input(label)

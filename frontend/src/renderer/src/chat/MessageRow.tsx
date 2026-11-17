@@ -36,7 +36,14 @@ export const MessageRow = memo(function MessageRow({
   return (
     <div className={`chat-msg ${m.role}`}>
       {m.tools?.length ? (
-        <ToolTraceList traces={m.tools} labels={labels} summary cost={m.cost} provider={m.provider} />
+        <ToolTraceList
+          traces={m.tools}
+          labels={labels}
+          summary
+          cost={m.cost}
+          researchCost={m.research_cost}
+          provider={m.provider}
+        />
       ) : null}
       {m.role === 'assistant' ? <AssistantText text={m.content} onJump={onJump} /> : m.content}
       {/* The reason a run failed, as stored with its answer: the message the window showed at the time

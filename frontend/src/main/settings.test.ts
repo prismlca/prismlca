@@ -110,6 +110,19 @@ describe('the app settings store', () => {
     expect(s.getSettings().writerMaxTokens).toBe(100_000) // garbage reads as the writer's default
   })
 
+  it('caps the lookups of a research request by default, clamps the stored value and keeps 0 as "no cap"', () => {
+    const stored = (value: unknown): number => {
+      s.setSettings({ researchWebLookups: value as never })
+      s.resetSettingsCache()
+      return s.getSettings().researchWebLookups
+    }
+    expect(s.getSettings().researchWebLookups).toBe(8)
+    expect(stored(4)).toBe(4)
+    expect(stored(0)).toBe(0)
+    expect(stored(500)).toBe(30) // the provider's own ceiling
+    expect(stored('many')).toBe(8) // garbage reads as the default
+  })
+
   it('writes through and reads back', () => {
     s.setSettings({ maxCostUsd: 7.5, disabledTools: ['delete_activity'] })
     s.resetSettingsCache()
