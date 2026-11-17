@@ -30,6 +30,7 @@ from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
+from prism_lca.engine.health_provenance import carries_a_figure, unsourced_figures
 from prism_lca.engine.health_structure import two_ways_in, unreached
 from prism_lca.engine.health_study import claimed_review_note, unrecorded_scope_note
 from prism_lca.engine.model import _db_or_404
@@ -299,12 +300,6 @@ def _unused_parameters(database: str) -> list[tuple[str, str]]:
                 )
             )
     return out
-
-
-#: What counts as a source, in any language: a link or a DOI. Deliberately not a word list — "laut
-#: Hersteller", "per the datasheet" and "typical" are prose, and a check that tried to read prose
-#: would be wrong in both directions. A URL is unambiguous, and it is what the report prints.
-_SOURCE_MARKERS = ("http://", "https://", "doi:", "doi.org")
 
 
 #: ecoinvent's shaping services, by the word that identifies them. Small and closed on purpose: this
@@ -763,52 +758,6 @@ def _bom_items_unbooked(
     return out
 
 
-def _unsourced_figures(database: str, comment_texts: list[str]) -> str | None:
-    """Says how much of the model rests on figures that cite nothing — or None when enough of it does.
-
-    A wall-paint run built a complete cradle-to-grave model on 20 parameters, fourteen
-    of whose descriptions begin with the word "ANNAHME", and **one** URL in the whole study — the one
-    the user had pasted into the prompt. No research tool was called; the density, the recipe and the
-    titanium-dioxide share all came out of the model's memory. Every check passed, because none of
-    them asks what the numbers rest on. The assistant named this the largest accuracy loss of the run
-    when asked afterwards, which is late.
-
-    A screening study on typical values is perfectly legitimate — the point is that it should be
-    stated, not discovered. So this counts rather than judges, and reports as ``info``.
-    """
-    from prism_lca.engine import params
-
-    try:
-        rows = params.list_params(database, with_usage=False)
-    except Exception as exc:  # noqa: BLE001 — an optional signal, never a reason to fail the linter
-        _log.swallowed(exc, "_unsourced_figures")
-        return None
-    texts = [str(p.get("description") or "") for p in rows]
-    # A handful of parameters is not a study; the check would fire on every sketch.
-    if len(texts) < 3:
-        return None
-
-    def sourced(items: list[str]) -> int:
-        return sum(1 for t in items if any(m in t.lower() for m in _SOURCE_MARKERS))
-
-    p_ok, p_all = sourced(texts), len(texts)
-    c_ok, c_all = sourced(comment_texts), len(comment_texts)
-    # Quiet as soon as a third of the assumptions cite something. Not a quality bar — a threshold
-    # low enough that a study which does source its figures never sees this line.
-    if p_ok * 3 >= p_all:
-        return None
-    return (
-        f"Data provenance: {p_ok} of {p_all} parameters and {c_ok} of {c_all} process/exchange "
-        "comments contain a source (a link or a DOI); the rest are figures this model states "
-        "without saying where they come from. That is a legitimate way to run a SCREENING study, "
-        "and it is not what a reader assumes unless the study says so. Either research the ones "
-        "that carry the result and cite them (research_bom for a composition, research_web for a "
-        "rate or a factor), or record in the goal and in the limitations that the inventory rests "
-        "on typical industry values. Which figures carry the result is what explain_result tells "
-        "you — start there rather than sourcing everything."
-    )
-
-
 # ---------------------------------------------------------------------------
 # The rule registry.
 #
@@ -907,8 +856,8 @@ def _build_context(database: str) -> LintContext:
     adjacency: dict[tuple, set] = {}
     identities: dict[tuple, list] = {}
     treatment_cache: dict[tuple, bool] = {}  # provider key -> has a negative reference product
-    # Every comment the model wrote itself, for the provenance count. Cheap: this pass is already
-    # reading each activity and each exchange.
+    # Every comment the model wrote itself on a process or on a figure, for the provenance count.
+    # Cheap: this pass is already reading each activity and each exchange.
     comment_texts: list[str] = []
     # Every background dataset the model links, by name, for the shaping check.
     input_names: list[str] = []
@@ -933,7 +882,11 @@ def _build_context(database: str) -> LintContext:
         )
         if act.get("comment"):
             comment_texts.append(str(act.get("comment")))
-        comment_texts.extend(str(e.get("comment")) for e in exchanges if e.get("comment"))
+        comment_texts.extend(
+            str(e.get("comment"))
+            for e in exchanges
+            if e.get("comment") and carries_a_figure(e, database, _exchange_unit(e))
+        )
 
         resolved: list[_Exchange] = []
         same_db_inputs: set = set()
@@ -1538,7 +1491,7 @@ def _rule_missing_forming(ctx: LintContext) -> list[dict]:
 
 def _rule_unsourced_figures(ctx: LintContext) -> list[dict]:
     # What the figures rest on.
-    note = _unsourced_figures(ctx.database, ctx.comment_texts)
+    note = unsourced_figures(ctx.database, ctx.comment_texts)
     return [_finding("info", "unsourced_figures", note)] if note else []
 
 
