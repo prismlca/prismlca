@@ -33,6 +33,7 @@ from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_provenance import carries_a_figure, unsourced_figures
 from prism_lca.engine.health_structure import two_ways_in, unreached
 from prism_lca.engine.health_study import claimed_review_note, unrecorded_scope_note
+from prism_lca.engine.health_supply import same_product_twice
 from prism_lca.engine.model import _db_or_404
 from prism_lca.engine.reached_twice import flows_of
 from prism_lca.engine.tags import TagStore
@@ -1034,8 +1035,8 @@ def _rule_formula_zero(ctx: LintContext, a: _Activity, e: _Exchange) -> list[dic
     #
     # Any comment counts, deliberately: judging whether a sentence "really" declares a dormant
     # branch is a language question this module has no business answering, and the exchange comment
-    # is not somewhere anybody writes by accident. `duplicate_input` reads the same flag for the
-    # same reason.
+    # is not somewhere anybody writes by accident. `deliberate_mix` (`health_supply`) reads the same
+    # flag for the same reason.
     if e.inp is None:
         return []
     ex = e.ex
@@ -1209,124 +1210,10 @@ def _rule_exchanges(ctx: LintContext, a: _Activity) -> list[dict]:
 
 
 def _rule_duplicate_supply(ctx: LintContext, a: _Activity) -> list[dict]:
-    # The same product supplied twice on one activity. Grouped by the product rather than the
-    # dataset key on purpose: the double-counting that actually happens is a half-finished
-    # replacement, where the new dataset is added and the old one is never removed. Both then
-    # deliver the same product from two different datasets, which every per-dataset check reads as
-    # two unrelated, perfectly valid inputs.
-    by_product: dict[tuple, list[dict]] = {}
-    for e in a.resolved:
-        if e.inp is None or e.ex.get("type") != "technosphere":
-            continue
-        amount = e.ex.get("amount") or 0
-        if not amount:
-            continue
-        product = (e.inp.get("reference product") or e.inp.get("name") or "").strip()
-        if product:
-            by_product.setdefault((product, e.inp.get("unit") or ""), []).append(
-                {
-                    "key": e.key,
-                    "name": e.inp.get("name") or "",
-                    "location": e.inp.get("location") or "",
-                    "amount": amount,
-                    "uid": e.ex.get("prism_uid"),
-                    "commented": bool((e.ex.get("comment") or "").strip()),
-                }
-            )
-
-    out: list[dict] = []
-    # What the activity itself makes, so a set of inputs that adds up to it can be recognised as a
-    # composition instead of a leftover (see the mix/replacement split below).
-    ref_amount = next((e.get("amount") for e in a.production if e.get("amount")), None)
-    for (product, unit), rows in by_product.items():
-        # Only same-sign inputs: a positive/negative pair is a deliberate add-and-credit, not a
-        # double count, and flagging it would train people to ignore this warning.
-        for sign in (1, -1):
-            same = [r for r in rows if (r["amount"] > 0) == (sign > 0)]
-            if len(same) < 2:
-                continue
-            one_dataset = len({r["key"] for r in same}) == 1
-            where = ", ".join(
-                f"{r['name']}{' [' + r['location'] + ']' if r['location'] else ''} = {r['amount']:g}"
-                for r in same[:4]
-            )
-            if one_dataset:
-                # Two exchanges to the SAME provider compute exactly as one with their sum, and that
-                # has a perfectly ordinary cause: two fractions taking the same route (corrugated board
-                # and pallet wood both to municipal incineration). Reported as tidiness, not as a
-                # defect; calling it "counted twice" would train people to ignore the far more
-                # dangerous case below. But the sum is only right when it is meant: an edit that adds
-                # a second exchange instead of changing the first doubles the input, so the message
-                # must not promise a right result and talk the reader out of looking.
-                out.append(
-                    _finding(
-                        "info",
-                        "duplicate_input",
-                        f"'{product}' is supplied by the same dataset {len(same)} times ({where}). The "
-                        "amounts add up and all of them count: right for separate uses (two fractions "
-                        "to the same treatment), twice too much if one input was entered twice — then "
-                        "delete the extra one.",
-                        a.act,
-                        same[0]["uid"],
-                    )
-                )
-                continue
-            # Different datasets delivering one product is the real risk: it is the signature of a
-            # half-finished replacement, where the new dataset is added and the old one never
-            # removed. Nothing per-dataset can see it, because each link is individually valid.
-            #
-            # But the same shape is also how a deliberate MIX looks — 33 % petrochemical glycerine
-            # and 67 % from rape oil, in a process built to make that split testable. Two signals
-            # separate the two, both cheap and deterministic:
-            #
-            #  1. the amounts add up to the reference product (0.33 + 0.67 = 1 kg), which is a
-            #     composition and not a leftover; and
-            #  2. every one of them carries a comment — which is exactly the remedy the old text
-            #     asked for, and it asked without ever checking whether it had been done. A warning
-            #     that survives its own fix is noise, and it fired on a correct model twice.
-            identical = len({round(float(r["amount"]), 12) for r in same}) == 1
-            total = sum(float(r["amount"]) for r in same)
-            composes = ref_amount not in (None, 0) and abs(total - float(ref_amount)) <= 1e-6 * max(
-                1.0, abs(float(ref_amount))
-            )
-            documented = all(r["commented"] for r in same)
-            if composes or documented:
-                out.append(
-                    _finding(
-                        "info",
-                        "deliberate_mix",
-                        f"{len(same)} datasets supply '{product}'{' in ' + unit if unit else ''} "
-                        f"({where})"
-                        + (
-                            f" and their amounts add up to the reference product ({total:g}), so this "
-                            "reads as a deliberate mix rather than a half-finished replacement."
-                            if composes
-                            else ", each with a comment explaining it, so this reads as deliberate."
-                        )
-                        + " Nothing to do unless one of them was meant to replace another.",
-                        a.act,
-                        same[0]["uid"],
-                    )
-                )
-                continue
-            out.append(
-                _finding(
-                    "warning",
-                    "possible_double_count",
-                    f"{len(same)} different datasets all supply '{product}'"
-                    f"{' in ' + unit if unit else ''} ({where})."
-                    + (
-                        " Their amounts are identical, which is what a replacement looks like when the "
-                        "old input was never removed."
-                        if identical
-                        else " If one was meant to replace another, the old one is still counted; if the "
-                        "split is deliberate, comment the exchanges and this becomes a note instead."
-                    ),
-                    a.act,
-                    same[0]["uid"],
-                )
-            )
-    return out
+    return [
+        _finding(severity, code, message, a.act, uid, **extra)
+        for severity, code, message, uid, extra in same_product_twice(a.resolved, a.production)
+    ]
 
 
 #: Per-activity rules, in the order their findings appear within one activity.
