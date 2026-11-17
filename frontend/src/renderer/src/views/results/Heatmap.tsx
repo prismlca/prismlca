@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { subjectKey } from '../../lib/subjectKey'
-import { HEAT_GRADIENT, HEAT_STOPS, heatColor } from '../../lib/heat'
+import { HEAT_GRADIENT, HEAT_STOPS, heatColor, heatLabel } from '../../lib/heat'
 import { type ChartRegistry } from '../../lib/charts/useEChart'
 import { tipValue } from '../../lib/charts/tooltip'
 import type { Matrix, Picked } from './types'
@@ -131,9 +131,7 @@ function renderHeatmapPng(
       ctx.fillStyle = '#303030'
       ctx.font = '600 11px sans-serif'
       ctx.textAlign = 'center'
-      // Colour by magnitude, label with the sign: a credit and a burden of equal size were identical
-      // cells, on screen and in the PNG.
-      ctx.fillText(`${v < 0 ? '−' : ''}${Math.round(t * 100)}%`, x + cellW / 2, y + cellH / 2)
+      ctx.fillText(heatLabel(v, t), x + cellW / 2, y + cellH / 2)
     })
   })
 
@@ -239,7 +237,7 @@ export function Heatmap({
                     style={{ background: heatColor(t) }}
                     title={tipValue(v, p.unit)}
                   >
-                    {Math.round(t * 100)}%
+                    {heatLabel(v, t)}
                   </td>
                 )
               })}
