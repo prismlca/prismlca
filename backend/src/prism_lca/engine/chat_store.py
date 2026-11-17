@@ -40,6 +40,56 @@ _TRACE_PREVIEW_CHARS = 6_000
 # arguments cut at exactly 4,000 while the live trace had shown 2,500 of them.
 _TRACE_ARG_CHARS = 6_000
 _MAX_TRACES = 200
+#: The provider's web lookups on their trace row (main/ai/webLookups.ts): searches per row, pages per
+#: search, cited pages per row. A reply searches a handful of times and each search returns about ten
+#: pages; the caps only stop a runaway list.
+_MAX_SEARCHES = 20
+_MAX_PAGES = 20
+_MAX_CITED = 30
+_URL_CHARS = 1_000
+_TITLE_CHARS = 300
+_QUERY_CHARS = 500
+_EXCERPT_CHARS = 300
+
+
+def _text(value: object, limit: int) -> str:
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _cap_page(page: object, *, excerpt: bool = False) -> dict | None:
+    """A web page as a trace keeps it: an http(s) address, its title, the cited passage. Else None."""
+    if not isinstance(page, dict):
+        return None
+    url = _text(page.get("url"), _URL_CHARS)
+    if not url.lower().startswith(("http://", "https://")):
+        return None
+    entry: dict = {"url": url}
+    for key, limit in (("title", _TITLE_CHARS), ("excerpt", _EXCERPT_CHARS)):
+        value = _text(page.get(key), limit)
+        if value and (key == "title" or excerpt):
+            entry[key] = value
+    return entry
+
+
+def _cap_searches(searches: object) -> list[dict]:
+    """The searches of a web lookups row: search text, the pages that came back, the provider's error.
+    ``results`` stays absent where the provider did not report them, and empty where none came back."""
+    out: list[dict] = []
+    for s in searches[:_MAX_SEARCHES] if isinstance(searches, list) else []:
+        if not isinstance(s, dict):
+            continue
+        entry: dict = {}
+        query = _text(s.get("query"), _QUERY_CHARS)
+        if query:
+            entry["query"] = query
+        if isinstance(s.get("results"), list):
+            entry["results"] = [p for p in (_cap_page(r) for r in s["results"][:_MAX_PAGES]) if p]
+        error = _text(s.get("error"), 100)
+        if error:
+            entry["error"] = error
+        if entry:
+            out.append(entry)
+    return out
 
 
 def _cap_traces(tools: object) -> list[dict]:
@@ -64,6 +114,14 @@ def _cap_traces(tools: object) -> list[dict]:
             value = t.get(key)
             if isinstance(value, int):
                 entry[key] = value
+        # The provider's web lookups: what the answer's list of sources is read from after a reload.
+        searches = _cap_searches(t.get("searches"))
+        if searches:
+            entry["searches"] = searches
+        cited = t.get("cited")
+        pages = [p for p in (_cap_page(c, excerpt=True) for c in cited[:_MAX_CITED]) if p] if isinstance(cited, list) else []
+        if pages:
+            entry["cited"] = pages
         out.append(entry)
     return out
 

@@ -29,6 +29,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { withSearchNote } from './searchNote'
 import { logUnsendableArguments, withSendableArguments } from '../toolArguments'
 
 export const BASE_URL = 'https://openrouter.ai/api/v1'
@@ -270,8 +271,9 @@ function addDetail(state: OrState, piece: Record<string, unknown>): void {
  *  such string, echoed as it came, gets the whole request refused (toolArguments.ts). */
 function toOpenRouterMessages(messages: ChatMessage[], model: string): Array<Record<string, unknown>> {
   const turnStart = lastUserIndex(messages)
-  return messages.map(({ replay, ...rest }, i) => {
-    const m = withSendableArguments(rest)
+  return messages.map(({ replay, web, ...rest }, i) => {
+    // The server tools' lookups never go back as such: named ahead of the reply's text (searchNote.ts).
+    const m = withSendableArguments(web ? { ...rest, content: withSearchNote(rest.content, web) } : rest)
     return i > turnStart &&
       m.role === 'assistant' &&
       replay?.provider === 'openrouter' &&

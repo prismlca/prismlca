@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from 'react'
 import type { ToolTrace } from '../lib/ai'
 import { fmtInt } from '../lib/format'
 import { usd } from './chatFormat'
+import { CitedList, WebSearchList } from './WebSources'
+import { WEB_LOOKUPS_ROW } from './turnSources'
 
 /**
  * The row label of a call. A `plan` call that went through reads "Plan updated · 3/7": the plan
@@ -15,8 +17,8 @@ function traceName(t: ToolTrace, labels: Record<string, string>): string {
     if (/^Plan withdrawn/.test(t.preview ?? '')) return 'Plan withdrawn'
     return 'Plan updated'
   }
-  // Not a tool of ours: the provider's own web lookups inside a reply (agent.ts WEB_LOOKUPS_ROW).
-  if (t.name === 'web_lookups') return 'Web lookups by the provider'
+  // Not a tool of ours: the provider's own web lookups inside a reply (main/ai/webLookups.ts).
+  if (t.name === WEB_LOOKUPS_ROW) return 'Web lookups by the provider'
   return labels[t.name] ?? t.name
 }
 
@@ -175,6 +177,14 @@ export function ToolTraceList({
                   {t.preview}
                   {hidden > 0 ? `\n… ${fmtInt(hidden)} more characters` : ''}
                 </pre>
+              ) : null}
+              {/* The provider's web lookups: what was searched for, what came back, what the reply cites. */}
+              {t.searches?.length ? <WebSearchList searches={t.searches} /> : null}
+              {t.cited?.length ? (
+                <>
+                  <div className="chat-sources-h">Cited in this reply</div>
+                  <CitedList cited={t.cited} />
+                </>
               ) : null}
               {!args && !t.preview && !t.detail ? (
                 <div className="chat-trace-detail">No arguments, no output.</div>

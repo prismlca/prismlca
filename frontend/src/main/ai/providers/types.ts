@@ -6,6 +6,9 @@
  */
 
 import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
+import type { CitedPage, WebSearch } from '../../../shared/ipc'
+
+export type { CitedPage, WebSearch }
 
 export type ProviderId = AiProviderId
 
@@ -58,6 +61,20 @@ export interface ChatMessage {
   name?: string
   /** On an assistant tool-call turn: what its provider needs back verbatim (see ProviderReplay). */
   replay?: ProviderReplay
+  /** On an assistant message: the provider's web lookups inside the reply it records. A round that goes
+   *  back without them — rebuilt from text and calls — names them ahead of its text (searchNote.ts), so a
+   *  later request still knows what was searched and found. */
+  web?: WebRecord
+}
+
+/** The provider's web lookups inside one reply, as the chat keeps them (webLookups.ts). */
+export interface WebRecord {
+  /** Lookups by kind as the provider counts them (`web_search_requests`, `web_fetch_requests`). */
+  counts?: Record<string, number>
+  /** The searches, each with what it returned — where the provider names them. */
+  searches?: WebSearch[]
+  /** The pages the reply cites. */
+  cited?: CitedPage[]
 }
 
 /**
@@ -113,7 +130,8 @@ export function replayDroppable(replay: ProviderReplay, inCurrentTurn: boolean):
 export function assistantToolTurn(
   text: string | null,
   calls: AccumTool[],
-  replay?: ProviderReplay
+  replay?: ProviderReplay,
+  web?: WebRecord
 ): ChatMessage {
   return {
     role: 'assistant',
@@ -123,7 +141,8 @@ export function assistantToolTurn(
       type: 'function' as const,
       function: { name: c.name, arguments: c.arguments }
     })),
-    ...(replay ? { replay } : {})
+    ...(replay ? { replay } : {}),
+    ...(web ? { web } : {})
   }
 }
 
@@ -151,6 +170,9 @@ export interface Citation {
   /** The provider's own links to this page, when it cites through redirects (Google): what the model
    *  was shown, and so what it may quote as its source. `url` is the page they lead to. */
   via?: string[]
+  /** A page the search returned that no sentence of the reply cites (Anthropic names every result). The
+   *  research legs match a written source against these too; a list of what an answer cites leaves them out. */
+  uncited?: boolean
 }
 
 /**
@@ -179,6 +201,9 @@ export type StreamEvent =
   /** Pages the provider-side web search cited in this reply, as they arrive (deduplicated by the
    *  consumer, not here). Only sent when the provider annotates; absent otherwise. */
   | { type: 'citations'; citations: Citation[] }
+  /** The provider's web searches in this reply, each with the pages it returned to the model. Only from a
+   *  transport whose API names them (Anthropic, OpenAI); OpenRouter's server tools report counts only. */
+  | { type: 'web_searches'; searches: WebSearch[] }
   // A reasoning model sends its chain of thought before it writes a single visible token. We
   // deliberately do NOT surface the text — it is long, it is not an answer, and showing it invites
   // reading it as one. What we pass on is that it is happening and roughly how far along: enough to

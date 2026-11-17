@@ -251,6 +251,49 @@ describe('the transcript', () => {
     expect(messages[3].content).toEqual([{ type: 'text', text: 'Done.' }])
   })
 
+  it('names the searches of a closing answer ahead of its text, where its blocks are not sent', () => {
+    // A turn's closing answer is stored as its text: the web search that ran in it would be gone, and
+    // asked where a figure came from, the model found its own source notes with no search behind them.
+    const web = {
+      counts: { web_search_requests: 1 },
+      searches: [
+        {
+          query: 'avasco Atlas 176x90x40 Gewicht',
+          results: [{ url: 'https://www.galaxus.ch/p/64601145', title: 'Avasco Atlas 175' }]
+        }
+      ],
+      cited: [{ url: 'https://www.galaxus.ch/p/64601145', title: 'Avasco Atlas 175', excerpt: '24000 g' }]
+    }
+    const { messages } = toMessages([
+      { role: 'user', content: 'How heavy is the shelf?' },
+      { role: 'assistant', content: 'About 24 kg.', web },
+      { role: 'user', content: 'Where does the weight come from?' }
+    ])
+    const [note, text] = messages[1].content
+    expect(text).toEqual({ type: 'text', text: 'About 24 kg.' })
+    expect(note.type).toBe('text')
+    expect(note.text).toContain(
+      '"avasco Atlas 176x90x40 Gewicht" → Avasco Atlas 175 (https://www.galaxus.ch/p/64601145)'
+    )
+    expect(note.text).toMatch(
+      /^\[Web search record kept by PrismLCA\. In this reply you searched the web once/
+    )
+  })
+
+  it('adds no record to a round that goes back with its own search blocks, nor to one that searched nothing', () => {
+    const replayed = { ...callMsg('toolu_1'), web: { searches: [{ query: 'x', results: [] }] } }
+    const { messages } = toMessages([
+      { role: 'user', content: 'go' },
+      replayed,
+      { role: 'tool', tool_call_id: 'toolu_1', content: '11 °C' },
+      { role: 'assistant', content: 'Done.' },
+      { role: 'user', content: 'and?' }
+    ])
+    // The replay holds the search itself; a line in front would change what its thinking was made on.
+    expect(messages[1].content.map((b) => b.type)).toEqual(['thinking', 'tool_use'])
+    expect(messages[3].content).toEqual([{ type: 'text', text: 'Done.' }])
+  })
+
   it('starts a follow-up with exactly what the last round of the run sent — the cached prefix', () => {
     // A run with a search round and a tool round, then a question in the same chat. Rebuilding the
     // run's rounds as text and calls made the follow-up differ right after the task, so only the
@@ -517,7 +560,7 @@ describe('the stream', () => {
     expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
   })
 
-  it('hands on every page the search returned, cited ones with the passage', async () => {
+  it('hands on every page the search returned, cited ones with the passage, the others marked uncited', async () => {
     fetchMock.mockResolvedValueOnce(
       sse([
         messageStart(),
@@ -560,7 +603,20 @@ describe('the stream', () => {
       type: 'citations',
       citations: [
         { url: 'https://a.org/eco', title: 'Eco profile', excerpt: '2.15 kg CO2e/kg' },
-        { url: 'https://b.org/other', title: 'Other' }
+        { url: 'https://b.org/other', title: 'Other', uncited: true }
+      ]
+    })
+    // And the search itself: what it looked for, and the pages that came back, in their order.
+    expect(events.find((e) => e.type === 'web_searches')).toEqual({
+      type: 'web_searches',
+      searches: [
+        {
+          query: 'PET granulate GWP',
+          results: [
+            { url: 'https://a.org/eco', title: 'Eco profile' },
+            { url: 'https://b.org/other', title: 'Other' }
+          ]
+        }
       ]
     })
     const usage = events.find((e) => e.type === 'usage')
@@ -632,6 +688,80 @@ describe('the stream', () => {
       'web_search_tool_result',
       'tool_use'
     ])
+    // The result came on the continuation, its search text with the paused pass: named together, once.
+    expect(events.filter((e) => e.type === 'web_searches')).toEqual([
+      { type: 'web_searches', searches: [{ query: 'x', results: [] }] }
+    ])
+  })
+
+  it('names a search whose call came in the reply before, and one that failed', async () => {
+    // Claude searched beside one of our tools: the call is in the round the request replays, the result
+    // opens this reply. A second search ran out of uses.
+    const earlier = assistantToolTurn(null, [{ id: 'toolu_1', name: 'list_models', arguments: '{}' }], {
+      provider: 'anthropic',
+      steps: [
+        {
+          type: 'server_tool_use',
+          id: 'srvtoolu_7',
+          name: 'web_search',
+          input: { query: 'avasco Atlas weight' }
+        },
+        { type: 'tool_use', id: 'toolu_1', name: 'list_models', input: {} }
+      ]
+    })
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, {
+          type: 'web_search_tool_result',
+          tool_use_id: 'srvtoolu_7',
+          content: [{ type: 'web_search_result', url: 'https://g.ch/64601145', title: 'Atlas 175' }]
+        }),
+        blockStop(0),
+        blockStart(1, { type: 'server_tool_use', id: 'srvtoolu_8', name: 'web_search', input: {} }),
+        blockDelta(1, { type: 'input_json_delta', partial_json: '{"query":"avasco Diksmuide"}' }),
+        blockStop(1),
+        blockStart(2, {
+          type: 'web_search_tool_result',
+          tool_use_id: 'srvtoolu_8',
+          content: { type: 'web_search_tool_result_error', error_code: 'max_uses_exceeded' }
+        }),
+        blockStop(2),
+        blockStart(3, { type: 'text', text: '24 kg.' }),
+        blockStop(3),
+        messageDelta('end_turn', usage0),
+        messageStop
+      ])
+    )
+    const events = await collect({
+      webSearch: true,
+      messages: [
+        { role: 'user', content: 'How heavy?' },
+        earlier,
+        { role: 'tool', tool_call_id: 'toolu_1', content: '[]' }
+      ]
+    })
+    expect(events.find((e) => e.type === 'web_searches')).toEqual({
+      type: 'web_searches',
+      searches: [
+        { query: 'avasco Atlas weight', results: [{ url: 'https://g.ch/64601145', title: 'Atlas 175' }] },
+        { query: 'avasco Diksmuide', results: [], error: 'max_uses_exceeded' }
+      ]
+    })
+  })
+
+  it('names no search in a reply that ran none', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, { type: 'text', text: 'Estimated at 14 kg.' }),
+        blockStop(0),
+        messageDelta('end_turn', usage0),
+        messageStop
+      ])
+    )
+    const events = await collect({ webSearch: true })
+    expect(events.some((e) => e.type === 'web_searches' || e.type === 'citations')).toBe(false)
   })
 
   it('continues no paused reply once the spend ceiling has tripped', async () => {

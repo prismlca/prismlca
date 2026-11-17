@@ -32,10 +32,12 @@ import {
   type ChatTransport,
   type StreamChatOpts,
   type StreamEvent,
-  type TranscribeOpts
+  type TranscribeOpts,
+  type WebSearch
 } from './types'
 import { contextOverflow } from './contextOverflow'
 import { CitationMarkerFilter } from './citationMarkers'
+import { searchNote } from './searchNote'
 import { logUnsendableArguments, sendableArguments } from '../toolArguments'
 
 const BASE_URL = 'https://api.openai.com/v1'
@@ -174,7 +176,8 @@ export function toResponsesInput(messages: ChatMessage[]): {
       continue
     }
     if (m.role === 'assistant') {
-      const text = contentToText(m.content)
+      // The reply's web searches do not go back as items: named ahead of its text instead (searchNote.ts).
+      const text = [searchNote(m.web), contentToText(m.content)].filter(Boolean).join('\n\n')
       if (text) input.push({ role: 'assistant', content: text })
       for (const tc of m.tool_calls ?? []) {
         input.push({
@@ -206,8 +209,32 @@ interface OaiState {
   calls: Record<number, AccumTool>
   /** Paid web_search invocations, counted into the synthesized cost. */
   webSearches: number
+  /** What those searches looked for — the pages they returned are not requested, so not known here. */
+  searched: WebSearch[]
   /** Drops the raw citation markers a model leaves in text it writes between tool calls. */
   markers: CitationMarkerFilter
+}
+
+/**
+ * A `web_search_call`'s search, from its `action`: the search text (`query`, or a `queries` list), and
+ * the pages only where the request asked for them (`sources` — this transport does not). Opening a page or
+ * finding text in one is no search and is left out; the counter prices every call all the same.
+ */
+function searchOf(action: unknown): WebSearch | null {
+  if (!action || typeof action !== 'object') return null
+  const a = action as { type?: unknown; query?: unknown; queries?: unknown; sources?: unknown }
+  if (a.type !== 'search') return null
+  const texts = [a.query, ...(Array.isArray(a.queries) ? a.queries : [])].filter(
+    (q): q is string => typeof q === 'string' && !!q.trim()
+  )
+  const query = [...new Set(texts.map((q) => q.trim()))].join(' / ')
+  const sources = Array.isArray(a.sources)
+    ? a.sources
+        .map((x) => (x && typeof x === 'object' ? (x as { url?: unknown }).url : null))
+        .filter((u): u is string => typeof u === 'string' && !!u)
+        .map((url) => ({ url }))
+    : null
+  return { ...(query ? { query } : {}), ...(sources ? { results: sources } : {}) }
 }
 
 /** A text event for what the marker filter let through — none for an empty piece. */
@@ -297,6 +324,7 @@ export const openaiTransport: ChatTransport<OaiState> = {
     sentProvider: false,
     calls: {},
     webSearches: 0,
+    searched: [],
     markers: new CitationMarkerFilter()
   }),
 
@@ -363,6 +391,9 @@ export const openaiTransport: ChatTransport<OaiState> = {
             name: String(item.name ?? ''),
             arguments: String(item.arguments ?? '')
           }
+        } else if (item?.type === 'web_search_call') {
+          const searched = searchOf(item.action)
+          if (searched) state.searched.push(searched)
         }
         break
       }
@@ -399,7 +430,10 @@ export const openaiTransport: ChatTransport<OaiState> = {
       .map((i) => state.calls[i])
       .filter((c) => c.name)
     logUnsendableArguments('OpenAI', assembled)
-    return assembled.length ? [{ type: 'tool_calls', calls: assembled }] : []
+    return [
+      ...(state.searched.length ? [{ type: 'web_searches' as const, searches: state.searched }] : []),
+      ...(assembled.length ? [{ type: 'tool_calls' as const, calls: assembled }] : [])
+    ]
   }
 }
 

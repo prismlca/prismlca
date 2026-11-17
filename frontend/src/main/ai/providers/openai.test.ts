@@ -168,6 +168,20 @@ describe('the request body', () => {
     expect(messages[1].tool_calls?.[0].function.arguments).toBe(cut)
   })
 
+  it('names a reply’s web searches ahead of its text — they do not go back as items', () => {
+    const { input } = toResponsesInput([
+      { role: 'user', content: 'How heavy?' },
+      { role: 'assistant', content: 'About 24 kg.', web: { searches: [{ query: 'avasco Atlas weight' }] } },
+      { role: 'assistant', content: 'Nothing searched.' }
+    ])
+    const [, searched, plain] = input as Array<{ role: string; content: string }>
+    expect(searched.content).toMatch(
+      /^\[Web search record kept by PrismLCA\. .*\n1\. "avasco Atlas weight" → /s
+    )
+    expect(searched.content).toMatch(/\]\n\nAbout 24 kg\.$/)
+    expect(plain.content).toBe('Nothing searched.')
+  })
+
   it('converts vision parts to the Responses input shapes', () => {
     const { input } = toResponsesInput([
       {
@@ -321,6 +335,36 @@ describe('the event stream', () => {
     const events = await run({ webSearch: true })
     const u = (events.find((e) => e.type === 'usage') as any).usage
     expect(u.cost).toBeCloseTo(0.02, 8) // 2 searches × $10/1k
+  })
+
+  it('names what each web search looked for, and never opening a page as a search', async () => {
+    const done = (output_index: number, action: Record<string, unknown>): Record<string, unknown> => ({
+      type: 'response.output_item.done',
+      output_index,
+      item: { type: 'web_search_call', status: 'completed', action }
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        sse([
+          done(0, { type: 'search', query: 'avasco Atlas weight' }),
+          done(1, { type: 'search', queries: ['avasco Diksmuide', 'avasco origin'] }),
+          done(2, { type: 'search', query: 'x', sources: [{ type: 'url', url: 'https://g.ch/1' }] }),
+          done(3, { type: 'open_page', url: 'https://g.ch/1' }),
+          completed({ input_tokens: 0, output_tokens: 0 })
+        ])
+      )
+    )
+    const events = await run({ webSearch: true })
+    // The pages only where the request asked for them, which ours does not: unknown, not none.
+    expect(events.find((e) => e.type === 'web_searches')).toEqual({
+      type: 'web_searches',
+      searches: [
+        { query: 'avasco Atlas weight' },
+        { query: 'avasco Diksmuide / avasco origin' },
+        { query: 'x', results: [{ url: 'https://g.ch/1' }] }
+      ]
+    })
   })
 
   it('maps an exhausted-output run to finish "length"', async () => {

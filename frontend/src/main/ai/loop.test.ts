@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ChatMessage, StreamChatOpts } from './providers/types'
+import type { ChatMessage, StreamChatOpts, StreamEvent } from './providers/types'
+import type { StoredTranscript } from './agent'
 import { chat, FakeOpenRouterError, type ScriptedRound } from './test/fakeStream'
 
 /**
@@ -1660,6 +1661,100 @@ describe('web lookups by the provider', () => {
     // Live too: a start and a done event, so the row fills in place while the turn runs.
     const live = events.filter((e) => e.type === 'tool' && e.name === 'web_lookups').map((e) => e.phase)
     expect(live).toEqual(['start', 'done'])
+  })
+
+  // What the search looked for, what came back and what the reply cites: on the row (the chat shows it,
+  // and the answer's list of sources is read from it) and on the round's message (a later request names
+  // it, searchNote.ts). Before, all of it was dropped and the chat said "4 web searches".
+  const searched = { query: 'avasco Atlas Gewicht', results: [{ url: 'https://g.ch/1', title: 'Atlas 175' }] }
+  const found: StreamEvent[] = [
+    { type: 'citations', citations: [{ url: 'https://g.ch/1', title: 'Atlas 175', excerpt: '24000 g' }] },
+    { type: 'citations', citations: [{ url: 'https://h.de/2', uncited: true }] },
+    { type: 'web_searches', searches: [searched] }
+  ]
+
+  it('records the searches and the cited pages on the row and on the round', async () => {
+    const events: Array<Record<string, unknown>> = []
+    chat.rounds = [
+      {
+        usage: { cost: 0.03, prompt_tokens: 40_000, server_tool_use: { web_search_requests: 1 } },
+        after: found,
+        calls: [{ id: 'a', name: 'list_models', arguments: '{}' }]
+      },
+      { text: 'done' }
+    ]
+    const res = await runAgent(request(), deps({ emit: (e: Record<string, unknown>) => events.push(e) }).deps)
+    const cited = [{ url: 'https://g.ch/1', title: 'Atlas 175', excerpt: '24000 g' }]
+    expect(res.trace[0]).toMatchObject({ name: 'web_lookups', searches: [searched], cited })
+    expect(res.trace.map((t) => t.name)).toEqual(['web_lookups', 'list_models'])
+    const live = events.find((e) => e.type === 'tool' && e.name === 'web_lookups' && e.phase === 'done')
+    expect(live).toMatchObject({ searches: [searched], cited })
+    const round = chat.seen[1].messages.find((m) => m.role === 'assistant' && m.tool_calls?.length)
+    expect(round?.web).toEqual({ counts: { web_search_requests: 1 }, searches: [searched], cited })
+  })
+
+  it('carries the searches of the closing answer into the next turn', async () => {
+    chat.rounds = [{ text: 'About 24 kg.', after: found }]
+    await runAgent(request({ chatId: 'web-1' }), deps().deps)
+    chat.rounds = [{ text: 'From the Galaxus listing.' }]
+    await runAgent(
+      request({
+        chatId: 'web-1',
+        history: [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: 'About 24 kg.' }
+        ],
+        userText: 'Where does the weight come from?'
+      }),
+      deps().deps
+    )
+    const answer = chat.seen
+      .at(-1)!
+      .messages.find((m) => m.role === 'assistant' && m.content === 'About 24 kg.')
+    expect(answer?.web?.searches).toEqual([searched])
+  })
+
+  it('keeps the searches of a reply the cost limit stopped, for the next turn', async () => {
+    // The round's calls never run, but its reply searched: the answer that closes the run carries them.
+    let saved: StoredTranscript | null = null
+    chat.rounds = [
+      { usage: { cost: 1.2 }, after: found, calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] }
+    ]
+    const d = deps({
+      transcriptStore: {
+        load: async () => null,
+        save: async (_: string, t: StoredTranscript) => void (saved = t)
+      }
+    })
+    await runAgent(request({ maxCostUsd: 1, chatId: 'web-cost' }), d.deps)
+    const answers = saved!.messages.filter((m) => m.role === 'assistant')
+    expect(answers.at(-1)?.web?.searches).toEqual([searched])
+    expect(answers.filter((m) => m.web)).toHaveLength(1)
+  })
+
+  it('names no search a failed attempt made on the reply that replaced it, and still shows what it billed', async () => {
+    // The attempt reported its lookups, then broke off; the engine sent the request again and the new
+    // reply searched nothing. Its round must not tell the model it searched.
+    chat.rounds = [
+      {
+        before: [
+          { type: 'usage', usage: { cost: 0.02, server_tool_use: { web_search_requests: 2 } } },
+          { type: 'retry', phase: 'send', attempt: 2 }
+        ],
+        calls: [{ id: 'a', name: 'list_models', arguments: '{}' }]
+      },
+      { text: 'done' }
+    ]
+    const res = await runAgent(request(), deps().deps)
+    expect(res.trace.filter((t) => t.name === 'web_lookups')).toHaveLength(1)
+    expect(chat.seen[1].messages.some((m) => m.web)).toBe(false)
+  })
+
+  it('records nothing for a round that looked nothing up', async () => {
+    chat.rounds = [{ calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] }, { text: 'done' }]
+    const res = await runAgent(request(), deps().deps)
+    expect(res.trace.some((t) => t.name === 'web_lookups')).toBe(false)
+    expect(chat.seen[1].messages.some((m) => m.web)).toBe(false)
   })
 
   it('ignores empty or zero counters', async () => {

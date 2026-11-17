@@ -162,6 +162,49 @@ def test_chat_keeps_tool_traces_but_caps_them(client, token, project):
     assert "provider" not in msgs[0]
 
 
+def test_chat_keeps_the_web_searches_and_cited_pages_of_a_turn(client, token, project):
+    """The answer's list of sources is read from the provider's web lookups row after a reload: what was
+    searched for, which pages came back, which the reply cites — bounded, web addresses only, and a search
+    whose pages the provider did not report stays distinguishable from one that found none."""
+    db = "fg-web"
+    client.post("/api/v1/databases/foreground", json={"name": db}, headers=token)
+    cid = client.post(f"/api/v1/ai/chats/{db}", json={}, headers=token).json()["id"]
+    row = {
+        "name": "web_lookups",
+        "status": "ok",
+        "preview": "2 web searches",
+        "searches": [
+            {"query": "avasco Atlas Gewicht", "results": [{"url": "https://www.galaxus.ch/p/1", "title": "Atlas 175"}]},
+            {"query": "OpenAI search", "error": "x" * 500},
+            {"query": "nothing found", "results": []},
+            {"results": [{"url": "javascript:alert(1)", "title": "bad"}, {"url": "https://ok.example"}] + [{"url": f"https://e.example/{i}"} for i in range(40)]},
+            "not a search",
+        ]
+        + [{"query": f"q{i}", "results": []} for i in range(30)],
+        "cited": [
+            {"url": "https://www.galaxus.ch/p/1", "title": "Atlas 175", "excerpt": "Weight 24000 g " * 40, "via": ["x"]},
+            {"url": "file:///etc/passwd"},
+        ],
+    }
+    client.post(
+        f"/api/v1/ai/chats/{db}/{cid}/messages",
+        json={"messages": [{"role": "assistant", "content": "Done.", "tools": [row]}]},
+        headers=token,
+    )
+    kept = client.get(f"/api/v1/ai/chats/{db}/{cid}", headers=token).json()["messages"][0]["tools"][0]
+    searches = kept["searches"]
+    # Bounded before the junk is skipped: twenty entries, one of them not a search.
+    assert len(searches) == 19
+    assert searches[0] == {"query": "avasco Atlas Gewicht", "results": [{"url": "https://www.galaxus.ch/p/1", "title": "Atlas 175"}]}
+    # Pages not reported (no list) and no pages (empty list) are two different answers.
+    assert "results" not in searches[1] and len(searches[1]["error"]) == 100
+    assert searches[2] == {"query": "nothing found", "results": []}
+    # Only web addresses survive, and a runaway list is cut.
+    assert searches[3]["results"][0] == {"url": "https://ok.example"} and len(searches[3]["results"]) == 19
+    # The cited passage is kept, bounded; a non-web address and unknown keys are dropped.
+    assert kept["cited"] == [{"url": "https://www.galaxus.ch/p/1", "title": "Atlas 175", "excerpt": ("Weight 24000 g " * 40).strip()[:300]}]
+
+
 def test_chat_keeps_what_a_turn_consumed(client, token, project):
     """The chat header adds these up over the conversation. The monthly ledger in Settings is per
     model and cannot tell two chats apart, so nothing else can answer it after a reload — and the
