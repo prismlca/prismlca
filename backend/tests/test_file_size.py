@@ -33,9 +33,8 @@ CEILINGS: dict[str, int] = {
     # 1811 — prompts AND the proposal gate, so not exempt. The abbreviations moved to report_abbreviations,
     # the figure rules to report_numbers and their reading of numbers and units to prose_numbers.
     "prism_lca/engine/report_prompts.py": 1836,
-    # 1959 — raised by 1 for the rate skip in `frozen_parameter_figures`: which written figure the check compares
-    # is decided where the figures are read, and splitting that loop would leave the reading in two places.
-    "prism_lca/engine/health.py": 1985,
+    # 1927 — the provenance count moved to health_provenance.
+    "prism_lca/engine/health.py": 1952,
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601
     "prism_lca/engine/model.py": 1452,  # 1427 — markets and their suppliers moved to market_suppliers.py
