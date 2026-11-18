@@ -2,7 +2,7 @@
   {
     "date": "2026-11-18",
     "title": "Recipes in bill-of-materials research",
-    "details": "The assistant's bill-of-materials research now researches a mixture — a soap, a paint, a concrete — as one recipe from one named source, beside the container and packaging. The result says whether the recipe adds up to the total its source states, which ingredients from the label it lacks and whether it is the product's own recipe or a frame formulation; a recipe that does not add up keeps the mass balance unchecked."
+    "details": "The assistant's bill-of-materials research now researches a mixture — a soap, a paint, a concrete — as one recipe from one named source, beside the container and packaging. The result says whether the recipe adds up to the total its source states, which ingredients from the label it lacks, where it contradicts the order of a cosmetic's INCI list, and whether it is the product's own recipe or a frame formulation; a recipe that does not add up keeps the mass balance unchecked."
   },
   {
     "date": "2026-11-18",

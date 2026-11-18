@@ -61,6 +61,9 @@ describe('withoutEmptyArgs — the central rule', () => {
     expect(norm('research_bom', { product: 'shelf', recipe: { of: '', ingredients: [] } })).toEqual({
       product: 'shelf'
     })
+    expect(norm('research_bom', { product: 'shelf', recipe: { of: '', inci_list: [] } })).toEqual({
+      product: 'shelf'
+    })
     expect(norm('research_bom', { product: 'concrete', recipe: { of: 'ready-mix concrete' } })).toEqual({
       product: 'concrete',
       recipe: { of: 'ready-mix concrete' }

@@ -10,6 +10,7 @@
  * researcher that sees the whole recipe can keep.
  */
 import { clipNote } from './researchNote'
+import { inciEntries } from './inciOrder'
 import type { VersionSeen } from './bomAnswer'
 
 export const RECIPE_SYSTEM = `You research the RECIPE (formulation) of a mixture for life-cycle assessment — a soap, a
@@ -89,8 +90,11 @@ export interface RecipeRequest {
   of?: string
   /** The mass of the mixture in the product, in kg — scales the shares, never checks them. */
   mass_kg?: number
-  /** Ingredients known from the product (its INCI list, what the user said). */
+  /** Ingredients known from the product (what the user said, a printed list that is not an INCI list). */
   ingredients?: string[]
+  /** THIS product's INCI list as printed, in its printed order: covered like `ingredients`, and the recipe's
+   *  shares are held against its order (inciOrder.ts). */
+  inci_list?: string[]
 }
 
 /** The unit a recipe line is printed in: mass percent, a mass per batch, or parts by weight. */
@@ -159,12 +163,19 @@ export interface RecipeLeg {
 /** The question the recipe leg gets: what to research, what is known, and whose business the rest is. */
 export function recipeQuestion(brief: string, of: string, request: RecipeRequest, others: string[]): string {
   const known = (request.ingredients ?? []).map((i) => i.trim()).filter(Boolean)
+  const inci = inciEntries(request.inci_list)
   return (
     `${brief}\n\nResearch ONLY the recipe of ${of}: one formulation with every ingredient and its amount, as the ` +
     'JSON object.' +
     (known.length
       ? `\nIngredients known from the product (its printed list): ${known.join(', ')}. Give one its line only where ` +
         'your one formulation names it; one it lacks is reported from this list — never fill it in from elsewhere.'
+      : '') +
+    // The name as printed is what places a line in the list: "glycerol" finds no "Glycerin".
+    (inci.length
+      ? `\nTHIS product's INCI list, as printed: ${inci.join(', ')}. Give one its line only where your one ` +
+        'formulation names it, and write its name as printed here in "inci"; one it lacks is reported from this ' +
+        'list — never fill it in from elsewhere.'
       : '') +
     (request.mass_kg
       ? `\nThe mass of the mixture in the product is known (${request.mass_kg} kg); no need to research it.`

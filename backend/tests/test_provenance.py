@@ -172,12 +172,18 @@ def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
                    "source": "https://pcc.example/mp01.pdf", "closes": False, "note": "its lines sum to 91.12 %",
                    "gap_pct": 8.88, "gap_kg": 0.045288, "mass_kg": 0.51, "mass_source": "given",
                    "missing_ingredients": ["Glyceryl Oleate"] + [f"x{i}" for i in range(20)],
-                   "split": ["SLES 27 % solution"], "reachable_by_ranges": "yes"},
+                   "split": ["SLES 27 % solution"], "reachable_by_ranges": "yes",
+                   "inci_order": ["Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5), but the recipe "
+                                  "gives 1.05 % against 2 %", "x" * 400, ""] + ["y"] * 20},
     })
     recipe = check["recipe"]
     assert recipe["closes"] is False and recipe["gap_pct"] == 8.88 and recipe["gap_kg"] == 0.045288
     assert recipe["kind"] == "frame" and recipe["mass_source"] == "given"
     assert len(recipe["missing_ingredients"]) == 12 and recipe["split"] == ["SLES 27 % solution"]
+    # Where the shares contradict the INCI list: one sentence each, cut visibly, as many as the other lists.
+    order = recipe["inci_order"]
+    assert order[0].startswith("Cocamidopropyl Betaine (no. 4)") and len(order) == 12
+    assert len(order[1]) == 300 and order[1].endswith("…")
     assert "reachable_by_ranges" not in recipe
     # Not checkable is an answer of its own, kept as null; an over-full recipe keeps its negative gap.
     open_one = clean_bom_check({"recipe": {"of": "concrete", "closes": None, "gap_pct": -3.5, "kind": "guess"}})

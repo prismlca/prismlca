@@ -14,6 +14,14 @@ import type { BomItem, VersionSeen } from './bomAnswer'
 import type { RecipeLeg, RecipeLine, RecipeRequest, RecipeUnit, ContentsMass, Formulation } from './bomRecipe'
 import { urlKey } from './citationBook'
 import { versionsContradict } from './bomVersions'
+import {
+  contradictionWords,
+  inciEntries,
+  inciOrder,
+  shareBounds,
+  type InciOrder,
+  type LineShare
+} from './inciOrder'
 
 /** Closed within this share of the denominator: two percentage points on a percent recipe — the sources' rounding. */
 const CLOSE_TOL = 0.02
@@ -77,6 +85,8 @@ export interface RecipeBlock {
   contents_found?: ContentsMass[]
   /** Trade forms booked as their constituents. */
   split?: string[]
+  /** Where the shares contradict the order of the INCI list passed — a hint beside the closure, never part of it. */
+  inci_order?: InciOrder
 }
 
 export interface RecipeWeighing {
@@ -448,12 +458,13 @@ export function weighRecipe(
   })
   const cut = Math.max(0, lines.length - RECIPE_LINE_CAP)
 
+  const inciList = inciEntries(opts.request.inci_list)
   const known = [
-    ...new Set(
-      [...(opts.request.ingredients ?? []).flatMap((k) => k.split(',')), ...(leg.declared?.names ?? [])]
-        .map((k) => k.trim())
-        .filter(Boolean)
-    )
+    ...new Set([
+      ...inciEntries(opts.request.ingredients),
+      ...inciList,
+      ...(leg.declared?.names ?? []).map((k) => k.trim()).filter(Boolean)
+    ])
   ]
   const missing = missingIngredients(known, lines)
 
@@ -461,6 +472,23 @@ export function weighRecipe(
   const gapPct = gap !== undefined && closes !== null ? r2((gap / (den as number)) * 100) : undefined
   const gapKg =
     gap !== undefined && gapPct !== undefined && massKg ? r6((gap / (den as number)) * massKg) : undefined
+
+  // The INCI list's order, only where the caller passed one as such (inciOrder.ts).
+  const order: InciOrder | undefined = !inciList.length
+    ? undefined
+    : sharesFrom
+      ? inciOrder(
+          inciList,
+          shareBounds(lines, pts, { rest: rest?.line, den, sharesFrom, inBasis }).map(
+            (share, i): LineShare => ({
+              line: lines[i],
+              ...(share ? { share } : {}),
+              ...(rest?.line === lines[i] && carried.length ? { carries: true } : {})
+            })
+          ),
+          gapPct !== undefined && gapPct > 0 ? { unaccounted_pct: gapPct } : {}
+        )
+      : { compared: 0, contradictions: [], note: 'Not compared: the recipe gives no shares of the mixture.' }
   const block: RecipeBlock = {
     of,
     ...(f ? { formulation: f } : {}),
@@ -477,7 +505,8 @@ export function weighRecipe(
     ...(leg.declared?.source_url ? { declared_source: leg.declared.source_url } : {}),
     ...(massKg ? { mass_kg: massKg, mass_source: given ? ('given' as const) : ('researched' as const) } : {}),
     ...(found.length ? { contents_found: found } : {}),
-    ...(split.length ? { split } : {})
+    ...(split.length ? { split } : {}),
+    ...(order ? { inci_order: order } : {})
   }
   if (cut)
     notes.push(
@@ -490,7 +519,14 @@ export function weighRecipe(
       : f?.kind === 'product'
         ? ''
         : "not said whether it is this product's own"
-  const subject = `The recipe of ${of}, ${f ? `"${f.name}"` : 'an unnamed formulation'}${kindWords ? ` (${kindWords})` : ''},`
+  const contradicting = order?.contradictions ?? []
+  const orderWords = contradicting.length
+    ? `Its shares contradict the order of the product's INCI list: ` +
+      contradicting.slice(0, 2).map(contradictionWords).join('; ') +
+      (contradicting.length + (order?.more ?? 0) > 2 ? ' (more in recipe.inci_order)' : '') +
+      ' — as it stands, it does not fit this product as labelled; say so to the user (the balance does not depend on it).'
+    : ''
+  const subject = `The recipe of ${of},${f ? `"${f.name}"` : 'an unnamed formulation'}${kindWords ? ` (${kindWords})` : ''},`
   const gapWords =
     gapPct !== undefined
       ? `${Math.abs(gapPct)} %${gapKg !== undefined ? ` (${Math.abs(gapKg)} kg)` : ''} ${gapPct >= 0 ? 'unaccounted' : 'over'}`
@@ -510,6 +546,7 @@ export function weighRecipe(
       : '',
     foreignNames.length ? `Lines from other sources: ${foreignNames.join(', ')}.` : '',
     missing.length ? `Known from the product but not in it: ${missing.join(', ')}.` : '',
+    orderWords,
     massKg
       ? `Scaled to ${massKg} kg (${given ? 'the recipe.mass_kg you passed' : 'the contents mass the research found'}).`
       : sharesFrom
