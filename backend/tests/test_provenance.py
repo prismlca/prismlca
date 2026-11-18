@@ -165,6 +165,25 @@ def test_a_repeat_keeps_its_finding_when_the_full_log_evicts_the_first_record(pr
     assert entries[-1]["findings"][0]["mass_kg"] == 9.0
 
 
+def test_a_repeated_part_hands_the_stored_one_the_other_figures_it_found(project):
+    """The second research of the label counted the same 0.6 g and also met the direct print. The repeat is not
+    stored again, so its other figure goes to the stored finding — the health check reads it only there."""
+    store = ResearchLogStore()
+    label = {"text": "label (PP): 0.0006 kg", "sources": ["https://e.org/l"], "component": "label",
+             "mass_kg": 0.0006}
+    call = {"question": "Bill of materials: soap", "findings": [label], "bom_check": {"summary": "checked"}}
+    store.record("alt", [call])
+    store.record("alt", [{**call, "findings": [{**label, "alternatives_kg": [0.00015, 0.0006]}]}])
+    first, second = store.list("alt")
+    # The counted figure itself is no other figure; the second entry still holds only its check.
+    assert first["findings"][0]["alternatives_kg"] == [0.00015] and second["findings"] == []
+    # A web finding repeated with nothing new still writes nothing; one that only widens a part is saved.
+    assert store.record("alt", [{"question": "Bill of materials: soap", "findings": [label]}])["added"] == 0
+    store.record("alt", [{"question": "Bill of materials: soap", "findings": [{**label, "alternatives_kg": [0.0008]}]}])
+    assert store.list("alt")[0]["findings"][0]["alternatives_kg"] == [0.00015, 0.0008]
+    assert len(store.list("alt")) == 2
+
+
 def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
     check = clean_bom_check({
         "summary": "The recipe of liquid soap does NOT close",

@@ -48,14 +48,33 @@ _PROBE = 0.01
 Exchange = tuple[str, float, str]
 
 
-def _researched(database: str) -> list[tuple[str, float, list[float]]]:
-    """(component, kg, other figures) per researched component with a mass, first record of a name wins. The
-    other figures are the ones the research found for the same part beside the one it counted."""
+#: (kg, what the research was of) of one researched figure — the product a research_bom call was asked about.
+Figure = tuple[float, str]
+
+_BOM_QUESTION = "Bill of materials: "
+
+
+def _researched(database: str) -> list[tuple[str, Figure, list[Figure]]]:
+    """(component, named figure, other figures) per researched part with a mass, one row per name.
+
+    A name is one part, and every figure the log retains for it counts: the ones the research counted, in every
+    record of the name, and the others it found beside them (``alternatives_kg``: a variant, a second source). A
+    part researched again — a corrected source, another version — is booked by its new figure as much as by its
+    old one: this check asks whether the part is in the model, not which figure is right, and the log cannot say
+    that either (a later record is not a better one, and a repeat that confirms an older figure is not stored again).
+    The figure named is the one the last record of the name counted; the others follow in the order of the log.
+
+    Two limits come with the name as the part's identity. Namesakes — "screws" of the frame and "screws" of the
+    lid, researched apart — are one part here, so a booking of either answers for both; the finding names what
+    each figure was researched for, so a reader can tell them apart. And every figure brings its own tolerance
+    window, so a part with several figures is easier for a neighbouring mass to answer for.
+    """
     from prism_lca.engine.research_log import ResearchLogStore
 
-    items: list[tuple[str, float, list[float]]] = []
-    seen: set[str] = set()
+    parts: dict[str, tuple[str, Figure, list[Figure]]] = {}
     for entry in ResearchLogStore().list(database):
+        of = " ".join(str(entry.get("question") or "").split()).removeprefix(_BOM_QUESTION)
+        of = of if len(of) <= 80 else of[:79].rstrip() + "…"
         for finding in entry.get("findings") or []:
             component = str(finding.get("component") or "").strip()
             mass = finding.get("mass_kg")
@@ -66,15 +85,21 @@ def _researched(database: str) -> list[tuple[str, float, list[float]]]:
                 component, mass = m.group(1).strip(), float(m.group(2))
             if not component or not isinstance(mass, (int, float)) or mass <= 0:
                 continue
-            if component.lower() in seen:
-                continue
-            seen.add(component.lower())
             others = [
-                float(v)
+                (float(v), of)
                 for v in finding.get("alternatives_kg") or []
                 if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
             ]
-            items.append((component, float(mass), others))
+            key = " ".join(component.lower().split())
+            figures = parts[key][2] if key in parts else []
+            parts[key] = (component, (float(mass), of), [*figures, (float(mass), of), *others])
+    items: list[tuple[str, Figure, list[Figure]]] = []
+    for component, named, figures in parts.values():
+        others: list[Figure] = []
+        for value, of in figures:
+            if value != named[0] and all(value != v for v, _of in others):
+                others.append((value, of))
+        items.append((component, named, others))
     return items
 
 
@@ -370,11 +395,42 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
         return _only_reduces(component, mass, name, verdict[1])
 
     out: list[tuple[str, str]] = []
-    for component, mass, others in items:
-        text = finding(component, mass)
+    for component, named, others in items:
+        text = finding(component, named[0])
         # A booking of another figure the research found for the part (the variant the user's product turned out
-        # to be) books it as well; when none is booked, the finding names the counted figure.
-        if text is None or any(finding(component, other) is None for other in others):
+        # to be, a later research's corrected figure) books it as well; when none is booked, the finding names the
+        # figure last counted and the others beside it.
+        if text is None or any(finding(component, other) is None for other, _of in others):
             continue
-        out.append((component, text))
+        out.append((component, text + _other_figures(named, others)))
     return out
+
+
+#: Other figures of a part a finding names; the check reads them all.
+_NAMED_OTHERS = 5
+
+
+def _other_figures(named: Figure, others: list[Figure]) -> str:
+    """The sentence that names a part's other figures and, where they come from other research, what each was
+    researched for. It says what they may be rather than which to book: the check cannot tell a corrected figure
+    of the part (book one) from a namesake elsewhere in the product (book both); the products they were
+    researched for often can."""
+    if not others:
+        return ""
+    shown: dict[str, list[float]] = {}
+    for value, of in others[:_NAMED_OTHERS]:
+        shown.setdefault(of, []).append(value)
+    more = f" and {len(others) - _NAMED_OTHERS} more" if len(others) > _NAMED_OTHERS else ""
+
+    def kg(values: list[float]) -> str:
+        return ", ".join(f"{v:g} kg" for v in values)
+
+    if set(shown) == {named[1]}:
+        listed = kg(shown[named[1]]) + more
+    else:
+        listed = "; ".join(f"{kg(values)} for '{of}'" for of, values in shown.items())
+        listed += f"{more} (the {named[0]:g} kg for '{named[1]}')"
+    return (
+        f" Under the same name the research also recorded {listed} — another research of the part, a variant "
+        "of it, or a namesake elsewhere in the product; the check matched none of these either."
+    )
