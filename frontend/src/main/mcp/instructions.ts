@@ -110,7 +110,10 @@ export function buildOrientation(o: OrientationOpts): string {
     backgroundDbs: o.backgroundDbs,
     libraryDbs: o.libraryDbs,
     preferredBackground: o.preferredBackground,
-    studyLanguage: o.studyLanguage
+    studyLanguage: o.studyLanguage,
+    // The chat's per-turn note (study language, today's date) never reaches a client: the language
+    // rule names the recorded language instead, and today's date stands in the session block below.
+    perTurnNote: false
   })
   const at = prompt.indexOf(FIRST_HEADING)
   const body = stripBullets(at >= 0 ? prompt.slice(at + 2) : prompt)
