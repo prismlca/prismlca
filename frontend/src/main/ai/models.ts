@@ -152,7 +152,8 @@ export interface AiModel {
    * Codex made `update_plan` opt-in for everyone (CLI 0.152.0, 31.08.2026). MEASURED: GLM 5.3 Flash finished
    * the same task in fewer rounds and at lower cost with the list in both measured pairs (38 vs 57, 50 vs 62
    * rounds), while Sonnet 5.5 finished in 24 rounds without it and never lost the thread. The other rows of each
-   * class are set by class, not by their own run — whoever measures one, records it there.
+   * class are set by class, not by their own run — whoever measures one, records it there. A model that
+   * lets the list stand still while it works is reminded every 25 calls (planReminder.ts).
    */
   planTool?: boolean
   /**
@@ -488,7 +489,12 @@ const CATALOGUE: AiModel[] = [
     temperature: null,
     intelligence: 34.6,
     vision: true,
-    // On by class: the cheap tier, with Haiku 5.5, GPT-6 Luna and the GLM rows. Unmeasured.
+    // On by class: the cheap tier, with Haiku 5.5, GPT-6 Luna and the GLM rows. In three long modelling
+    // runs it closed every plan, at three or four plan calls a run, but kept it current in only one: in the
+    // other two the list stood still for 38 and 43 calls and was ticked off at the end. No run without the
+    // list to compare with, so whether it helps this model is unmeasured. With the reminder (planReminder.ts),
+    // one run of 100 calls: it updated on its own only at the start, then answered each of three reminders with
+    // the very next call, the list moving on every time — the first time three steps at once.
     planTool: true,
     // The one endpoint reports 1,048,576.
     contextTokens: 1048576,
@@ -509,7 +515,10 @@ const CATALOGUE: AiModel[] = [
     // AA's "(High)" row, its top effort and Mistral's own recommendation.
     intelligence: 26.1,
     vision: true,
-    // On by class: the open-weight tier, with the GLM, Kimi and MiniMax rows. Unmeasured.
+    // On by class: the open-weight tier, with the GLM, Kimi and MiniMax rows. In three long modelling
+    // runs it closed every plan, at three or four plan calls a run, but kept it current in only one: in the
+    // other two the list stood still for 64 and 72 calls and was ticked off at the end. No run without the
+    // list to compare with, so whether it helps this model is unmeasured.
     planTool: true,
     // `mistral/zdr` reports 1,048,576, `mistral/eu` 524,288; the smaller is taken so the figure holds
     // whichever one routing picks (the convention the Kimi entry states).
