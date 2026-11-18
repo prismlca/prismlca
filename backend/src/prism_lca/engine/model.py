@@ -15,6 +15,7 @@ import stats_arrays as sa
 
 from prism_lca import _log
 from prism_lca.config import get_settings
+from prism_lca.engine import left_workspace
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
@@ -827,7 +828,7 @@ def restore_classification(database: str, code: str, snap: dict) -> None:
 
 def warm_vocabulary() -> None:
     """Build the vocabulary on a background thread so the first use is instant."""
-    threading.Thread(target=_vocab, name="prism-vocab-warmup", daemon=True).start()
+    threading.Thread(target=left_workspace.reader(_vocab), name="prism-vocab-warmup", daemon=True).start()
 
 
 # --- elementary / product flow search (for defining exchanges) -------------

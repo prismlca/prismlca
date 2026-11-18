@@ -11,6 +11,7 @@ import numpy as np
 
 from prism_lca import _log
 from prism_lca.config import Settings
+from prism_lca.engine import left_workspace
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.errors import PrismError
 from prism_lca.search import abbrev
@@ -120,7 +121,7 @@ class SearchService:
                 logger.exception("embedding warmup failed; first search will load lazily")
             self._warm_indexes()
 
-        threading.Thread(target=_load, name="prism-embed-warmup", daemon=True).start()
+        threading.Thread(target=left_workspace.reader(_load), name="prism-embed-warmup", daemon=True).start()
 
     def warm_indexes(self) -> None:
         """Warm the ACTIVE project's indexes on a background thread — without touching the model.
@@ -134,7 +135,9 @@ class SearchService:
         Cheap when there is nothing to do: a populated cache makes the whole loop dict lookups, so
         the routes that call this without having switched anything pay a thread and no work.
         """
-        threading.Thread(target=self._warm_indexes, name="prism-index-warmup", daemon=True).start()
+        threading.Thread(
+            target=left_workspace.reader(self._warm_indexes), name="prism-index-warmup", daemon=True
+        ).start()
 
     def _warm_indexes(self) -> None:
         """The loop itself — on the caller's thread. See `warm_indexes` for why."""

@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from prism_lca.engine import lca
+from prism_lca.engine import lca, left_workspace
 from prism_lca.engine._store import now_iso
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.errors import PrismError
@@ -111,7 +111,9 @@ def start(
         _prune()
         _JOBS[job.id] = job
     if run_in_thread:
-        threading.Thread(target=_run, args=(job, compute), daemon=True, name=f"calc-job-{job.id}").start()
+        threading.Thread(
+            target=left_workspace.reader(_run), args=(job, compute), daemon=True, name=f"calc-job-{job.id}"
+        ).start()
     else:
         _run(job, compute)
     return job

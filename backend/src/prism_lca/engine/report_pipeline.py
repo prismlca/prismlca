@@ -32,6 +32,7 @@ from prism_lca.config import get_settings
 from prism_lca.engine import (
     health,
     lca,
+    left_workspace,
     report_checks,
     report_graph,
     report_images,
@@ -936,7 +937,7 @@ def warm_snapshots(database: str) -> list[str]:
         targets = targets[-_WARM_REPORTS:]
         for report_id in targets:
             threading.Thread(
-                target=_warm_snapshot,
+                target=left_workspace.reader(_warm_snapshot),
                 args=(database, report_id, generation),
                 name=f"prism-report-warm-{report_id}",
                 daemon=True,

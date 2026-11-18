@@ -204,9 +204,9 @@ class BrightwayRepository(LcaRepository):
         lca.release_cached(name)
         # The same goes for the workspace's SQLite files. Every switch closes what other threads opened in
         # the workspace it leaves — the server's event loop runs the `async` routes, its worker threads the
-        # rest (engine/bootstrap.py). A thread that was in the middle of a read at that moment still held
-        # its database object, so its connection outlived that collection; once the read has ended, the
-        # next collection closes it — this one, at the moment the folder has to be free.
+        # rest (engine/left_workspace.py). A read that was in the middle of a query at that moment kept its
+        # connection through that collection; when the read ends, a collection follows. This one does not
+        # wait for that: the folder has to be free now.
         gc.collect()
         try:
             workspace_removal.remove(name)

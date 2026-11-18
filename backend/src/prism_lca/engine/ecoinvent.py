@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from prism_lca import _log
-from prism_lca.engine import geography_names
+from prism_lca.engine import geography_names, left_workspace
 from prism_lca.engine.backgrounds import common as backgrounds
 from prism_lca.engine.backgrounds import ecoinvent_release
 from prism_lca.engine.backgrounds import sync as background_sync
@@ -706,7 +706,7 @@ def start_bafu_import(
     )
     args = (path, project, database, on_done)
     if run_in_thread:
-        threading.Thread(target=_run_bafu_import, args=args, daemon=True).start()
+        threading.Thread(target=left_workspace.reader(_run_bafu_import), args=args, daemon=True).start()
     else:
         _run_bafu_import(*args)
     return _status
@@ -803,7 +803,7 @@ def start_import(
     )
     args = (path, project, database, workbook, use_mp, on_done)
     if run_in_thread:
-        threading.Thread(target=_run_import, args=args, daemon=True).start()
+        threading.Thread(target=left_workspace.reader(_run_import), args=args, daemon=True).start()
     else:
         _run_import(*args)
     return _status
@@ -837,7 +837,9 @@ def start_lcia_import(
         started_at=time.time(),
     )
     if run_in_thread:
-        threading.Thread(target=_run_lcia_import, args=(workbook, project), daemon=True).start()
+        threading.Thread(
+            target=left_workspace.reader(_run_lcia_import), args=(workbook, project), daemon=True
+        ).start()
     else:
         _run_lcia_import(workbook, project)
     return _status

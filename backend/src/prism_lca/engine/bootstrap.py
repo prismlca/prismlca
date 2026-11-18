@@ -9,16 +9,16 @@ filled in when nobody set it — the case of scripts and tests, which point Brig
 a throwaway directory and must keep it.
 
 Loading Brightway also hooks the one thing every workspace switch needs from us: letting go of the
-workspace that was left.
+workspace that was left (`left_workspace`).
 """
 from __future__ import annotations
 
-import gc
 import os
 from pathlib import Path
 from types import ModuleType
 
 from prism_lca.config import get_settings
+from prism_lca.engine import left_workspace
 from prism_lca.engine.brightway_dir import BRIGHTWAY_ENV, claim, default_dir
 
 _bd: ModuleType | None = None
@@ -36,22 +36,6 @@ def _ensure_env() -> None:
     os.environ.setdefault("PYTHONUTF8", "1")
 
 
-def _let_go_of_the_left_workspace(_sender: object, **_kwargs: object) -> None:
-    """Close what other threads still hold open in the workspace that was just left.
-
-    A SQLite connection belongs to the thread that opened it, and Brightway's switch closes only those of
-    the thread that switches. The others close when the database object they belong to is collected, and
-    the switch collects one database late: the parameter database of the workspace that was left — with the
-    connection the server's event loop opened on it — stays until some later collection. Until then its
-    `parameters.db` is open, and Windows refuses to delete, move or rename the folder of a workspace the
-    user is no longer in, from the app as from outside it. Brightway sends this signal once every database
-    has moved to the new workspace, so one collection closes them all — all but one a read in another
-    thread is still using at this moment, which waits for the next collection after the read: deleting a
-    workspace collects once more for it (`delete_project`).
-    """
-    gc.collect()
-
-
 def get_bd() -> ModuleType:
     """Return the ``bw2data`` module, importing it only after the data dir is configured."""
     global _bd
@@ -62,10 +46,8 @@ def get_bd() -> ModuleType:
         formula_namespace.restrict()
         _ensure_env()
         import bw2data as bd  # noqa: E402 - env must be set before import
-        from bw2data.signals import project_changed
 
-        # Every switch, wherever it starts: a workspace opened, created, deleted, imported into, restored.
-        project_changed.connect(_let_go_of_the_left_workspace, weak=False)
+        left_workspace.connect()
         _bd = bd
     return _bd
 
