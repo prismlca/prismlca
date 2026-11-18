@@ -246,7 +246,7 @@ export default function Workbench(): JSX.Element {
       // this step ADDS the cache to the bus, it does not replace the bus. The edit happened whether or
       // not its log could be read, so a failed read must not leave the caches marked current.
       invalidateModelCaches()
-      if (asked) refreshView(asked) // a merged tag group takes the saved breakdowns along (lib/modelView)
+      if (asked) refreshView(asked) // a merged or deleted tag group changes the saved breakdowns (lib/modelView)
     }
   }, [fetchAudit, fetchHistory])
 
@@ -434,7 +434,7 @@ export default function Workbench(): JSX.Element {
     removeTagValue,
     mergeTagValue,
     mergeTagGroup,
-    describeMerge,
+    describeChange,
     groupByTagGroup,
     hlTag,
     setHlTag,
@@ -1026,7 +1026,7 @@ export default function Workbench(): JSX.Element {
             onRemoveValue={removeTagValue}
             onMergeValue={mergeTagValue}
             onMergeGroup={mergeTagGroup}
-            describeMerge={describeMerge}
+            describeChange={describeChange}
             confirm={setConfirm}
           />
         ) : null}

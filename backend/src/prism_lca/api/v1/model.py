@@ -673,13 +673,16 @@ async def merge_tag_group(request: Request, body: TagGroupMergeRequest) -> dict:
     return _bus(request).execute(cmd, source=body.source)
 
 
-@router.get("/tag-groups/merge-preview", summary="What a merge of a tag group or value would touch besides the tags")
-async def merge_preview(
+@router.get(
+    "/tag-groups/references", summary="What a merge or delete of a tag group or value would touch besides the tags"
+)
+async def tag_references_preview(
     request: Request, database: str, group: str, value: str | None = None, into: str | None = None
 ) -> dict:
-    """Asked before a merge is confirmed. For a group: the saved breakdowns and the reports that name it and
-    would follow it to `into`, and those that split by both and would keep their breakdowns. For a value: the
-    reports whose chapters cite it, which would show a gap."""
+    """Asked before a merge or a delete is confirmed. For a group: the saved breakdowns and the reports that
+    name it — with `into`, what would follow it there and the reports that split by both and would keep their
+    breakdowns; without, what a delete would take it out of (the breakdowns) and leave on it (the reports).
+    For a value: the reports whose chapters cite it, which would show a gap after a merge and a delete alike."""
     with commands.PROJECT_LOCK:  # one workspace from start to end, like the reads above
         name = _tag_model(database)
         if value is None:

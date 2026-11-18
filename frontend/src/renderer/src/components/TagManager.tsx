@@ -9,6 +9,7 @@ import TagAdoptRow from './TagAdoptRow'
  * tags. Assigning tags to processes stays on the node tag buttons (TagMenu) — deliberately
  * not possible here. Group/value deletion cascades (untags every process of the model), hence the
  * confirms — except for a tag no process carries, which goes without a question: nothing is untagged.
+ * Every confirm also says what the step touches besides the tags: the saved breakdowns and reports.
  *
  * The one action here that is not taxonomy is **Group on canvas**: it draws one group box per tag of
  * that group. It belongs here rather than on the canvas because the *tag group* is what you point at —
@@ -27,7 +28,7 @@ export default function TagManager({
   onRemoveValue,
   onMergeValue,
   onMergeGroup,
-  describeMerge,
+  describeChange,
   confirm
 }: {
   groups: TagGroup[]
@@ -45,9 +46,10 @@ export default function TagManager({
   onMergeValue: (group: string, value: string, into: string) => void
   /** Fold a whole group into another: values and tags move, the group disappears. */
   onMergeGroup: (name: string, into: string) => void
-  /** What a merge touches besides the tags — a value merge `value`, a group merge `null` — as one sentence
-   *  for its confirm, '' when nothing. Read before the confirm opens, so it can be weighed. */
-  describeMerge: (group: string, value: string | null, into: string) => Promise<string>
+  /** What a merge into `into` or a delete (`into` null) touches besides the tags — of a value `value`, of a
+   *  group `null` — as one sentence for its confirm, '' when nothing. Read before the confirm opens, so it
+   *  can be weighed. */
+  describeChange: (group: string, value: string | null, into: string | null) => Promise<string>
   confirm: (spec: ConfirmSpec) => void
 }): JSX.Element {
   const [newGroup, setNewGroup] = useState('')
@@ -119,7 +121,7 @@ export default function TagManager({
                         const into = e.target.value
                         setMerging(null)
                         if (!into) return
-                        void describeMerge(g.name, null, into).then((also) =>
+                        void describeChange(g.name, null, into).then((also) =>
                           confirm({
                             title: 'Merge tag groups',
                             message: `Merge "${g.name}" into "${into}"? Its tags move to "${into}" (values are added there as needed) and "${g.name}" disappears.${also ? ` ${also}` : ''} Undoable.`,
@@ -152,13 +154,15 @@ export default function TagManager({
                   className="tagman-del"
                   title="Delete this group (untags every process)"
                   onClick={() =>
-                    confirm({
-                      title: 'Delete tag group',
-                      message: `Delete the group "${g.name}" and remove its tags from all processes?`,
-                      confirmLabel: 'Delete',
-                      danger: true,
-                      onConfirm: () => onDeleteGroup(g.name)
-                    })
+                    void describeChange(g.name, null, null).then((also) =>
+                      confirm({
+                        title: 'Delete tag group',
+                        message: `Delete the group "${g.name}" and remove its tags from all processes?${also ? ` ${also}` : ''}`,
+                        confirmLabel: 'Delete',
+                        danger: true,
+                        onConfirm: () => onDeleteGroup(g.name)
+                      })
+                    )
                   }
                 >
                   ✕
@@ -184,7 +188,7 @@ export default function TagManager({
                             const into = e.target.value
                             setMerging(null)
                             if (!into) return
-                            void describeMerge(g.name, v, into).then((also) =>
+                            void describeChange(g.name, v, into).then((also) =>
                               confirm({
                                 title: 'Merge tags',
                                 message: `Merge "${v}" into "${into}" in "${g.name}"? Every process tagged "${v}" is retagged "${into}"; "${v}" disappears from the group.${also ? ` ${also}` : ''} Undoable.`,
@@ -225,13 +229,15 @@ export default function TagManager({
                       onClick={() =>
                         g.unused?.includes(v)
                           ? onRemoveValue(g.name, v)
-                          : confirm({
-                              title: 'Remove tag',
-                              message: `Remove "${v}" from "${g.name}" and untag all processes carrying it?`,
-                              confirmLabel: 'Remove',
-                              danger: true,
-                              onConfirm: () => onRemoveValue(g.name, v)
-                            })
+                          : void describeChange(g.name, v, null).then((also) =>
+                              confirm({
+                                title: 'Remove tag',
+                                message: `Remove "${v}" from "${g.name}" and untag all processes carrying it?${also ? ` ${also}` : ''}`,
+                                confirmLabel: 'Remove',
+                                danger: true,
+                                onConfirm: () => onRemoveValue(g.name, v)
+                              })
+                            )
                       }
                     >
                       ✕

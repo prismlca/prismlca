@@ -13,7 +13,7 @@ const handlers = () => ({
   onRemoveValue: vi.fn(),
   onMergeValue: vi.fn(),
   onMergeGroup: vi.fn(),
-  describeMerge: vi.fn(async () => ''),
+  describeChange: vi.fn(async (): Promise<string> => ''),
   confirm: vi.fn()
 })
 
@@ -49,12 +49,37 @@ describe('the Tags window', () => {
     expect(h.confirm).not.toHaveBeenCalled()
   })
 
-  it('asks before removing a tag that processes carry', () => {
+  it('asks before removing a tag that processes carry, naming the reports that cite it', async () => {
     const h = handlers()
+    const note =
+      'Report “Study” (1 chapter) cites “Use”; those figures show as missing until the chapters are updated.'
+    h.describeChange.mockResolvedValue(note)
     render(<TagManager {...h} groups={GROUPS} />)
     fireEvent.click(screen.getByRole('button', { name: 'Remove tag Use' }))
+    await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
+    expect(h.describeChange).toHaveBeenCalledWith('Life-cycle phase', 'Use', null)
     expect(h.onRemoveValue).not.toHaveBeenCalled()
-    expect(h.confirm).toHaveBeenCalledTimes(1)
+    const spec = h.confirm.mock.calls[0][0]
+    expect(spec.message).toBe(
+      `Remove "Use" from "Life-cycle phase" and untag all processes carrying it? ${note}`
+    )
+    spec.onConfirm()
+    expect(h.onRemoveValue).toHaveBeenCalledWith('Life-cycle phase', 'Use')
+  })
+
+  it('says in the delete confirm what else the delete touches, and deletes on confirm', async () => {
+    const h = handlers()
+    h.describeChange.mockResolvedValue('“Part” is taken out of the Results split.')
+    render(<TagManager {...h} groups={GROUPS} />)
+    fireEvent.click(screen.getAllByTitle('Delete this group (untags every process)')[1])
+    await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
+    expect(h.describeChange).toHaveBeenCalledWith('Part', null, null)
+    const spec = h.confirm.mock.calls[0][0]
+    expect(spec.message).toBe(
+      'Delete the group "Part" and remove its tags from all processes? “Part” is taken out of the Results split.'
+    )
+    spec.onConfirm()
+    expect(h.onDeleteGroup).toHaveBeenCalledWith('Part')
   })
 
   it('takes over another model’s groups, and offers that only when there is another model', () => {
@@ -71,14 +96,14 @@ describe('the Tags window', () => {
 
   it('says in the merge confirm what else the merge takes along, and merges on confirm', async () => {
     const h = handlers()
-    h.describeMerge.mockResolvedValue('The Results split uses “Life-cycle phase” and will use “Part”.')
+    h.describeChange.mockResolvedValue('The Results split uses “Life-cycle phase” and will use “Part”.')
     render(<TagManager {...h} groups={GROUPS} />)
     fireEvent.click(screen.getAllByRole('button', { name: 'Merge into…' })[0])
     fireEvent.change(screen.getByLabelText('Merge group Life-cycle phase into'), {
       target: { value: 'Part' }
     })
     await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
-    expect(h.describeMerge).toHaveBeenCalledWith('Life-cycle phase', null, 'Part')
+    expect(h.describeChange).toHaveBeenCalledWith('Life-cycle phase', null, 'Part')
     const spec = h.confirm.mock.calls[0][0]
     expect(spec.message).toContain(
       'disappears. The Results split uses “Life-cycle phase” and will use “Part”. Undoable.'
@@ -93,7 +118,7 @@ describe('the Tags window', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Merge tag Use' }))
     fireEvent.change(screen.getByLabelText('Merge tag Use into'), { target: { value: 'Production' } })
     await waitFor(() => expect(h.confirm).toHaveBeenCalledTimes(1))
-    expect(h.describeMerge).toHaveBeenCalledWith('Life-cycle phase', 'Use', 'Production')
+    expect(h.describeChange).toHaveBeenCalledWith('Life-cycle phase', 'Use', 'Production')
     expect(h.confirm.mock.calls[0][0].message).toMatch(/disappears from the group\. Undoable\.$/)
   })
 })
