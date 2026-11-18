@@ -482,7 +482,10 @@ const CATALOGUE: AiModel[] = [
     // OpenRouter's zero-retention list, so the ZDR switch leaves it reachable; an account that
     // excludes Tencent cannot reach it at all. The weights are announced but not yet published,
     // hence no "open weight". No vendor temperature is stated and it is a reasoning model, so the
-    // parameter is omitted — the catalogue's reasoning-model rule.
+    // parameter is omitted — the catalogue's reasoning-model rule. Its prompt cache misses once early in
+    // most runs, when the prompt first passes about 32k tokens: that round reads no more than a cold first
+    // round does (0 to 512 tokens), by all appearances on another server — the chat's request only grows at
+    // its end there (requestPrefix.test.ts), and a `prompt_cache_key` changed nothing in a measurement.
     id: 'tencent/hy4',
     label: 'Hy4 (Tencent)',
     descriptor: 'solid, very cheap, slow',
@@ -510,8 +513,12 @@ const CATALOGUE: AiModel[] = [
     // reasoning-model rule. Its prompt cache is not one store: in eight runs of one modelling task
     // (2026-11-18, 133 rounds) a round now and then hit an older state of the conversation — round 10 the
     // prompt of round 3 — pinned to `mistral/eu` (2 of 47 rounds), to `mistral/zdr` (4 of 32) and
-    // unpinned (2 of 54) alike, so a pinned endpoint would cost availability and fix nothing. The run bar
-    // names such a round (cacheWatch.ts, "partial").
+    // unpinned (2 of 54) alike, so a pinned endpoint would cost availability and fix nothing. Mistral's own
+    // hint, the routing key sent again as `prompt_cache_key`, showed no reliable effect when the first rounds
+    // of a run were replayed 12 times each way (20 of 24 small steps hit with it, 16 of 24 without). The run
+    // bar names such a round (cacheWatch.ts, "partial"). Apart from that, nearly every run misses it entirely
+    // once, when the prompt first passes about 32k tokens — with or without the key, and although the chat's
+    // request only grows at its end there (requestPrefix.test.ts): by all appearances another server.
     id: 'mistralai/mistral-large-4-0',
     label: 'Mistral Large 4',
     descriptor: 'European lab · open weight · slow',
