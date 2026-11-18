@@ -45,8 +45,15 @@ else {
     if (mode === 'stays') return setInterval(() => {}, 1000)
     process.stderr.write('[prism-mcp-bridge] ${STDIN_CLOSED_LINE} — exiting (code 0).\\n')
     // A helper that inherits the pipes and outlives the bridge — not long, so that a run on Windows,
-    // where the check leaves a tree alone once its root has exited, does not wait for it either.
-    if (mode === 'helper') spawn(process.execPath, ['-e', 'setTimeout(() => {}, 2000)'], { stdio: 'inherit' })
+    // where the check leaves a tree alone once its root has exited, does not wait for it either. On
+    // Windows Node ends a child that is not detached together with its parent (a job object), so there
+    // the helper is detached: otherwise it would die with the stand-in and hold nothing open.
+    if (mode === 'helper')
+      spawn(process.execPath, ['-e', 'setTimeout(() => {}, 2000)'], {
+        stdio: 'inherit',
+        detached: process.platform === 'win32',
+        windowsHide: true
+      })
     process.exit(mode === 'fails' ? 1 : 0)
   })
 }
