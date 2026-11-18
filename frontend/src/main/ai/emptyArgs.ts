@@ -19,7 +19,8 @@
  * - a free-form map (`overrides`, `tags`) is empty only as `{}` — its keys say something;
  * - fields the schema does not declare are left as they came.
  * Required fields are never touched: the tool's own check names what is missing. `KEEP_EMPTY` lists the
- * fields where an empty value is an instruction today, per tool, action and field path.
+ * fields where an empty value is an instruction today, per tool, action and field path — `""`, `[]` or
+ * `{}`, never `null`, which reads as "not given" there too.
  *
  * Invalid shapes are not repaired here — the schema check before this has already refused them.
  */
@@ -123,7 +124,9 @@ function walkObject(w: Walk, schema: Schema, obj: unknown, path: string, inherit
   for (const [k, v] of Object.entries(obj)) {
     if (!Object.hasOwn(props, k)) continue
     const here = path ? `${path}.${k}` : k
-    if (keeps(w.tool, here, action)) continue
+    // `null` is never the instruction: the schema check already read it as "not given", and a kept null
+    // reached the tool as "" — `comment: null` beside a new amount removed the exchange's comment.
+    if (v !== null && keeps(w.tool, here, action)) continue
     const sub = props[k] as Schema | undefined
     const next = walkValue(w, sub, v, here, action)
     const drop =

@@ -20,6 +20,15 @@ describe('which action an edit_exchange item asks for', () => {
     expect(() => actionOf({ uid: 'u1', formula: 'mass' })).toThrow('Missing "action"')
   })
 
+  it('says a call names no exchange instead of asking for an action', () => {
+    expect(() => actionOf({})).toThrow('names no exchange')
+    expect(() => actionOf({ activity_code: 'frame', input_database: 'ei' })).toThrow('nothing was done')
+    // Anything that points at an exchange or says what to write still hears about the action.
+    expect(() => actionOf({ uid: 'u1' })).toThrow('Missing "action"')
+    expect(() => actionOf({ comment: 'per shelf' })).toThrow('Missing "action"')
+    expect(() => actionOf({ new_input_code: 'x' })).toThrow('Missing "action"')
+  })
+
   it('refuses a uid beside an input_code without an action, with both readings', () => {
     const msg = (() => {
       try {
@@ -35,6 +44,18 @@ describe('which action an edit_exchange item asks for', () => {
     expect(msg).toContain('send action "add" without a uid')
     // Without a number or a formula it is no add either, and the same two readings still apply.
     expect(() => actionOf({ uid: 'u1', input_code: 'steel', comment: 'why' })).toThrow('nothing was done')
+  })
+})
+
+describe('edit_exchange that names no exchange', () => {
+  it('says so and writes nothing, for "exchanges": null beside a process', async () => {
+    const fake = fakeExchanges('M', [
+      { uid: 'steel1', activity: 'frame', amount: 7, input: { database: 'ei', code: 'steel' } }
+    ])
+    // The executor drops `exchanges: null` before the tool; what arrives is the process alone.
+    const out = await run({ activity_code: 'frame' }, fake.ctx)
+    expect(out.error).toContain('This call names no exchange')
+    expect(fake.writes).toEqual([])
   })
 })
 

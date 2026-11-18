@@ -106,6 +106,9 @@ export function buildOrientation(o: OrientationOpts): string {
     // The client keeps its own task list; `plan` is not in this catalogue (catalog.ts), so the rule
     // is not in this text either — by parameter, not by stripping.
     planTool: false,
+    // How the chat runs several calls of one reply (side by side for consecutive reads) is the chat's
+    // loop; this server runs a session's calls one after another, and the client's harness decides the rest.
+    callOrder: false,
     approvalGate: o.approvalGate,
     backgroundDbs: o.backgroundDbs,
     libraryDbs: o.libraryDbs,

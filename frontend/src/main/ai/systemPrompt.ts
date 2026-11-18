@@ -74,6 +74,13 @@ export function buildSystemPrompt(opts: {
    * chat; the MCP orientation leaves it out, because an external agent works across models.
    */
   modelScope?: boolean
+  /**
+   * Whether the host runs the calls of one reply in order, with consecutive read-only ones side by side
+   * (agent.ts, `PARALLEL_SAFE_TOOLS`) — the in-app chat, and the default. The MCP orientation passes
+   * false: a client's calls already run one after another per session (mcp/sessions.ts), and what its
+   * own harness does with several calls is not ours to describe.
+   */
+  callOrder?: boolean
 }): string {
   const {
     activeDb,
@@ -193,7 +200,7 @@ ${research ? "- **Bill of materials:** when the user describes a physical produc
       : '. Deleting a model, a custom LCIA method or a method family asks the user in the app itself: say in one sentence what you are about to delete and why, then call the tool — do not ask a separate question first. For the other irreversible actions (renaming a model, changing a custom LCIA method) confirm intent with the user first.'
   }
 - To ask the user a question with a small set of concrete choices (confirmations, functional unit, geography, method variants, which search match to use), call \`ask_user\` — it shows clickable options plus a field for the user's own words, and pauses until they answer. Prefer it over guessing when a decision materially shapes the work, but don't overuse it: one focused question beats a chain of trivial ones, and genuinely open questions stay plain text.
-${planTool ? PLAN_RULE : ''}- Chain read → act → verify: after building or changing a model, run \`check_model_health\` and fix what it reports. Keep tool arguments minimal and correct; don't invent codes — look them up.
+${planTool ? PLAN_RULE : ''}${opts.callOrder !== false ? CALL_ORDER_RULE : ''}- Chain read → act → verify: after building or changing a model, run \`check_model_health\` and fix what it reports. Keep tool arguments minimal and correct; don't invent codes — look them up.
 - **The app is bigger than your tools, and you must not pretend otherwise.** Reports are written and rendered on the **Report page** — chapters, themes, title page, *Write report*, *Approve report*, *Render PDF* — and you have no tool for any of it. The same goes for importing a background database (ecoinvent, BAFU), exporting to Excel, and the AI settings. Asked for one of those: say plainly that it is the user's to do, name the page and the control, and do NOT claim to have done it or predict what it will produce. What you *can* do for a report is make sure \`model_info\` and the process comments are complete and true, because the document is written from them. Load the **PrismLCA, the app around you** skill when the user asks how something in the app works.
 - **What this chat may use is the user's switch:** *Web search*, *Distances*, *Eurostat EoL*, *Comparison models…*, one switch per background database and *My processes* are switched on and off in the **+** left of the chat input — name them by these labels. Asked for something one of them would give you and no tool of yours does it, say which switch turns it on — never claim it is on, and never work round it.
 
@@ -231,6 +238,16 @@ ${langLine}${webLine}${titleLine}`
  */
 export const SCOPE_RULE = `- **This chat works on the active model only.** You read and change it, and you may rename it. You cannot open, create, copy or delete models, change any other model, write into the library (you may link its datasets as inputs), or link inputs from another model. Comparison models (described at the end, if any) you may read with the tools, never change. When the user asks for work in another model, say that it is done in that model's own chat.
 `
+
+/**
+ * How the calls of one reply run. Without it a model could read a `check_model_health` listed after
+ * three edits as running beside them and distrust its verdict, or hold back independent searches it
+ * could send together. The words name what `PARALLEL_SAFE_TOOLS` holds (systemPrompt.test.ts keeps the
+ * two in step) without naming tools a chat may have switched off.
+ */
+export const CALL_ORDER_RULE =
+  '- The calls of one reply run in the order you list them, each after the changes of the ones before ' +
+  'it; only consecutive searches, dataset reads and research calls run side by side.\n'
 
 /**
  * The `plan` paragraph — only for models that get the tool. Two counter-cases bound it: a two-step

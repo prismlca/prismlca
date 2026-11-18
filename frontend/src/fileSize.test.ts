@@ -44,8 +44,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/views/Parameters.tsx': 1198, // 1173
   'main/ai/reportWriter.ts': 882, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts), the continuation (writer/answers.ts) and the lookup context (writer/lookupCtx.ts) moved out
   'renderer/src/views/Results.tsx': 1086, // 1061
-  'renderer/src/views/Overview.tsx': 889, // 864
-  'main/ai/tools/groups/model.ts': 844 // 819 — how an item's action is read moved to groups/exchangeAction.ts
+  'renderer/src/views/Overview.tsx': 889 // 864
 }
 
 const EXEMPT: Record<string, string> = {

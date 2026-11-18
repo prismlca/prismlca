@@ -215,6 +215,58 @@ describe('createToolSession', () => {
     expect(calls).toEqual([])
   })
 
+  it('counts a backend refusal with its own code as a refusal, not a failure', async () => {
+    const twin = {
+      error: {
+        code: 'group_dimension_exists',
+        message: 'A tag group "Life-cycle phase" already holds this dimension.',
+        hint: 'Use that group.'
+      }
+    }
+    const { s } = session({ apiRaw: fakeApi(twin, 409).api })
+    const oc = await s.run('edit_tags', { action: 'create_group', name: 'Phase' })
+    expect(oc.ok).toBe(true)
+    if (!oc.ok) return
+    expect(oc.soft).toMatch(/already holds this dimension\. — Use that group\./)
+    // The model reads the same `{"error": …}` as before; nothing counts as changed.
+    expect(JSON.parse(oc.result)).toEqual({ error: oc.soft })
+    expect(oc.mutated).toBe(false)
+  })
+
+  it('keeps a server error, a network error and a 422 without a code as failures', async () => {
+    const internal = { error: { code: 'internal_error', message: 'boom' } }
+    const five = await session({ apiRaw: fakeApi(internal, 500).api }).s.run('edit_tags', {
+      action: 'create_group',
+      name: 'Phase'
+    })
+    expect(!five.ok && five.error).toBe('boom')
+    const offline: ApiRaw = async () => {
+      throw new Error('connect ECONNREFUSED')
+    }
+    const net = await session({ apiRaw: offline }).s.run('history', { action: 'undo' })
+    expect(net.ok).toBe(false)
+    const fastapi = { detail: [{ loc: ['body', 'action'], msg: 'Field required' }] }
+    const bare = await session({ apiRaw: fakeApi(fastapi, 422).api }).s.run('history', { action: 'undo' })
+    expect(bare.ok).toBe(false)
+  })
+
+  it('keeps a moved workspace a failure: the MCP session ends on it', async () => {
+    const moved = { error: { code: 'project_changed', message: 'The active workspace changed: …' } }
+    const oc = await session({ apiRaw: fakeApi(moved, 409).api }).s.run('history', { action: 'undo' })
+    expect(!oc.ok && oc.error).toMatch(/The active workspace changed/)
+  })
+
+  it('counts arguments the schema turns down as a refusal, with the unknown-field hint', async () => {
+    const { s, calls } = session()
+    const oc = await s.run('history', { action: 7, codes: ['x'] })
+    expect(oc.ok).toBe(true)
+    if (!oc.ok) return
+    expect(oc.soft).toMatch(/^Invalid arguments for history/)
+    expect(oc.soft).toMatch(/"codes"/)
+    expect(oc.mutated).toBe(false)
+    expect(calls).toEqual([])
+  })
+
   it('appends the unknown-field hint to a failed call', async () => {
     const { api } = fakeApi({ detail: [{ loc: ['body', 'action'], msg: 'Field required' }] }, 422)
     const { s } = session({ apiRaw: api })
@@ -270,6 +322,35 @@ describe('batch shapes the models actually send', () => {
 
 describe('empty optional arguments (V464)', () => {
   const body = (calls: unknown[][], path: string): any => calls.find(([, p]) => p === path)?.[2]
+
+  it('a null comment beside an amount or a formula keeps the comment; "" still removes it', async () => {
+    const comments = async (args: Record<string, unknown>): Promise<unknown[]> => {
+      const { s, calls } = session({
+        apiRaw: async (method, path, b) => {
+          calls.push([method, path, b])
+          if (path.endsWith('?with_exchanges=true'))
+            return { status: 200, body: [{ code: 'frame', exchanges: [{ uid: 'u1' }, { uid: 'u2' }] }] }
+          return { status: 200, body: { activity: { code: 'frame' }, exchange: { uid: 'u1', amount: 2 } } }
+        }
+      })
+      const oc = await s.run('edit_exchange', args)
+      expect(oc.ok).toBe(true)
+      return calls
+        .filter(([, p]) => p === '/api/v1/model/exchanges/comment')
+        .map((c) => (c[2] as any).comment)
+    }
+    expect(await comments({ action: 'set_amount', uid: 'u1', amount: 2, comment: null })).toEqual([])
+    expect(
+      await comments({
+        action: 'set_formula',
+        exchanges: [
+          { uid: 'u1', formula: 'mass', comment: null },
+          { uid: 'u2', formula: 'mass * 2', comment: null }
+        ]
+      })
+    ).toEqual([])
+    expect(await comments({ action: 'set_amount', uid: 'u1', amount: 2, comment: '' })).toEqual([''])
+  })
 
   it('reach the tool, the gate and the backend already dropped — not just the schema check', async () => {
     const seen: Record<string, unknown>[] = []

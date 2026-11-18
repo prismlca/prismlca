@@ -264,7 +264,9 @@ follow the steps above.
 
   For a **market**, read the producer behind it: a market's comment is boilerplate, and the sentence you
   need sits one level down. What you find goes into the exchange comment — and, if it could change the
-  conclusion, into a scenario with a different dataset.
+  conclusion, into a scenario with a different dataset: link both datasets and let a switch parameter
+  decide which one is on (the pattern is in the *End-of-life & what-if scenarios* skill, "Testing a
+  DATASET choice").
 - **Every amount is in the consumed process's own reference unit**: how much of *that* process's reference
   product one unit of the consumer takes — kilograms for a per-kilogram process, pieces for a per-piece one;
   check the input's unit in the search result before setting it, and convert where yours differs (0.5 l of
