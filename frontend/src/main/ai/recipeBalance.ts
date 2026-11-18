@@ -18,6 +18,7 @@ import {
   contradictionWords,
   inciEntries,
   inciOrder,
+  listNames,
   shareBounds,
   type InciListOrigin,
   type InciOrder,
@@ -484,11 +485,16 @@ export function weighRecipe(
         ...(declared?.product ? { product: declared.product } : {}),
         ...(foundPage ? { source_url: foundPage } : {})
       }
+  // What a "may contain" part names, a shade of the range need not contain: no recipe lacks it.
+  const contents = (list: readonly string[]): string[] =>
+    listNames(list)
+      .filter((n) => !n.may)
+      .map((n) => n.name)
   const known = [
     ...new Set([
       ...inciEntries(opts.request.ingredients),
-      ...passedInci,
-      ...(declared?.names ?? []).map((k) => k.trim()).filter(Boolean)
+      ...contents(passedInci),
+      ...contents(declared?.names ?? [])
     ])
   ]
   const missing = missingIngredients(known, lines)

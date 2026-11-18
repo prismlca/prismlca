@@ -339,6 +339,24 @@ describe('researchBom', () => {
       expect(r.recipe?.inci_order).toBeDefined()
     })
 
+    it('hands the leg the names of a "may contain" part without the marker before each', async () => {
+      chat.rounds = [answer(soap)]
+      await researchBom({
+        product: 'foundation',
+        recipe: {
+          inci_list: [
+            'Aqua',
+            'Glycerin',
+            '+/- MAY CONTAIN: CI 77891 (TITANIUM DIOXIDE)',
+            '+/- MAY CONTAIN: Mica'
+          ]
+        }
+      })
+      expect(asked()[0]).toMatch(
+        /THIS product's INCI list, as printed: Aqua, Glycerin \[\+\/- CI 77891 \(TITANIUM DIOXIDE\), Mica\]\. Give one/
+      )
+    })
+
     it('holds the answer against a label list the leg found, unless its page is a link that leads nowhere', async () => {
       const withList = (source_url: string) => ({
         ...soap,

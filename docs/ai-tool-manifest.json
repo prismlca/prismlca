@@ -1078,7 +1078,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "THIS product's INCI list (a cosmetic's printed ingredient list), every name exactly as printed and in the printed order, one per entry. Covered like \"ingredients\" and held against the recipe's shares in place of any list the research finds — the label lists every ingredient above 1 % by descending mass."
+                "description": "THIS product's INCI list (a cosmetic's printed ingredient list), every name exactly as printed and in the printed order, one per entry — a \"+/-\" or \"may contain\" part too, with its marker. Covered like \"ingredients\" and held against the recipe's shares in place of any list the research finds — the label lists every ingredient above 1 % by descending mass, colourants aside."
               }
             },
             "required": [],

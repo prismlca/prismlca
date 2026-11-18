@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { weighBom } from './bomBalance'
 import { parseRecipeAnswer, type RecipeRequest } from './bomRecipe'
-import { inciEntries } from './inciOrder'
+import { inciEntries, listNames } from './inciOrder'
 import { weighRecipe } from './recipeBalance'
 
 /**
@@ -437,5 +437,156 @@ describe('the recipe against the order of the INCI list', () => {
     )
     expect(r.block.missing_ingredients).toEqual(['Parfum'])
     expect(r.block.inci_order).toMatchObject({ compared: 2, contradictions: [] })
+  })
+})
+
+/**
+ * Colourants (Regulation (EC) No 1223/2009, Art. 19(1)(g)): a label may list them after the other ingredients whatever
+ * their amount, and a product sold in several shades every colourant of the range behind "+/-" or "may contain".
+ */
+describe('colourants and the "may contain" part of the INCI list', () => {
+  const FOUNDATION = (pigment: { name: string; inci?: string }) => ({
+    formulation: { name: 'Liquid foundation F-12', kind: 'frame', source_url: PCC },
+    lines: [
+      { name: 'Aqua', amount: null, unit: '%', rest_to_total: true },
+      { name: 'Cyclopentasiloxane', amount: 12, unit: '%' },
+      { name: 'Dimethicone', amount: 3, unit: '%' },
+      { name: 'Glycerin', amount: 2, unit: '%' },
+      { ...pigment, amount: 5, unit: '%' },
+      { name: 'Iron oxides (yellow)', inci: 'CI 77492', amount: 1.5, unit: '%' },
+      { name: 'Phenoxyethanol', amount: 0.8, unit: '%' }
+    ]
+  })
+  const OILS = ['Aqua', 'Cyclopentasiloxane', 'Dimethicone', 'Glycerin', 'Phenoxyethanol']
+  const OILS_COMPARED =
+    '4 of its ingredients are certainly above 1 % and named in the INCI list; no certain contradiction with the ' +
+    "list's order among them."
+  const SET_ASIDE =
+    'Not compared, as a label may list colourants after the other ingredients whatever their amount (a shade ' +
+    'range\'s behind "+/-" or "may contain"): '
+
+  it('sets aside the titanium dioxide at 5 % listed as CI 77891 after the glycerin at 2 %, and says so', () => {
+    const r = weigh(FOUNDATION({ name: 'Titanium dioxide', inci: 'CI 77891' }), {
+      inci_list: [...OILS, 'CI 77891', 'CI 77492', 'CI 77491'],
+      mass_kg: 0.03
+    })
+    const order = r.block.inci_order!
+    expect(order).toMatchObject({ compared: 4, contradictions: [] })
+    expect(order.unplaced).toBeUndefined()
+    expect(order.note).toBe(`${OILS_COMPARED} ${SET_ASIDE}CI 77891 (no. 6) 5 %, CI 77492 (no. 7) 1.5 %.`)
+    expect(r.sentence).not.toMatch(/INCI/)
+    // A colourant printed without "may contain" is in the product: one the recipe lacks is still reported.
+    expect(r.block.missing_ingredients).toEqual(['CI 77491'])
+  })
+
+  it('holds a name without a CI number to the order: titanium dioxide as a UV filter is no colourant', () => {
+    const order = weigh(FOUNDATION({ name: 'Titanium Dioxide' }), {
+      inci_list: [...OILS, 'Titanium Dioxide', 'CI 77492']
+    }).block.inci_order!
+    expect(order.compared).toBe(5)
+    expect(order.contradictions.map((c) => [c.listed_first.inci, c.listed_later.inci])).toEqual([
+      ['Dimethicone', 'Titanium Dioxide'],
+      ['Glycerin', 'Titanium Dioxide']
+    ])
+    expect(order.note).toContain(`${SET_ASIDE}CI 77492 (no. 7) 1.5 %.`)
+  })
+
+  it('sets aside everything behind "+/-", names its entries without the marker, and never reports them missing', () => {
+    const answer = FOUNDATION({ name: 'Titanium dioxide', inci: 'CI 77891' })
+    answer.lines.splice(4, 0, { name: 'Mica', amount: 4, unit: '%' })
+    // Sent as one string, the marker and the bracket sit inside entries: "Phenoxyethanol [+/- Mica", "CI 77491]".
+    const r = weigh(answer, {
+      inci_list: [`${OILS.join(', ')} [+/- Mica, CI 77891, CI 77492, CI 77491, CI 77499]`]
+    })
+    const order = r.block.inci_order!
+    expect(order).toMatchObject({ compared: 4, contradictions: [] })
+    expect(order.note).toBe(
+      `${OILS_COMPARED} ${SET_ASIDE}Mica (no. 6) 4 %, CI 77891 (no. 7) 5 %, CI 77492 (no. 8) 1.5 %.`
+    )
+    // A shade need not contain every colourant of its range; the phenoxyethanol before the marker is covered.
+    expect(r.block.missing_ingredients).toBeUndefined()
+  })
+
+  it('reads the marker however the label prints it: alone, in several languages, as "may contain"', () => {
+    const answer = FOUNDATION({ name: 'Titanium dioxide', inci: 'CI 77891' })
+    answer.lines.splice(4, 0, { name: 'Mica', amount: 4, unit: '%' })
+    // The last three as a model passed them, the marker before every entry.
+    const each = (marker: string) => ['Mica', 'CI 77891', 'CI 77492'].map((n) => `${marker} ${n}`)
+    for (const tail of [
+      ['+/-', 'Mica', 'CI 77891', 'CI 77492'],
+      ['May contain/Peut contenir (+/-): Mica', 'CI 77891', 'CI 77492'],
+      ['MAY CONTAIN: Mica', 'CI 77891', 'CI 77492.'],
+      ['(±) Mica', 'CI 77891', 'CI 77492'],
+      each('+/- MAY CONTAIN:'),
+      each('MAY CONTAIN/PEUT CONTENIR/PUEDE CONTENER:'),
+      each('[+/-]')
+    ]) {
+      const r = weigh(answer, { inci_list: [...OILS, ...tail] })
+      expect(r.block.inci_order?.note, tail[0]).toBe(
+        `${OILS_COMPARED} ${SET_ASIDE}Mica (no. 6) 4 %, CI 77891 (no. 7) 5 %, CI 77492 (no. 8) 1.5 %.`
+      )
+      expect(r.block.missing_ingredients, tail[0]).toBeUndefined()
+    }
+  })
+
+  it('reads the names of the list without their markers, and keeps the colon of a lake', () => {
+    expect(
+      listNames(['Glycerin', 'Phenoxyethanol [+/- Mica', 'C.I. 15850:1', 'Iron Oxides (CI 77491)]'])
+    ).toEqual([
+      { name: 'Glycerin', colourant: false, may: false },
+      { name: 'Phenoxyethanol', colourant: false, may: false },
+      { name: 'Mica', colourant: false, may: true },
+      { name: 'C.I. 15850:1', colourant: true, may: true },
+      { name: 'Iron Oxides (CI 77491)', colourant: true, may: true }
+    ])
+    expect(listNames(['May contain: CI 15850:1']).map((n) => n.name)).toEqual(['CI 15850:1'])
+    // A heading in another language before the marker is no name; a name before it ends at a full stop.
+    const names = (e: string) => listNames(['Glycerin', e]).map((n) => `${n.name}${n.may ? ' (may)' : ''}`)
+    expect(names('Peut contenir/May contain (+/-): CI 77891')).toEqual(['Glycerin', 'CI 77891 (may)'])
+    expect(names('Peut contenir/Kann enthalten/May contain (+/-) CI 77891')).toEqual([
+      'Glycerin',
+      'CI 77891 (may)'
+    ])
+    expect(names('Kann enthalten [+/-]: CI 77891')).toEqual(['Glycerin', 'CI 77891 (may)'])
+    expect(names('Phenoxyethanol. Peut contenir/May contain (+/-): CI 77891')).toEqual([
+      'Glycerin',
+      'Phenoxyethanol',
+      'CI 77891 (may)'
+    ])
+    expect(names('Phenoxyethanol. May contain: CI 77891')).toEqual([
+      'Glycerin',
+      'Phenoxyethanol',
+      'CI 77891 (may)'
+    ])
+    // In a list sent with the marker before every entry, a heading before it is no name either.
+    expect(listNames(['+/- Mica', 'PEUT CONTENIR/MAY CONTAIN: CI 77891']).map((n) => n.name)).toEqual([
+      'Mica',
+      'CI 77891'
+    ])
+    // A CI number is a whole number of five digits, not a part of another name.
+    expect(listNames(['Acid Red 52', 'CI 123456', 'Polysorbate 20']).some((n) => n.colourant)).toBe(false)
+  })
+
+  it('changes nothing where the colourant stays below 1 %: the soap with its blue dye', () => {
+    // The T9 soap with a dye at 0.001 %, once under its CI number and once under a name the order would hold.
+    const soap = (inci: string) =>
+      weigh(
+        {
+          formulation: { name: 'Liquid soap MP-01', kind: 'frame', source_url: PCC },
+          lines: [
+            { name: 'Aqua', inci: 'Aqua', amount: null, unit: '%', rest_to_total: true },
+            SLES(30),
+            CAPB(3.5),
+            { name: 'Glycerin', amount: 2, unit: '%' },
+            { name: 'Sodium Chloride', amount: 2.5, unit: '%' },
+            { name: 'Blue 1', inci, amount: 0.001, unit: '%' }
+          ]
+        },
+        { inci_list: [...LABEL, inci], mass_kg: 0.5 }
+      ).block.inci_order!
+    const dyed = soap('CI 42090')
+    expect(dyed).toEqual(soap('Blue Dye'))
+    expect(dyed.contradictions).toHaveLength(1)
+    expect(dyed.note).not.toMatch(/colourant/)
   })
 })
