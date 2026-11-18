@@ -54,6 +54,13 @@ function closing(events: Ev[]): { closing: string; text: string } {
   return { closing: text.slice(done?.answerFrom ?? 0), text }
 }
 
+/** What the chat received while the run wrote: every delta, in order — the stored text, piece by piece. */
+const streamed = (events: Ev[]): string =>
+  events
+    .filter((e) => e.type === 'delta')
+    .map((e) => e.text)
+    .join('')
+
 beforeEach(() => {
   chat.rounds = []
   chat.seen.length = 0
@@ -94,6 +101,8 @@ describe('runAgent — where the closing answer begins', () => {
       /^One question first\.[\s\S]*> ❓ What is the functional unit\?[\s\S]*> ➤ 1 wheelbarrow over its life[\s\S]*Now I build the model\.[\s\S]*Record the review outcomes\.\n\nThe wheelbarrow comes to/
     )
     expect(res.text.endsWith(ANSWER)).toBe(true)
+    // Prose, separators and the question with its answer reached the chat exactly as they are stored.
+    expect(streamed(d.events)).toBe(res.text)
   })
 
   it('is the whole text when the model answers without tools', async () => {
@@ -112,6 +121,7 @@ describe('runAgent — where the closing answer begins', () => {
     const out = closing(d.events)
     expect(out.text).toMatch(/All done\.[\s\S]*> \*\*You:\*\* and check the unit/)
     expect(out.closing).toBe('Also checked the unit.')
+    expect(streamed(d.events)).toBe(out.text)
   })
 
   it('starts behind a line left over from the run before', async () => {
@@ -122,6 +132,7 @@ describe('runAgent — where the closing answer begins', () => {
     const out = closing(d.events)
     expect(out.text).toMatch(/^> \*\*You \(earlier\):\*\* set the mass to 10 kg/)
     expect(out.closing).toBe('Using 20 kg.')
+    expect(streamed(d.events)).toBe(out.text)
   })
 
   it('starts behind the notice of a reasoning level the API refused, once and twice', async () => {
@@ -143,6 +154,7 @@ describe('runAgent — where the closing answer begins', () => {
     await runAgent(request({ model: 'openai/gpt-6-luna', reasoningEffort: 'max' }), d.deps)
     expect(closing(d.events).text).toMatch(/"max"[\s\S]*"high"/)
     expect(closing(d.events).closing).toBe('On the default.')
+    expect(streamed(d.events)).toBe(closing(d.events).text)
   })
 
   it('is the stop note when the run ends on tool rounds, not a note from an earlier round', async () => {
@@ -151,5 +163,6 @@ describe('runAgent — where the closing answer begins', () => {
     const res = await runAgent(request({ maxRounds: 3 }), d.deps)
     expect(res.outcome).toBe('rounds')
     expect(closing(d.events).closing.trim()).toMatch(/^_Stopped: the limit of 3 tool rounds was reached/)
+    expect(streamed(d.events)).toBe(res.text)
   })
 })
