@@ -68,6 +68,8 @@ interface BomCheck {
     mass_source?: string
     missing_ingredients?: string[]
     split?: string[]
+    /** Where its shares contradict the order of the product's INCI list, one sentence each. */
+    inci_order?: string[]
   }
 }
 interface Entry {
@@ -189,6 +191,9 @@ function checkLines(check: BomCheck): string[] {
           : '') +
         (m.missing_ingredients?.length
           ? `; lacks ingredients known from the product: ${m.missing_ingredients.join(', ')}`
+          : '') +
+        (m.inci_order?.length
+          ? `; contradicts the order of the product's INCI list: ${m.inci_order.join('; ')}`
           : '') +
         (typeof m.mass_kg === 'number'
           ? `; scaled to ${m.mass_kg} kg (${m.mass_source ?? 'source not stated'})`

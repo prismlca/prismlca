@@ -120,12 +120,17 @@ describe('the dossier’s research on record', () => {
         gap_kg: 0.045288,
         mass_kg: 0.51,
         mass_source: 'given',
-        missing_ingredients: ['Glyceryl Oleate', 'Betaine']
+        missing_ingredients: ['Glyceryl Oleate', 'Betaine'],
+        inci_order: [
+          'Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5), but the recipe gives 1.05 % against 2 %'
+        ]
       })
     ])
     expect(open).toContain(
       'Recipe of liquid soap ("MP-01", a frame formulation): does NOT close (8.88 %, 0.045288 kg unaccounted) — not ' +
-        'settled; lacks ingredients known from the product: Glyceryl Oleate, Betaine; scaled to 0.51 kg (given)'
+        'settled; lacks ingredients known from the product: Glyceryl Oleate, Betaine; contradicts the order of the ' +
+        "product's INCI list: Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5), but the recipe gives " +
+        '1.05 % against 2 %; scaled to 0.51 kg (given)'
     )
     const unchecked = researchSection([
       entry({ of: 'concrete', closes: null, note: 'parts by weight have no total of their own' })

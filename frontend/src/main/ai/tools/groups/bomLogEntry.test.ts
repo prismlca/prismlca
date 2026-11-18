@@ -182,6 +182,27 @@ describe('the research log entry of a call with a recipe', () => {
     })
   })
 
+  it("logs where the recipe contradicts the order of the product's INCI list, one sentence each", async () => {
+    const reversed = weighRecipe(
+      parseRecipeAnswer({
+        formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
+        lines: [
+          { name: 'Aqua', amount: 90, unit: '%' },
+          { name: 'Glycerin', amount: 2, unit: '%' },
+          { name: 'Cocamidopropyl Betaine', amount: 8, unit: '%' }
+        ]
+      }),
+      { of: 'liquid soap', request: { inci_list: ['Aqua', 'Glycerin', 'Cocamidopropyl Betaine'] } }
+    )
+    const { posts } = await run({ product: 'soap', ...weighBom([], { recipe: reversed }) })
+    expect(posts[0].body.entries[0].bom_check.recipe.inci_order).toEqual([
+      'Glycerin (no. 2) is listed before Cocamidopropyl Betaine (no. 3), but the recipe gives 2 % against 8 %'
+    ])
+    // In the order, nothing is logged: an empty list would only be dropped on the way.
+    const { posts: inOrder } = await run({ product: 'soap', ...weighBom([], { recipe: soap }) })
+    expect(inOrder[0].body.entries[0].bom_check.recipe).not.toHaveProperty('inci_order')
+  })
+
   it('logs shares without a mass as text the health check does not read', async () => {
     const shares = weighRecipe(
       parseRecipeAnswer({
@@ -224,6 +245,10 @@ describe('the research log entry of a call with a recipe', () => {
     expect(passed).toBeUndefined()
     const bad = JSON.parse(String(await call({ product: 'soap', recipe: { ingredients: 'Aqua, Glycerin' } })))
     expect(bad.error).toMatch(/"recipe.ingredients" arrived as ONE string, not an array/)
+    const inci = JSON.parse(String(await call({ product: 'soap', recipe: { inci_list: 'Aqua, Glycerin' } })))
+    expect(inci.error).toMatch(/"recipe.inci_list" arrived as ONE string, not an array/)
+    await call({ product: 'soap', recipe: { inci_list: ['Aqua', ' ', 'Glycerin'] } })
+    expect(passed).toMatchObject({ recipe: { inci_list: ['Aqua', 'Glycerin'] } })
     const mass = JSON.parse(String(await call({ product: 'soap', recipe: { mass_kg: '0.5' } })))
     expect(mass.error).toMatch(/"recipe.mass_kg" arrived as "0.5"/)
     await call({ product: 'soap', recipe: { of: ' liquid soap ', mass_kg: 0.5, ingredients: ['Aqua', ' '] } })

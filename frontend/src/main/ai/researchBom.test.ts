@@ -249,6 +249,20 @@ describe('researchBom', () => {
       expect(r.recipe?.missing_ingredients).toEqual(['Aqua'])
     })
 
+    it('hands the leg an INCI list to write its names from, and holds the answer against its order', async () => {
+      chat.rounds = [answer(soap)]
+      const r = await researchBom({
+        product: 'liquid soap',
+        recipe: { inci_list: ['Aqua', 'Glycerin', 'Sodium Laureth Sulfate'] }
+      })
+      expect(asked()[0]).toMatch(
+        /THIS product's INCI list, as printed: Aqua, Glycerin, Sodium Laureth Sulfate\. Give one its line only where your one formulation names it, and write its name as printed here in "inci"/
+      )
+      // Nothing in the question asks the leg to fit its recipe to the order.
+      expect(asked()[0]).not.toMatch(/order/i)
+      expect(r.recipe?.inci_order).toBeDefined()
+    })
+
     it('asks no recipe leg when the call names none', async () => {
       chat.fallbackText = '{"items": []}'
       const r = await researchBom({ product: 'rack', components: ['frame'] })

@@ -10,6 +10,7 @@
  * The backend validates and bounds every field (`research_log.clean_entry`); this only picks them out.
  */
 import type { BomResult } from '../../researchBom'
+import { contradictionWords } from '../../inciOrder'
 
 /** Whole-product masses and other versions per entry — the backend keeps no more either. */
 const TOTALS = 6
@@ -152,7 +153,7 @@ function bomCheck(result: Partial<BomResult>): Item {
   }
 }
 
-/** The recipe's own check: closed or not, by how much, against what, and what it lacks. */
+/** The recipe's own check: closed or not, by how much, against what, what it lacks, where it contradicts the INCI list. */
 function recipeCheck(mix: NonNullable<BomResult['recipe']>): Item {
   return {
     of: mix.of,
@@ -170,7 +171,10 @@ function recipeCheck(mix: NonNullable<BomResult['recipe']>): Item {
     ...(mix.reachable_by_ranges !== undefined ? { reachable_by_ranges: mix.reachable_by_ranges } : {}),
     ...(mix.mass_kg !== undefined ? { mass_kg: mix.mass_kg, mass_source: mix.mass_source } : {}),
     ...(mix.missing_ingredients ? { missing_ingredients: mix.missing_ingredients } : {}),
-    ...(mix.split ? { split: mix.split } : {})
+    ...(mix.split ? { split: mix.split } : {}),
+    ...(mix.inci_order?.contradictions.length
+      ? { inci_order: mix.inci_order.contradictions.map(contradictionWords) }
+      : {})
   }
 }
 
