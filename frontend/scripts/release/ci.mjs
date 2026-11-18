@@ -6,6 +6,7 @@
  *   node scripts/release/ci.mjs electron-support           supported line, newest patch
  *   node scripts/release/ci.mjs audit                      shipped advisories fixed or assessed
  *   node scripts/release/ci.mjs check-artifacts <kind> <dir>   one package, unpacked (kind: appimage|deb|rpm|win)
+ *   node scripts/release/ci.mjs bridge-check <program> [args]  its MCP bridge answers a client (bridge-check.mjs)
  *   node scripts/release/ci.mjs notes <version>            release notes from CHANGELOG.md
  *   node scripts/release/ci.mjs build-info <dir>...        build-info.txt for the files given
  *
@@ -225,6 +226,33 @@ function listAsar(file) {
   }
 }
 
+// The packaged program's MCP bridge, started as a client starts it: `args` go before --mcp-proxy (none
+// for a packaged program). Its user data and config go into a fresh temporary folder.
+async function bridgeCheck(program, args) {
+  if (!program) die('usage: bridge-check <program> [arguments before --mcp-proxy]')
+  if (!existsSync(program)) die(`bridge-check: ${program} does not exist`)
+  // Loaded here, not at the top: it needs the MCP SDK from node_modules, which the jobs running the other
+  // commands have not installed.
+  const { bridgeArgs, bridgeEnv, checkBridge } = await import('./bridge-check.mjs')
+  const dir = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'prism-bridge-'))
+  const { problems, log, tools } = await checkBridge({
+    command: resolve(program),
+    args: bridgeArgs(args, join(dir, 'user-data')),
+    env: bridgeEnv(process.env, dir),
+    version: frontendVersion()
+  })
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
+  } catch {
+    /* a temporary folder left behind is no reason to stop a release */
+  }
+  if (problems.length) {
+    console.error(`The bridge's log (stderr), last lines:\n${log.trimEnd().split('\n').slice(-40).join('\n')}`)
+    die(`the MCP bridge of ${program} failed: ${problems.length} problem(s):\n  ${problems.join('\n  ')}`)
+  }
+  console.log(`✓ the MCP bridge of ${basename(program)} answered initialize, tools/list (${tools} tools) and ping, and exited 0 when its client left`)
+}
+
 function notes(version) {
   if (isSpike(version)) {
     process.stdout.write(`Spike build ${version} — rehearses the release pipeline. Not a release; deleted afterwards.\n`)
@@ -278,7 +306,8 @@ if (cmd === 'verify-tag') verifyTag()
 else if (cmd === 'electron-support') electronCheck()
 else if (cmd === 'audit') audit()
 else if (cmd === 'check-artifacts') await checkArtifacts(rest[0], rest[1])
+else if (cmd === 'bridge-check') await bridgeCheck(rest[0], rest.slice(1))
 else if (cmd === 'notes') notes(rest[0])
 else if (cmd === 'build-info') buildInfo(rest)
 else if (cmd === 'check-feed') checkFeed(rest[0])
-else die('usage: ci.mjs verify-tag | electron-support | audit | check-artifacts <kind> <dir> | notes <version> | build-info <files…> | check-feed <dir>')
+else die('usage: ci.mjs verify-tag | electron-support | audit | check-artifacts <kind> <dir> | bridge-check <program> [args…] | notes <version> | build-info <files…> | check-feed <dir>')

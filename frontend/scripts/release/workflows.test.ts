@@ -15,6 +15,8 @@
  *    checkout keeps no credentials.
  *  - Windows is built on the release VM, and the signing session opens only after everything that needs no
  *    key is built and closes after the installer, also when a step failed.
+ *  - Both builds start the packaged program's MCP bridge once, as a client does, after their start check —
+ *    on Windows after the signing session has closed.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -135,5 +137,17 @@ describe('GitHub workflows', () => {
     expect(order.every((i) => i >= 0), `steps found: ${order}`).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
     expect(steps[at(/Stop-Process/)].if, 'the session closes also after a failed step').toBe('always()')
+  })
+
+  it('release workflow: both builds start the packaged MCP bridge after their start check', () => {
+    const name = files.find((f) => f.startsWith('release.yml'))!
+    for (const jobName of ['linux', 'windows']) {
+      const steps = load(name).wf.jobs![jobName].steps ?? []
+      const at = (re: RegExp): number => steps.findIndex((s) => re.test(s.run ?? ''))
+      expect(at(/PRISM_SMOKE=1/), `${jobName} has its start check`).toBeGreaterThanOrEqual(0)
+      expect(at(/ci\.mjs bridge-check /), `${jobName} starts the bridge after it`).toBeGreaterThan(at(/PRISM_SMOKE=1/))
+      if (jobName === 'windows')
+        expect(at(/ci\.mjs bridge-check /), 'not while the signing session is open').toBeGreaterThan(at(/Stop-Process/))
+    }
   })
 })
