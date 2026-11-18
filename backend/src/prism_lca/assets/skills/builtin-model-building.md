@@ -451,8 +451,9 @@ process that entered the result at 42 % of its mass — both invisible without t
 5. **Test the assumption the result rests on — before you report it.** Where one phase or one process
    carries more than about half the score, the study is a statement about that single assumption, and a
    single number is the wrong shape for it. Vary it — `edit_scenario` action="create", overriding only
-   the parameters that change, then `compare_scenarios` for the lead indicator — and report the
-   **spread**: "0.15 kg CO2-Eq, between 0.09 and 0.21 across plausible water-heating routes".
+   the parameters that change, then `compare_scenarios` for the study's indicators in one call (`methods`),
+   the lead indicator first — and report the **spread**: "0.15 kg CO2-Eq, between 0.09 and 0.21 across
+   plausible water-heating routes".
    - Choose what to vary from the contribution, not from a checklist: the parameter behind the dominant
      phase first, then whatever the user flagged as uncertain. Two or three scenarios are a sensitivity
      analysis; ten are a maintenance burden.
