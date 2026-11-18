@@ -1,8 +1,8 @@
 /* Add-flow button + picker window */
 /* Normal-width add buttons (were full-width; deliberately narrow now, left-aligned). */
-.add-flow-btn { margin-top: 8px; width: fit-content; padding: 7px 14px; border: 1px dashed var(--prism-gray-light, #cbcbcb);
-  border-radius: 6px; background: none; color: var(--prism-navy, #2f4e66); font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
-.add-flow-btn:hover { border-color: var(--prism-green, #93c120); color: var(--prism-green-dark, #769a1a); background: rgba(147,193,32,0.06); }
+.add-flow-btn { margin-top: 8px; width: fit-content; padding: 7px 14px; border: 1px dashed var(--border-strong);
+  border-radius: 6px; background: none; color: var(--navy); font-size: var(--fs-body); font-weight: 600; cursor: pointer; }
+.add-flow-btn:hover { border-color: var(--green); color: var(--green-ink); background: color-mix(in srgb, var(--green) 6%, transparent); }
 /* Inline variant: flows in the same wrapping row as the chips instead of dropping onto its own
    line. Fixed 36px height (= a subject chip: 22px colour swatch + 6px×2 padding + 1px×2 border)
    so all three add-buttons (models / database / indicator) are identical in height regardless of
@@ -44,7 +44,7 @@
   padding: 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); }
 .pnode-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
 .pnode-swatch:hover { transform: scale(1.12); }
-.pnode-swatch.on { border-color: var(--ink, #303030); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink, #303030); }
+.pnode-swatch.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--text); }
 /* The same grey as the colour dot's ring beside it, and the same green on hover: they are two controls of one
    row, so they carry one colour. The opacity trick is gone with the emoji — a monochrome icon does not need to
    be faded to sit quietly. */
@@ -366,7 +366,7 @@
 .scen-ov-line-vals { display: flex; align-items: baseline; gap: 8px; margin-top: 1px; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
 .scen-ov-line-vals .base { color: var(--faint); }
 .scen-ov-line-vals .arrow { color: var(--muted); }
-.scen-ov-line-vals .to { color: var(--prism-green-dark, #769a1a); font-weight: 700; }
+.scen-ov-line-vals .to { color: var(--green-ink); font-weight: 700; }
 .scen-help p { font-size: var(--fs-body); color: var(--muted); line-height: 1.55; margin: 9px 0; }
 .scen-help p b { color: var(--text); font-weight: 600; }
 .scen-help code { font-size: var(--fs-sec); }
@@ -375,7 +375,7 @@
 .scen-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 340px)); grid-auto-rows: 1fr; gap: 12px; margin-top: 14px; }
 .scen-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: var(--r);
   background: var(--surface); padding: 11px 13px; box-shadow: var(--shadow); cursor: pointer; }
-.scen-card.sel { border-color: var(--prism-green, #93c120); box-shadow: 0 0 0 1px var(--prism-green, #93c120), var(--shadow); }
+.scen-card.sel { border-color: var(--green); box-shadow: 0 0 0 1px var(--green), var(--shadow); }
 .scen-card-main { min-width: 0; flex: 1; } /* keeps the actions on the bottom edge of a stretched card */
 .scen-card-name { font-weight: 600; font-size: var(--fs-body); color: var(--text); overflow-wrap: anywhere; }
 .scen-card-desc { font-size: var(--fs-sec); color: var(--muted); margin-top: 2px;
@@ -383,9 +383,9 @@
 .scen-card-count { font-size: var(--fs-label); color: var(--faint); margin-top: 5px; }
 /* A variant that returns the baseline: said on the card, because the number that shows it is
    three clicks away in the results. */
-.scen-card-warn { color: var(--prism-warning, #ffae00); }
+.scen-card-warn { color: var(--wait); }
 .scen-ov-same {
-  margin-left: 8px; font-weight: 400; font-size: var(--fs-label); color: var(--prism-warning, #ffae00);
+  margin-left: 8px; font-weight: 400; font-size: var(--fs-label); color: var(--wait);
 }
 .scen-card-actions { display: flex; gap: 4px; margin-top: 2px; }
 
@@ -397,7 +397,7 @@
 .scen-ov-list { flex: 1; min-height: 0; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; }
 .scen-ov-group-name { background: var(--surface-2); padding: 5px 12px; position: sticky; top: 0; }
 .scen-ov-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, auto) 150px; align-items: center; gap: 8px; padding: 5px 12px; font-size: var(--fs-body); }
-.scen-ov-row.on { background: color-mix(in srgb, var(--prism-green, #93c120) 8%, transparent); }
+.scen-ov-row.on { background: color-mix(in srgb, var(--green) 8%, transparent); }
 .scen-ov-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scen-ov-base { font-size: var(--fs-sec); color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* A formula shown beside its value: an override replaces it, so it has to be seen. */
@@ -489,7 +489,7 @@
    legend past fifteen entries folds behind "+N more" (StackLegend in Results.tsx). */
 .stack-leg-item { max-width: 260px; min-width: 0; }
 .stack-leg-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.stack-leg-more { background: none; border: none; padding: 0; font: inherit; color: var(--green-ink, var(--text));
+.stack-leg-more { background: none; border: none; padding: 0; font: inherit; color: var(--green-ink);
   text-decoration: underline; cursor: pointer; }
 /* Unfolded long legend: a few lines, then it scrolls; the "Show fewer" link stands below it. */
 .stack-legend.open { max-height: 150px; overflow-y: auto; margin-bottom: 4px; }
@@ -512,7 +512,7 @@
 
 /* An outdated canvas result: the model changed after it was calculated, the Sankey is off. */
 .result-bar.stale b { color: var(--muted); }
-.rb-stale { margin-left: 10px; color: var(--prism-warning); font-weight: 600; white-space: nowrap; cursor: help; }
+.rb-stale { margin-left: 10px; color: var(--wait); font-weight: 600; white-space: nowrap; cursor: help; }
 
 /* The outdated score itself is withdrawn: muted and struck through. Muted alone, the largest number on the screen
    still read as the current result. The tag beside it keeps its colour and says why; the score's title, too. */

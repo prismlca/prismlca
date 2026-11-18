@@ -46,7 +46,7 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
     # 1066, after finding a method by name moved to method_lookup.py. `release_cached` and
     # `inventory_method` stay here: both need the factorisation cache, which is private to this module.
-    "prism_lca/engine/lca.py": 1091,
+    "prism_lca/engine/lca.py": 1089,
     "prism_lca/engine/dataimport/session.py": 1274,  # 1249
     # 1068, after the unknown sections, the background lookups and the reports section moved out
     "prism_lca/engine/bundle.py": 1093,

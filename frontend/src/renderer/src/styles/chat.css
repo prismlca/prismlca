@@ -17,7 +17,7 @@
   border: none; background: transparent; color: var(--faint); cursor: pointer;
   font: inherit; font-size: var(--fs-label);
 }
-.chat-bar-model:hover, .chat-bar-model.on { background: var(--bg-muted); color: var(--muted); }
+.chat-bar-model:hover, .chat-bar-model.on { background: var(--surface-2); color: var(--muted); }
 .chat-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-bar-model svg { flex: none; }
 /* Opens upward like the "+" menu, but anchored to its right edge — it sits at the end of the row. */
@@ -39,7 +39,7 @@
   border: none; background: transparent; cursor: pointer; border-radius: 7px;
   padding: 7px 9px; color: var(--text); font: inherit; font-size: var(--fs-sec);
 }
-.chat-menu-item:hover:not(:disabled) { background: var(--bg-muted); }
+.chat-menu-item:hover:not(:disabled) { background: var(--surface-2); }
 .chat-menu-item:disabled { opacity: .5; cursor: default; }
 .chat-menu-item svg { flex: none; color: var(--faint); }
 /* The little slider switch on a menu toggle — left = off, right = on. */
@@ -56,7 +56,7 @@
 /* Skills flyout: a second menu opening to the right of its "Skills" row. The 4px gap is bridged by
    the wrapper's own padding so the pointer never leaves it on the way over. */
 .chat-menu-sub { position: relative; }
-.chat-menu-item.open { background: var(--bg-muted); }
+.chat-menu-item.open { background: var(--surface-2); }
 .chat-menu-chevron { margin-left: auto; color: var(--faint); font-size: 15px; line-height: 1; }
 .chat-submenu {
   bottom: -4px; left: 100%; margin-left: 4px; min-width: 220px; max-width: 320px;
@@ -68,7 +68,7 @@
 .chat-menu-divider { height: 1px; margin: 2px 4px; background: var(--border); }
 .chat-attach-btn {
   flex: none; width: 34px; height: 34px; border-radius: 9px; border: none; cursor: pointer;
-  background: var(--bg-muted); color: var(--faint);
+  background: var(--surface-2); color: var(--faint);
   display: grid; place-items: center;
 }
 /* Hovered, the glyph takes --green-ink: --green on --green-soft is too faint for it in the light theme. */
@@ -98,7 +98,7 @@
 .chat-attach.sent .chat-attach-x:hover { color: var(--green-ink); }
 /* What a big file will cost, said where it is added and not after it was sent. */
 .chat-attach-note { color: var(--faint); font-size: var(--fs-label); }
-.chat-attach.bad { background: var(--bg-muted); }
+.chat-attach.bad { background: var(--surface-2); }
 .chat-attach-note.bad { color: var(--bad); }
 .chat-drop-hint {
   position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; pointer-events: none;
@@ -217,7 +217,7 @@
   flex: none; width: 34px; height: 34px; border-radius: 9px; border: none; cursor: pointer;
   background: var(--green); color: #fff; font-size: 15px; line-height: 1; display: grid; place-items: center;
 }
-.chat-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
+.chat-send:disabled { background: var(--surface-2); color: var(--faint); cursor: default; }
 .chat-send.stop { background: var(--bad); }
 
 .chat-panel {
@@ -285,7 +285,7 @@
 .chat-jump:active { transform: translateX(-50%) scale(0.96); }
 .chat-hint { color: var(--text); opacity: .85; font-size: var(--fs-body); line-height: 1.5; background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
 .chat-msg { border-radius: 10px; padding: 7px 11px; font-size: var(--fs-body); line-height: 1.5; max-width: 92%; word-wrap: break-word; }
-.chat-msg.user { align-self: flex-end; background: color-mix(in srgb, var(--green) 16%, var(--surface)); color: var(--ink); }
+.chat-msg.user { align-self: flex-end; background: color-mix(in srgb, var(--green) 16%, var(--surface)); color: var(--text); }
 .chat-msg.assistant { align-self: flex-start; background: var(--surface-2); color: var(--text); }
 .chat-msg.assistant :is(p, ul, ol, table) { margin: .35em 0; }
 /* Links in the brand's link colour, visited included — the browser's visited purple was unreadable on
@@ -370,7 +370,7 @@
   background: none; border: 0; cursor: pointer;
   font: inherit; font-size: var(--fs-sec); color: var(--faint); text-align: left;
 }
-.chat-traces-sum:hover { color: var(--ink); }
+.chat-traces-sum:hover { color: var(--text); }
 .chat-traces-sum-caret { font-size: 9px; color: var(--border-strong); }
 
 /* Tool trace: one collapsed line per call, expandable to arguments + result preview. */
@@ -383,7 +383,7 @@
 .chat-trace > summary::marker, .chat-trace > summary::-webkit-details-marker { display: none; }
 .chat-trace > summary::before { content: '▸'; font-size: 9px; color: var(--border-strong); }
 .chat-trace[open] > summary::before { content: '▾'; }
-.chat-trace > summary:hover { color: var(--ink); }
+.chat-trace > summary:hover { color: var(--text); }
 .chat-trace-name { font-weight: 600; }
 /* The attribution line of a distances call — beside the row, visible whether the row is open or not. */
 .chat-trace-notice { font-size: var(--fs-label); color: var(--faint); border-left: 2px solid var(--border-strong); padding: 1px 0 3px 8px; line-height: 1.4; }
@@ -394,10 +394,10 @@
 }
 /* Rejected = the tool returned {"error": …}; failed = it threw. Both told the model "no", which is
    what you want to see at a glance, but they are not the same thing. */
-.chat-trace.rejected { border-left-color: var(--prism-warning, #ffae00); }
+.chat-trace.rejected { border-left-color: var(--wait); }
 .chat-trace.rejected .chat-trace-tag {
-  background: color-mix(in srgb, var(--prism-warning, #ffae00) 20%, var(--surface));
-  color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, var(--ink));
+  background: color-mix(in srgb, var(--wait) 20%, var(--surface));
+  color: color-mix(in srgb, var(--wait) 70%, var(--text));
 }
 .chat-trace.error { border-left-color: var(--bad); }
 .chat-trace.error .chat-trace-tag {
@@ -420,11 +420,11 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-trace-pulse { animation: none; opacity: .9; }
 }
-.chat-trace-detail { color: var(--ink); padding: 2px 0 4px; line-height: 1.45; }
+.chat-trace-detail { color: var(--text); padding: 2px 0 4px; line-height: 1.45; }
 .chat-trace-pre {
   margin: 0 0 4px; padding: 6px 8px; background: var(--surface-3); border-radius: 6px;
   font-size: var(--fs-sec); line-height: 1.4; max-height: 220px; overflow: auto; white-space: pre-wrap;
-  word-break: break-word; color: var(--ink);
+  word-break: break-word; color: var(--text);
 }
 .chat-trace-pre.result { color: var(--faint); }
 /* ask_user question card: the assistant's clickable multiple-choice question */
@@ -433,7 +433,7 @@
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.chat-ask-q { font-size: var(--fs-body); font-weight: 600; color: var(--ink); line-height: 1.45; }
+.chat-ask-q { font-size: var(--fs-body); font-weight: 600; color: var(--text); line-height: 1.45; }
 /* Several questions in one card: a rule and a number keep each option list tied to its question. */
 .chat-ask-item { display: flex; flex-direction: column; gap: 6px; }
 .chat-ask-item + .chat-ask-item { border-top: 1px solid var(--border); padding-top: 10px; }
@@ -453,7 +453,7 @@
   align-self: flex-start; border: none; cursor: pointer; border-radius: 8px; padding: 5px 12px;
   background: var(--green); color: #fff; font-family: inherit; font-size: var(--fs-body); font-weight: 600;
 }
-.chat-ask-confirm:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
+.chat-ask-confirm:disabled { background: var(--surface-2); color: var(--faint); cursor: default; }
 .chat-error { font-size: var(--fs-body); color: var(--bad); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
 
 
@@ -518,7 +518,7 @@
 }
 .effort-dial-track::before {
   content: ''; position: absolute; top: 0; bottom: 0; left: 7px; width: 8px; border-radius: 4px;
-  background: var(--bg-muted);
+  background: var(--surface-2);
 }
 .effort-dial-track .effort-fill {
   position: absolute; left: 7px; bottom: 0; width: 8px; border-radius: 4px; top: auto;
@@ -592,7 +592,7 @@
 .chat-ask-own-box.on .chat-ask-own-head { color: var(--green-ink); }
 .chat-ask-own-row { display: flex; align-items: flex-end; gap: 6px; }
 .chat-ask-own-row textarea {
-  flex: 1; min-width: 0; resize: none; border: none; outline: none; background: transparent; color: var(--ink);
+  flex: 1; min-width: 0; resize: none; border: none; outline: none; background: transparent; color: var(--text);
   font-family: inherit; font-size: var(--fs-body); line-height: 1.45; padding: 2px 0;
   field-sizing: content; min-height: 2lh; max-height: 8lh;
 }
@@ -605,7 +605,7 @@
 .chat-answered-item { border-left: 2px solid var(--border-strong); padding: 1px 0 1px 9px; }
 /* pre-line: an answer typed over several lines keeps its line breaks. */
 .chat-answered-q { font-size: var(--fs-sec); color: var(--muted); line-height: 1.4; white-space: pre-line; }
-.chat-answered-a { font-weight: 600; color: var(--ink); line-height: 1.45; white-space: pre-line; }
+.chat-answered-a { font-weight: 600; color: var(--text); line-height: 1.45; white-space: pre-line; }
 .chat-answered-arrow { color: var(--green); font-weight: 400; margin-right: 6px; }
 .chat-answered-a.none { font-weight: 400; font-style: italic; color: var(--faint); }
 
@@ -625,9 +625,9 @@
 .chat-sources-searches > summary::marker, .chat-sources-searches > summary::-webkit-details-marker { display: none; }
 .chat-sources-searches > summary::before { content: '▸ '; font-size: 9px; color: var(--border-strong); }
 .chat-sources-searches[open] > summary::before { content: '▾ '; }
-.chat-sources-searches > summary:hover { color: var(--ink); }
+.chat-sources-searches > summary:hover { color: var(--text); }
 .chat-web { display: flex; flex-direction: column; gap: 5px; margin: 3px 0 5px; font-size: var(--fs-sec); }
-.chat-web-query { color: var(--ink); font-weight: 600; }
+.chat-web-query { color: var(--text); font-weight: 600; }
 .chat-web-results { margin: 1px 0 0; padding-left: 18px; line-height: 1.45; }
 .chat-web-none { color: var(--faint); padding-left: 2px; }
 .chat-web-host { color: var(--faint); }

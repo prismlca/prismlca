@@ -77,12 +77,12 @@
 /* .settings-field is built for the wide settings modal; in a 380px column its inputs would
    overflow the card and slide under the preview. Stack label over input instead. */
 .report-setup .settings-field { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
-.report-setup .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.report-setup .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 .report-setup select, .report-setup input { width: 100%; min-width: 0; }
 .report-setup input[type="checkbox"] { width: auto; }
 .report-setup h4 { margin: 0; }
 .report-methods { display: flex; flex-direction: column; gap: 6px; }
-.report-methods-head { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.report-methods-head { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 .report-methods-list {
   max-height: 260px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border); border-radius: var(--r-md);
   background: var(--surface-2); padding: 6px 8px;
@@ -120,9 +120,9 @@
    a report render computes the whole study, and twelve silent seconds is when people click again. */
 /* A preview typeset before the report last changed: a banner across the top of the pane, in the
    warning tone — the pages below are of a document that no longer exists. */
-.report-stale-note { padding: 6px 12px; font-size: var(--fs-sec); color: var(--ink);
-  background: color-mix(in srgb, var(--prism-warning) 18%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--prism-warning) 45%, transparent); }
+.report-stale-note { padding: 6px 12px; font-size: var(--fs-sec); color: var(--text);
+  background: color-mix(in srgb, var(--wait) 18%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--wait) 45%, transparent); }
 .report-pageno { display: inline-flex; align-items: center; gap: 6px; }
 .report-pageno input { width: 3.6em; padding: 2px 4px; text-align: center; }
 /* No spin buttons here: the two arrows either side of this field already step the page, and a second
@@ -139,7 +139,7 @@
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
   box-shadow: 0 2px 12px rgba(0,0,0,0.2); }
 .report-zoom button { width: 30px; height: 30px; background: var(--surface); border: none;
-  border-bottom: 1px solid var(--border); color: var(--ink); display: inline-flex; align-items: center;
+  border-bottom: 1px solid var(--border); color: var(--text); display: inline-flex; align-items: center;
   justify-content: center; cursor: pointer; padding: 0; }
 .report-zoom button:last-child { border-bottom: none; }
 .report-zoom button:hover { background: var(--surface-2); }
@@ -235,7 +235,7 @@
 /* Progress of a chapter run or the dialog's staleness check: a thin bar that fills per finished
    step and shimmers while one is in flight — between two completions of a reasoning model lie
    minutes, and a static counter over minutes reads as a hang. */
-.rsec-progress { flex-basis: 100%; height: 4px; border-radius: 2px; background: var(--bg-muted); overflow: hidden; }
+.rsec-progress { flex-basis: 100%; height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
 .rsec-progress span { display: block; height: 100%; border-radius: 2px; background: var(--green); transition: width .4s ease; }
 /* The sheen rides as a second layer over the shared gradient (see the progress block at the end of this
    file); the keyframes move only that first layer, the gradient keeps its place. */
@@ -265,14 +265,14 @@
    of eight rows read as ragged noise. */
 .rsec-plan-row { display: grid; grid-template-columns: auto minmax(7em, 12em) 10.5em 1fr; gap: 8px;
   align-items: baseline; padding: 6px 8px; border-radius: 6px; font-size: var(--fs-sec); cursor: pointer; }
-.rsec-plan-row:hover { background: var(--bg-muted, #f2f2f2); }
+.rsec-plan-row:hover { background: var(--surface-2); }
 .rsec-plan-row.off { cursor: default; opacity: 0.65; }
 .rsec-plan-row input { align-self: center; }
 .rsec-plan-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rsec-plan-tag { justify-self: start; font-size: var(--fs-label); padding: 1px 7px; border-radius: 999px;
-  white-space: nowrap; border: 1px solid var(--border); color: var(--faint, #8a8a8a); }
-.rsec-plan-tag.go { border-color: color-mix(in srgb, var(--prism-green, #93c120) 55%, transparent);
-  color: var(--prism-navy, #2f4e66); }
+  white-space: nowrap; border: 1px solid var(--border); color: var(--faint); }
+.rsec-plan-tag.go { border-color: color-mix(in srgb, var(--green) 55%, transparent);
+  color: var(--navy); }
 .rsec-plan-tag.bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent);
   color: var(--bad); }
 /* Warning yellow is unreadable as text on a light surface, so the badge borrows it for the border
@@ -280,18 +280,18 @@
 .rsec-plan-tag.warn { border-color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, transparent);
   color: color-mix(in srgb, var(--prism-warning, #ffae00) 55%, var(--prism-ink, #303030)); }
 /* The reason is the point of the row, but it must never push the chapter name out of view. */
-.rsec-plan-why { color: var(--faint, #8a8a8a); overflow: hidden; text-overflow: ellipsis;
+.rsec-plan-why { color: var(--faint); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; min-width: 0; }
 
 /* The chapter as the document will read it. Set as prose, not as code: the question it answers is
    "does this sentence say the right thing", and a monospaced dump reads as debug output. */
 .rsec-resolved-box { margin: -2px 0 8px; }
-.rsec-resolved { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--bg-muted, #f2f2f2);
+.rsec-resolved { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2);
   font-size: var(--fs-body); line-height: 1.7; white-space: pre-wrap; }
 /* A resolved number keeps a faint mark so it is visibly *not* the author's typing — the tooltip on it
    is where the path and the member it is pinned to live. */
-.rsec-pval { border-bottom: 1px dotted var(--prism-gray-light, #cbcbcb); cursor: help; }
-.rsec-pval.pinned { border-bottom-color: color-mix(in srgb, var(--prism-green, #93c120) 70%, transparent); }
+.rsec-pval { border-bottom: 1px dotted var(--border-strong); cursor: help; }
+.rsec-pval.pinned { border-bottom-color: color-mix(in srgb, var(--green) 70%, transparent); }
 .rsec-pval.bad { color: var(--bad); font-weight: 600;
   border-bottom-color: var(--bad); }
 
@@ -300,12 +300,12 @@
 .rsec-patch { width: 720px; max-width: 92vw; max-height: 82vh; }
 .rsec-patch-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 20px 18px; }
 .rsec-diff { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.rsec-diff li { padding: 10px 12px; border-radius: 8px; background: var(--bg-muted, #f2f2f2);
+.rsec-diff li { padding: 10px 12px; border-radius: 8px; background: var(--surface-2);
   font-size: var(--fs-body); line-height: 1.55; }
 .rsec-diff del { display: block; text-decoration: line-through; opacity: 0.7;
   color: var(--bad); }
 .rsec-diff ins { display: block; text-decoration: none; font-weight: 600; }
-.rsec-diff .why { display: block; margin-top: 5px; font-size: var(--fs-sec); color: var(--faint, #8a8a8a); }
+.rsec-diff .why { display: block; margin-top: 5px; font-size: var(--fs-sec); color: var(--faint); }
 /* The replacement with its placeholders worked out. Set apart from the diff because it answers a
    different question: not "which words change" but "which figure will stand there". */
 .rsec-diff-shown { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border);
@@ -319,7 +319,7 @@
 .rsec-worddiff { font-size: var(--fs-body); line-height: 1.7; white-space: pre-wrap; }
 .rsec-worddiff del { text-decoration: line-through; opacity: 0.65; color: var(--bad); }
 .rsec-worddiff ins { text-decoration: none; font-weight: 600;
-  background: color-mix(in srgb, var(--prism-green, #93c120) 22%, transparent); border-radius: 3px; }
+  background: color-mix(in srgb, var(--green) 22%, transparent); border-radius: 3px; }
 /* A badge that is also a button — it opens the diff it is talking about. */
 .rsec-stale.link { border: 0; cursor: pointer; font-family: inherit; }
 .rsec-stale.link:hover { text-decoration: underline; }
@@ -379,8 +379,8 @@
    and may well still be right; only its basis has changed. */
 .rsec-stale {
   font-size: var(--fs-label); font-weight: 600; white-space: nowrap; border-radius: 4px; padding: 1px 5px;
-  background: color-mix(in srgb, var(--prism-warning, #ffae00) 20%, var(--surface));
-  color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, var(--ink));
+  background: color-mix(in srgb, var(--wait) 20%, var(--surface));
+  color: color-mix(in srgb, var(--wait) 70%, var(--text));
 }
 .rsec-row .btn.sm { padding: 2px 7px; font-size: var(--fs-sec); }
 /* What the gate refused, in the author's words rather than a status code — a missing fact often
@@ -397,12 +397,12 @@
 /* One chapter's block in the writer report: its name, the way to open it, and its remarks. */
 .rsec-wr-chapter + .rsec-wr-chapter { margin-top: 14px; }
 .rsec-wr-head { display: flex; align-items: center; gap: 8px; }
-.rsec-wr-title { flex: 1; min-width: 0; font-weight: 600; color: var(--ink); }
+.rsec-wr-title { flex: 1; min-width: 0; font-weight: 600; color: var(--text); }
 .rsec-wr-chapter .rsec-findings { margin-top: 6px; }
 .rsec-findings {
   margin: 4px 0 2px; padding: 6px 10px 6px 24px; border-radius: var(--r-md); font-size: var(--fs-sec);
-  line-height: 1.5; color: color-mix(in srgb, var(--prism-warning, #ffae00) 72%, var(--ink));
-  background: color-mix(in srgb, var(--prism-warning, #ffae00) 12%, var(--surface));
+  line-height: 1.5; color: color-mix(in srgb, var(--wait) 72%, var(--text));
+  background: color-mix(in srgb, var(--wait) 12%, var(--surface));
 }
 /* The chapter editor as an overlay: wide enough for prose, built as a sheet — the head's ✕ and the foot's
    Write stand still, only the middle scrolls. */
@@ -432,14 +432,14 @@
   line-height: 1.55; color: var(--muted); }
 .rsec-note svg { flex: none; width: 15px; height: 15px; margin-top: 2px; color: var(--faint); }
 .rsec-modal .settings-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
-.rsec-modal .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.rsec-modal .settings-field > span { width: auto; font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 /* The instruction is the secondary half of the dialog — set apart rather than hidden, because a chapter
    whose assignment cannot be found is one people work around by rewriting its output every time. */
 .rsec-instruction { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
   display: flex; flex-direction: column; gap: 7px; }
 .rsec-instruction .rsec-head { display: flex; align-items: center; gap: 8px; }
 .rsec-instruction select { flex: 1; min-width: 0; }
-.modal-h { font-size: var(--fs-body); font-weight: 600; color: var(--ink); white-space: nowrap; }
+.modal-h { font-size: var(--fs-body); font-weight: 600; color: var(--text); white-space: nowrap; }
 .rsec-modal .rsec-findings { margin: 10px 0 0; }
 .rsec-figopts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: var(--fs-sec); color: var(--muted); }
 .rsec-figopts label { display: inline-flex; align-items: center; gap: 6px; }
@@ -644,7 +644,7 @@
    marked as fixed — a star where the drag handle would be, and a title you cannot type in. */
 .rsec-cover-item { background: color-mix(in srgb, var(--green) 7%, var(--surface-2)); }
 .rsec-cover-pin { flex: 0 0 auto; font-size: var(--fs-label); color: var(--green-ink); width: 12px; text-align: center; }
-.rsec-title-static { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.rsec-title-static { flex: 1 1 auto; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 
 /* The title-page overlay. Narrower than the chapter editor: it is a column of short fields, and a wide
    window would strand every control on the left. */
@@ -683,8 +683,8 @@
    as every other "needs your attention" badge; "released" is the one green badge in a row, because it is
    the one state that says a person stands behind the text — the check only ever stands behind figures. */
 .rsec-stale.ok {
-  background: color-mix(in srgb, var(--prism-green) 18%, var(--surface));
-  color: var(--prism-green-dark);
+  background: color-mix(in srgb, var(--green) 18%, var(--surface));
+  color: var(--green-ink);
 }
 
 /* V412: the chapter list kept its "takes whatever is left" promise only on paper. The flex chain the
@@ -838,7 +838,7 @@
    "New" quiet — the rest keep the warning amber the chip has always had. */
 .rsec-stale.state-unfinished, .rsec-stale.state-update {
   background: color-mix(in srgb, var(--bad) 16%, var(--surface));
-  color: color-mix(in srgb, var(--bad) 78%, var(--ink));
+  color: color-mix(in srgb, var(--bad) 78%, var(--text));
 }
 .rsec-stale.state-new {
   background: color-mix(in srgb, var(--green) 14%, var(--surface));
@@ -850,9 +850,9 @@
   margin: 4px 0 10px; padding: 10px 12px; border-radius: var(--r-md);
   border: 1px solid var(--border-strong); background: var(--surface-2);
 }
-.rsec-questions-head { margin: 0 0 6px; font-weight: 600; color: var(--ink); font-size: var(--fs-sec); }
+.rsec-questions-head { margin: 0 0 6px; font-weight: 600; color: var(--text); font-size: var(--fs-sec); }
 .rsec-question + .rsec-question { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.rsec-question-text { margin: 0; font-size: var(--fs-sec); color: var(--ink); }
+.rsec-question-text { margin: 0; font-size: var(--fs-sec); color: var(--text); }
 .rsec-question-where { color: var(--muted); }
 .rsec-question-why { margin: 2px 0 0; font-size: var(--fs-label); color: var(--muted); }
 .rsec-question-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
@@ -862,9 +862,9 @@
 .rsec-review { margin: 6px 0 4px; font-size: var(--fs-sec); }
 .rsec-review-open {
   padding: 8px 10px; border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--prism-warning) 12%, var(--surface));
+  background: color-mix(in srgb, var(--wait) 12%, var(--surface));
 }
-.rsec-review-head { margin: 0 0 4px; font-weight: 600; color: var(--ink); }
+.rsec-review-head { margin: 0 0 4px; font-weight: 600; color: var(--text); }
 .rsec-review-point p { margin: 0; color: var(--text); }
 .rsec-review-point + .rsec-review-point { margin-top: 8px; }
 .rsec-review-acts { display: flex; gap: 6px; margin-top: 4px; }

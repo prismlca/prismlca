@@ -287,7 +287,9 @@ def _contribution_view(contribution: dict | None, lang: str = "en") -> dict[str,
         # did; printed as one sentence under the breakdown.
         "total": total,
         "direct": direct,
-        "upstream": float(meta.get("upstream") or (total - direct)),
+        # The rest of the same split. Not the tree's `upstream`: that is the other half of the tree's remainder,
+        # and next to the foreground's own emissions the two would not add up to the total.
+        "upstream": total - direct,
         "direct_percent": round(direct_pct, 1) if total else None,
         "direct_text": share_text(direct_pct, lang) if total else "",
         "upstream_text": share_text(upstream_pct, lang) if total else "",

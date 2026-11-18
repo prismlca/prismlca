@@ -80,7 +80,7 @@
 .subj-subhead:first-of-type { margin-top: 0; }
 .bg-subj { border-style: dashed; }
 .bg-subj .flow-geo { margin-left: 6px; }
-.bg-amount { margin-left: 6px; font-weight: 700; color: var(--prism-navy, #2f4e66); }
+.bg-amount { margin-left: 6px; font-weight: 700; color: var(--navy); }
 /* The amount block yields before the region picker does: at 147px (74px field plus "kilowatt hour") it was the
    widest thing in the row, and it is the one part whose text can be cut without losing the point — the unit is
    also printed in the results table. `min-width: 0` plus an ellipsis on the unit; the field keeps its 74px so
@@ -132,32 +132,32 @@
   font-size: 13px; line-height: 1; padding: 0 1px; opacity: .65; }
 .ind-chip button:hover, .ind-chip-x:hover { opacity: 1; }
 /* A stored indicator that this project's method list does not contain — worth seeing, not hiding. */
-.ind-chip.unknown { background: color-mix(in srgb, var(--prism-warning) 18%, var(--surface));
-  color: color-mix(in srgb, var(--prism-warning) 72%, var(--ink));
-  border-color: color-mix(in srgb, var(--prism-warning) 45%, var(--surface)); }
+.ind-chip.unknown { background: color-mix(in srgb, var(--wait) 18%, var(--surface));
+  color: color-mix(in srgb, var(--wait) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--wait) 45%, var(--surface)); }
 .ind-picker { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
 .ind-picker-cols { display: grid; grid-template-columns: minmax(150px, 0.9fr) minmax(200px, 1.2fr) minmax(220px, 1.1fr); gap: 12px; }
 .ind-info { border-left: 1px solid var(--border); padding-left: 12px; min-width: 0; }
-.ind-info-name { font-size: var(--fs-body); font-weight: 700; color: var(--prism-navy, #2f4e66); margin-bottom: 5px; }
+.ind-info-name { font-size: var(--fs-body); font-weight: 700; color: var(--navy); margin-bottom: 5px; }
 .ind-info-text { font-size: var(--fs-sec); color: var(--text); line-height: 1.45; margin: 0 0 8px; }
 .ind-info-facts { margin: 0 0 8px; padding-left: 16px; }
 .ind-info-facts li { font-size: var(--fs-sec); color: var(--faint); line-height: 1.5; }
-.ind-info-link { font-size: var(--fs-sec); font-weight: 600; color: var(--prism-green-dark, #769a1a); cursor: pointer; text-decoration: none; }
+.ind-info-link { font-size: var(--fs-sec); font-weight: 600; color: var(--green-ink); cursor: pointer; text-decoration: none; }
 .ind-info-link:hover { text-decoration: underline; }
 .ind-family { min-height: 190px; padding: 4px !important; }
 .ind-family option { padding: 4px 6px; border-radius: 4px; font-size: var(--fs-body); }
 .ind-detail { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ind-detail-actions { display: flex; align-items: center; gap: 12px; font-size: var(--fs-label); color: var(--faint); }
 .ind-detail-actions > span { margin-left: auto; }
-.linklike { background: none; border: none; padding: 0; font: inherit; font-size: var(--fs-label); font-weight: 600; color: var(--prism-green-dark, #769a1a); cursor: pointer; }
+.linklike { background: none; border: none; padding: 0; font: inherit; font-size: var(--fs-label); font-weight: 600; color: var(--green-ink); cursor: pointer; }
 .linklike:hover:not(:disabled) { text-decoration: underline; }
 .linklike:disabled { color: var(--faint); opacity: .6; cursor: default; }
 .ind-detail-list { max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
 .ind-row { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 5px 9px; border: none; border-bottom: 1px solid var(--border); background: none; cursor: pointer; font: inherit; }
-.ind-row:hover { background: var(--bg-muted, #f2f2f2); }
-.ind-row.on { background: rgba(147,193,32,0.14); }
-.ind-check { color: var(--prism-green-dark, #769a1a); font-weight: 700; text-align: center; }
-.ind-name { font-size: var(--fs-body); color: var(--ink, #303030); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ind-row:hover { background: var(--surface-2); }
+.ind-row.on { background: color-mix(in srgb, var(--green) 14%, transparent); }
+.ind-check { color: var(--green-ink); font-weight: 700; text-align: center; }
+.ind-name { font-size: var(--fs-body); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ind-star { color: var(--green); }
 .ind-unit { font-size: var(--fs-label); color: var(--faint); }
 .chart-settings { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; }
@@ -174,7 +174,7 @@
 .seg-btn { display: inline-flex; align-items: center; border: none; background: var(--surface);
   color: var(--text); font: inherit; font-size: var(--fs-sec); padding: 5px 11px; cursor: pointer; }
 .seg-btn + .seg-btn { border-left: 1px solid var(--border-strong); }
-.seg-btn.on { background: var(--prism-green, #93c120); color: #17240a; font-weight: 600; }
+.seg-btn.on { background: var(--green); color: #17240a; font-weight: 600; }
 /* A choice that is offered but not available right now — greyed rather than removed, so the control
    does not move about and the tooltip can say why. */
 .seg-btn:disabled { color: var(--faint); cursor: not-allowed; }
@@ -226,7 +226,7 @@
 .results-table-wrap { flex: none; max-height: min(56vh, 620px); overflow: auto; margin-top: 14px;
   border: 1px solid var(--border); border-radius: var(--r-lg); }
 .th-sortable { cursor: pointer; user-select: none; }
-.th-sortable:hover { color: var(--green-ink, #5f8410); }
+.th-sortable:hover { color: var(--green-ink); }
 .results-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
 .results-table th, .results-table td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
 /* The indicator head wraps, the numbers never do (horizontal scrolling because the names did not
@@ -238,9 +238,9 @@
 .results-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 /* Left-align only the Subject column — NOT the first indicator th in the 2nd header row. */
 .results-table thead tr:first-child th:first-child, .results-table td:first-child { text-align: left; }
-.th-family { text-align: center !important; background: var(--bg-muted, #f2f2f2); border-bottom: 2px solid var(--border-strong) !important; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.th-family { text-align: center !important; background: var(--surface-2); border-bottom: 2px solid var(--border-strong) !important; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .results-table th.fam-start, .results-table td.fam-start { border-left: 2px solid var(--border-strong); }
-.th-ind { display: block; font-weight: 700; color: var(--prism-navy, #2f4e66); }
+.th-ind { display: block; font-weight: 700; color: var(--navy); }
 .th-unit { display: block; font-size: var(--fs-label); font-weight: 400; color: var(--faint); }
 .td-subj { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .td-score { font-variant-numeric: tabular-nums; }
@@ -271,11 +271,11 @@
 }
 .norm-wrap { position: relative; }
 .chart-save { position: absolute; top: 4px; right: 6px; z-index: 2; width: 26px; height: 26px; border-radius: 6px;
-  border: 1px solid var(--border-strong); background: var(--surface); color: var(--prism-navy, #2f4e66);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--navy);
   cursor: pointer; opacity: 0; transition: opacity .12s; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
 .ind-chart:hover .chart-save, .norm-wrap:hover .chart-save, .radar-wrap:hover .chart-save, .ctree3-host:hover .chart-save { opacity: 1; }
 .radar-wrap .chart-save, .ctree3-host .chart-save { top: 7px; right: 9px; }
-.chart-save:hover { border-color: var(--prism-green, #93c120); color: var(--prism-green-dark, #769a1a); }
+.chart-save:hover { border-color: var(--green); color: var(--green-ink); }
 /* Enlarge button sits just left of the save button (same look, second slot). */
 .chart-save.zoom { right: 36px; }
 .radar-wrap .chart-save.zoom, .ctree3-host .chart-save.zoom { right: 39px; }
@@ -284,7 +284,7 @@
 .chart-zoom-box { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex; flex-direction: column; }
 /* 17px: the title of an enlarged chart has to be larger than the numbers inside it, and at the panel's 13.5px
    it was smaller than the scaled axis labels — the heading then read as a caption of the axis. */
-.chart-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; color: var(--ink); font-size: var(--fs-title); }
+.chart-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 18px; border-bottom: 1px solid var(--border); font-weight: 600; color: var(--text); font-size: var(--fs-title); }
 .chart-zoom-live { width: min(1400px, 92vw); height: min(800px, 76vh); padding: 12px; overflow: auto; }
 .chart-zoom-live .ind-chart-canvas, .chart-zoom-live .norm-chart-canvas, .chart-zoom-live .radar-canvas { width: 100%; height: 100%; }
 /* The heatmap is an HTML table, not an echarts canvas, so its type grows here rather than through `scale`.
@@ -293,7 +293,7 @@
 .chart-zoom-live .heatmap th, .chart-zoom-live .heatmap td { padding: 9px 12px; }
 .chart-zoom-live .heatmap thead tr:nth-child(2) th { height: 240px; }
 .chart-zoom-live .heatmap thead tr:nth-child(2) th .th-ind { max-height: 228px; }
-.ind-chart-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink, #303030); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ind-chart-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ind-chart-canvas { height: 260px; }
 .norm-chart-canvas { height: 420px; margin-top: 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 10px; }
 .radar-wrap { position: relative; }
