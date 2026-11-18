@@ -31,6 +31,7 @@ import { useSubjectSelection } from './results/useSubjectSelection'
 import { useResultsOpening } from './results/useResultsOpening'
 import { buildColorMap } from './results/subjectColors'
 import { familiesOffered, resolveSplit } from './results/splitBy'
+import { comparisonCharts } from './results/comparisonCharts'
 import { fmtPct, pngName, ZOOM_SCALE } from './results/chartUtils'
 import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
 import { useIndicatorPicking } from './results/useIndicatorPicking'
@@ -407,13 +408,18 @@ export default function Results({
     })()
   }
 
-  // The radar and the heatmap normalise each indicator to its highest subject: over one subject every cell
-  // reads 100 % and every axis is full, which compares nothing. Both need two subjects; the radar also needs
-  // three axes to be a shape rather than a line.
-  const compared = (matrix?.subjects.length ?? 0) >= 2
-  const showRadar = compared && picked.length >= 3
+  // Radar, heatmap and Normalized bars only from two subjects on: over one they read 100 % throughout.
+  const { compared, showRadar, canNormalize, normalized } = comparisonCharts({
+    resultSubjects: matrix ? matrix.subjects.length : null,
+    selectedSubjects: subjects.length,
+    indicators: picked.length,
+    view
+  })
   // A recalculation can take away the chart the overlay enlarges; the overlay then closes rather than draw it on.
-  const zoomGone = (zoomed?.id === 'radar' && !showRadar) || (zoomed?.id === 'heatmap' && !compared)
+  const zoomGone =
+    (zoomed?.id === 'radar' && !showRadar) ||
+    (zoomed?.id === 'heatmap' && !compared) ||
+    (zoomed?.id === 'normalized' && !normalized)
   useEffect(() => {
     if (zoomGone) setZoomed(null)
   }, [zoomGone])
@@ -426,10 +432,9 @@ export default function Results({
   // The note describes the charts that WERE saved; a new calculation makes it stale.
   useEffect(() => setSavedNote(null), [matrix])
   const saveAllCharts = async (): Promise<void> => {
-    const entries: [string, string][] =
-      view === 'normalized' && picked.length > 1
-        ? [['normalized', 'normalized comparison']]
-        : orderedPicked.map((p) => [p.key, `${p.family} ${p.label}`])
+    const entries: [string, string][] = normalized
+      ? [['normalized', 'normalized comparison']]
+      : orderedPicked.map((p) => [p.key, `${p.family} ${p.label}`])
     if (showRadar) entries.push(['radar', 'radar_chart'])
     if (compared) entries.push(['heatmap', 'heatmap'])
     const files = entries.flatMap(([id, name]) => {
@@ -779,7 +784,7 @@ export default function Results({
               {savedNote}
             </span>
             <span className="srow">
-              {picked.length > 1 ? (
+              {canNormalize ? (
                 <span className="seg">
                   <button
                     className={`seg-btn${view === 'charts' ? ' on' : ''}`}
@@ -931,7 +936,7 @@ export default function Results({
                 </div>
               ) : null}
 
-              {view === 'normalized' && picked.length > 1 ? (
+              {normalized ? (
                 <section className="ind-fam-section res-card res-norm norm-wrap">
                   <div className="ind-fam-head has-sub">Normalized</div>
                   <div className="chart-sub-row">
