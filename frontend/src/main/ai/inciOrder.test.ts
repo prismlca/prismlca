@@ -81,14 +81,15 @@ describe('the recipe against the order of the INCI list', () => {
         'Glycerin (no. 5), but the recipe gives 1.05 % against 2 %.'
     )
     expect(r.sentence).toMatch(
-      /Its shares contradict the order of the product's INCI list: Cocamidopropyl Betaine \(no\. 4\) is listed before Glycerin \(no\. 5\), but the recipe gives 1\.05 % against 2 % — as it stands, it does not fit this product as labelled; say so to the user \(the balance does not depend on it\)\./
+      /Its shares contradict the order of the INCI list you passed: Cocamidopropyl Betaine \(no\. 4\) is listed before Glycerin \(no\. 5\), but the recipe gives 1\.05 % against 2 % — as it stands, it does not fit this product as labelled; say so to the user\. It may still serve as a stand-in: do not adjust its amounts or research again for this alone \(the balance does not depend on it\)\./
     )
+    expect(order.list).toBe('passed')
     // Not part of the verdict: the recipe closes, nothing is locked, and the whole balance stands.
     expect(r.block.closes).toBe(true)
     expect(r.lock).toBeUndefined()
     const bom = weighBom([], { recipe: r })
     expect(bom.balance_ok).toBe(true)
-    expect(bom.summary).toMatch(/Its shares contradict the order of the product's INCI list/)
+    expect(bom.summary).toMatch(/Its shares contradict the order of the INCI list you passed/)
     expect(bom.recipe?.inci_order?.contradictions).toHaveLength(1)
   })
 
@@ -106,8 +107,10 @@ describe('the recipe against the order of the INCI list', () => {
       { inci_list: ['Aqua (Water)', 'Glycerin', 'Sodium Laureth Sulfate'] }
     )
     expect(r.block.inci_order).toMatchObject({ compared: 3, contradictions: [] })
+    // No contradiction is not a match: the note says what was not found, not that the recipe fits.
     expect(r.block.inci_order?.note).toBe(
-      "Its 3 ingredients certainly above 1 % that the INCI list names stand in the list's order."
+      '3 of its ingredients are certainly above 1 % and named in the INCI list; no certain contradiction with the ' +
+        "list's order among them."
     )
     expect(r.sentence).not.toMatch(/INCI/)
   })
@@ -188,6 +191,8 @@ describe('the recipe against the order of the INCI list', () => {
       ).block.inci_order!
     const none = soap({ name: 'SLES solution' })
     expect(none.contradictions).toEqual([])
+    expect(none.note).toMatch(/^\d+ of its ingredients are certainly above 1 % .*no certain contradiction/)
+    expect(none.note).not.toMatch(/no reading|stand in the list's order/)
     expect(none.note).toMatch(
       /Trade forms not stated in full could hold any listed ingredient in their unnamed part, so a contradiction is named only where it is wider than 70 %: SLES solution \(up to 70 %\)\./
     )
@@ -243,6 +248,9 @@ describe('the recipe against the order of the INCI list', () => {
     // Glycerin anywhere in 5–30 leaves the water anywhere in 30–55: the label's order is possible.
     const wide = lotion([5, 30])
     expect(wide.contradictions).toEqual([])
+    // Some readings (glycerin at 30, water at 30) still turn the order: the note claims no certainty either way.
+    expect(wide.note).toMatch(/no certain contradiction with the list's order among them\.$/)
+    expect(wide.note).not.toMatch(/no reading|stand in the list's order/)
     // At 25–30 the water stays at 30–35, below the propylene glycol listed after it.
     expect(lotion([25, 30]).contradictions).toEqual([
       {
@@ -372,8 +380,40 @@ describe('the recipe against the order of the INCI list', () => {
     expect(mixed.block.inci_order).toEqual({
       compared: 0,
       contradictions: [],
-      note: 'Not compared: the recipe gives no shares of the mixture.'
+      note: 'Not compared: the recipe gives no shares of the mixture.',
+      list: 'passed'
     })
+  })
+
+  it("places a trade form's constituent by the INCI name the leg wrote, before its datasheet name", () => {
+    // 2 % glycerin dosed and 7 % in a blend whose datasheet says "glycerol": 9 % against 7 % SLES, in the order.
+    const blend = (inci?: string) =>
+      weigh(
+        {
+          formulation: { name: 'x', kind: 'frame', source_url: PCC },
+          lines: [
+            { name: 'Aqua', amount: 84, unit: '%' },
+            { name: 'Glycerin', amount: 2, unit: '%' },
+            {
+              name: 'Glycerin/SLES blend',
+              amount: 14,
+              unit: '%',
+              trade_form: {
+                constituents: [
+                  { name: 'glycerol', pct: 50, ...(inci ? { inci } : {}) },
+                  { name: 'sodium laureth sulfate', pct: 50 }
+                ]
+              }
+            }
+          ]
+        },
+        { inci_list: ['Aqua', 'Glycerin', 'Sodium Laureth Sulfate'] }
+      ).block.inci_order!
+    expect(blend('Glycerin')).toMatchObject({ compared: 3, contradictions: [] })
+    expect(blend('Glycerin').unplaced).toBeUndefined()
+    // Without it the datasheet's name places nothing, and the dosed 2 % alone stands against the 7 %.
+    expect(blend().unplaced).toEqual(['glycerol (in Glycerin/SLES blend) 7 %'])
+    expect(blend().contradictions).toHaveLength(1)
   })
 
   it('reads a list sent as one string, without splitting "1,2-Hexanediol"', () => {

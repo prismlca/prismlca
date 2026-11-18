@@ -19,6 +19,7 @@ import {
   inciEntries,
   inciOrder,
   shareBounds,
+  type InciListOrigin,
   type InciOrder,
   type LineShare
 } from './inciOrder'
@@ -85,8 +86,9 @@ export interface RecipeBlock {
   contents_found?: ContentsMass[]
   /** Trade forms booked as their constituents. */
   split?: string[]
-  /** Where the shares contradict the order of the INCI list passed — a hint beside the closure, never part of it. */
-  inci_order?: InciOrder
+  /** Where the shares contradict the order of the INCI list — the one passed, or else a label list the research
+   *  found — a hint beside the closure, never part of it. */
+  inci_order?: InciOrder & InciListOrigin
 }
 
 export interface RecipeWeighing {
@@ -137,7 +139,7 @@ function missingIngredients(known: string[], lines: RecipeLine[]): string[] {
       l.name,
       l.inci ?? '',
       l.trade_form?.name ?? '',
-      ...(l.trade_form?.constituents ?? []).map((c) => c.name)
+      ...(l.trade_form?.constituents ?? []).flatMap((c) => [c.name, c.inci ?? ''])
     ])
     .map(norm)
     .filter(Boolean)
@@ -174,7 +176,14 @@ const splitOf = (l: RecipeLine): boolean => {
  */
 export function weighRecipe(
   leg: RecipeLeg | undefined,
-  opts: { of: string; request: RecipeRequest; canonical?: (url: string) => string; error?: string }
+  opts: {
+    of: string
+    request: RecipeRequest
+    canonical?: (url: string) => string
+    /** The page a source URL settles on, undefined for a link that leads nowhere; `canonical` when not given. */
+    page?: (url: string) => string | undefined
+    error?: string
+  }
 ): RecipeWeighing {
   const of = opts.of
   const passed = opts.request.mass_kg
@@ -458,12 +467,28 @@ export function weighRecipe(
   })
   const cut = Math.max(0, lines.length - RECIPE_LINE_CAP)
 
-  const inciList = inciEntries(opts.request.inci_list)
+  // The INCI list the caller passed takes the place of any list the leg found — for the coverage too: a list of
+  // another version of the product would make its extra ingredients "known from the product". Without one, the
+  // leg's list is held against the order only when it is a cosmetic's label list with a page that leads somewhere.
+  const passedInci = inciEntries(opts.request.inci_list)
+  const declared = passedInci.length ? undefined : leg.declared
+  const foundPage =
+    declared?.kind === 'inci' && declared.source_url
+      ? (opts.page ?? canonical)(declared.source_url)
+      : undefined
+  const inciList = passedInci.length ? passedInci : foundPage ? inciEntries(declared?.names) : []
+  const origin: InciListOrigin = passedInci.length
+    ? { list: 'passed' }
+    : {
+        list: 'found',
+        ...(declared?.product ? { product: declared.product } : {}),
+        ...(foundPage ? { source_url: foundPage } : {})
+      }
   const known = [
     ...new Set([
       ...inciEntries(opts.request.ingredients),
-      ...inciList,
-      ...(leg.declared?.names ?? []).map((k) => k.trim()).filter(Boolean)
+      ...passedInci,
+      ...(declared?.names ?? []).map((k) => k.trim()).filter(Boolean)
     ])
   ]
   const missing = missingIngredients(known, lines)
@@ -473,8 +498,8 @@ export function weighRecipe(
   const gapKg =
     gap !== undefined && gapPct !== undefined && massKg ? r6((gap / (den as number)) * massKg) : undefined
 
-  // The INCI list's order, only where the caller passed one as such (inciOrder.ts).
-  const order: InciOrder | undefined = !inciList.length
+  // The INCI list's order, only against a list marked as one (inciOrder.ts).
+  const compared: InciOrder | undefined = !inciList.length
     ? undefined
     : sharesFrom
       ? inciOrder(
@@ -489,6 +514,7 @@ export function weighRecipe(
           gapPct !== undefined && gapPct > 0 ? { unaccounted_pct: gapPct } : {}
         )
       : { compared: 0, contradictions: [], note: 'Not compared: the recipe gives no shares of the mixture.' }
+  const order = compared ? { ...compared, ...origin } : undefined
   const block: RecipeBlock = {
     of,
     ...(f ? { formulation: f } : {}),
@@ -502,7 +528,7 @@ export function weighRecipe(
     ...(gapKg !== undefined ? { gap_kg: gapKg } : {}),
     ...(reachable !== undefined ? { reachable_by_ranges: reachable } : {}),
     ...(missing.length ? { missing_ingredients: missing } : {}),
-    ...(leg.declared?.source_url ? { declared_source: leg.declared.source_url } : {}),
+    ...(declared?.source_url ? { declared_source: declared.source_url } : {}),
     ...(massKg ? { mass_kg: massKg, mass_source: given ? ('given' as const) : ('researched' as const) } : {}),
     ...(found.length ? { contents_found: found } : {}),
     ...(split.length ? { split } : {}),
@@ -520,11 +546,22 @@ export function weighRecipe(
         ? ''
         : "not said whether it is this product's own"
   const contradicting = order?.contradictions ?? []
+  // A list the research found is named with its product and page: whether it is the user's product is not settled.
+  const foundList = order?.list === 'found'
+  const listHost = host(order?.source_url)
+  const listProduct = order?.product ? `"${order.product}"` : 'the product'
+  const listWords = foundList
+    ? `the INCI list the research found for ${listProduct}${listHost ? ` (${listHost})` : ''}`
+    : 'the INCI list you passed'
   const orderWords = contradicting.length
-    ? `Its shares contradict the order of the product's INCI list: ` +
+    ? `Its shares contradict the order of ${listWords}: ` +
       contradicting.slice(0, 2).map(contradictionWords).join('; ') +
       (contradicting.length + (order?.more ?? 0) > 2 ? ' (more in recipe.inci_order)' : '') +
-      ' — as it stands, it does not fit this product as labelled; say so to the user (the balance does not depend on it).'
+      (foundList
+        ? " — if that is the user's product, this is not its recipe as labelled"
+        : ' — as it stands, it does not fit this product as labelled') +
+      '; say so to the user. It may still serve as a stand-in: do not adjust its amounts or research again for ' +
+      'this alone (the balance does not depend on it).'
     : ''
   const subject = `The recipe of ${of},${f ? `"${f.name}"` : 'an unnamed formulation'}${kindWords ? ` (${kindWords})` : ''},`
   const gapWords =

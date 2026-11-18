@@ -132,6 +132,19 @@ describe('the dossier’s research on record', () => {
         "product's INCI list: Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5), but the recipe gives " +
         '1.05 % against 2 %; scaled to 0.51 kg (given)'
     )
+    // A list the research found is named with its product and page, and not as the product's.
+    const found = researchSection([
+      entry({
+        of: 'liquid soap',
+        closes: true,
+        inci_order: ['Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5)'],
+        inci_list: { from: 'found', product: 'Balea liquid soap', source: 'https://dm.example/p' }
+      })
+    ])
+    expect(found).toContain(
+      'contradicts the order of the INCI list the research found for "Balea liquid soap" (https://dm.example/p), ' +
+        "not confirmed as this product's: Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5)"
+    )
     const unchecked = researchSection([
       entry({ of: 'concrete', closes: null, note: 'parts by weight have no total of their own' })
     ])

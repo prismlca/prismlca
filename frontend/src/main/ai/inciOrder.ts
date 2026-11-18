@@ -11,10 +11,13 @@
  * be any listed ingredient (an unknown surfactant solution is mostly water): a contradiction is named only where it is
  * wider than all of that mass. A substance without a share, or not certainly above 1 %, is not compared.
  *
- * Names are identities: a line or constituent is placed at the entry of the same name, spelling aside, never at one
- * that merely shares a part ("Dimethicone" is not "Dimethicone/Vinyl Dimethicone Crosspolymer"). The one equivalence
- * is water, which INCI writes "Aqua" and a datasheet "water". A name that matches no entry is taken as an ingredient the
- * list does not have, and named.
+ * Names are identities: a line or constituent is placed at the entry of the same name, spelling aside — its INCI name
+ * as the leg wrote it first, then its own — never at one that merely shares a part ("Dimethicone" is not
+ * "Dimethicone/Vinyl Dimethicone Crosspolymer"). The one equivalence is water, which INCI writes "Aqua" and a
+ * datasheet "water". A name that matches no entry is taken as an ingredient the list does not have, and named.
+ *
+ * No contradiction is not a match: it says only that no two listed ingredients stand the other way round in every
+ * reading of the shares given — some readings may still turn them, and the recipe need not be the product's.
  */
 import type { RecipeLine } from './bomRecipe'
 
@@ -63,6 +66,15 @@ export interface InciOrder {
   /** Recipe ingredients with a share that match no name of the list, so are in no comparison. */
   unplaced?: string[]
   note: string
+}
+
+/** Which list the shares were held against: the one the caller passed, or a label list the research found. */
+export interface InciListOrigin {
+  list: 'passed' | 'found'
+  /** For a found list: the product it belongs to, as its page names it. */
+  product?: string
+  /** For a found list: its page. */
+  source_url?: string
 }
 
 const norm = (s: string): string =>
@@ -185,7 +197,7 @@ function contributions(ls: LineShare, unknown: Unknown): Contribution[] {
   }
   if (usable)
     return parts.map((c) => ({
-      names: [identity(c.name)],
+      names: [identity(c.inci), identity(c.name)].filter(Boolean),
       lo: (lo * c.pct) / 100,
       hi: (hi * c.pct) / 100,
       line: l.name,
@@ -255,7 +267,8 @@ export function inciOrder(
       (found.length > MAX_NAMED ? `; and ${found.length - MAX_NAMED} more` : '') +
       '.'
     : compared.length > 1
-      ? `Its ${compared.length} ingredients certainly above 1 % that the INCI list names stand in the list's order.`
+      ? `${compared.length} of its ingredients are certainly above 1 % and named in the INCI list; no certain ` +
+        "contradiction with the list's order among them."
       : `Fewer than two of its ingredients are certainly above 1 % and named in the INCI list — nothing to compare.`
   const tail = [
     unknown.of.length
