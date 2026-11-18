@@ -33,6 +33,7 @@ from prism_lca.engine import (
     health,
     lca,
     left_workspace,
+    method_lookup,
     report_checks,
     report_graph,
     report_images,
@@ -248,6 +249,10 @@ def _build_render_inputs(
             # that hit it, so it names the panel to go to rather than the fields to pass.
             hint="Pick both under “Scope & indicators”.",
         )
+    # A gone method answers 404 in the variants' LCIA below, read there as a deleted process: said first.
+    method_lookup.require_installed(
+        methods, "The report's indicators", "Pick the indicators again under “Scope & indicators”."
+    )
     amount = float(body.amount if body.amount is not None else report.get("amount", 1.0))
     background, backgrounds = _referenced_backgrounds(database)
     # ---- everything the numbers need, grouped by PARAMETER STATE (V138) -------------------------
@@ -661,7 +666,7 @@ def _build_render_inputs(
         # Every installed method of the families in play, so an indicator's printed name is decided
         # against its whole family and not against this report's selection (V203). Best-effort: a
         # missing catalogue costs the long names, never the render.
-        "method_catalog": best_effort(lambda: lca.methods_in_families(report.get("methods") or []))
+        "method_catalog": best_effort(lambda: method_lookup.methods_in_families(report.get("methods") or []))
         or [],
         "provenance": {
             # The background(s) the model actually draws on — one name, or "a, b" when a model mixes
@@ -985,108 +990,6 @@ def _warm_snapshot(
         )
         return False
     return True
-
-
-# ---- hand-off ---------------------------------------------------------------
-_BUNDLE_README = """\
-# {name}
-
-Typst sources for a PrismLCA report — everything needed to typeset it without PrismLCA. Compile
-with:
-
-    typst compile main.typ
-
-## What is yours and what is ours
-
-* `main.typ` — **yours** from here on. The whole document is this one file: the chapters in the order
-  the report gave them, one after another. Edit it freely.
-* `values.json` — **ours**, and the reason editing is safe: every number in a sentence is a
-  `#pval("…")` call that reads this file while compiling, so no figure is written into the prose.
-  Replace the file, recompile, and text you have rewritten states the new numbers. A key that is gone
-  prints as `[missing: …]` instead of quietly keeping an old value.
-* `tables.json` — **ours** too: the cells of every table, already formatted. A table in `main.typ` is a
-  `#ptable("…")` call that reads its rows from here, so a refresh brings new tables beside new text. To
-  fix a table by hand, replace its `#ptable` call with your own `#lca-table(…)` — then it is yours and
-  no refresh touches it. A table that is gone prints as `[missing table: …]`.
-* `data.json` — the whole result snapshot behind those values: scores, contributions, provenance, the
-  completeness check. Nothing reads it while compiling — it is here so a reviewer can see where a
-  number came from, and so you can look up one that has no placeholder yet.{charts}
-* `template.typ` and `palette.typ` — the look, and its colours as the named bindings the template
-  uses. Change them, or replace the template with your own; PrismLCA validates a template before
-  accepting it.{images}
-
-## Keeping the numbers current
-
-Ask whoever sent this for the data on its own rather than for a new export: PrismLCA can hand out
-`data.json`, `values.json`, `tables.json`, `figures.json` and the chart files without the prose. Drop those in beside your edited
-`main.typ` and recompile — your text stands, the figures move. Type a number in by hand and it stops
-being maintained, which is fine as long as you know you did it.
-
-Tables and charts are named by what they show — the indicator's method path and, for a breakdown, its
-dimension — never by their place in the method list. If the list has changed since this export, a table
-or chart of an indicator that is no longer assessed prints as `[missing table: …]` or
-`[missing figure: …]` where it stood, rather than showing another indicator under the old caption; a
-newly added indicator appears nowhere until you place it.
-
-Exports made before 29 Sept 2026 name their charts by position; this archive cannot refresh them
-safely — export the report again.
-
-## Fonts
-
-Not in the archive. PrismLCA typesets with system fonts switched off, from its own copies of ten
-libre families — Noto Sans, Source Sans 3, Source Serif 4, Instrument Sans, IBM Plex Sans, JetBrains
-Mono, Montserrat, Open Sans, Libre Franklin and Libre Baskerville, all under SIL OFL 1.1 — plus the
-ones the Typst compiler embeds itself; that is what makes its PDF identical on every
-machine. Your Typst installation has only what is installed on it, so install the families
-`template.typ` asks for (all of them are free) or the compiler substitutes and the document sets
-differently than it did here.
-
-Generated by PrismLCA {version}.
-"""
-
-
-def bundle_readme(name: str, version: str, names: list[str]) -> str:
-    """The hand-off note, written from the files this archive actually contains.
-
-    Assembled rather than fixed, because the archive varies: a report with no figures has no `charts/`,
-    and which images travel depends on the cover and the logos. A fixed text drifts away from the ZIP
-    without anything noticing — which is what happened to its predecessor, promising a `chapters/`
-    directory in a layout this export has never had. Everything the note names is taken from `names`,
-    so the recipient is never sent looking for a file that is not there.
-    """
-    import textwrap
-
-    # Wrapped like the rest of the note, because the list of images has no fixed length: a report with a
-    # cover and two logos would otherwise leave one 160-character line in an otherwise hand-set document.
-    def bullet(text: str) -> str:
-        return "\n" + textwrap.fill(text, width=100, initial_indent="* ", subsequent_indent="  ")
-
-    images = sorted(
-        n for n in names if "/" not in n and n.lower().endswith((".png", ".jpg", ".jpeg", ".svg"))
-    )
-    charts = ""
-    if any(n.startswith("charts/") for n in names):
-        charts = bullet(
-            "`charts/` and `figures.json` — the figures, as SVG drawn from exactly these numbers, and the "
-            "list of them. Ours as well: a figure in `main.typ` is a `#pfigure(\"…\")` call that finds its "
-            "file through `figures.json`, so a data refresh brings new ones, and one that is gone prints as "
-            "`[missing figure: …]`. To keep a figure of your own, replace its `#pfigure` call with "
-            "`#lca-figure(\"your-file.svg\", …)`."
-        )
-    return _BUNDLE_README.format(
-        name=name,
-        version=version,
-        charts=charts,
-        images=(
-            bullet(
-                ", ".join(f"`{n}`" for n in images)
-                + " — the image files the document places. Typst picks "
-                "its decoder from the file *name*, so keep the extensions as they are."
-            )
-            if images
-            else ""
-        ),
-    )
 
 
 #: A figure key in the old, positional scheme — what a renderer from before content keys sent.

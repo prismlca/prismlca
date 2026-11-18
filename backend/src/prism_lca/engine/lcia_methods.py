@@ -13,7 +13,7 @@ import re
 import threading
 
 from prism_lca import _log
-from prism_lca.engine import hygiene, lca
+from prism_lca.engine import hygiene, lca, method_lookup
 from prism_lca.engine._store import JsonFileStore
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.ecoinvent import BIOSPHERE_DB
@@ -143,12 +143,12 @@ def _method_detail(bd, t: tuple) -> dict:
 
 
 def method_flows(method) -> dict:
-    return _method_detail(get_bd(), lca.resolve_method(method))
+    return _method_detail(get_bd(), method_lookup.resolve_method(method))
 
 
 def duplicate_method(src, family: str, name: str, description: str | None = None) -> dict:
     bd = get_bd()
-    src_t = lca.resolve_method(src)
+    src_t = method_lookup.resolve_method(src)
     family = (family or "").strip()
     name = (name or "").strip()
     if not family or not name:
@@ -203,7 +203,7 @@ def create_method(family: str, name: str, unit: str = "", description: str | Non
 def rename_method(method, new_name: str) -> dict:
     """Rename a custom method (keeps its family), moving its factors + metadata to the new key."""
     bd = get_bd()
-    t = lca.resolve_method(method)
+    t = method_lookup.resolve_method(method)
     _require_custom(bd, t)
     new_name = (new_name or "").strip()
     if not new_name:
@@ -233,7 +233,7 @@ _FACTOR_WRITE_LOCK = threading.Lock()
 def set_factor(method, ref, cf: float) -> dict:
     """Upsert a flow's characterisation factor (also used to add a new flow)."""
     bd = get_bd()
-    t = lca.resolve_method(method)
+    t = method_lookup.resolve_method(method)
     _require_custom(bd, t)
     key = _key_from_ref(ref)
     with _FACTOR_WRITE_LOCK:
@@ -246,7 +246,7 @@ def set_factor(method, ref, cf: float) -> dict:
 
 def remove_flow(method, ref) -> dict:
     bd = get_bd()
-    t = lca.resolve_method(method)
+    t = method_lookup.resolve_method(method)
     _require_custom(bd, t)
     key = _key_from_ref(ref)
     with _FACTOR_WRITE_LOCK:
@@ -266,7 +266,7 @@ def remove_flow(method, ref) -> dict:
 
 def delete_method(method) -> dict:
     bd = get_bd()
-    t = lca.resolve_method(method)
+    t = method_lookup.resolve_method(method)
     _require_custom(bd, t)
     hygiene.deregister_method(t)
     lca.invalidate_lca_cache()

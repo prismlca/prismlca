@@ -148,8 +148,8 @@ def changed(request: Request, body: ChangedRequest) -> dict:
     workspace-wide change (an import, a background swap); and the saved factors of each method the run
     used, whose file is rewritten when a factor is edited — which the audit log does not record. Edits in
     OTHER models are not counted: they cannot move this model's result."""
-    from prism_lca.engine import lca
     from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.engine.method_lookup import resolve_method
 
     since = datetime.fromisoformat(body.since.replace("Z", "+00:00"))
     # The whole log, newest first: a limit keeps the model's own entries before the workspace's, and a model
@@ -161,7 +161,7 @@ def changed(request: Request, body: ChangedRequest) -> dict:
     bd = get_bd()
     for m in body.methods:
         try:
-            path = bd.Method(lca.resolve_method(m)).filepath_processed()
+            path = bd.Method(resolve_method(m)).filepath_processed()
             mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=since.tzinfo)
         except Exception:  # noqa: BLE001 - a method that is gone or unreadable is a change too
             return {"changed": True, "reason": "method"}

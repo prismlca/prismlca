@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 import threading
 from collections import OrderedDict
 
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.method_lookup import none_resolved, resolve_method, resolve_methods
 from prism_lca.engine.model import get_activity
 from prism_lca.engine.phase_attribution import NOISE_SHARE
 from prism_lca.errors import PrismError
@@ -266,204 +266,6 @@ def model_generation() -> int:
     return _MODEL_GEN
 
 
-# Method-name markers of SPECIALIST VARIANTS (not the standard reporting indicator of their
-# category): sub-split climate indicators, long-term-exclusion variants, alternative time horizons.
-# Everything else — the EF/ReCiPe/CML core categories and IPCC 'total' GWP100 — is `recommended`.
-# The wrong variant is the single most error-prone step of a study (a 'biogenic'-only GWP is ~20x
-# off), so both the UI picker and the AI assistant get this flag to steer the default choice.
-_VARIANT_MARKERS = (
-    "no lt",                       # long-term emissions excluded — specialist choice
-    "climate change: biogenic",    # sub-split climate indicators
-    "climate change: fossil",
-    "climate change: land use",
-    "biogenic emissions",
-    "biogenic removals",
-    "(incl. biogenic",             # the 'IPCC 2021 (incl. biogenic CO2)' family
-    "slcf",                        # short-lived climate forcers
-    "gwp20", "gwp500", "gtp",      # non-standard horizons / metrics
-    "obsolete",
-)
-
-
-def _is_recommended(name: str) -> bool:
-    low = name.lower()
-    if any(marker in low for marker in _VARIANT_MARKERS):
-        return False
-    # Sub-split climate indicators, by SHAPE rather than by name. A climate CATEGORY (the middle
-    # segment) is either plain ("climate change") or an aggregate ("climate change: total …");
-    # anything else after the colon is one contribution of it. Naming the splits one by one kept
-    # missing them — ecoinvent 3.12's IPCC 2021 family added "aircraft emissions" and spells land
-    # use as "direct land use change", which the "climate change: land use" marker above does not
-    # match. Five IPCC 2021 indicators came out `recommended` that way, and the first of them
-    # alphabetically ("aircraft emissions") is ~7 orders of magnitude below the total.
-    # Only the category is tested: ReCiPe's endpoint INDICATORS are named "climate change: human
-    # health" etc. and are the reporting indicator of their own category ("human health").
-    parts = [p.strip().lower() for p in name.split("·")]
-    category = parts[1] if len(parts) > 2 else ""
-    if category.startswith("climate change:") and not category[len("climate change:"):].lstrip().startswith("total"):
-        return False
-    # Within climate methods, GWP100 is the reporting standard.
-    if "global warming potential" in low and "gwp100" not in low:
-        return False
-    return True
-
-
-def _fold(text: str) -> str:
-    """A method name reduced to what a human meant by it: lower case, no punctuation, "v3.1" as "3.1".
-
-    Kept deliberately close to the same fold in the assistant's `list_methods` tool. Two copies of an
-    algorithm is a cost; a name that the search finds and the calculation then rejects is a bigger one.
-    """
-    out = re.sub(r"\bv(\d)", r"\1", text.lower())
-    out = re.sub(r"[^a-z0-9.]+", " ", out)
-    return re.sub(r"\s+", " ", out).strip()
-
-
-def _matches(words: list[str], name: str) -> bool:
-    """Whether every word of a folded query appears in this method's name.
-
-    Compared twice, as written and with spaces and dots squeezed out, so "ef3.1" finds "EF v3.1" and
-    "GWP 100" finds "GWP100" — vendors write versions both ways and nobody should have to know which.
-    """
-    folded = _fold(name)
-    squashed = folded.replace(" ", "").replace(".", "")
-    return all(w in folded or w.replace(" ", "").replace(".", "") in squashed for w in words)
-
-
-def list_methods(query: str | None = None, limit: int = 100) -> list[dict]:
-    bd = get_bd()
-    out: list[dict] = []
-    for m in bd.methods:
-        name = " · ".join(m)
-        if query and query.lower() not in name.lower():
-            continue
-        meta = bd.methods[m]
-        out.append(
-            {
-                "method": list(m),
-                "name": name,
-                "unit": meta.get("unit", ""),
-                "num_cfs": meta.get("num_cfs"),
-                "recommended": _is_recommended(name),
-            }
-        )
-        if len(out) >= limit:
-            break
-    return out
-
-
-def methods_in_families(methods) -> list[list[str]]:
-    """Every installed method that shares a family with one of `methods`.
-
-    What a printed indicator name has to be unique against (V203): the middle segment of a path is a
-    name only where the *family* gives it to a single indicator, and that question cannot be answered
-    from the handful of indicators a report selected. Takes the report's methods in either shape they
-    are stored in — a tuple, or one "family / category / indicator" string.
-    """
-    families: set[str] = set()
-    for m in methods or []:
-        parts = m.split("/") if isinstance(m, str) else [str(p) for p in (m or [])]
-        first = (parts[0] if parts else "").strip()
-        if first:
-            families.add(first)
-    if not families:
-        return []
-    bd = get_bd()
-    return [list(m) for m in bd.methods if m and str(m[0]) in families]
-
-
-def resolve_method(method) -> tuple:
-    bd = get_bd()
-    if not method:
-        raise PrismError(
-            "No LCIA method specified.",
-            code="no_method",
-            hint="Pass 'method' as a list of strings (see GET /api/v1/calc/methods).",
-        )
-    # A string is a name, not a sequence of characters. Without this, `method="IPCC 2021 · …"` became
-    # `('I', 'P', 'C', 'C', …)` and the error read "LCIA method ['I','P','C','C',…] not found" — true,
-    # unusable, and the single most repeated mistake an assistant made in an earlier modelling session.
-    if isinstance(method, str):
-        parts = [p.strip() for p in method.split("·") if p.strip()]
-        t = tuple(parts) if len(parts) > 1 else (method.strip(),)
-    else:
-        t = tuple(str(p) for p in method)
-
-    if t in bd.methods:
-        return t
-
-    # Not an exact triple. The AI's `list_methods` has folded matching — punctuation, case and a "v"
-    # before a version are ignored — and promises as much in its description, but resolution did not,
-    # so a name that was found a moment ago failed to compute. Same rule here, and it is the *resolver*
-    # that has it now, so every caller gets it: the tools, the report writer and the HTTP API.
-    query = _fold(" ".join(t))
-    words = query.split()
-    if words:
-        hits = [m for m in bd.methods if _matches(words, " · ".join(m))]
-        if len(hits) == 1:
-            return tuple(hits[0])
-        if hits:
-            # Several: naming them is the useful answer. Guessing is not — picking one of five climate
-            # indicators for the user is how a study ends up reporting the wrong one.
-            # The recommended ones first, the others still named: filtering to the recommended alone
-            # answered "matches 4 methods — say which" with ONE candidate, and the variant a user asked
-            # for by name (fossil only, GWP20) was not on the list to pick.
-            names = [" · ".join(m) for m in hits]
-            recommended = [n for n in names if _is_recommended(n)]
-            others = [n for n in names if n not in recommended]
-            if recommended:
-                hint = "Recommended: " + " | ".join(recommended[:5])
-                if others:
-                    hint += ". Also matching: " + " | ".join(others[:5])
-            else:
-                hint = "Candidates: " + " | ".join(names[:5])
-            raise PrismError(
-                f"LCIA method {list(t)} matches {len(hits)} methods — say which.",
-                code="method_ambiguous",
-                status_code=404,
-                hint=hint,
-            )
-
-    near = [m for m in bd.methods if words and _matches(words[:1], " · ".join(m))][:5]
-    raise PrismError(
-        f"LCIA method {list(t)} not found.",
-        code="method_not_found",
-        status_code=404,
-        hint=(
-            "Closest: " + " | ".join(" · ".join(m) for m in near)
-            if near
-            else "List available methods via GET /api/v1/calc/methods."
-        ),
-    )
-
-
-#: Family-name markers of the twin variants an indicator set ships with. Asking for "EF v3.1" means the
-#: standard family; the "no LT" twin (long-term emissions cut) and the "(incl. biogenic CO2)" family are
-#: answers to a different question and appear only when named. Its own name on purpose: the module
-#: already has `_VARIANT_MARKERS` for the per-INDICATOR recommendation flag, and a second definition
-#: under that name silently replaced it — GTP100 came out "recommended".
-_FAMILY_VARIANT_MARKERS = ("no lt", "no-lt", "incl. biogenic", "including biogenic")
-
-
-def methods_in_family(family: str, include_variants: bool = False) -> list[list[str]]:
-    """Every installed indicator of ONE method family, standard variants only unless asked.
-
-    The whole-family read (all EF 3.1 categories, all of IPCC 2021) used to take two rounds — the family
-    listing, then a methods list copied back by hand — and was therefore skipped for a single GWP. An
-    exact family name wins; otherwise a case-insensitive substring match ("ef v3.1" finds "EF v3.1").
-    """
-    fam = (family or "").strip().lower()
-    if not fam:
-        return []
-    bd = get_bd()
-    names = sorted({str(m[0]) for m in bd.methods if m})
-    hits = [n for n in names if n.lower() == fam] or [n for n in names if fam in n.lower()]
-    if not include_variants and not any(k in fam for k in _FAMILY_VARIANT_MARKERS):
-        hits = [n for n in hits if not any(k in n.lower() for k in _FAMILY_VARIANT_MARKERS)]
-    keep = set(hits)
-    return [list(m) for m in bd.methods if m and str(m[0]) in keep]
-
-
 def _direct_impact(lca, act) -> float:
     """The score carried by the activity's OWN biosphere exchanges — its column of the characterised
     inventory — as opposed to everything its inputs bring. A gas boiler is ~80 % direct, a market ~0 %."""
@@ -507,15 +309,34 @@ def compute_lcia(
 
 
 def compute_multi(
-    database: str, code: str, methods: list, amount: float = 1.0, direct_split: bool = False
+    database: str,
+    code: str,
+    methods: list,
+    amount: float = 1.0,
+    direct_split: bool = False,
+    partial: bool = False,
 ) -> dict:
+    """The scores of one activity for several methods.
+
+    ``partial``: a method that does not resolve is named under ``not_computed`` with its way out instead of
+    failing the call, and the others are computed; only when none resolves is it an error. Off by default,
+    because a caller such as the report pipeline reads a 404 from here as "the process is gone".
+    """
+    not_computed: list[dict] = []
+    if partial:
+        methods, not_computed = resolve_methods(methods)
+        if not methods:
+            raise none_resolved(not_computed)
     results = [compute_lcia(database, code, m, amount, direct_split) for m in methods]
     keys = ("method", "unit", "score") + (("direct", "upstream", "direct_share") if direct_split else ())
-    return {
+    out = {
         "activity": results[0]["activity"] if results else {"database": database, "code": code},
         "amount": amount,
         "results": [{k: r[k] for k in keys if k in r} for r in results],
     }
+    if not_computed:
+        out["not_computed"] = not_computed
+    return out
 
 
 def contribution_matrix(

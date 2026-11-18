@@ -8,6 +8,7 @@ import time
 from fastapi.testclient import TestClient
 
 from prism_lca.engine import calc_jobs, lca
+from prism_lca.engine.bootstrap import get_bd
 
 
 def _stub(gate: threading.Event | None = None):
@@ -109,6 +110,9 @@ def test_stale_after_the_model_changed(monkeypatch) -> None:
 def test_routes_start_poll_and_cancel(client: TestClient, token: dict[str, str], project: str, monkeypatch) -> None:
     del project
     calc_jobs._reset_for_tests()
+    # The route resolves its methods before the job starts, so they have to be installed.
+    for name in ("a", "b"):
+        get_bd().Method((name,)).write([])
     gate = threading.Event()
     monkeypatch.setattr(calc_jobs.lca, "compute_lcia", _stub(gate))
     r = client.post(

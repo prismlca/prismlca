@@ -150,12 +150,15 @@ export const calcTools: Tool[] = [
       const codes = Array.isArray(a.codes) ? a.codes.map((c: unknown) => String(c)).filter(Boolean) : []
       if (!codes.length) {
         if (!a.code) return S({ error: 'Pass "code" for one activity or "codes" for several.' })
-        return S(await ctx.api('POST', '/api/v1/calc/lcia', a))
+        // partial: a misspelt method among several is named under not_computed, the others are computed.
+        return S(await ctx.api('POST', '/api/v1/calc/lcia', { ...a, partial: true }))
       }
       const { codes: _drop, ...rest } = a
       const results = []
       for (const code of codes) {
-        results.push(await runItem(code, () => ctx.api('POST', '/api/v1/calc/lcia', { ...rest, code })))
+        results.push(
+          await runItem(code, () => ctx.api('POST', '/api/v1/calc/lcia', { ...rest, code, partial: true }))
+        )
       }
       return batchResult(results)
     }

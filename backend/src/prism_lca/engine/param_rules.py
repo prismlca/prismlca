@@ -201,6 +201,23 @@ def violates(rule: dict | None, value: float | None) -> str | None:
     return None
 
 
+def newly_violated(
+    rules: dict[str, dict], before: dict[str, float], after: dict[str, float], skip: set[str] | frozenset = frozenset()
+) -> list[dict]:
+    """The parameters whose rule a change breaks although it held before the change, by name, each as
+    ``{name, value, why, allowed}``. ``skip``: names the change set directly — those are checked on their own,
+    with their own message. A rule already broken before the change is not the change's doing and stays out."""
+    out: list[dict] = []
+    for name in sorted(rules):
+        rule = rules[name]
+        if not rule or name in skip or name not in after:
+            continue
+        why = violates(rule, after[name])
+        if why is not None and violates(rule, before.get(name)) is None:
+            out.append({"name": name, "value": after[name], "why": why, "allowed": describe(rule)})
+    return out
+
+
 #: Floats do not compare exactly: a range of 0…1 has to accept the 1 that came back from a formula as
 #: 0.9999999999999999, and a list of 0.1 the 0.1 that a workbook stored as 0.1000000000000000055.
 _EPS = 1e-9
@@ -212,10 +229,18 @@ def check_value(rule: dict | None, value: float | None, *, name: str, where: str
     if why is None:
         return
     place = f" {where}" if where else ""
+    hint = f"The rule on this parameter says the value must be {describe(rule)}."
+    if rule.get("kind") == "positive" and float(value) == 0:
+        # The rule was often set for "a mass" by someone who did not think of "none of it" — a cold-water
+        # wash with no temperature rise ended at 0.1 K because nothing said where the way out was.
+        hint += (
+            " If 0 is a real value here (none of it), the rule should be a range from 0 instead; a rule is "
+            "changed by the modeller, on the Parameters page."
+        )
     raise PrismError(
         f"{_num(value)} is not allowed for '{name}'{place}: it {why}.",
         code="param_value_refused",
-        hint=f"The rule on this parameter says the value must be {describe(rule)}.",
+        hint=hint,
     )
 
 

@@ -264,10 +264,11 @@ def phase_flows(database: str, code: str, method, dimension: str, value: str, am
     the own elementary flows of the states carrying the value."""
     from prism_lca.engine import lca as _lca
     from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.engine.method_lookup import resolve_method
     from prism_lca.engine.model import get_activity
 
     bd = get_bd()
-    m = _lca.resolve_method(method)
+    m = resolve_method(method)
     root = get_activity(database, code)
     target = None if value == UNTAGGED else value
     with _lca._LCA_LOCK:

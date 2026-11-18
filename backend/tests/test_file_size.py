@@ -44,16 +44,18 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/params.py": 1298,  # 1273
     "prism_lca/search/service.py": 1105,  # 1080, after the folding of regional variants moved to collapse.py
     "prism_lca/engine/backgrounds/flow_mapping.py": 1300,  # 1275
-    # 1245, after the inventory per functional unit moved to inventory_per_unit.py. `release_cached` and
+    # 1066, after finding a method by name moved to method_lookup.py. `release_cached` and
     # `inventory_method` stay here: both need the factorisation cache, which is private to this module.
-    "prism_lca/engine/lca.py": 1270,
+    "prism_lca/engine/lca.py": 1091,
     "prism_lca/engine/dataimport/session.py": 1274,  # 1249
     # 1068, after the unknown sections, the background lookups and the reports section moved out
     "prism_lca/engine/bundle.py": 1093,
-    "prism_lca/api/v1/report.py": 1115,  # 1090
-    # Raised for the review refresh on a snapshot hit (`_current_review`): it belongs beside
-    # `analysis_snapshot`, as the memo refresh belongs in `render_inputs`.
-    "prism_lca/engine/report_pipeline.py": 1160,  # 1135
+    # Raised by 1 for the import of report_bundle_readme: the bundle export assembles the archive here,
+    # README included, so the module that words the README is imported where the ZIP is written.
+    "prism_lca/api/v1/report.py": 1116,  # 1091
+    # 1059, after the README of an exported report bundle moved to report_bundle_readme.py. The review
+    # refresh on a snapshot hit (`_current_review`) stays: it belongs beside `analysis_snapshot`.
+    "prism_lca/engine/report_pipeline.py": 1084,
     "prism_lca/engine/report_bindings.py": 1075,  # 1050
     "prism_lca/engine/dataimport/readers.py": 1035,  # 1010, after the archive limits moved to archive_limits
 }

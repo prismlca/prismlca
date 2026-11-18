@@ -50,6 +50,9 @@ class CalcJob:
     finished_at: str | None = None
     done: int = 0
     results: list[dict] = field(default_factory=list)
+    #: The requested methods that did not resolve, each with its way out — said in every snapshot, so
+    #: the reader of the scores knows which indicators are missing and why.
+    not_computed: list[dict] = field(default_factory=list)
     error: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
 
@@ -91,6 +94,7 @@ def start(
     family: dict | None = None,
     compute: Compute | None = None,
     run_in_thread: bool = True,
+    not_computed: list[dict] | None = None,
 ) -> CalcJob:
     # Resolved at call time, not at definition: a test (or a future engine swap) that replaces
     # lca.compute_lcia must reach the jobs too.
@@ -103,6 +107,7 @@ def start(
         amount=amount,
         direct_split=direct_split,
         family=family,
+        not_computed=list(not_computed or []),
         model_generation=lca.model_generation(),
         project=_current_project(),
         started_at=now_iso(),
@@ -217,6 +222,8 @@ def snapshot(job: CalcJob, with_result: bool = False) -> dict:
     }
     if job.family:
         out["family"] = job.family
+    if job.not_computed:
+        out["not_computed"] = job.not_computed
     if job.error:
         out["error"] = job.error
     if with_result and job.state in ("done", "cancelled") and job.results:

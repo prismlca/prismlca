@@ -12,9 +12,17 @@ export const S = (v: unknown): string => JSON.stringify(v)
  * one call per scenario, so creating five echoed 1+2+3+4+5 = 15 records. Measured 2026-08-12: in the
  * first 6,000 characters of one `edit_scenario` answer the first scenario appeared six times, the
  * second five, the third four. Exactly the shape `set_parameter` was already fixed for.
+ * What the checks said beside the write stays: values kept although they equal the baseline, and warnings.
  */
-export const oneScenario = (r: any): unknown =>
-  r && typeof r === 'object' && r.scenario ? { scenario: r.scenario } : r
+export const oneScenario = (r: any): unknown => {
+  if (!(r && typeof r === 'object' && r.scenario)) return r
+  const { scenario, redundant_overrides, redundant_note, warnings } = r
+  return {
+    scenario,
+    ...(redundant_overrides ? { redundant_overrides, redundant_note } : {}),
+    ...(warnings ? { warnings } : {})
+  }
+}
 /** Cap a list so a huge model/search never blows the context; note how many were dropped. */
 export function cap<T>(arr: T[], n: number): { items: T[]; note?: string } {
   if (arr.length <= n) return { items: arr }

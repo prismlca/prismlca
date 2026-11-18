@@ -1467,7 +1467,7 @@ def render_sources(
     review: dict | None = None,
     #: The parameter tornado of the reference process (`report_tornado.compute`); None while it is off.
     tornado: dict | None = None,
-    #: Every installed method of the families this report uses — `lca.methods_in_families`. What an
+    #: Every installed method of the families this report uses — `method_lookup.methods_in_families`. What an
     #: indicator's printed name has to be unique against, so the name does not depend on which of the
     #: family's indicators the report happens to have selected (V203). Absent for a caller with no
     #: project open; then every name falls back to the middle segment of its path.

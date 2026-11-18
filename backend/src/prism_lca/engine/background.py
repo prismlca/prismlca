@@ -16,8 +16,8 @@ from prism_lca.engine.lca import (
     _production_amount,
     _sig,
     get_lca,
-    resolve_method,
 )
+from prism_lca.engine.method_lookup import resolve_method
 from prism_lca.engine.model import _db_or_404, get_activity
 
 

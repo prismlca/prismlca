@@ -661,21 +661,21 @@ def unreachable_overrides(database: str, overrides: dict, dead: dict | None = No
     return {name: dead[name] for name in (overrides or {}) if name in dead}
 
 
-def refuse_ineffective(
-    database: str, overrides: dict, *, scenario: str = "", only: set[str] | None = None
-) -> None:
-    """Refuse a scenario that would change nothing. Raises, or returns quietly.
+def refuse_ineffective(database: str, overrides: dict, *, scenario: str = "") -> list[str]:
+    """Refuse a scenario that would change nothing; return the overrides that are redundant in one that does.
 
-    Only the value half refuses: an override set to the value the model already has is never
-    anything but the baseline renamed. The reachability half (:func:`unreachable_overrides`) is
-    reported instead — see the comment below.
+    Only a set in which EVERY override has the value the model already has is the baseline renamed. One
+    such value among others that differ is redundant, not wrong: a complete set of shares states each one,
+    and a share written at its current value stays fixed when the baseline moves. Refusing the whole set for
+    it cost a round and gave a reason ("would return the baseline result") that was not true.
+    The reachability half (:func:`unreachable_overrides`) is reported instead — see the comment below.
     """
     from prism_lca.errors import PrismError
 
     where = f" in scenario '{scenario}'" if scenario else ""
-    # ``only``: judge just these names, but within the whole set — a single override set into an
-    # existing scenario (set_value) is ineffective or not depending on the others beside it.
-    same = ineffective_overrides(database, overrides, only=only)
+    same = ineffective_overrides(database, overrides)
+    if same and len(same) < len(overrides or {}):
+        return same
     if same:
         names = ", ".join(f"'{n}'" for n in same)
         raise PrismError(
@@ -684,6 +684,7 @@ def refuse_ineffective(
             code="scenario_override_is_baseline",
             hint="Give the override a different value, or drop it and let the parameter speak for itself.",
         )
+    return []
 
     # The reachability half is deliberately NOT refused here. "Same value as the baseline" is never
     # a legitimate intermediate state, but "not wired up yet" is: parameters, scenarios and formulas
