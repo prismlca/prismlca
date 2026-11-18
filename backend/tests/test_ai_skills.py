@@ -75,6 +75,7 @@ def test_every_tool_a_builtin_skill_names_actually_exists():
         "alloc_share", "reference_year", "data_gap", "system_allocation",
         # Fields of a tool's ANSWER, quoted so a skill can point at where to look.
         "not_yet_inspected", "service_note", "outside_geography_filter", "mass_range_kg", "self_review",
+        "mass_kg", "residual_kg",
         # Eurostat table ids — arguments of eurostat_eol — and the remainder parameter the EoL skill names.
         "env_wasoper", "env_wastrt", "env_waspac", "env_wasmun", "eol_other",
         # Parameter names the rule examples of the parameters skill use.

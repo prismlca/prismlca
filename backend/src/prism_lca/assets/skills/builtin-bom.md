@@ -14,13 +14,22 @@ Call `research_bom` with:
 - `product`: as specific as you can phrase it,
 - `context`: **every** specific from step 1 — the sub-agent shares none of your conversation, so
   anything you omit is simply lost and you will get a generic product instead of the user's,
-- `total_mass_kg`: whenever known (enables the mass-balance check),
+- `total_mass_kg`: the product's own mass without packaging, when the user stated it or a source gave it — not
+  your own estimate, which the balance would only check against itself. Without it the research looks for the
+  product's weight itself, so do not list the total weight as a component,
 - `components`: name them if you or the user know the breakdown — per-component research is much
   more accurate than letting it enumerate.
 
 ## 3. Sanity-check before you model anything
-- **Mass balance**: `balance_ok: false` is a red flag, not a detail. Either the component list is
-  incomplete or a figure is wrong. Say so and resolve it before building.
+- **Mass balance**: read `summary` first. `balance_ok: false` is a red flag, not a detail: the parts miss the
+  total by more than the tolerance — a component is missing, or a figure or the total is wrong. Say so and resolve
+  it before building. `null` means not checked, and the note says why (a part without a mass, a failed request,
+  overlapping entries, figures on different versions, no usable total); it does not stop you from booking the
+  masses that are sound — it keeps the open points open. `residual_kg` is the total minus the parts found —
+  never book it as one part's mass.
+- **Versions**: when `versions.conflict` is true, figures that claim to be this product's own name different
+  versions (another EAN, board thickness, weight). Settle from the user's description and the sources which one
+  is meant, or whether they are one; ask the user only if that stays unclear.
 - **Plausibility**: a 0.5 l PET bottle body is ~15–25 g, its cap ~2–3 g, its label well under 1 g. A
   figure an order of magnitude off is usually a unit error (g vs kg).
 - **Materials must be concrete**: "PET", "HDPE", "aluminium 3104" — not "plastic". You cannot pick a
@@ -35,6 +44,11 @@ Book each mass as a **parameter** (*Parameters & formulas* skill), and let it dr
 Its comment is what the report's parameter table prints for that figure: the **source URL**, the
 **range** from `mass_range_kg`, and whether the figure belongs to this product, to a comparable
 product (name it), or to the user.
+
+`mass_kg` already covers all pieces of an entry (`count` says how many — do not multiply again). Where `overlaps`
+names an entry that contains another listed part, book the contained part once; book the container only as its
+remainder where the two figures fit together — subtract each contained part once (one that sits inside another
+contained part comes out with it) — and say in the comment how you derived it.
 
 For each component: `search_background` for a matching material dataset (proxy-dataset skill if
 nothing fits), add it as an input driven by its parameter, then the manufacturing step(s) that
