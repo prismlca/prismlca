@@ -786,58 +786,6 @@ def test_provenance_stays_quiet_on_a_model_too_small_to_be_a_study(client, token
     assert "unsourced_figures" not in _codes(client.get(f"/api/v1/model/health/{db}", headers=token).json())
 
 
-# --- shaping: material linked, forming missing (V116) -------------------------------------------
-
-
-def test_shaping_check_is_a_pure_name_comparison():
-    """The whole check is a vocabulary match, so it can be measured without a database.
-
-    Two runs in a row shipped bulk metal or plastic with no forming step: a solar lamp
-    (chromium steel, polycarbonate, ABS) and an apple sauce (a twist-off lid on
-    `steel production, converter, unalloyed` — crude steel, CPC "in ingots or other primary forms",
-    while `sheet rolling, steel` and `deep drawing, steel` exist and add 0.78 kg CO2-Eq per kg).
-
-    Measured against all 23 foreground models in the development install when this was written: it
-    fires on six, every one of them a genuine gap (two apple-juice bottles with a wrought-aluminium
-    closure, the apple sauce lid, cling film from granulate, the solar lamp, a PVC window whose
-    profile is extruded and whose reinforcement is roll-formed), and stays quiet on the seventeen
-    others — including three that have their forming and would otherwise have been false positives.
-    """
-    from prism_lca.engine.health import _unformed_materials as check
-
-    # The two real cases.
-    assert check(["steel production, converter, unalloyed", "market for corrugated board box"])
-    assert check(["market for steel, chromium steel 18/8", "market for polycarbonate"])
-
-    # Quiet when the model HAS its forming — the three that saved this check from firing wrongly.
-    assert check(["market for section bar extrusion, aluminium", "market for steel, unalloyed"]) is None
-    assert check(["market for blown film extrusion, monolayer", "market for polyethylene, low density, granulate"]) is None
-    assert check(["market for injection moulding", "market for polypropylene, granulate"]) is None
-
-    # Quiet when the dataset's own name already says it was shaped. `packaging film, low density
-    # polyethylene` was the one false positive of the first draft, in a wall-paint model.
-    assert check(["market for packaging film, low density polyethylene"]) is None
-    assert check(["market for steel, low-alloyed, hot rolled"]) is None
-    assert check(["market for reinforcing steel"]) is None
-    assert check(["market for aluminium collector foil, for Li-ion battery"]) is None
-    assert check(["market for polystyrene foam slab"]) is None
-
-    # Quiet when there is no shapeable material at all — food, chemicals, packaging boards.
-    assert check(["market for apple, organic", "market for tap water"]) is None
-    assert check(["market for sodium hydroxide", "market for corrugated board box"]) is None
-    # …and quiet on an empty model.
-    assert check([]) is None
-
-
-def test_shaping_check_reports_as_info_and_names_the_material(client, token, project):
-    db = _fg(client, token)
-    _create(client, token, db, "lid")
-    # Anything in the foreground itself is not a background input and must not be counted.
-    findings = client.get(f"/api/v1/model/health/{db}", headers=token).json()
-    assert "missing_forming_step" not in _codes(findings)
-    assert any("shaping" in c for c in findings["checks_run"])
-
-
 # --- V164: a note that spells out a parameter's old value --------------------------------
 
 

@@ -28,6 +28,7 @@ from prism_lca import _log
 from prism_lca.engine import prose_numbers as pn
 from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.health_forming import forming_findings
 from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_provenance import carries_a_figure, unsourced_figures
@@ -301,119 +302,6 @@ def _unused_parameters(database: str) -> list[tuple[str, str]]:
                 )
             )
     return out
-
-
-#: ecoinvent's shaping services, by the word that identifies them. Small and closed on purpose: this
-#: is a name comparison against a known vocabulary, not a guess about what a dataset is.
-_FORMING_SERVICES = (
-    "rolling",
-    "drawing",
-    "moulding",
-    "molding",
-    "extrusion",
-    "extruding",
-    "casting",
-    "forging",
-    "stamping",
-    "metal working",
-    "calendering",
-    "thermoforming",
-    "machining",
-    "welding",
-    "punching",
-    "coating",
-    "coat, pieces",
-)
-#: Bulk materials that reach a product only through one of the services above.
-_SHAPEABLE_MATERIALS = (
-    "steel",
-    "aluminium",
-    "copper",
-    "brass",
-    "zinc",
-    "polyethylene",
-    "polypropylene",
-    "polystyrene",
-    "polycarbonate",
-    "polyvinyl chloride",
-    "abs copolymer",
-    "nylon",
-    "polyamide",
-    "polyethylene terephthalate",
-)
-#: …unless the dataset's own name already says it has been shaped. `steel, low-alloyed, hot rolled`
-#: carries its rolling; `steel, unalloyed` does not. Every entry earned its place against a real
-#: model: `packaging film, low density polyethylene` in a wall-paint model is a finished
-#: film and was the one false positive of the first draft.
-_ALREADY_SHAPED = (
-    "rolled",
-    "extruded",
-    "cast",
-    "sheet",
-    "foil",
-    "film",
-    "foam",
-    "slab",
-    "wire",
-    "profile",
-    "section bar",
-    "moulded",
-    "molded",
-    "reinforcing steel",
-    "pipe",
-    "tube",
-    "coil",
-    "mesh",
-    "granulate, blown",
-    "fibre",
-    "powder",
-    "scrap",
-    "waste",
-)
-
-
-def _unformed_materials(input_names: list[str]) -> str | None:
-    """Bulk metal or plastic in the model with no shaping service anywhere in it.
-
-    The mirror image of the trap V78/V95 watch: there, `market for section bar extrusion, aluminium`
-    was read as *the metal* and the study was a factor of two out. Here the metal is right and the
-    step that turns it into a part is missing, and nothing looked.
-
-    Twice in two runs. A solar lamp: 320 g of chromium steel, 72 g of polycarbonate and 80 g
-    of ABS, no sheet rolling and no injection moulding. An apple sauce: a twist-off jar lid
-    linked to `steel production, converter, unalloyed` — crude steel, CPC "in ingots or other primary
-    forms" — while `sheet rolling, steel` and `deep drawing, steel` both exist in the same database
-    and add 0.78 kg CO2-Eq per kg, +1.5 % of that study's result. The reviewer of that run saw the lid
-    and challenged the *tin coating* instead, which really is negligible (0.04 %), so the model
-    dismissed the point along with the reason.
-
-    Deliberately model-wide, not per process: splitting materials and forming into two processes is a
-    normal way to build, and a per-process check would fire on it. And deliberately ``info`` — a study
-    may have its shaping inside the dataset name, in another model, or genuinely not need one.
-    """
-    lower = [n.lower() for n in input_names]
-    if any(s in n for n in lower for s in _FORMING_SERVICES):
-        return None
-    bulk = sorted(
-        {
-            n
-            for n in lower
-            if any(m in n for m in _SHAPEABLE_MATERIALS) and not any(s in n for s in _ALREADY_SHAPED)
-        }
-    )
-    if not bulk:
-        return None
-    return (
-        f"Shaping: the model links bulk metal or plastic ({'; '.join(bulk[:4])}"
-        f"{', …' if len(bulk) > 4 else ''}) but no forming step anywhere — no rolling, drawing, "
-        "moulding, extrusion, casting or metal working. A material dataset ends at the material: "
-        "turning it into a lid, a housing or a profile is a separate ecoinvent activity, and those "
-        "activities exist (`market for sheet rolling, steel`, `market for deep drawing, steel, …`, "
-        "`market for injection moulding`, `market for section bar extrusion, aluminium`). Add the "
-        "one that applies, or say in the limitations that forming is excluded. Ignore this if the "
-        "shaping is already inside the dataset you linked (a name containing 'hot rolled', 'cast' or "
-        "'extruded') or sits in another process of a larger study."
-    )
 
 
 #: "42 g", "~400 km", "0.8 g", "1.5 kg", "85 %" — a number with the unit it is written in.
@@ -810,7 +698,6 @@ class LintContext:
     adjacency: dict[tuple, set]
     identities: dict[tuple, list]
     comment_texts: list[str]
-    input_names: list[str]
     exchange_records: list[tuple[str, float, str]]
     mass_demands: dict[tuple, list[tuple[str, float]]]
     recyclate_buys: list[dict]
@@ -860,8 +747,6 @@ def _build_context(database: str) -> LintContext:
     # Every comment the model wrote itself on a process or on a figure, for the provenance count.
     # Cheap: this pass is already reading each activity and each exchange.
     comment_texts: list[str] = []
-    # Every background dataset the model links, by name, for the shaping check.
-    input_names: list[str] = []
     # (unit, evaluated amount, formula) of every technosphere exchange, for the bill-of-materials
     # reconciliation — same cheapness argument.
     exchange_records: list[tuple[str, float, str]] = []
@@ -900,8 +785,6 @@ def _build_context(database: str) -> LintContext:
                 resolved.append(_Exchange(ex=ex, key=tuple(key) if key else None, inp=None, is_treatment=None))
                 continue
             tkey = tuple(key)
-            if ex.get("type") == "technosphere" and tkey[0] != database:
-                input_names.append(str(inp.get("name") or ""))
             amount = ex.get("amount") or 0
             is_treatment: bool | None = None
             if ex.get("type") == "technosphere" and amount != 0:
@@ -953,7 +836,6 @@ def _build_context(database: str) -> LintContext:
         adjacency=adjacency,
         identities=identities,
         comment_texts=comment_texts,
-        input_names=input_names,
         exchange_records=exchange_records,
         mass_demands=mass_demands,
         recyclate_buys=recyclate_buys,
@@ -1371,9 +1253,11 @@ def _rule_claimed_review(ctx: LintContext) -> list[dict]:
 
 
 def _rule_missing_forming(ctx: LintContext) -> list[dict]:
-    # Material linked, shaping missing.
-    note = _unformed_materials(ctx.input_names)
-    return [_finding("info", "missing_forming_step", note)] if note else []
+    # Material in primary forms, per process, against the forming steps linked beside it.
+    return [
+        _finding("info", code, message, act)
+        for code, message, act in forming_findings(ctx.activities, ctx.database, _end_of_life(ctx.database))
+    ]
 
 
 def _rule_unsourced_figures(ctx: LintContext) -> list[dict]:
@@ -1543,6 +1427,32 @@ def _rule_mass_shortfall(ctx: LintContext) -> list[dict]:
     return out
 
 
+def _end_of_life(database: str):
+    """Whether an exchange sits at end of life, by the model's own phase tags.
+
+    The exchange counts where its own tag says it counts, else where its process does. Tags are an optional
+    signal: when they cannot be read, nothing is at end of life."""
+    eol_keys: set[tuple] = set()
+    tagged: set[tuple] = set()  # every key that carries a tag at all
+    try:
+        for tag_key, tags in TagStore().load_map().items():
+            tdb, _, tcode = tag_key.rpartition("/")
+            if tdb != database or not tags:
+                continue
+            tagged.add((tdb, tcode))
+            if any(_EOL_TAG_RE.search(str(t.get("value") or "")) for t in tags):
+                eol_keys.add((tdb, tcode))
+    except Exception as exc:  # noqa: BLE001 — tags are an optional signal, never a reason to fail
+        _log.swallowed(exc, "_end_of_life")
+        eol_keys = set()
+
+    def at_end_of_life(akey: tuple, uid: str | None) -> bool:
+        own = (akey[0], TagStore.exchange_code(akey[1], uid)) if uid else None
+        return (own if own in tagged else tuple(akey)) in eol_keys
+
+    return at_end_of_life
+
+
 def _rule_eol_recyclate(ctx: LintContext) -> list[dict]:
     # Recyclate bought at end of life (V289). The same purchase is correct on the input side and
     # wrong at end of life, so the phase tag is the judge. Under cut-off, the fraction that goes to
@@ -1551,24 +1461,10 @@ def _rule_eol_recyclate(ctx: LintContext) -> list[dict]:
     # never uses.
     if not ctx.recyclate_buys:
         return []
-    eol_keys: set[tuple] = set()
-    tagged: set[tuple] = set()  # every key that carries a tag at all
-    try:
-        for tag_key, tags in TagStore().load_map().items():
-            tdb, _, tcode = tag_key.rpartition("/")
-            if tdb != ctx.database or not tags:
-                continue
-            tagged.add((tdb, tcode))
-            if any(_EOL_TAG_RE.search(str(t.get("value") or "")) for t in tags):
-                eol_keys.add((tdb, tcode))
-    except Exception as exc:  # noqa: BLE001 — tags are an optional signal, never a reason to fail
-        _log.swallowed(exc, "_rule_eol_recyclate")
-        eol_keys = set()
+    at_end_of_life = _end_of_life(ctx.database)
     out: list[dict] = []
     for buy in ctx.recyclate_buys:
-        # The purchase counts where its input says it counts, else where its process does.
-        own = (buy["akey"][0], TagStore.exchange_code(buy["akey"][1], buy["uid"])) if buy.get("uid") else None
-        if (own if own in tagged else tuple(buy["akey"])) not in eol_keys:
+        if not at_end_of_life(tuple(buy["akey"]), buy.get("uid")):
             continue
         out.append(
             _finding(
@@ -1808,7 +1704,8 @@ def lint_database(database: str) -> dict:
             "life-cycle phase coverage",
             "data provenance (how many figures cite a source)",
             "study text claiming an internal review the model's review log does not have",
-            "shaping (bulk metal or plastic linked with no forming step in the model)",
+            "shaping (per process: metal and plastic in primary forms against the forming steps linked "
+            "beside it, by the background's CPC classification; datasets without one are not assessed)",
             "transport legs (the distance a tonne-kilometre exchange implies per unit of product)",
             "end-of-life shares (parameters named eol_* or grouped under end of life sum to 1)",
         ],
