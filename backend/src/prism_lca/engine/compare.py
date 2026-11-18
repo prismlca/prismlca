@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 from prism_lca import _log
-from prism_lca.engine import lca, param_window, params
+from prism_lca.engine import lca, method_lookup, param_window, params
 from prism_lca.errors import PrismError, scenario_calc_error
 
 
 def compare(
-    store, subjects: list[dict], methods: list, should_cancel=None, stacked_dimensions: list[str] | None = None
+    store,
+    subjects: list[dict],
+    methods: list,
+    should_cancel=None,
+    stacked_dimensions: list[str] | None = None,
+    partial: bool = False,
 ) -> dict:
     """subjects: [{database, code, label?, scenario?, amount?}]; methods: [[str,...], ...].
     ``should_cancel`` is checked before every (subject, method) solve — cross-database
@@ -15,7 +20,19 @@ def compare(
 
     ``stacked_dimensions`` adds `lca.compare_stacked`'s split under ``"stacked"``, computed in the same
     pass: a scenario subject is computed inside an applied parameter window (apply, factorise,
-    restore), and asked for its scores and its split in two requests it paid two of them."""
+    restore), and asked for its scores and its split in two requests it paid two of them.
+
+    ``partial``: the methods are resolved before anything is computed; one that does not resolve is named
+    under ``not_computed`` with its way out, and every subject is scored for the others. Only when none
+    resolves is it an error. Without it, the first wrong method fails the whole matrix — the Results page
+    wants that: it computes what a user picked, and a row quietly missing there would go unnoticed."""
+    not_computed: list[dict] = []
+    if partial:
+        found, not_computed = method_lookup.resolve_methods(methods)
+        if not found:
+            raise method_lookup.none_resolved(not_computed)
+        # The installed names, so the answer says what was computed; two spellings of one indicator are one row.
+        methods = list(dict.fromkeys(found))
     units: dict[str, str] = {}
     rows: list[dict] = []
     stacked: list[dict] = []
@@ -89,6 +106,8 @@ def compare(
 
     methods_out = [{"method": list(m), "key": " · ".join(m), "unit": units.get(" · ".join(m), "")} for m in methods]
     out: dict = {"methods": methods_out, "subjects": rows}
+    if not_computed:
+        out["not_computed"] = not_computed
     if stacked_dimensions:
         out["stacked"] = _merged_stacked(stacked, stacked_dimensions)
     return out

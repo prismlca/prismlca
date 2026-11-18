@@ -209,7 +209,8 @@ export const calcTools: Tool[] = [
       if (!hasMethods && !a.method_family)
         return S({ error: 'Pass "methods" (a list of method tuples from list_methods) or "method_family".' })
       const { normalize_to_first, show_ranking, ...body } = a
-      const r = await ctx.api('POST', '/api/v1/calc/compare', body)
+      // partial: a misspelt method is named under not_computed, every subject is scored for the others.
+      const r = await ctx.api('POST', '/api/v1/calc/compare', { ...body, partial: true })
       return S(
         annotateComparison(r, {
           normalize_to_first: !!normalize_to_first,
