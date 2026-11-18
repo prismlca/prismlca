@@ -636,3 +636,6 @@
 .chat-web-results { margin: 1px 0 0; padding-left: 18px; line-height: 1.45; }
 .chat-web-none { color: var(--faint); padding-left: 2px; }
 .chat-web-host { color: var(--faint); }
+/* Hovered while recording, the mic stays red and only darkens: the pointer is on it to stop the recording,
+   so it must still read as recording. The rule has to outrank the green hover of `.chat-attach-btn`. */
+.chat-mic.rec:hover:not(:disabled) { color: #fff; background: color-mix(in srgb, var(--prism-alert) 85%, black); }
