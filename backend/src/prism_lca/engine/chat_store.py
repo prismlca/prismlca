@@ -480,13 +480,13 @@ class ChatStore(JsonFileStore):
             return hit
 
     def save_transcript(self, database: str, chat_id: str, turn_id: str, history_after: list,
-                        messages: list) -> int:
+                        messages: list, inspected: list | None = None) -> int:
         """Write the chat's transcript file. Under the chat lock, so a delete cannot slip between the
         "does the chat exist" check and the write and leave an orphan file behind."""
         with self._lock:
             if self.get_chat(database, chat_id) is None:
                 raise KeyError(chat_id)
-            return chat_transcripts.save(chat_id, turn_id, history_after, messages)
+            return chat_transcripts.save(chat_id, turn_id, history_after, messages, inspected)
 
     def delete_chat(self, database: str, chat_id: str) -> None:
         with self._lock:
