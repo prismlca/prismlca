@@ -230,9 +230,10 @@ export const IMPL: Record<string, Tool['run']> = {
               '"codes" list) NEXT — before scenarios, review_model, limitations or the report: a dataset ' +
               'often states in its own ' +
               'comment what it was built for, and a name alone cannot tell you that a generic ' +
-              '"printed wiring board" is calibrated on laptop boards. For a MARKET, read the producer ' +
-              'behind it too — the market comment is boilerplate and the sentence you need sits one ' +
-              'level down.'
+              '"printed wiring board" is calibrated on laptop boards. For a MARKET, the answer quotes the ' +
+              'comment of its main supplier (main_supplier_comment) but not what the producer consumes: ' +
+              'open the producer too, for its inputs — except for a market billed per m² or m, which ' +
+              'lists them as main_supplier_inputs.'
           }
         : {}),
       how_to_read:
