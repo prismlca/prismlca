@@ -131,6 +131,27 @@ def test_old_log_entries_are_read_from_their_text():
     assert len(found) == 1 and found[0][0] == "ground pegs/fixings"
 
 
+def test_a_check_and_a_derivation_are_never_read_as_parts():
+    """The whole-product masses of a bill-of-materials check (13 kg, 24 kg) and the derivation of a
+    part's figure are no components: nothing in a model books "the rack", so reading them would report
+    every researched total as a part nobody built."""
+    entries = [clean_entry({
+        "question": "Bill of materials: rack",
+        "findings": [{"text": "boards (HDF) (5 pieces): 7.65 kg", "sources": ["https://x"],
+                      "component": "boards", "mass_kg": 7.65,
+                      "note": "frame: 13 kg total minus boards — 1.53 kg"}],
+        "bom_check": {"summary": "Checked against the researched total 13 kg: 13 kg",
+                      "unresolved": [{"component": "frame", "reason": "no_mass", "note": "frame: 5.35 kg"}],
+                      "totals": [{"mass_kg": 13, "basis": "net"}, {"mass_kg": 24, "basis": "unknown"}]},
+    })]
+    with (
+        patch("prism_lca.engine.research_log.ResearchLogStore.list", return_value=entries),
+        patch("prism_lca.engine.params.list_params", return_value=[]),
+    ):
+        found = health._bom_items_unbooked("any-model", [("kilogram", 0.5, "")])
+    assert found == [("boards", found[0][1])]
+
+
 def test_units_other_than_mass_never_match():
     """A 0.2-kWh exchange is not 0.2 kg of pegs."""
     found = _run(

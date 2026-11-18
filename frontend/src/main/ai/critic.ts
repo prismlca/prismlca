@@ -17,8 +17,9 @@ import type { CostSink } from './subagent'
 export const REVIEW_MODEL = providerDefaults('openrouter').review
 
 const REVIEW_SYSTEM = `You are a critical LCA reviewer. You are given a DOSSIER about one product
-system — the structural health check, the biggest contributors, the goal & scope on record, and the
-background datasets used. You cannot look anything up: judge only what is in the dossier.
+system — the structural health check, the biggest contributors, the goal & scope on record, the
+background datasets used, and what the research found. You cannot look anything up: judge only what is
+in the dossier.
 
 Report what a reviewer would challenge, grouped as "Blocking", "Should fix" and "Worth a look".
 Start every finding with its id — [F1], [F2], … numbered on through all three groups — so the

@@ -47,7 +47,8 @@ export function searchesSection(records: WebRecord[]): string {
     'addresses only, you cannot open them): a source a process comment names that is listed here came ' +
     'back from one of these searches, and the title says what kind of page it is (a manufacturer, a ' +
     'retailer, a study). Nothing follows from a source that is not listed: it may come from the research ' +
-    'tools, from the user, or from a search this list no longer holds.'
+    'tools (their record is under RESEARCH ON RECORD when the model has one), from the user, or from a ' +
+    'search this list no longer holds.'
   const quoted = [...cited.values()]
     .filter((c) => c.excerpt)
     .map((c) => `- "${c.excerpt!.slice(0, EXCERPT_CHARS)}" — ${page(c)}`)

@@ -1240,7 +1240,9 @@ def brief_facts(data: dict[str, Any], kind: str = "") -> dict[str, Any]:
                     for f in (e.get("findings") or [])[:5]
                 ],
             }
-            for e in (data.get("web_research") or [])[-12:]
+            # A bill-of-materials check that found no new figure is an entry without findings: what
+            # the research could not settle, kept for the reviewer — no researched figure to word.
+            for e in [e for e in (data.get("web_research") or []) if e.get("findings")][-12:]
         ],
         "review": data.get("review") or None,
     }

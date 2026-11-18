@@ -6,6 +6,8 @@
 import type { Tool } from '../context'
 import { bool, num, obj, str, strArr } from '../schema'
 import { RESEARCH_CAP_PHRASE, S, batchResult, runItem } from '../format'
+import type { BomResult } from '../../researchBom'
+import { bomLogEntry } from './bomLogEntry'
 
 export const researchTools: Tool[] = [
   {
@@ -47,75 +49,26 @@ export const researchTools: Tool[] = [
         })
       }
       if (!ctx.research) return S({ error: 'Web research is not available in this context.' })
-      const result = (await ctx.research({
+      const call = {
         product: a.product,
         context: a.context ? String(a.context) : undefined,
-        totalMassKg: typeof a.total_mass_kg === 'number' ? a.total_mass_kg : undefined,
+        totalMassKg: typeof a.total_mass_kg === 'number' ? a.total_mass_kg : undefined
+      }
+      const result = (await ctx.research({
+        ...call,
         components: Array.isArray(a.components) ? a.components.map(String) : undefined,
         maxComponents: typeof a.max_components === 'number' ? a.max_components : undefined,
         domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined
-      })) as {
-        items?: Array<{
-          component?: string
-          material?: string
-          mass_kg?: number
-          count?: number
-          contains_listed?: string[]
-          source_url?: string
-        }>
-        evidence?: Array<{ url: string; excerpt?: string }>
-      }
-      // Same provenance log the web research writes: the BOM's sourced masses are exactly the kind
-      // of figure a report has to be able to attribute. Best-effort — never at the result's expense.
-      if (ctx.activeDb && Array.isArray(result?.items) && result.items.length) {
-        // The engine's excerpt behind a cited page, when it supplied one — the table row a mass came
-        // from, kept with the figure so a reader can check it without re-opening the page.
-        const excerptOf = (url: unknown): string | undefined =>
-          (result.evidence ?? []).find((e) => e.url === url && e.excerpt)?.excerpt
-        const findings = result.items
-          .filter((i) => i.source_url)
-          .map((i: Record<string, unknown>) => {
-            const label =
-              `${i.component}${i.material ? ` (${i.material})` : ''}` +
-              (typeof i.count === 'number' && i.count > 1 ? ` (${i.count} pieces)` : '')
-            const shared = {
-              sources: [String(i.source_url)],
-              ...(excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
-              ...(i.source_class ? { source_class: String(i.source_class) } : {}),
-              ...(i.confidence ? { confidence: String(i.confidence) } : {})
-            }
-            // An entry whose figure contains other listed entries is kept as what was found, but not as a mass
-            // the model has to book: booking it whole beside them counts them twice. The contained entries stay
-            // booking duties, so the health check still names them when nothing books them. Without the
-            // structured fields, and with a text that does not end on the mass, the check does not read the
-            // container as a component.
-            if (Array.isArray(i.contains_listed) && i.contains_listed.length)
-              return {
-                text:
-                  `${label}: ${i.mass_kg} kg — contains ${i.contains_listed.join(', ')}, listed separately, ` +
-                  'so not a mass to book whole',
-                ...shared
-              }
-            return {
-              text: `${label}: ${i.mass_kg} kg`,
-              ...shared,
-              // Structured on purpose: the health check reconciles these masses against what the
-              // model actually books (bom_item_unbooked), and the report can weigh a figure by its
-              // source class — neither works on prose alone. The mass is the whole set's.
-              component: String(i.component ?? ''),
-              ...(typeof i.mass_kg === 'number' ? { mass_kg: i.mass_kg } : {}),
-              ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {})
-            }
-          })
-        if (findings.length) {
-          try {
-            await ctx.api('POST', '/api/v1/provenance/research', {
-              database: ctx.activeDb,
-              entries: [{ question: `Bill of materials: ${String(a.product)}`, findings }]
-            })
-          } catch {
-            /* logged provenance is a bonus, not a dependency */
-          }
+      })) as Partial<BomResult>
+      // Same provenance log the web research writes: the BOM's sourced masses are exactly the kind of figure a
+      // report has to be able to attribute, and the check — also of a call that found no mass at all — is what
+      // the reviewer holds a booked figure against (bomLogEntry.ts). Best-effort, never at the result's expense.
+      const entry = bomLogEntry(call, result)
+      if (ctx.activeDb && entry) {
+        try {
+          await ctx.api('POST', '/api/v1/provenance/research', { database: ctx.activeDb, entries: [entry] })
+        } catch {
+          /* logged provenance is a bonus, not a dependency */
         }
       }
       return S(result)
@@ -207,15 +160,15 @@ export const researchTools: Tool[] = [
       const width = Math.max(1, ctx.maxResearchQuestions ?? 4)
       const asked = list.slice(0, width)
       const skipped = list.slice(width)
+      // The call-level context is shared; a per-question context rides on top of it, so a batch
+      // covering two products no longer has to split into two calls just to keep them apart.
+      const contextOf = (q: RQ): string | undefined =>
+        [a.context ? String(a.context) : '', q.context ? String(q.context) : ''].filter(Boolean).join('\n') ||
+        undefined
       const one = (q: RQ, index?: number): Promise<unknown> =>
         researchWeb({
           question: q.question,
-          // The call-level context is shared; a per-question context rides on top of it, so a batch
-          // covering two products no longer has to split into two calls just to keep them apart.
-          context:
-            [a.context ? String(a.context) : '', q.context ? String(q.context) : '']
-              .filter(Boolean)
-              .join('\n') || undefined,
+          context: contextOf(q),
           allowUnsourced: a.allow_unsourced === true,
           domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined,
           // So the shared progress line can say which of how many is speaking: the legs run in
@@ -229,6 +182,8 @@ export const researchTools: Tool[] = [
       // side effect must never cost the research result, so a failed write is swallowed.
       type Logged = {
         question: string
+        // What the research was given, so the log can tell two askings of one question apart.
+        context?: string
         findings: unknown
         evidence?: Array<{ url: string; excerpt?: string }>
       }
@@ -239,6 +194,7 @@ export const researchTools: Tool[] = [
           // Each finding takes the engine's excerpt of its first cited page along, when there is one.
           .map((e) => ({
             question: e.question,
+            ...(e.context ? { context: e.context } : {}),
             findings: (e.findings as Array<Record<string, unknown>>).map((f) => {
               const first = Array.isArray(f.sources) ? f.sources[0] : undefined
               const ex = (e.evidence ?? []).find((v) => v.url === first && v.excerpt)?.excerpt
@@ -255,7 +211,12 @@ export const researchTools: Tool[] = [
       if (asked.length === 1 && !skipped.length) {
         const result = (await one(asked[0])) as { findings?: unknown; evidence?: Logged['evidence'] }
         await record([
-          { question: asked[0].question, findings: result?.findings, evidence: result?.evidence }
+          {
+            question: asked[0].question,
+            context: contextOf(asked[0]),
+            findings: result?.findings,
+            evidence: result?.evidence
+          }
         ])
         return S(result)
       }
@@ -264,9 +225,11 @@ export const researchTools: Tool[] = [
       const results = await Promise.all(asked.map((q, i) => runItem(q.question, () => one(q, i + 1))))
       await record(
         results
-          .filter((r) => r.ok)
-          .map((r) => ({
+          .map((r, i) => ({ r, q: asked[i] }))
+          .filter(({ r }) => r.ok)
+          .map(({ r, q }) => ({
             question: String(r.item),
+            context: contextOf(q),
             findings: (r.result as { findings?: unknown })?.findings,
             evidence: (r.result as { evidence?: Logged['evidence'] })?.evidence
           }))

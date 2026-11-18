@@ -82,6 +82,113 @@ def test_clean_entry_keeps_the_engine_excerpt_bounded():
     assert "excerpt" not in entry["findings"][1]
 
 
+#: A bill-of-materials call that found no mass at all, as research.ts logs it (T4/T5 shape).
+BOM_NO_MASS = {
+    "question": "Bill of materials: Schwerlastregal Atlas 176 x 90 x 40 cm",
+    "context": "Avasco Atlas, verzinkt, 5 Holzböden; market NL/DE. " + "x" * 400,
+    "findings": [],
+    "bom_check": {
+        "summary": "0 of 3 requested components came back with a mass of their own; parts sum to 0 kg. "
+                   "The whole-product masses the research found disagree, so none was used — not judged.",
+        "requests": [{"component": "Stahlrahmen", "status": "no_mass"},
+                     {"component": "Füße", "status": "failed"},
+                     {"component": "Gesamtgewicht", "status": "product_mass_only"},
+                     {"component": "Böden", "status": "guessed"}],  # not a status: dropped
+        "unresolved": [{"component": "Stahlrahmen", "reason": "no_mass", "note": "frame " * 80},
+                       {"component": "Füße", "reason": "failed"},
+                       {"component": "Böden", "reason": "lost"}],  # not a reason: dropped
+        "totals": [{"mass_kg": 13, "basis": "net", "version": "EAN 5400431601480",
+                    "source": "https://www.praxis.nl/x/10322182"},
+                   {"mass_kg": 24, "basis": "sideways", "source": "https://buchmann.ch/atlas"},
+                   {"mass_kg": 0, "basis": "net"}],  # no mass: dropped
+        "versions": {"conflict": True,
+                     "used": [{"version": "EAN 5400431601459", "entries": ["Böden"]},
+                              {"version": "EAN 5400431601480", "entries": ["total 13 kg"]}],
+                     "seen": [{"version": f"v{i}", "mass_kg": 14.1} for i in range(5)]},
+    },
+}
+
+
+def test_a_bom_call_without_any_mass_leaves_its_check(project):
+    store = ResearchLogStore()
+    assert store.record("bom1", [BOM_NO_MASS]) == {"added": 1, "total": 1}
+    (entry,) = store.list("bom1")
+    assert entry["findings"] == []
+    check = entry["bom_check"]
+    assert check["summary"].startswith("0 of 3 requested components")
+    assert [r["status"] for r in check["requests"]] == ["no_mass", "failed", "product_mass_only"]
+    assert [u["reason"] for u in check["unresolved"]] == ["no_mass", "failed"]
+    # The note is cut with a mark, not mid-word without one.
+    assert len(check["unresolved"][0]["note"]) <= 200 and check["unresolved"][0]["note"].endswith("…")
+    assert [(t["mass_kg"], t["basis"]) for t in check["totals"]] == [(13.0, "net"), (24.0, "unknown")]
+    assert check["totals"][0]["version"] == "EAN 5400431601480"
+    assert check["versions"]["conflict"] is True
+    assert check["versions"]["used"][1] == {"version": "EAN 5400431601480", "entries": ["total 13 kg"]}
+    assert len(check["versions"]["seen"]) == 3
+    assert len(entry["context"]) == 300 and entry["context"].endswith("…")
+
+
+def test_a_bom_call_repeated_with_the_same_findings_is_a_second_dated_entry(project):
+    store = ResearchLogStore()
+    part = {"text": "5 Holzböden (HDF, 5 mm) (5 pieces): 7.65 kg", "sources": ["https://www.praxis.nl/x/10119671"],
+            "component": "5 Holzböden", "mass_kg": 7.65,
+            "note": "0.9 × 0.4 × 0.005 m × 850 kg/m³ = 1.53 kg per board", "cited_by_search": False}
+    call = {**BOM_NO_MASS, "findings": [part]}
+    assert store.record("bom2", [call])["added"] == 1
+    assert store.record("bom2", [call])["added"] == 1
+    first, second = store.list("bom2")
+    assert first["findings"][0]["note"].startswith("0.9 × 0.4")
+    assert first["findings"][0]["cited_by_search"] is False
+    # The finding is not stored twice; the check is — the log keeps each call, not a current state.
+    assert second["findings"] == [] and second["bom_check"] == first["bom_check"]
+    assert second["asked"]
+    # A web question asked again with nothing new is still not a second row.
+    assert store.record("bom2", [ENTRY])["added"] == 1
+    assert store.record("bom2", [ENTRY])["added"] == 0
+
+
+def test_a_repeat_keeps_its_finding_when_the_full_log_evicts_the_first_record(project):
+    from prism_lca.engine.research_log import MAX_ENTRIES
+
+    store = ResearchLogStore()
+    part = {"text": "frame: 9 kg", "sources": ["https://e.org/a"], "component": "frame", "mass_kg": 9}
+    call = {"question": "Bill of materials: rack", "findings": [part], "bom_check": {"summary": "checked"}}
+    store.record("full", [call])
+    store.record("full", [{"question": f"q{i}", "findings": [{"text": f"f{i}"}]} for i in range(MAX_ENTRIES - 1)])
+    assert len(store.list("full")) == MAX_ENTRIES
+    store.record("full", [call])  # the log is full: the first BOM entry goes
+    entries = store.list("full")
+    assert len(entries) == MAX_ENTRIES
+    assert [f["text"] for e in entries for f in e["findings"] if e["question"] == "Bill of materials: rack"] == [
+        "frame: 9 kg"
+    ]
+    assert entries[-1]["findings"][0]["mass_kg"] == 9.0
+
+
+def test_an_entry_without_findings_needs_a_valid_check(project):
+    assert clean_entry({"question": "Bill of materials: x", "findings": [], "bom_check": {}}) is None
+    assert clean_entry({"question": "Bill of materials: x", "bom_check": {"requests": [{"component": "a"}]}}) is None
+    assert clean_entry({"question": "Bill of materials: x", "bom_check": "summary"}) is None
+    kept = clean_entry({"question": "Bill of materials: x", "bom_check": {"summary": "nothing found"}})
+    assert kept and kept["bom_check"] == {"summary": "nothing found"}
+
+
+def test_the_new_fields_survive_a_bundle_restore(project):
+    store = ResearchLogStore()
+    store.record("bom3", [{**BOM_NO_MASS, "findings": [
+        {"text": "frame: 9 kg", "sources": ["https://e.org/a"], "component": "frame", "mass_kg": 9,
+         "note": "per datasheet", "cited_by_search": True, "version": "EAN 5400431601459"}]}])
+    exported = store.list("bom3")
+    assert exported[0]["findings"][0]["version"] == "EAN 5400431601459"
+    store.replace("bom3b", exported)
+    assert store.list("bom3b") == exported
+
+
+def test_the_report_brief_skips_a_check_without_findings(project):
+    facts = brief_facts({"web_research": [BOM_NO_MASS, ENTRY]}, "references")
+    assert [e["question"] for e in facts.get("web_research", [])] == [ENTRY["question"]]
+
+
 def test_research_endpoints_round_trip(client, token, project):
     r = client.post("/api/v1/provenance/research",
                     json={"database": "m3", "entries": [ENTRY]}, headers=token)
