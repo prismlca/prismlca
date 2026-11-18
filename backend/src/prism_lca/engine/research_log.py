@@ -9,10 +9,17 @@ This log keeps the provenance itself, so the References chapter can print what t
 *researched* — not just what a comment cites — and a chapter writer can say in words where a
 figure came from.
 
+It also keeps what the research could NOT settle. A bill-of-materials call writes its check — which
+requested parts came back without a mass, the whole-product masses found, the versions the figures
+rest on — even when it found no mass at all: the reviewer compares a booked figure against that, and
+a check that left the frame open is as much a fact about the study as a mass that was found.
+
 Stored as one JSON file in the active project's ``prism_meta`` dir, keyed by foreground database —
 the same pattern as chats and scenarios. Recording is idempotent per (question, finding text), so
-a re-run of the same research does not double the list. Not undoable on purpose: this is a log of
-what was looked up, like the chat itself, not a piece of the model.
+a re-run of the same research does not double the list; a bill-of-materials check is the exception
+and is appended every time, dated, because the log is a history of what was asked and found, not a
+current state of knowledge. Not undoable on purpose: this is a log of what was looked up, like the
+chat itself, not a piece of the model.
 """
 from __future__ import annotations
 
@@ -32,15 +39,133 @@ MAX_SOURCES = 5
 SOURCE_CLASSES = {"official", "industry", "media", "community"}
 CONFIDENCES = {"high", "medium", "low"}
 
+#: What the research was given besides the question — product, version, market, a given total mass.
+#: The same question asked in two chats can mean two versions of a product; this tells them apart.
+CONTEXT_CHARS = 300
+#: How a bill-of-materials figure was derived (area × thickness × density), as the research leg wrote it.
+NOTE_CHARS = 240
+#: The note beside a part the check left open — what the leg did find instead.
+OPEN_NOTE_CHARS = 200
+
+#: The bill-of-materials check's closed vocabularies, as research_bom reports them.
+REQUEST_STATUSES = {"with_mass", "partial", "no_mass", "product_mass_only", "failed"}
+OPEN_REASONS = {"no_mass", "zero_mass", "unclear_mass", "whole_product_only", "failed"}
+MASS_BASES = {"net", "gross", "unknown"}
+#: Whole-product masses kept per check, and other versions of the product the sources showed.
+MAX_TOTALS = 6
+MAX_VERSIONS_SEEN = 3
+#: Requested parts / open parts / version groups per check — research_bom asks for at most eight.
+MAX_CHECK_ROWS = 12
+
+
+def _cut(value: object, limit: int) -> str:
+    """Text bounded with a visible mark: a reader must see that and where a note was cut."""
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _mass(value: object) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return None
+
+
+def clean_bom_check(raw: object) -> dict | None:
+    """Normalise what a bill-of-materials call reported about its own result, or ``None``.
+
+    ``summary`` (the one sentence: what was summed, against which total, what is open), ``requests``
+    (each requested component's status), ``unresolved`` (each open part with its reason), ``totals``
+    (every whole-product mass found, with its scope, version and source) and ``versions`` (whether
+    the figures rest on different versions, which entries sit on which, a few other versions seen).
+    None of it is a finding: the health check never reads it, so a whole-product mass here can never
+    be reported as a part nobody booked.
+    """
+    if not isinstance(raw, dict):
+        return None
+    check: dict = {}
+    summary = _cut(raw.get("summary"), 600)
+    if summary:
+        check["summary"] = summary
+    requests = []
+    for r in raw.get("requests") or []:
+        if isinstance(r, dict) and str(r.get("component") or "").strip() and r.get("status") in REQUEST_STATUSES:
+            requests.append({"component": _cut(r["component"], 120), "status": r["status"]})
+    if requests:
+        check["requests"] = requests[:MAX_CHECK_ROWS]
+    open_parts = []
+    for u in raw.get("unresolved") or []:
+        if not (isinstance(u, dict) and str(u.get("component") or "").strip() and u.get("reason") in OPEN_REASONS):
+            continue
+        part = {"component": _cut(u["component"], 120), "reason": u["reason"]}
+        note = _cut(u.get("note"), OPEN_NOTE_CHARS)
+        if note:
+            part["note"] = note
+        open_parts.append(part)
+    if open_parts:
+        check["unresolved"] = open_parts[:MAX_CHECK_ROWS]
+    totals = []
+    for t in raw.get("totals") or []:
+        mass = _mass(t.get("mass_kg")) if isinstance(t, dict) else None
+        if mass is None:
+            continue
+        total: dict = {"mass_kg": mass, "basis": t.get("basis") if t.get("basis") in MASS_BASES else "unknown"}
+        for key, limit in (("version", 120), ("source", 300)):
+            value = _cut(t.get(key), limit)
+            if value:
+                total[key] = value
+        totals.append(total)
+    if totals:
+        check["totals"] = totals[:MAX_TOTALS]
+    versions = _clean_versions(raw.get("versions"))
+    if versions:
+        check["versions"] = versions
+    return check or None
+
+
+def _clean_versions(raw: object) -> dict | None:
+    """Whether the check's figures rest on different versions of the product, which entries sit on
+    which (``used``), and a few other versions the sources showed (``seen``)."""
+    if not isinstance(raw, dict):
+        return None
+    kept: dict = {"conflict": raw.get("conflict") is True}
+    used = []
+    for u in raw.get("used") or []:
+        if not (isinstance(u, dict) and str(u.get("version") or "").strip()):
+            continue
+        entries = [_cut(e, 120) for e in (u.get("entries") or []) if str(e or "").strip()]
+        used.append({"version": _cut(u["version"], 120), "entries": entries[:MAX_CHECK_ROWS]})
+    if used:
+        kept["used"] = used[:MAX_CHECK_ROWS]
+    seen = []
+    for v in raw.get("seen") or []:
+        if not (isinstance(v, dict) and str(v.get("version") or "").strip()):
+            continue
+        other: dict = {"version": _cut(v["version"], 120)}
+        for key, limit in (("differs_by", 160), ("sold_by", 80), ("source", 300)):
+            value = _cut(v.get(key), limit)
+            if value:
+                other[key] = value
+        mass = _mass(v.get("mass_kg"))
+        if mass is not None:
+            other["mass_kg"] = mass
+        seen.append(other)
+    if seen:
+        kept["seen"] = seen[:MAX_VERSIONS_SEEN]
+    return kept if kept["conflict"] or used or seen else None
+
 
 def clean_entry(item: object) -> dict | None:
     """Normalise one research entry into ``{question, findings: [{text, sources}], asked}``.
 
     A finding may additionally carry the leg's judgement (``source_class``, ``confidence``,
-    ``confidence_note``) and — for bill-of-materials research — the structured figure itself
-    (``component``, ``mass_kg``, and ``mass_range_kg`` when the sources gave a span rather than one
-    number), which is what lets the health check reconcile researched masses against what the model
-    actually books. All optional, all validated, none invented here.
+    ``confidence_note``), whether its source came back from the search engine (``cited_by_search``)
+    and — for bill-of-materials research — the structured figure itself (``component``, ``mass_kg``,
+    and ``mass_range_kg`` when the sources gave a span rather than one number) with its derivation
+    (``note``) and the product version it belongs to (``version``), which is what lets the health check reconcile researched masses against what the
+    model actually books. The entry may carry the ``context`` the research was given and, for a
+    bill-of-materials call, its ``bom_check`` — with a valid check an entry without findings is kept:
+    a call that found no mass at all still says what it could not settle. All optional, all
+    validated, none invented here.
     """
     if not isinstance(item, dict):
         return None
@@ -88,12 +213,45 @@ def clean_entry(item: object) -> dict | None:
             and 0 < float(rng[0]) < float(rng[1])
         ):
             finding["mass_range_kg"] = [float(rng[0]), float(rng[1])]
+        derivation = _cut(raw.get("note"), NOTE_CHARS)
+        if derivation:
+            finding["note"] = derivation
+        # Which version of the product a bill-of-materials figure belongs to (an EAN, a board thickness).
+        version = _cut(raw.get("version"), 120)
+        if version:
+            finding["version"] = version
+        if isinstance(raw.get("cited_by_search"), bool):
+            finding["cited_by_search"] = raw["cited_by_search"]
         findings.append(finding)
         if len(findings) >= MAX_FINDINGS:
             break
-    if not findings:
+    check = clean_bom_check(item.get("bom_check"))
+    if not findings and check is None:
         return None
-    return {"question": question[:300], "findings": findings, "asked": now_z()}
+    entry: dict = {"question": question[:300], "findings": findings, "asked": now_z()}
+    context = _cut(item.get("context"), CONTEXT_CHARS)
+    if context:
+        entry["context"] = context
+    if check is not None:
+        entry["bom_check"] = check
+    return entry
+
+
+def _restore_evicted(kept: list[dict], repeated: list[tuple[dict, list[dict]]]) -> None:
+    """Give a new entry back the repeated findings whose first record the trim just evicted.
+
+    A repeat is stored once, in the entry that first found it. Once the log is full, the entry a repeat
+    appends pushes the oldest out — possibly the one holding the finding the repeat confirmed — and the
+    log would then hold neither copy.
+    """
+    present = {(e.get("question"), f.get("text")) for e in kept for f in e.get("findings") or []}
+    for entry, dropped in repeated:
+        if not any(e is entry for e in kept):
+            continue
+        back = [f for f in dropped if (entry["question"], f["text"]) not in present]
+        if back:
+            entry["findings"] = (back + entry["findings"])[:MAX_FINDINGS]
+            present.update((entry["question"], f["text"]) for f in back)
 
 
 class ResearchLogStore(JsonFileStore):
@@ -109,7 +267,12 @@ class ResearchLogStore(JsonFileStore):
         return list(self._load().get(database) or [])
 
     def record(self, database: str, entries: list) -> dict:
-        """Append what is new, skip what is already there; returns ``{added, total}``."""
+        """Append what is new, skip what is already there; returns ``{added, total}``.
+
+        An entry with a bill-of-materials check is appended every time, with only its new findings:
+        the check is that call's own result, and a repeat that found the same masses may still have
+        settled a part or met another version.
+        """
         with self._lock:
             data = self._load()
             stored = list(data.get(database) or [])
@@ -121,20 +284,24 @@ class ResearchLogStore(JsonFileStore):
                 for f in e.get("findings") or []
             }
             added = 0
+            repeated: list[tuple[dict, list[dict]]] = []
             for raw in entries or []:
                 entry = clean_entry(raw)
                 if entry is None:
                     continue
                 fresh = [f for f in entry["findings"] if (entry["question"], f["text"]) not in seen]
-                if not fresh:
+                if not fresh and "bom_check" not in entry:
                     continue
+                repeated.append((entry, [f for f in entry["findings"] if f not in fresh]))
                 entry["findings"] = fresh
                 for f in fresh:
                     seen.add((entry["question"], f["text"]))
                 stored.append(entry)
                 added += 1
             if added:
-                data[database] = stored[-MAX_ENTRIES:]
+                kept = stored[-MAX_ENTRIES:]
+                _restore_evicted(kept, repeated)
+                data[database] = kept
                 self._save(data)
             return {"added": added, "total": len(data.get(database) or stored)}
 

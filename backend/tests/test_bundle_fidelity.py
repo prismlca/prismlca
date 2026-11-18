@@ -150,6 +150,25 @@ def test_chats_and_research_keep_when_they_happened(client, token, filled):
     assert [e["asked"] for e in ResearchLogStore().list("Historic")] == [asked]
 
 
+def test_a_bill_of_materials_check_travels_with_the_bundle(client, token, filled):
+    from prism_lca.engine.research_log import ResearchLogStore
+
+    ResearchLogStore().record(filled, [{
+        "question": "Bill of materials: rack",
+        "context": "Atlas, 5 boards, NL",
+        "findings": [{"text": "boards: 7.65 kg", "sources": ["https://e.org/b"], "note": "area × thickness × density",
+                      "cited_by_search": False}],
+        "bom_check": {"summary": "1 of 2 requested components came back with a mass",
+                      "unresolved": [{"component": "frame", "reason": "no_mass"}],
+                      "totals": [{"mass_kg": 13, "basis": "net", "source": "https://e.org/t"}],
+                      "versions": {"conflict": True, "used": [{"version": "EAN 1", "entries": ["boards"]}]}},
+    }])
+    before = ResearchLogStore().list(filled)
+    r = _import(client, token, _export(client, token, filled, preset="full"), "WithCheck")
+    assert r.status_code == 200, r.text
+    assert ResearchLogStore().list("WithCheck") == before
+
+
 def test_a_live_chat_turn_is_still_stamped_now(client, token, filled):
     """`keep_ts` is the import's: a client cannot backdate a turn through the normal append."""
     from prism_lca.engine.chat_store import ChatStore

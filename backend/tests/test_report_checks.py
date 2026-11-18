@@ -689,7 +689,7 @@ def test_a_chapter_is_not_handed_facts_it_cannot_use():
     data = {
         "study": {"goal": "g"},
         "results": [{"method_label": "EF", "score": 1.0}],
-        "web_research": [{"question": "q", "findings": []}],
+        "web_research": [{"question": "q", "findings": [{"text": "t", "sources": ["https://e.org/a"]}]}],
         "review": {"open": [{"finding": "f"}]},
     }
     assert "web_research" not in brief_facts(data, "lcia")

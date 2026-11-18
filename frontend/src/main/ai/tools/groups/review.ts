@@ -12,6 +12,7 @@ import { previousReviewOf, previousReviewSection } from './reviewHistory'
 import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './reviewFailure'
 import { indicatorsSection, pickedMethods } from './reviewIndicators'
 import { searchesSection } from './reviewSearches'
+import { researchSection } from './reviewResearch'
 import { afterReviewNote, outcomesAnswer, reviewerIdentity } from './reviewAnswer'
 import { scoredFor } from '../advice/scored'
 
@@ -206,6 +207,11 @@ export const reviewTools: Tool[] = [
         hotspots && Array.isArray(a.method) ? a.method : null
       )
 
+      // What the research tools found for this model, and what they could not settle (reviewResearch.ts).
+      const research = await part('research on record', () =>
+        ctx.api('GET', `/api/v1/provenance/research?database=${encodeURIComponent(db)}`)
+      )
+
       // This chat's own previous review of the model, if it ran one (reviewHistory.ts).
       const previous = ctx.chatId
         ? previousReviewOf(
@@ -232,6 +238,7 @@ export const reviewTools: Tool[] = [
             'it against the process list before reporting it as missing.'
           : '',
         indicators,
+        researchSection(research),
         // What the provider's web search found inside the assistant's replies (reviewSearches.ts).
         searchesSection(ctx.webLookups?.() ?? []),
         selfDescriptions.length
