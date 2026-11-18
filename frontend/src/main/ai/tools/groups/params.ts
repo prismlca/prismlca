@@ -10,6 +10,14 @@ import { IMPL, delegate } from '../impl'
 import { formulaKept } from '../formulaKept'
 import { RULE_SCHEMA, ruleFor } from '../paramRule'
 
+/** compare_scenarios has no default indicator: neither "method" nor "methods" is answered with this. */
+const NO_METHOD =
+  'No indicator given. Pass "methods" (LCIA method tuples from list_methods) to score several in one call, or "method" for one.'
+
+/** Whether a single method was sent at all — an empty list or blank string is no method either. */
+const methodGiven = (m: unknown): boolean =>
+  Array.isArray(m) ? m.length > 0 : typeof m === 'string' ? m.trim() !== '' : m != null
+
 export const paramsTools: Tool[] = [
   {
     spec: {
@@ -221,9 +229,7 @@ export const paramsTools: Tool[] = [
             code: str('Activity code (the reference product to score).'),
             scenario_ids: strArr('Scenario ids to include alongside the baseline.'),
             method: strArr(
-              'LCIA method tuple (from list_methods). Omit to use the first method the model has ' +
-                "already been calculated with, or the study's default indicator if it has one — pass " +
-                'it explicitly whenever the answer names an indicator.'
+              'One LCIA method tuple (from list_methods). Give this or "methods"; there is no default indicator.'
             ),
             methods: {
               type: 'array',
@@ -248,6 +254,9 @@ export const paramsTools: Tool[] = [
           amount: a.amount ?? 1.0
         })
       const many: any[] = Array.isArray(a.methods) && a.methods.length ? a.methods : []
+      // No indicator at all: the backend's own refusal points at its HTTP route, which the model cannot
+      // call — answered here with the tool it can.
+      if (!many.length && !methodGiven(a.method)) return S({ error: NO_METHOD })
       if (!many.length) return S(await one(a.method))
       // ONE request for all indicators. The fan-out below it replaced looked like parallelism and was
       // the opposite: every request applied every scenario again, and each apply throws the factorised

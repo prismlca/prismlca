@@ -372,7 +372,7 @@ export const TOOL_META: Record<string, { label: string; hint: string; group: str
   delete_scenario: { label: 'Delete scenario', hint: 'Deletes a scenario by id.', group: 'Scenarios' },
   compare_scenarios: {
     label: 'Compare scenarios',
-    hint: 'Scores the baseline and chosen scenarios for one indicator.',
+    hint: 'Scores the baseline and chosen scenarios for one or more indicators.',
     group: 'Scenarios'
   },
   // characterization factors

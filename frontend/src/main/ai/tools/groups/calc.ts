@@ -340,7 +340,7 @@ export const calcTools: Tool[] = [
         return batchResult(results)
       }
       // No "methods" given: behave exactly as before, method and all — including the case where it is
-      // absent, which the backend answers with its default indicator.
+      // absent, which the backend refuses as "No LCIA method specified" (there is no default indicator).
       if (!many.length) return call(a.method) as Promise<string>
       // `delegate` hands back an already-serialised result; parse it so the batch envelope carries
       // the object rather than a string containing JSON.

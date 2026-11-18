@@ -905,7 +905,7 @@
             "items": {
               "type": "string"
             },
-            "description": "LCIA method tuple (from list_methods). Omit to use the first method the model has already been calculated with, or the study's default indicator if it has one — pass it explicitly whenever the answer names an indicator."
+            "description": "One LCIA method tuple (from list_methods). Give this or \"methods\"; there is no default indicator."
           },
           "methods": {
             "type": "array",
