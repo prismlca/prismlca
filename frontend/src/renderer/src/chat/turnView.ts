@@ -7,8 +7,10 @@ export interface ContextLevel {
   budget: number
 }
 
-/** What the run bar says about the provider's prompt cache: failing now, or failed and working again. */
-export type CacheNote = 'dropped' | 'stuck' | 'dropped-recovered' | 'stuck-recovered'
+/** What the run bar says about the provider's prompt cache: one round missed it or got only part of it,
+ *  it is failing now, or it failed and works again. A miss or a partial hit that is over reads like a
+ *  drop that is over — some of the prompt was billed in full, and the rounds since are served again. */
+export type CacheNote = 'missed' | 'partial' | 'dropped' | 'stuck' | 'dropped-recovered' | 'stuck-recovered'
 
 /** Further rounds the all-clear stays: long enough to be seen in passing, short enough that a failure
  *  long over does not read as a standing problem. */
@@ -40,10 +42,11 @@ export interface TurnView {
    */
   retry?: RetryState
   context: ContextLevel | null
-  /** The provider's prompt cache is failing now (main's cache watch) — kept for as long as it fails —
-   *  or failed and works again (`…-recovered`). That all-clear stays for CACHE_ALL_CLEAR_ROUNDS further
-   *  rounds, so a failure is still seen after it is over, and then goes: kept to the end of a long run,
-   *  one miss early on read as a problem standing for the rest of it. */
+  /** What main's cache watch last said: a round missed the cache or got only part of it, the cache is
+   *  failing now — kept for as long as it fails — or failed and works again (`…-recovered`). That
+   *  all-clear stays for CACHE_ALL_CLEAR_ROUNDS further rounds, so a failure is still seen after it is
+   *  over, and then goes: kept to the end of a long run, one miss early on read as a problem standing
+   *  for the rest of it. */
   cacheWarning?: CacheNote
   /** Rounds reported since the cache recovered — set only while an all-clear is shown. */
   roundsSinceRecovery?: number
@@ -157,8 +160,9 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
       if (ev.pattern !== 'recovered')
         return { ...v, cacheWarning: ev.pattern, roundsSinceRecovery: undefined }
       // Main reports a round's recovery after that round's `context`, so the count starts with the next one.
-      return v.cacheWarning === 'dropped' || v.cacheWarning === 'stuck'
-        ? { ...v, cacheWarning: `${v.cacheWarning}-recovered`, roundsSinceRecovery: 0 }
+      if (v.cacheWarning === 'stuck') return { ...v, cacheWarning: 'stuck-recovered', roundsSinceRecovery: 0 }
+      return v.cacheWarning === 'dropped' || v.cacheWarning === 'missed' || v.cacheWarning === 'partial'
+        ? { ...v, cacheWarning: 'dropped-recovered', roundsSinceRecovery: 0 }
         : v
     case 'round-restart':
       // The round is starting over, so the clock has to as well — otherwise it keeps timing an attempt

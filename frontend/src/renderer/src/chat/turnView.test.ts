@@ -14,7 +14,7 @@ const tool = (name: string, phase: 'start' | 'progress' | 'done' | 'error', extr
   ...extra
 })
 
-const warn = (pattern: 'dropped' | 'stuck' | 'recovered'): AiEvent => ({
+const warn = (pattern: 'missed' | 'partial' | 'dropped' | 'stuck' | 'recovered'): AiEvent => ({
   chatId: 'c',
   type: 'cache-warning',
   pattern
@@ -157,6 +157,31 @@ describe('the turn view of one chat', () => {
     // A recovery with nothing raised before it says nothing.
     expect(fold([[warn('recovered'), 1]])?.cacheWarning).toBeUndefined()
     expect(foldTurn(v, { chatId: 'c', type: 'done', text: 'Linking.' }, 4)).toBeUndefined()
+  })
+
+  it('says one missed or partial round as such, a second miss as a failure, and all of them over as a drop that is over', () => {
+    expect(fold([[warn('missed'), 1]])!.cacheWarning).toBe('missed')
+    expect(
+      fold([
+        [warn('missed'), 1],
+        [warn('dropped'), 2]
+      ])!.cacheWarning
+    ).toBe('dropped')
+    expect(
+      fold([
+        [warn('missed'), 1],
+        [warn('partial'), 2]
+      ])!.cacheWarning
+    ).toBe('partial')
+    for (const failure of ['missed', 'partial'] as const) {
+      const over = fold([
+        [warn(failure), 1],
+        [round(), 2],
+        [warn('recovered'), 2]
+      ])!
+      expect(over.cacheWarning).toBe('dropped-recovered')
+      expect(over.roundsSinceRecovery).toBe(0)
+    }
   })
 
   it('takes the all-clear down after three further rounds, counted from the recovery', () => {

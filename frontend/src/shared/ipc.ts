@@ -135,11 +135,16 @@ export type AgentEvent =
   /** Which OpenRouter endpoint served this turn. Sent once, as soon as the first chunk names it. */
   | { chatId: string; type: 'provider'; name: string }
   /**
-   * The provider's prompt cache stopped working in this run (main/ai/cacheWatch.ts): a round read
-   * nothing from it after earlier rounds did (`dropped`), or its share has stopped growing with the
-   * conversation (`stuck`). Sent once per run; the run bar says so until the run ends.
+   * The state of the provider's prompt cache changed in this run (main/ai/cacheWatch.ts): a round read
+   * nothing from it after earlier rounds did (`missed`; the second in a row `dropped`), a round was
+   * served far less than the round before had sent (`partial`), its share has stopped growing with the
+   * conversation (`stuck`), or it works again after one of these (`recovered`).
    */
-  | { chatId: string; type: 'cache-warning'; pattern: 'dropped' | 'stuck' | 'recovered' }
+  | {
+      chatId: string
+      type: 'cache-warning'
+      pattern: 'missed' | 'dropped' | 'partial' | 'stuck' | 'recovered'
+    }
   /** What the research agents of this run have billed so far (USD) — sent with every booking, so the
    *  run bar can say how much of a growing bill is research while the run is still going. */
   | { chatId: string; type: 'research-cost'; usd: number }

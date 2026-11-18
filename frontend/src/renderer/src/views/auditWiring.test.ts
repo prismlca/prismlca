@@ -27,8 +27,9 @@ describe('the model-scoped audit list', () => {
     const src = read(file)
     const calls = src.match(/api<AuditEntry\[\]>\([^)]*\)/g) ?? []
     expect(calls, `${file} no longer fetches the audit log at all`).toHaveLength(1)
-    // The URL is a template literal carrying `q`, which both views build as `?database=…`.
-    expect(calls[0]).toMatch(/`\/api\/v1\/model\/audit\$\{q\}`/)
+    // The URL is a template literal carrying `q`, which both views build as `?database=…`, and the
+    // shared limit, without which a list cut by the backend's default cannot tell that it was cut.
+    expect(calls[0]).toMatch(/`\/api\/v1\/model\/audit\$\{q\}&limit=\$\{AUDIT_LIMIT\}`/)
     expect(src).toMatch(/const q = `\?database=\$\{encodeURIComponent\(activeDb\)\}`/)
   })
 
@@ -43,7 +44,9 @@ describe('the model-scoped audit list', () => {
     // of its own, read as R7's history. Workspace-wide actions now come back marked in every
     // model's list, so no view is needed for them alone.
     const src = read('Workbench.tsx')
-    expect(src).toMatch(/`\/api\/v1\/model\/audit\?database=\$\{encodeURIComponent\(db\)\}`/)
+    expect(src).toMatch(
+      /`\/api\/v1\/model\/audit\?\$\{db \? `database=\$\{encodeURIComponent\(db\)\}&` : ''\}limit=\$\{AUDIT_LIMIT\}`/
+    )
   })
 })
 

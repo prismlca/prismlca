@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { type AuditEntry, isAttributed } from '../lib/api'
+import { type AuditEntry, auditListCut, isAttributed } from '../lib/api'
 import { HistoryIcon, NoUndoIcon } from './icons'
 
 /**
@@ -37,31 +37,46 @@ export function groupByTurn(newestFirst: AuditEntry[]): Array<{ turn?: string; i
 
 /** One dashed box per assistant turn of two or more changes; a turn of one renders bare. The box
  *  says "these belong together", and one entry has nothing to belong with — its row already names the
- *  assistant as its source, and undoing the turn is undoing that entry. Shared by
- *  this component and the canvas inspector's inline log, so the two lists cannot drift apart on this. */
+ *  assistant as its source, and undoing the turn is undoing that entry.
+ *
+ *  `cut`: the list was cut by the limit, so its oldest turn may have more entries than were loaded. Its
+ *  count then says so ("200+") rather than giving the loaded number as the turn's size — a turn of 340
+ *  changes once read "200 changes". The line a copied model came from is kept by the backend however
+ *  old it is, so the cut runs through the oldest group that is not that line alone. */
 export function TurnGroups({
   entries,
-  row
+  row,
+  cut = false
 }: {
   entries: AuditEntry[]
   row: (e: AuditEntry) => JSX.Element
+  cut?: boolean
 }): JSX.Element {
+  const groups = groupByTurn(entries)
+  const cutAt = cut ? groups.map((g) => !g.items.every((e) => e.copied_from)).lastIndexOf(true) : -1
   return (
     <>
-      {groupByTurn(entries).map((g) =>
-        g.turn && g.items.length > 1 ? (
+      {groups.map((g, i) => {
+        const partial = i === cutAt && !!g.turn
+        return g.turn && (g.items.length > 1 || partial) ? (
           <div
             key={`t-${g.items[0].index}`}
             className="aud-turn"
             title="These changes were made by the assistant in one turn (one chat message). Undo offers to take the whole turn back."
           >
-            <div className="aud-turn-head">assistant turn · {g.items.length} changes</div>
+            <div
+              className="aud-turn-head"
+              title={partial ? 'Older entries of this turn are not loaded.' : undefined}
+            >
+              assistant turn · {g.items.length}
+              {partial ? '+' : ''} changes
+            </div>
             {g.items.map(row)}
           </div>
         ) : (
           g.items.map(row)
         )
-      )}
+      })}
     </>
   )
 }
@@ -101,7 +116,11 @@ export default function AuditLog({ entries }: { entries: AuditEntry[] }): JSX.El
             </p>
           ) : (
             <div className="audit-list">
-              <TurnGroups entries={[...own].reverse()} row={(a) => <Row key={a.index} entry={a} />} />
+              <TurnGroups
+                entries={[...own].reverse()}
+                row={(a) => <Row key={a.index} entry={a} />}
+                cut={auditListCut(entries)}
+              />
             </div>
           )}
           {earlier.length ? (

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { ChatMessage } from '../lib/ai'
+import type { ChatRun } from '../../../shared/plan'
 import { Elapsed } from './ToolTraceList'
 import type { CacheNote, RetryState, TurnView } from './turnView'
-import { compact, contextLabel, usd } from './chatFormat'
+import { clockLabel, compact, contextLabel, usd } from './chatFormat'
 
 /**
  * What this conversation has consumed, added up over its turns.
@@ -83,11 +84,24 @@ function RetryNote({ retry }: { retry: RetryState }): JSX.Element {
 
 /** What the run bar says when the provider's prompt cache stops working, and the longer word on hover. */
 const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
+  missed: {
+    short: 'a round missed the prompt cache — billed in full',
+    title:
+      "Earlier rounds of this run were served from the provider's prompt cache; this one was not, and was " +
+      'billed at the full input price. A single such round happens when the route switches endpoints; if ' +
+      'the next one misses too, this note says so.'
+  },
+  partial: {
+    short: 'a round got only part of the prompt from the cache — the rest billed in full',
+    title:
+      "The provider's prompt cache served this round far less than the round before had already sent — " +
+      'an older state of the conversation, or another endpoint — and the rest was billed at the full input price.'
+  },
   dropped: {
     short: 'prompt cache is not working — rounds are billed in full',
     title:
-      "Earlier rounds of this run were served from the provider's prompt cache; a later one was not, " +
-      'and was billed at the full input price. If cost matters, stop the run and pick another model or route.'
+      "Earlier rounds of this run were served from the provider's prompt cache; two in a row since were not, " +
+      'and were billed at the full input price. If cost matters, stop the run and pick another model or route.'
   },
   stuck: {
     short: 'prompt cache is not growing — most of every round is billed in full',
@@ -99,7 +113,7 @@ const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
   'dropped-recovered': {
     short: 'prompt cache dropped out — working again',
     title:
-      "Some rounds of this run were not served from the provider's prompt cache and were billed at the full " +
+      "Some of this run's prompt was not served from the provider's prompt cache and was billed at the full " +
       'input price; the rounds since are served from it again.'
   },
   'stuck-recovered': {
@@ -108,6 +122,30 @@ const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
       "For some rounds the share served from the provider's cache stopped growing and the new part was " +
       'billed at the full input price; it grows with the conversation again.'
   }
+}
+
+/** The run's own clock, from when it started — kept in the chat's stored run record, so it survives a
+ *  reload, which the turn's clocks do not. */
+function RunClock({ since }: { since: number }): JSX.Element {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <span className="chat-runbar-run" title="time since the run started">
+      run {clockLabel(now - since)}
+    </span>
+  )
+}
+
+/** When the run on screen began, from its record — only for the run this view belongs to: a send whose
+ *  run has not reported yet would otherwise be timed by the record of the run before it. */
+export function runStartedAt(turn: TurnView, run: ChatRun | null | undefined): number | undefined {
+  if (!run || run.state !== 'running' || !run.startedAt) return undefined
+  if (turn.runId === null || (turn.runId && turn.runId !== run.runId)) return undefined
+  const t = Date.parse(run.startedAt)
+  return Number.isFinite(t) ? t : undefined
 }
 
 /**
@@ -119,8 +157,18 @@ const CACHE_WARNING: Record<CacheNote, { short: string; title: string }> = {
  * Deliberately not a second docked window: the canvas is the point of that screen, and a message's own
  * calls belong with the message, which is what the collapsed summary below keeps.
  */
-export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<string, string> }): JSX.Element {
+export function RunStatus({
+  turn,
+  labels,
+  run
+}: {
+  turn: TurnView
+  labels: Record<string, string>
+  /** The chat's run record, for the run clock. */
+  run?: ChatRun | null
+}): JSX.Element {
   const { live, reasoning, restarts, context, retry, cacheWarning, researchCost } = turn
+  const runSince = runStartedAt(turn, run)
   const idx = live.findIndex((t) => !t.status)
   const pending = idx >= 0 ? live[idx] : undefined
   const waiting = !pending && retry?.phase === 'wait' ? retry : undefined
@@ -164,8 +212,10 @@ export function RunStatus({ turn, labels }: { turn: TurnView; labels: Record<str
           Timing the turn, ten seconds into a run the bar claimed "Research a question on the web ·
           1:37 min" for a call that had just started. The thinking phase begins anew when a round is
           abandoned and begun again, so the elapsed time belongs to the attempt whose reasoning is
-          counted beside it: "reasoning, 0.8k characters · 6:08 min" was once two different clocks. */}
-      <Elapsed since={pending ? turn.started[idx] : turn.thinkingAt} />
+          counted beside it: "reasoning, 0.8k characters · 6:08 min" was once two different clocks. The
+          whole run has its own clock beside it, named as such, so neither is read as the other. */}
+      <Elapsed since={pending ? turn.started[idx] : turn.thinkingAt} title="time in this step" />
+      {runSince !== undefined ? <RunClock since={runSince} /> : null}
       {live.length ? <span className="chat-runbar-count">{live.length} calls</span> : null}
       {/* A run's bill is only shown when it ends. Research is the part that can outgrow the rest of it
           within minutes, so its share is on the bar as soon as there is one. */}

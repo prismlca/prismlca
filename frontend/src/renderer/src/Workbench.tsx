@@ -19,7 +19,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { api, type AuditEntry, type UndoState } from './lib/api'
+import { api, AUDIT_LIMIT, type AuditEntry, type UndoState } from './lib/api'
 import { fetchQuery, invalidate, useQuery } from './lib/server/useQuery'
 
 import { getFolders, subscribeFolders } from './lib/modelFolders'
@@ -204,7 +204,7 @@ export default function Workbench(): JSX.Element {
     const db = auditModel.current
     return api<AuditEntry[]>(
       'GET',
-      db ? `/api/v1/model/audit?database=${encodeURIComponent(db)}` : '/api/v1/model/audit'
+      `/api/v1/model/audit?${db ? `database=${encodeURIComponent(db)}&` : ''}limit=${AUDIT_LIMIT}`
     )
   }, [])
   // Undo and Redo act on the open model only — the same link, so the toolbar asks about that model.

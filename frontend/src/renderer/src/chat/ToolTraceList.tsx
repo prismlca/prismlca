@@ -41,7 +41,7 @@ export function formatArgs(args?: string): string | null {
  * Stop button still being there. Counted from a timestamp rather than from the mount, because the
  * panel is unmounted on every view but Model: back from Results, a call in its sixth minute read "0 s".
  */
-export function Elapsed({ since }: { since?: number }): JSX.Element {
+export function Elapsed({ since, title }: { since?: number; title?: string }): JSX.Element {
   const [mounted] = useState(() => Date.now())
   const [now, setNow] = useState(mounted)
   useEffect(() => {
@@ -50,7 +50,7 @@ export function Elapsed({ since }: { since?: number }): JSX.Element {
   }, [])
   const secs = Math.max(0, Math.floor((now - (since ?? mounted)) / 1000))
   return (
-    <span className="chat-trace-ms live" aria-live="off">
+    <span className="chat-trace-ms live" aria-live="off" title={title}>
       {secs < 60 ? `${secs} s` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} min`}
     </span>
   )

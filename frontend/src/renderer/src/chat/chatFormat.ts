@@ -27,3 +27,12 @@ export function attachExtent(a: AttachmentMeta): string {
 export function contextLabel(tokens: number, window?: number): string {
   return window ? `${Math.max(1, Math.round((tokens / window) * 100))}%` : compact(tokens)
 }
+
+/** A duration as m:ss, and as h:mm:ss from an hour on — a long run outlasts one. */
+export function clockLabel(ms: number): string {
+  const secs = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const ss = String(secs % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
+}

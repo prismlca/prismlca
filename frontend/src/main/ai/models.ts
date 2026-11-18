@@ -507,7 +507,11 @@ const CATALOGUE: AiModel[] = [
     // endpoints, both on the zero-retention list — `mistral/zdr` and `mistral/eu`, which runs in the EU
     // (checked 2026-11-12) — so the ZDR switch and the provider allowlist leave it reachable. No vendor
     // temperature is published and reasoning is always on, so the parameter is omitted — the catalogue's
-    // reasoning-model rule.
+    // reasoning-model rule. Its prompt cache is not one store: in eight runs of one modelling task
+    // (2026-11-18, 133 rounds) a round now and then hit an older state of the conversation — round 10 the
+    // prompt of round 3 — pinned to `mistral/eu` (2 of 47 rounds), to `mistral/zdr` (4 of 32) and
+    // unpinned (2 of 54) alike, so a pinned endpoint would cost availability and fix nothing. The run bar
+    // names such a round (cacheWatch.ts, "partial").
     id: 'mistralai/mistral-large-4-0',
     label: 'Mistral Large 4',
     descriptor: 'European lab · open weight · slow',

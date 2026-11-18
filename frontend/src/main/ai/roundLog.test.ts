@@ -150,7 +150,7 @@ describe('the run telemetry', () => {
     round(70_000, 0)
     round(90_000, 89_000)
     round(110_000, 0)
-    expect(alarms).toEqual(['dropped', 'recovered', 'dropped'])
+    expect(alarms).toEqual(['missed', 'recovered', 'missed'])
     const lines = warn.mock.calls.map((c) => String(c[0]))
     expect(lines).toHaveLength(2)
     expect(lines[0]).toContain("[prism-ai] cache warning: none of this round's 70000 prompt tokens")
@@ -201,6 +201,50 @@ describe('the run telemetry', () => {
       /cache: 0\/60000 prompt tokens \(0%\), .*, failed, .*via OpenRouter\/Sail/
     )
     expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('says how far short a partial hit fell, and escalates a second miss in a row', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const alarms: string[] = []
+    const t = createRunTelemetry({
+      model: 'test/model',
+      provider: 'openrouter',
+      onCacheSignal: (a) => alarms.push(a)
+    })
+    const round = (prompt: number, cached: number): void => {
+      t.begin(0, 1)
+      t.servedBy('Mistral')
+      t.usage(usage(prompt, cached))
+      t.end()
+    }
+    round(212_801, 211_456)
+    round(217_257, 72_192)
+    round(218_890, 0)
+    round(220_000, 0)
+    expect(alarms).toEqual(['partial', 'missed', 'dropped'])
+    const lines = warn.mock.calls.map((c) => String(c[0]))
+    expect(lines[0]).toContain(
+      "only 72192 of this round's 217257 prompt tokens came from the cache, although the round before had already sent 212801"
+    )
+    expect(lines[2]).toContain('a second round in a row read none of its 220000 prompt tokens from the cache')
+  })
+
+  it('does not measure the round after one whose figures add up server-side searches', () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const alarms: string[] = []
+    const t = createRunTelemetry({
+      model: 'test/model',
+      provider: 'anthropic',
+      onCacheSignal: (a) => alarms.push(a)
+    })
+    t.begin(0, 1)
+    t.usage(usage(128_723, 119_200), '1 web search')
+    t.end()
+    t.begin(1, 1)
+    t.usage(usage(130_000, 75_000))
+    t.end()
+    expect(alarms).toEqual([])
   })
 
   it('writes nothing for a round that never began', () => {

@@ -137,15 +137,20 @@ export function roundLine(f: RoundFigures): string {
   return `${figureParts(f, 'round').join(', ')} — ${f.model} (round ${f.round})`
 }
 
-/** The warning line for a cache alarm, without stamp and tag. */
-export function cacheAlarmLine(alarm: CacheAlarm, f: RoundFigures): string {
+/** The warning line for a cache alarm, without stamp and tag. `prevPrompt` is what the round before
+ *  sent — the measure a partial hit fell short of. */
+export function cacheAlarmLine(alarm: CacheAlarm, f: RoundFigures, prevPrompt?: number): string {
   const prompt = f.usage?.prompt_tokens ?? 0
   const cached = f.usage?.prompt_tokens_details?.cached_tokens ?? 0
   const route = f.provider === 'openrouter' ? `OpenRouter/${f.servedBy ?? '?'}` : (f.servedBy ?? f.provider)
   const what =
-    alarm === 'dropped'
+    alarm === 'missed'
       ? `none of this round's ${prompt} prompt tokens came from the cache, although earlier rounds of the run did — billed in full`
-      : `the cache has served the same ${cached} tokens for several rounds while the prompt grew to ${prompt} — the new part of every round is billed in full`
+      : alarm === 'dropped'
+        ? `a second round in a row read none of its ${prompt} prompt tokens from the cache — the cache is not working on this route, rounds are billed in full`
+        : alarm === 'partial'
+          ? `only ${cached} of this round's ${prompt} prompt tokens came from the cache, although the round before had already sent ${prevPrompt ?? '?'} — an older cache state or another endpoint; the rest is billed in full`
+          : `the cache has served the same ${cached} tokens for several rounds while the prompt grew to ${prompt} — the new part of every round is billed in full`
   return `cache warning: ${what} (via ${route}) — ${f.model} (round ${f.round})`
 }
 
@@ -180,6 +185,8 @@ export function createRunTelemetry(o: {
   const now = o.now ?? Date.now
   const watch = createCacheWatch()
   let lastEnd: number | undefined
+  /** The prompt of the last round the watch read — what a partial hit is measured against. */
+  let lastPrompt: number | undefined
   let cur:
     | {
         round: number
@@ -262,18 +269,24 @@ export function createRunTelemetry(o: {
       aiLog(roundLine(f))
       const prompt = f.usage?.prompt_tokens
       if (f.failed || typeof prompt !== 'number' || prompt <= 0) return
+      const prevPrompt = lastPrompt
+      lastPrompt = prompt
       const alarm = watch.observe({
         prompt,
         cached: f.usage?.prompt_tokens_details?.cached_tokens ?? 0,
-        idleMs
+        idleMs,
+        // Several requests, or server-side search turns inside one: the figures add up passes (a re-sent
+        // attempt counts as a request too, which only makes the watch more careful).
+        aggregate: (f.requests ?? 1) > 1 || !!f.web
       })
       if (!alarm) return
       if (alarm === 'recovered') aiLog(`cache working again — ${f.model} (round ${f.round})`)
-      else aiWarn(cacheAlarmLine(alarm, f))
+      else aiWarn(cacheAlarmLine(alarm, f, prevPrompt))
       o.onCacheSignal?.(alarm)
     },
     compacted() {
       watch.reset()
+      lastPrompt = undefined
     }
   }
 }

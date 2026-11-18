@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-18",
+    "title": "Run bar shows the run's time; question card waits for Answer",
+    "details": "The chat's run bar now shows the whole run's time beside the current step's, and it names a single round that missed the prompt cache or got only part of it as such; only two misses in a row read as a cache that is not working. A question card with one question now also sends with Answer, so a slipped click can be corrected."
+  },
+  {
+    "date": "2026-11-18",
     "title": "Bill-of-materials research says what it could not check",
     "details": "The research now looks for the product's own weight and checks the parts against it, counts a set of five shelves as five, keeps packaging apart and names every part without a mass and every research request that failed. When the sources show more than one version of the product, the result names them, so the assistant can ask which one you mean before it builds."
   },

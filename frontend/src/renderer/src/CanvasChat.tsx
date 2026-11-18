@@ -1033,7 +1033,9 @@ export default function CanvasChat({
           {/* A row of its own above the transcript, not a sticky child of it: pinned by `position: sticky`
               inside the scrolling transcript, it lost its place when the transcript scrolled on while the
               window was covered (another app in front during a run) and came back only at the very top. */}
-          {busy ? <RunStatus turn={turn} labels={toolLabels} /> : null}
+          {busy ? (
+            <RunStatus turn={turn} labels={toolLabels} run={chatId ? planEntries[chatId]?.run : null} />
+          ) : null}
           <div className="chat-body" ref={bodyRef} onScroll={onScroll}>
             {messages.length === 0 && !streaming ? (
               <div className="chat-hint">
