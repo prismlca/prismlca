@@ -6,24 +6,7 @@ import uuid
 from pathlib import Path
 
 import pytest
-
-
-def _open_files_under(folder: Path) -> list[str] | None:
-    """The files below ``folder`` this process still has open, or None where /proc cannot say (Windows,
-    macOS). A file that was deleted while open is listed too, as ``… (deleted)``: on Linux that works, on
-    Windows it is the delete that fails."""
-    fds = Path("/proc/self/fd")
-    if not fds.is_dir():
-        return None
-    still_open = []
-    for fd in fds.iterdir():
-        try:
-            target = os.readlink(fd)
-        except OSError:
-            continue
-        if target.startswith(str(folder)):
-            still_open.append(target)
-    return sorted(still_open)
+from open_files import open_files_under
 
 
 def test_projects_require_token(client):
@@ -157,7 +140,7 @@ def test_a_workspace_calculated_in_can_be_deleted_with_nothing_of_it_left_open(c
     r = client.delete(f"/api/v1/projects/{name}", headers=token)
     assert r.status_code == 200, r.text
     assert not folder.exists()
-    assert _open_files_under(folder) in ([], None)
+    assert open_files_under(folder) in ([], None)
 
 
 def test_a_workspace_with_a_model_and_a_parameter_can_be_deleted_with_nothing_of_it_left_open(client, token):
@@ -176,7 +159,7 @@ def test_a_workspace_with_a_model_and_a_parameter_can_be_deleted_with_nothing_of
     r = client.delete(f"/api/v1/projects/{name}", headers=token)
     assert r.status_code == 200, r.text
     assert not folder.exists()
-    assert _open_files_under(folder) in ([], None)
+    assert open_files_under(folder) in ([], None)
 
 
 @pytest.mark.parametrize("deleted_from", ["inside", "another workspace"])
@@ -205,7 +188,7 @@ def test_a_workspace_another_thread_has_read_can_be_deleted_with_nothing_of_it_l
     thread.start()
     try:
         assert has_read.wait(60), "the other thread never read the workspace"
-        before = _open_files_under(folder)
+        before = open_files_under(folder)
         if before is not None:
             assert any(t.endswith("parameters.db") for t in before), "nothing was open to begin with"
         if deleted_from == "another workspace":
@@ -215,7 +198,7 @@ def test_a_workspace_another_thread_has_read_can_be_deleted_with_nothing_of_it_l
         r = client.delete(f"/api/v1/projects/{name}", headers=token)
         assert r.status_code == 200, r.text
         assert not folder.exists()
-        assert _open_files_under(folder) in ([], None)
+        assert open_files_under(folder) in ([], None)
     finally:
         may_end.set()
         thread.join(60)
@@ -244,7 +227,7 @@ def test_a_workspace_that_was_left_is_let_go_of_by_the_threads_that_read_it(clie
     thread.start()
     try:
         assert has_read.wait(60), "the other thread never read the workspace"
-        before = _open_files_under(folder)
+        before = open_files_under(folder)
         if before is not None:
             assert any(t.endswith("parameters.db") for t in before), "nothing was open to begin with"
 
@@ -254,7 +237,7 @@ def test_a_workspace_that_was_left_is_let_go_of_by_the_threads_that_read_it(clie
             r = client.post("/api/v1/projects", json={"name": "next-" + uuid.uuid4().hex[:8]}, headers=token)
         assert r.status_code == 200, r.text
 
-        assert _open_files_under(folder) in ([], None)
+        assert open_files_under(folder) in ([], None)
         # Windows refuses to rename a folder with an open file in it, so there this is the check.
         moved = folder.with_name(folder.name + ".moved")
         os.rename(folder, moved)

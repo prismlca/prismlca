@@ -17,7 +17,7 @@ from prism_lca.api.error_handlers import install_error_handlers
 from prism_lca.api.token_gate import TokenGate, has_valid_token
 from prism_lca.api.v1.router import api_router
 from prism_lca.config import Settings, get_settings
-from prism_lca.engine import model
+from prism_lca.engine import left_workspace, model
 from prism_lca.engine.brightway_repository import BrightwayRepository
 from prism_lca.engine.commands import (
     CLIENT_LABEL_RE,
@@ -45,6 +45,9 @@ class _InFlightMiddleware:
     process to end, and on Windows the fallback after that wait is TerminateProcess
     (V-2). Pure ASGI for the same reason
     as the middleware below; the counter is only ever touched on the event loop, so it needs no lock.
+
+    A request in flight is also a read a workspace switch can fall into: it runs inside
+    ``left_workspace.reading()``, so a switch it did not make itself is let go of when it ends.
     """
 
     def __init__(self, app, state) -> None:  # noqa: ANN001 - ASGI app callable, Starlette State
@@ -80,7 +83,8 @@ class _InFlightMiddleware:
         token = next(self._tokens)
         self.state.request_starts[token] = time.monotonic()
         try:
-            return await self.app(scope, receive, send)
+            with left_workspace.reading():
+                return await self.app(scope, receive, send)
         finally:
             self.state.requests_in_flight -= 1
             del self.state.request_starts[token]

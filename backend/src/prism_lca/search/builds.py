@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from prism_lca.engine import left_workspace
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.errors import PrismError
 from prism_lca.search.indexer import build_index
@@ -161,7 +162,9 @@ class IndexBuilds:
         return False
 
     def _spawn(self, job: _Job) -> None:
-        threading.Thread(target=self._run, args=(job,), name="prism-index-build", daemon=True).start()
+        threading.Thread(
+            target=left_workspace.reader(self._run), args=(job,), name="prism-index-build", daemon=True
+        ).start()
 
     def _run(self, job: _Job) -> None:
         """Do the job, then hand the slot on — whatever happened, and from nowhere else."""
