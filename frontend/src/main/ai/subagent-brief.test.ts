@@ -18,7 +18,8 @@ const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.con
 const legs = (): Array<{ system: string; reasoningEffort?: string }> =>
   chat.seen.map((c) => ({ system: String(c.messages[0]?.content ?? ''), reasoningEffort: c.reasoningEffort }))
 
-const { researchBom, researchWeb } = await import('./subagent')
+const { researchBom } = await import('./researchBom')
+const { researchWeb } = await import('./subagent')
 
 /** The app log's lines, without stamp and tag. */
 let logged: string[] = []

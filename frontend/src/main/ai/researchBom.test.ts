@@ -1,0 +1,139 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { chat } from './test/fakeStream'
+
+/**
+ * The researcher end to end on scripted legs: which answer belongs to which request, what a leg that dies
+ * leaves behind, and what every leg is told about the others and about the total.
+ */
+vi.mock('./client', async () => (await import('./test/fakeStream')).clientModuleMock())
+chat.alwaysDelta = true
+
+const { researchBom } = await import('./researchBom')
+
+const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.content ?? ''))
+const answer = (o: unknown): { text: string } => ({ text: JSON.stringify(o) })
+
+beforeEach(() => {
+  chat.seen.length = 0
+  chat.rounds = []
+  chat.fallbackText = ''
+})
+
+describe('researchBom', () => {
+  // T5: the coating's follow-up came back as "Oberflächenschutz/Verzinkung des Stahlrahmens", the gap was
+  // called "… (Zinkschichtgewicht) des Rahmens", neither name contained the other — and the found figure
+  // stood in the items while its gap stayed open beside it.
+  it('books a follow-up answer to the gap it was asked for, whatever the leg called the part', async () => {
+    chat.rounds = [
+      answer({
+        items: [{ component: 'frame', material: 'steel', mass_kg: 7, source_url: 'https://e.org/f' }]
+      }),
+      answer({ items: [{ component: 'Verzinkung (Zinkschichtgewicht) des Rahmens', mass_kg: null }] }),
+      answer({
+        items: [
+          { component: 'Oberflächenschutz des Stahlrahmens', mass_kg: 0.14, source_url: 'https://e.org/z' }
+        ]
+      })
+    ]
+    const r = await researchBom({ product: 'rack', components: ['frame', 'zinc coating'] })
+    expect(r.follow_up).toEqual({ asked: 1, resolved: 1 })
+    expect(r.unresolved).toEqual([])
+    expect(r.requests).toEqual([
+      { component: 'frame', status: 'with_mass' },
+      { component: 'zinc coating', status: 'with_mass' }
+    ])
+    expect(r.sum_kg).toBeCloseTo(7.14, 6)
+  })
+
+  it('keeps what a follow-up again found no mass for, and does not count the gap as resolved', async () => {
+    chat.rounds = [
+      answer({ items: [{ component: 'wheel', mass_kg: null }] }),
+      answer({
+        items: [
+          { component: 'tyre', mass_kg: 1.4, source_url: 'https://e.org/t' },
+          { component: 'hub', mass_kg: null }
+        ]
+      })
+    ]
+    const r = await researchBom({ product: 'barrow', components: ['wheel'] })
+    expect(r.follow_up).toEqual({ asked: 1, resolved: 0 })
+    expect(r.unresolved.map((u) => u.component)).toEqual(['hub'])
+    expect(r.requests).toEqual([{ component: 'wheel', status: 'partial' }])
+  })
+
+  it('treats a part answered only with the whole product as a gap, and asks for the part alone', async () => {
+    chat.rounds = [
+      answer({ items: [], product_mass: [{ mass_kg: 13, basis: 'net', source_url: 'https://e.org/p' }] }),
+      answer({ items: [{ component: 'frame', mass_kg: null }] })
+    ]
+    const r = await researchBom({ product: 'rack', components: ['frame'] })
+    expect(asked()[1]).toMatch(
+      /ONLY the component "frame": the mass of that part alone in kg — not of the whole product/
+    )
+    expect(r.unresolved).toEqual([
+      expect.objectContaining({ component: 'frame', reason: 'whole_product_only' })
+    ])
+    expect(r.summary).toMatch(/frame \(only the whole product's mass found\)/)
+  })
+
+  it('names a leg that never came back, with its reason, under its request', async () => {
+    chat.rounds = [
+      answer({ items: [{ component: 'shelves', mass_kg: 6, source_url: 'https://e.org/s' }] }),
+      { throws: new Error('connection reset') },
+      { throws: new Error('connection reset') }
+    ]
+    const r = await researchBom({ product: 'rack', components: ['shelves', 'feet'], totalMassKg: 7 })
+    expect(r.coverage).toEqual({ requested: 2, with_mass: 1 })
+    expect(r.unresolved).toEqual([{ component: 'feet', reason: 'failed', note: 'connection reset' }])
+    expect(r.balance_ok).toBeNull()
+    expect(r.summary).toMatch(/open: feet \(research failed\)/)
+  })
+
+  it('tells every leg what the others research, and fences the total off from the parts', async () => {
+    chat.fallbackText = '{"items": []}'
+    await researchBom({ product: 'rack', components: ['frame', 'shelves', 'feet'], totalMassKg: 13 })
+    const frame = asked().find((q) => q.includes('ONLY the component "frame"')) ?? ''
+    expect(frame).toContain('Researched separately, by other researchers: "shelves", "feet".')
+    expect(frame).toContain("about 13 kg — given to identify the product; never derive a part's mass from it")
+    expect(frame).not.toMatch(/other researchers: [^\n]*"frame"/)
+  })
+
+  it('checks the parts against a whole-product mass a leg found when the caller had none', async () => {
+    const total = {
+      mass_kg: 13,
+      basis: 'net',
+      version: 'EAN 5400431601480',
+      source_url: 'https://www.praxis.example/rack'
+    }
+    chat.rounds = [
+      answer({
+        items: [{ component: 'frame', mass_kg: 7, source_url: 'https://e.org/f' }],
+        product_mass: [total]
+      }),
+      answer({
+        items: [{ component: 'shelves', count: 5, mass_each_kg: 1.2, source_url: 'https://e.org/s' }],
+        product_mass: [total]
+      })
+    ]
+    const r = await researchBom({ product: 'rack', components: ['frame', 'shelves'] })
+    expect(r.total_used).toMatchObject({ mass_kg: 13, source: 'researched', basis: 'net' })
+    expect(r.sum_kg).toBeCloseTo(13, 6)
+    expect(r.balance_ok).toBe(true)
+    expect(r.sources).toContain('https://www.praxis.example/rack')
+  })
+
+  it('names the components over the limit instead of dropping them silently', async () => {
+    chat.fallbackText = '{"items": [{"component": "x", "mass_kg": 1, "source_url": "https://e.org"}]}'
+    const r = await researchBom({ product: 'x', components: Array.from({ length: 10 }, (_, i) => `c${i}`) })
+    expect(asked()).toHaveLength(8)
+    expect(r.not_researched).toEqual(['c8', 'c9'])
+    expect(r.coverage).toEqual({ requested: 10, with_mass: 8 })
+    expect(r.balance_ok).toBeNull()
+  })
+
+  it('still reads the bare array older answers come as', async () => {
+    chat.rounds = [answer([{ component: 'body', mass_kg: 0.019, source_url: 'https://e.org/b' }])]
+    const r = await researchBom({ product: 'bottle', components: ['body'], totalMassKg: 0.019 })
+    expect(r.balance_ok).toBe(true)
+  })
+})

@@ -9,7 +9,7 @@ import { chat } from './test/fakeStream'
 vi.mock('./client', async () => (await import('./test/fakeStream')).clientModuleMock())
 chat.alwaysDelta = true
 
-const { researchBom } = await import('./subagent')
+const { researchBom } = await import('./researchBom')
 
 beforeEach(() => {
   chat.seen.length = 0
