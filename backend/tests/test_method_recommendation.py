@@ -1,4 +1,4 @@
-from prism_lca.engine.lca import _is_recommended
+from prism_lca.engine.method_lookup import _is_recommended
 
 
 def test_standard_indicators_are_recommended():

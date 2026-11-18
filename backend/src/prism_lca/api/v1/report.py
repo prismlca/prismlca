@@ -19,6 +19,7 @@ from prism_lca import _log
 from prism_lca.api.v1.deps import MethodRef, require_token
 from prism_lca.engine import (
     report_audit,
+    report_bundle_readme,
     report_pipeline,
     report_short,
     report_snapshot,
@@ -818,7 +819,7 @@ def report_bundle(request: Request, database: str, report_id: str, body: RenderR
         for path, content in sources.items():
             zf.writestr(path, content if isinstance(content, bytes) else content.encode("utf-8"))
         zf.writestr("data.json", _json.dumps(info["data"], indent=1, ensure_ascii=False))
-        zf.writestr("README.md", report_pipeline.bundle_readme(name, version, zf.namelist()))
+        zf.writestr("README.md", report_bundle_readme.bundle_readme(name, version, zf.namelist()))
     # The hand-off is a copy of the study leaving the building, so it belongs in the trail as much as
     # the PDF does — with the file count, because what travelled is what the recipient will ask about.
     report_audit.note(

@@ -151,4 +151,19 @@ describe('calculate', () => {
     expect(body.method_family).toBe('IPCC 2021')
     expect(body.direct_split).toBe(true)
   })
+
+  it('asks for a partial answer, so one misspelt method does not cost the valid ones', async () => {
+    const api = vi.fn<ToolCtx['api']>(async () => ({ results: [] }))
+    const methods = [
+      ['IPCC 2021', 'x', 'y'],
+      ['EF v3.1', 'guessed']
+    ]
+    await tool('calculate').run({ database: 'd', code: 'c', methods }, ctx(api))
+    await tool('calculate').run({ database: 'd', codes: ['a', 'b'], methods }, ctx(api))
+    for (const call of api.mock.calls) {
+      expect(call[1]).toBe('/api/v1/calc/lcia')
+      expect((call[2] as Record<string, unknown>).partial).toBe(true)
+    }
+    expect(api).toHaveBeenCalledTimes(3)
+  })
 })

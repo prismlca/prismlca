@@ -52,6 +52,34 @@ def _interpreter_names() -> frozenset[str]:
 #: `ndler_km`, and a parameter the interpreter computes with is reported as one nothing uses.
 IDENT = r"[^\W\d]\w*"
 
+def check_name(name: str) -> None:
+    """Refuse a parameter name a formula could never read, and suggest one it can.
+
+    Python reads names in normal form NFKC: the micro sign µ becomes the Greek mu μ, m² becomes m2, CO₂
+    becomes CO2. A parameter named with them would be "not defined" in every formula — the engine below
+    refused it with "not a valid Python name" and a hint to check the formula, the wrong place to look.
+    Letters of every script stay allowed; it is the folding that cannot work, and the punctuation.
+    """
+    folded = unicodedata.normalize("NFKC", name)
+    if folded == name and name.isidentifier() and not keyword.iskeyword(name):
+        return
+    if folded != name and folded.isidentifier() and not keyword.iskeyword(folded):
+        why = f"a formula reads it as '{folded}' (it rewrites characters such as µ, ² and ₂), so it could never find it"
+        suggestion = folded
+    else:
+        why = "a formula reads only names of letters, digits and underscores that do not start with a digit"
+        suggestion = re.sub(r"\W+", "_", folded).strip("_") or "value"
+        if suggestion[0].isdigit():
+            suggestion = f"p_{suggestion}"
+        if keyword.iskeyword(suggestion):
+            suggestion = f"{suggestion}_value"
+    raise PrismError(
+        f"'{name}' cannot be a parameter name: {why}.",
+        code="invalid_name",
+        hint=f"Name it '{suggestion}'.",
+    )
+
+
 #: Every word that could be a name — the reading of a formula that does not parse.
 _WORD = re.compile(IDENT)
 

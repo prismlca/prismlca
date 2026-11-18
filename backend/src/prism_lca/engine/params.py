@@ -577,6 +577,7 @@ def set_param(
     if not name:
         raise PrismError("Parameter name must not be empty.", code="invalid_name",
                          hint="Provide a non-empty parameter name.")
+    param_references.check_name(name)
     # A group may be given by id (from the UI) or by name (assistant/legacy) — resolve to an id.
     if group_id is None and group:
         from prism_lca.engine import parameter_groups
@@ -703,6 +704,7 @@ def set_params_bulk(database: str, items: list[dict]) -> list[dict]:
         if not name:
             raise PrismError("Parameter name must not be empty.", code="invalid_name",
                              hint="Provide a non-empty parameter name.")
+        param_references.check_name(name)
         group_id = item.get("group_id")
         if group_id is None and item.get("group"):
             group_id = parameter_groups.find_or_create(database, item["group"])["id"]

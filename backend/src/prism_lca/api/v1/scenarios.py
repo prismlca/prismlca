@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import MethodRef, require_token
-from prism_lca.engine import commands, lca, params, scenarios
+from prism_lca.engine import commands, lca, params, scenario_rules, scenarios
 from prism_lca.engine.model import resolve_db_name
 from prism_lca.engine.scenarios import ScenarioStore
 from prism_lca.errors import PrismError
@@ -134,26 +134,45 @@ def list_scenarios(request: Request, database: str) -> list[dict]:
 # scenario command has to reach for the calculation lock from inside the bus lock, which deadlocked.
 
 
+def _with_notes(out, redundant: list[str], warnings: list[str] | None = None):
+    """The command's answer, plus what the checks found that does not refuse the change."""
+    if not isinstance(out, dict) or not (redundant or warnings):
+        return out
+    extra: dict = {}
+    if redundant:
+        extra["redundant_overrides"] = redundant
+        extra["redundant_note"] = (
+            "These values equal what the model has now. They are kept: the variant differs through its other "
+            "values, and a value written at today's level stays fixed if the baseline moves."
+        )
+    if warnings:
+        extra["warnings"] = warnings
+    return {**out, **extra}
+
+
 @router.post("", summary="Create a scenario")
 def create_scenario(request: Request, body: CreateScenarioRequest) -> dict:
     with lca._LCA_LOCK:
         scenarios.check_overrides(body.database, body.overrides, scenario=body.name)
-        scenarios.refuse_ineffective(body.database, body.overrides, scenario=body.name)
+        redundant = scenarios.refuse_ineffective(body.database, body.overrides, scenario=body.name)
+        scenario_rules.refuse(body.database, body.overrides, scenario=body.name)
         cmd = commands.CreateScenarioCommand(_store(), body.database, body.name, body.description, body.overrides)
-        return _bus(request).execute(cmd, source=body.source)
+        return _with_notes(_bus(request).execute(cmd, source=body.source), redundant)
 
 
 @router.post("/update", summary="Update a scenario (name, description, overrides)")
 def update_scenario(request: Request, body: UpdateScenarioRequest) -> dict:
     with lca._LCA_LOCK:
+        redundant: list[str] = []
         if body.overrides is not None:
             label = body.name if body.name is not None else str(_store().get(body.id, body.database).get("name") or "")
             scenarios.check_overrides(body.database, body.overrides, scenario=label)
-            scenarios.refuse_ineffective(body.database, body.overrides, scenario=label)
+            redundant = scenarios.refuse_ineffective(body.database, body.overrides, scenario=label)
+            scenario_rules.refuse(body.database, body.overrides, scenario=label)
         cmd = commands.UpdateScenarioCommand(
             _store(), body.database, body.id, body.name, body.description, body.overrides
         )
-        return _bus(request).execute(cmd, source=body.source)
+        return _with_notes(_bus(request).execute(cmd, source=body.source), redundant)
 
 
 @router.post("/duplicate", summary="Duplicate a scenario")
@@ -165,14 +184,14 @@ def duplicate_scenario(request: Request, body: ScenarioIdRequest) -> dict:
 def set_value(request: Request, body: ScenarioValueRequest) -> dict:
     with lca._LCA_LOCK:
         entry = _store().get(body.id)
-        scenarios.refuse_ineffective(
-            str(entry.get("database") or ""),
-            {**(entry.get("overrides") or {}), body.param: body.value},
-            scenario=str(entry.get("name") or ""),
-            only={body.param},
-        )
+        database, name = str(entry.get("database") or ""), str(entry.get("name") or "")
+        merged = {**(entry.get("overrides") or {}), body.param: body.value}
+        redundant = scenarios.refuse_ineffective(database, merged, scenario=name)
+        # Warned, not refused: single values set one after another pass through states that are not the
+        # intended end, and the value that brings a remainder back may be the next call.
+        warnings = scenario_rules.warnings(database, merged, scenario=name)
         cmd = commands.SetScenarioValueCommand(_store(), body.id, body.param, body.value)
-        return _bus(request).execute(cmd, source=body.source)
+        return _with_notes(_bus(request).execute(cmd, source=body.source), redundant, warnings)
 
 
 @router.post("/delete", summary="Delete a scenario")

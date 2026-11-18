@@ -157,7 +157,13 @@ describe('setup_results readback', () => {
         view = { ...view, ...(body as { view: Record<string, unknown> }).view }
         return { ok: true }
       },
-      'GET /api/v1/model/tag-groups/in-use': { groups: [] }
+      'GET /api/v1/model/tag-groups/in-use': { groups: [] },
+      'GET /api/v1/model/activities/m': [{ code: 'root', name: 'Refill pack' }],
+      'GET /api/v1/scenarios': [
+        { id: 's1', name: 'Cold wash' },
+        { id: 's2', name: 'Hot wash' }
+      ],
+      'GET /api/v1/databases': [{ name: 'm', kind: 'model' }]
     })
     ;(window as unknown as { prism: unknown }).prism = fixture.prism
   }
@@ -176,6 +182,9 @@ describe('setup_results readback', () => {
     expect(held.subjects).toEqual(['root'])
     expect(held.scenarios).toEqual(['s1', 's2'])
     expect(held.baseline).toBe(true)
+    // The rows the page computes from it, counted and named by the page's own function.
+    expect(held.rows).toBe(3)
+    expect(held.row_labels).toEqual(['Refill pack', 'Cold wash', 'Hot wash'])
   })
 
   it('says the baseline is off when only scenario variants were asked for', async () => {
@@ -187,5 +196,7 @@ describe('setup_results readback', () => {
     })) as Record<string, unknown>
     expect(held.scenarios).toEqual(['s1'])
     expect(held.baseline).toBe(false)
+    expect(held.rows).toBe(1)
+    expect(held.row_labels).toEqual(['Cold wash'])
   })
 })
