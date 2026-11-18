@@ -154,11 +154,30 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
   // Out of time, not out of answers. Said as an error rather than returned as "" so the caller can tell
   // the user which of the two happened; a silent empty leg reads as "the web knows nothing about this".
   if (clock.signal.aborted && !text)
-    throw new Error(
+    throw new ResearchTimeout(
       `The research ran past its ${Math.round((opts.budgetMs ?? LEG_BUDGET_MS) / 60_000)}-minute budget and was stopped. ` +
         'Ask again with a narrower question, or supply the figures yourself.'
     )
   return text
+}
+
+/** A leg that ran past its wall-clock budget — the one failure the narrower retry is made for. */
+export class ResearchTimeout extends Error {}
+
+/**
+ * Whether a failed leg is worth the one narrower retry. Not when the provider refused the key, the account
+ * or the model: asking a smaller question fails the same way, and the retry only doubled the wait — with
+ * expired keys, five legs reported "ran out of time" after 0 s and failed again.
+ */
+export function retryCanHelp(e: unknown): boolean {
+  return !(e instanceof AiProviderError && ['auth', 'no_key', 'credits', 'no_endpoint'].includes(e.code))
+}
+
+/** What a failed leg's trace line says happened: out of time only when it was, else the error itself. */
+export function legFailure(e: unknown): string {
+  if (e instanceof ResearchTimeout) return 'ran out of time'
+  const message = (e instanceof Error ? e.message : String(e)).trim().replace(/\.$/, '')
+  return message.length > 90 ? `${message.slice(0, 87)}…` : message || 'the request failed'
 }
 
 /**
@@ -449,12 +468,14 @@ export async function researchWeb(opts: {
         onCitations: (c) => book.add(c)
       })
     } catch (e) {
-      // Out of time or a dead connection — worth one narrow retry. A Stop from the user is not.
-      if (!timedOut && !opts.signal?.aborted) {
+      // Out of time or a dead connection — worth one narrow retry. A Stop from the user is not, and neither
+      // is a refused key or account: the trace names the error and the leg fails at once.
+      if (!timedOut && !opts.signal?.aborted && retryCanHelp(e)) {
         timedOut = true
-        opts.onProgress?.(`${leg}${label}: ran out of time — retrying with a narrower question`)
+        opts.onProgress?.(`${leg}${label}: ${legFailure(e)} — retrying with a narrower question`)
         continue
       }
+      if (!opts.signal?.aborted) opts.onProgress?.(`${leg}${label}: ${legFailure(e)}`)
       throw e
     }
     if (text) {
@@ -533,9 +554,10 @@ export async function researchWeb(opts: {
       opts.onProgress?.(
         `${leg}${label}: ${upgrades.length ? `+${upgrades.length} official/industry` : 'no stronger source found'}`
       )
-    } catch {
-      // The upgrade is a bonus on top of a finished answer — running out of time must not cost it.
-      upgradeNote = 'All findings rest on media/community sources; an upgrade pass ran out of time.'
+    } catch (e) {
+      // The upgrade is a bonus on top of a finished answer — its failure must not cost it, and the note says
+      // why it failed rather than assuming the clock.
+      upgradeNote = `All findings rest on media/community sources; an upgrade pass failed (${legFailure(e)}).`
     }
   }
   opts.onProgress?.(

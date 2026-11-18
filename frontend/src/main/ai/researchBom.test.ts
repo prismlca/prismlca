@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { chat } from './test/fakeStream'
+import { FakeOpenRouterError, chat } from './test/fakeStream'
 
 /**
  * The researcher end to end on scripted legs: which answer belongs to which request, what a leg that dies
@@ -9,6 +9,7 @@ vi.mock('./client', async () => (await import('./test/fakeStream')).clientModule
 chat.alwaysDelta = true
 
 const { researchBom } = await import('./researchBom')
+const { researchWeb } = await import('./subagent')
 
 const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.content ?? ''))
 const answer = (o: unknown): { text: string } => ({ text: JSON.stringify(o) })
@@ -135,5 +136,50 @@ describe('researchBom', () => {
     chat.rounds = [answer([{ component: 'body', mass_kg: 0.019, source_url: 'https://e.org/b' }])]
     const r = await researchBom({ product: 'bottle', components: ['body'], totalMassKg: 0.019 })
     expect(r.balance_ok).toBe(true)
+  })
+
+  // Expired keys: five legs reported "ran out of time" after 0 s and each tried a second, narrower request
+  // that failed the same way.
+  it('names a refused key in the trace and does not retry it', async () => {
+    chat.rounds = [{ throws: new FakeOpenRouterError('OpenRouter API key invalid or missing.', 'auth') }]
+    const progress: string[] = []
+    const r = await researchBom({
+      product: 'rack',
+      components: ['frame'],
+      onProgress: (n) => progress.push(n)
+    })
+    expect(chat.seen).toHaveLength(1)
+    expect(progress).toContain('frame: OpenRouter API key invalid or missing')
+    expect(progress.join(' ')).not.toMatch(/ran out of time/)
+    expect(r.unresolved).toEqual([
+      { component: 'frame', reason: 'failed', note: 'OpenRouter API key invalid or missing.' }
+    ])
+  })
+
+  it('still retries a dropped connection once, naming it', async () => {
+    chat.rounds = [
+      { throws: new Error('connection reset') },
+      answer({ items: [{ component: 'frame', mass_kg: 7, source_url: 'https://e.org/f' }] })
+    ]
+    const progress: string[] = []
+    const r = await researchBom({
+      product: 'rack',
+      components: ['frame'],
+      onProgress: (n) => progress.push(n)
+    })
+    expect(chat.seen).toHaveLength(2)
+    expect(progress).toContain('frame: connection reset — retrying with a narrower question')
+    expect(r.items).toHaveLength(1)
+  })
+
+  it('does the same for a web research leg', async () => {
+    chat.rounds = [{ throws: new FakeOpenRouterError('OpenRouter API key invalid or missing.', 'auth') }]
+    const progress: string[] = []
+    await expect(
+      researchWeb({ question: 'Recycling rate of steel in Germany?', onProgress: (n) => progress.push(n) })
+    ).rejects.toThrow(/API key invalid/)
+    expect(chat.seen).toHaveLength(1)
+    expect(progress.join(' ')).toMatch(/API key invalid or missing/)
+    expect(progress.join(' ')).not.toMatch(/ran out of time/)
   })
 })
