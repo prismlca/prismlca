@@ -202,13 +202,11 @@ class BrightwayRepository(LcaRepository):
         from prism_lca.engine import lca, workspace_removal
 
         lca.release_cached(name)
-        # The same goes for the workspace's SQLite files. Brightway's switch closes the connections of the
-        # thread that switches; every other thread that read the workspace — the server's event loop runs
-        # the `async` routes, its worker threads the rest — keeps its own until the database object they
-        # belong to is collected. The switch collects them one database late, so the last one, the parameter
-        # database, is still there and `parameters.db` stays open. Nothing refers to those objects any
-        # more, so one collection closes what is left — also for a workspace that was left earlier and is
-        # deleted from another one.
+        # The same goes for the workspace's SQLite files. Every switch closes what other threads opened in
+        # the workspace it leaves — the server's event loop runs the `async` routes, its worker threads the
+        # rest (engine/bootstrap.py). A thread that was in the middle of a read at that moment still held
+        # its database object, so its connection outlived that collection; once the read has ended, the
+        # next collection closes it — this one, at the moment the folder has to be free.
         gc.collect()
         try:
             workspace_removal.remove(name)

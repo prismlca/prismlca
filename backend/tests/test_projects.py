@@ -219,3 +219,46 @@ def test_a_workspace_another_thread_has_read_can_be_deleted_with_nothing_of_it_l
     finally:
         may_end.set()
         thread.join(60)
+
+
+@pytest.mark.parametrize("left_by", ["opening another", "creating another"])
+def test_a_workspace_that_was_left_is_let_go_of_by_the_threads_that_read_it(client, token, left_by):
+    """The server's event loop and its worker threads read a workspace and live on after the user has left
+    it. Their connections must close at the switch: an open `parameters.db` keeps Windows from deleting,
+    moving or renaming the folder of a workspace nobody is in — from outside the app too."""
+    from bw2data.parameters import ProjectParameter
+
+    from prism_lca.engine.bootstrap import get_bd
+
+    name = "left-" + uuid.uuid4().hex[:8]
+    assert client.post("/api/v1/projects", json={"name": name}, headers=token).status_code == 200
+    folder = Path(get_bd().projects.dir)
+    has_read, may_end = threading.Event(), threading.Event()
+
+    def reader() -> None:
+        list(ProjectParameter.select())  # opens this thread's own connection
+        has_read.set()
+        may_end.wait(60)
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+    try:
+        assert has_read.wait(60), "the other thread never read the workspace"
+        before = _open_files_under(folder)
+        if before is not None:
+            assert any(t.endswith("parameters.db") for t in before), "nothing was open to begin with"
+
+        if left_by == "opening another":
+            r = client.post("/api/v1/projects/default/activate", headers=token)
+        else:
+            r = client.post("/api/v1/projects", json={"name": "next-" + uuid.uuid4().hex[:8]}, headers=token)
+        assert r.status_code == 200, r.text
+
+        assert _open_files_under(folder) in ([], None)
+        # Windows refuses to rename a folder with an open file in it, so there this is the check.
+        moved = folder.with_name(folder.name + ".moved")
+        os.rename(folder, moved)
+        os.rename(moved, folder)
+    finally:
+        may_end.set()
+        thread.join(60)
