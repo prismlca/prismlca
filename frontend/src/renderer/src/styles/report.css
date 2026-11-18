@@ -276,9 +276,9 @@
 .rsec-plan-tag.bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent);
   color: var(--bad); }
 /* Warning yellow is unreadable as text on a light surface, so the badge borrows it for the border
-   and darkens it for the word itself. */
-.rsec-plan-tag.warn { border-color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, transparent);
-  color: color-mix(in srgb, var(--prism-warning, #ffae00) 55%, var(--prism-ink, #303030)); }
+   and mixes it with the text colour for the word: darker on the light theme, lighter on the dark. */
+.rsec-plan-tag.warn { border-color: color-mix(in srgb, var(--wait) 70%, transparent);
+  color: color-mix(in srgb, var(--wait) 55%, var(--text)); }
 /* The reason is the point of the row, but it must never push the chapter name out of view. */
 .rsec-plan-why { color: var(--faint); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; min-width: 0; }
