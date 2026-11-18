@@ -56,6 +56,12 @@ export function buildSystemPrompt(opts: {
   /** The study language recorded in the model's metadata ('de', 'en', …); undefined = none yet. */
   studyLanguage?: string
   /**
+   * Whether every user turn opens with the app's bracketed note naming the study language
+   * (turnNote.ts) — the in-app chat, and the default. The MCP orientation passes false: an external
+   * client never receives that note, so its language rule names the recorded language itself.
+   */
+  perTurnNote?: boolean
+  /**
    * One Markdown brief per model this one is compared with (backend `comparison_brief`), switched on
    * for this chat. Deterministic, generated from the other model's own records; the rule in front of
    * them separates the frame (take over 1:1), shared assumptions (same value, same parameter name,
@@ -143,16 +149,22 @@ export function buildSystemPrompt(opts: {
   // ask_user questions — three languages of record in one study. The study language is the single
   // source now, and deliberately also for the ANSWERS: a wrong setting then shows itself in the
   // first reply instead of hiding in the artifacts.
-  // Static since V418: the language itself arrives in the bracketed note that opens each
-  // user turn (turnNote.ts), so this block reads the same whether or not the study has one yet.
-  // It used to switch between two sentences, and the switch — a study that got its language during
-  // turn 1 — broke the cached prefix on every chat's second turn. `studyLanguage` stays in the options
-  // for the callers; it is read where the note is built.
+  // In the chat the rule is static since V418: the language itself arrives in the bracketed note that
+  // opens each user turn (turnNote.ts), so this block reads the same whether or not the study has one
+  // yet. It used to switch between two sentences, and the switch — a study that got its language during
+  // turn 1 — broke the cached prefix on every chat's second turn.
   // The last sentence keeps the note out of replies (turnNote.ts drops a copy that slips through). It
   // stands after the rule and does not say that the user cannot see the note: said up front, that cost
   // the note its authority, and a German question got a German answer under an English study language.
-  void studyLanguage
-  const langLine = `- Every user turn opens with a bracketed note naming the study language, e.g. \`[Study language: German]\` — the language recorded in the study metadata. Write EVERYTHING in it: your answers, your \`ask_user\` questions, and everything you create in the model (process names, reference products, tags, comments) — whatever language the user or the source material uses. If the user plainly wants another language, do not fight them: point at the \`language\` field (model_info) and follow their wish once it is changed. When the note says \`[No study language recorded yet]\`: use the language the user writes in — for your answers and for everything you create in the model — and record it (model_info, field \`language\`, as a two-letter code: en, de, fr, es or pt) when you set the goal & scope, so it stays one language from then on. The bracketed lines (study language, today's date) are added by the app — never copy them into your reply.`
+  // An MCP client gets no note, so its rule names the language — the orientation is read once per model,
+  // there is no cached prefix to keep — and points at model_info for the rest.
+  const langScope = `your answers, your \`ask_user\` questions, and everything you create in the model (process names, reference products, tags, comments) — whatever language the user or the source material uses. If the user plainly wants another language, do not fight them: point at the \`language\` field (model_info) and follow their wish once it is changed.`
+  const langRecord = `use the language the user writes in — for your answers and for everything you create in the model — and record it (model_info, field \`language\`, as a two-letter code: en, de, fr, es or pt) when you set the goal & scope, so it stays one language from then on.`
+  const langName = studyLanguage ? (LANGUAGE_NAMES[studyLanguage] ?? studyLanguage) : undefined
+  const langLine =
+    opts.perTurnNote !== false
+      ? `- Every user turn opens with a bracketed note naming the study language, e.g. \`[Study language: German]\` — the language recorded in the study metadata. Write EVERYTHING in it: ${langScope} When the note says \`[No study language recorded yet]\`: ${langRecord} The bracketed lines (study language, today's date) are added by the app — never copy them into your reply.`
+      : `- ${langName ? `The study language of this model is **${langName}** (model_info, field \`language\`).` : 'This model has no study language recorded yet (model_info, field `language`).'} Write EVERYTHING in the study language: ${langScope}${langName ? '' : ` Until one is recorded: ${langRecord}`} Each model has its own: for another model, or once the user says they changed it, read the field with \`model_info\`.`
   const webLine = webSearch
     ? '\n- **Web search** is enabled for this chat, but it is a SECONDARY source: your primary sources are the foreground model and the released background database(s) via the PrismLCA tools — answer LCA/data questions from them first. Reach for the web only for what the databases cannot answer (current events, external documentation, prices, literature), and name your sources in the answer.'
     : ''

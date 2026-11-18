@@ -81,6 +81,33 @@ describe('buildOrientation', () => {
     expect(none).toContain('No study metadata recorded yet')
   })
 
+  it('names the recorded study language instead of announcing a per-turn note the client never gets', () => {
+    // The chat's rule says every user turn opens with a bracketed note; an MCP client receives no
+    // such note, so that rule pointed it at nothing.
+    for (const o of [text, buildOrientation({ activeDb: 'Shampoo', skills: [] })]) {
+      expect(o).not.toMatch(/bracketed/)
+      expect(o).not.toContain('[Study language:')
+      expect(o).not.toContain('[No study language recorded yet]')
+      expect(o).not.toMatch(/never copy them into your reply/)
+      // The substance of the rule stays: one language for answers, questions and everything created.
+      expect(o).toMatch(/Write EVERYTHING in the study language: your answers, your `ask_user` questions/)
+      expect(o).toMatch(
+        /for another model, or once the user says they changed it, read the field with `model_info`/
+      )
+    }
+    expect(text).toContain('The study language of this model is **German**')
+    expect(text).not.toMatch(/Until one is recorded/)
+    const none = buildOrientation({ activeDb: 'Shampoo', skills: [] })
+    expect(none).toContain('This model has no study language recorded yet')
+    expect(none).toMatch(
+      /Until one is recorded: use the language the user writes in .* record it \(model_info/
+    )
+    // A code the app does not name is passed through as it is.
+    expect(buildOrientation({ activeDb: 'Shampoo', skills: [], studyLanguage: 'it' })).toContain(
+      'The study language of this model is **it**'
+    )
+  })
+
   it("says today's date, so a client model dating the study does not guess it", () => {
     expect(buildOrientation({ activeDb: 'Shampoo', skills: [], today: '2026-11-14' })).toContain(
       '# This session\n- Today: 2026-11-14\n- Model: `Shampoo`'

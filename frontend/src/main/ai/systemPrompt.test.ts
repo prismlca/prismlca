@@ -71,6 +71,18 @@ describe('buildSystemPrompt', () => {
     expect(p).toMatch(/record it \(model_info/)
   })
 
+  it('without the per-turn note (MCP), names the recorded language and keeps the rest of the rule', () => {
+    const chat = buildSystemPrompt({ ...base, studyLanguage: 'de' })
+    expect(buildSystemPrompt({ ...base, studyLanguage: 'de', perTurnNote: true })).toBe(chat)
+    const p = buildSystemPrompt({ ...base, studyLanguage: 'de', perTurnNote: false })
+    expect(p).toContain('The study language of this model is **German**')
+    expect(p).not.toMatch(/bracketed|\[Study language:|\[No study language/)
+    // Only the language rule differs between the two texts.
+    const [chatBefore, chatAfter] = chat.split(/\n- Every user turn opens with[^\n]*/)
+    expect(p.startsWith(chatBefore)).toBe(true)
+    expect(p.endsWith(chatAfter)).toBe(true)
+  })
+
   it('is byte-identical for a new and a continued chat (V418: the title line rides on the user turn)', () => {
     expect(buildSystemPrompt({ ...base, isNewChat: true })).toBe(
       buildSystemPrompt({ ...base, isNewChat: false })
