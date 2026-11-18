@@ -71,7 +71,8 @@
   background: var(--bg-muted); color: var(--faint);
   display: grid; place-items: center;
 }
-.chat-attach-btn:hover:not(:disabled) { color: var(--green); background: var(--green-soft); }
+/* Hovered, the glyph takes --green-ink: --green on --green-soft is too faint for it in the light theme. */
+.chat-attach-btn:hover:not(:disabled) { color: var(--green-ink); background: var(--green-soft); }
 .chat-attach-btn:disabled { opacity: .5; cursor: default; }
 .chat-attach {
   display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--text);
