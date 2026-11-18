@@ -361,6 +361,117 @@ def test_a_contribution_switched_off_or_cancelled_books_nothing():
         assert "moves no input amount" in found[0][1]
 
 
+_SHIPPED = [
+    {"name": "m_frame", "amount": 9.0, "unit": "kg"},
+    {"name": "m_pegs", "amount": 0.2, "unit": "kg"},
+    {"name": "m_shipped", "amount": 9.2, "unit": "kg", "formula": "m_frame + m_pegs"},
+    {"name": "eol_recycling", "amount": 1.0, "unit": ""},
+]
+
+
+def test_a_part_that_only_enters_the_shipping_weight_is_the_finding():
+    """The pavilion's pegs as our runs build them: the shipping weight sums the parts and is carried by the
+    tonne-kilometre, the end-of-life branch is dormant, and no production exchange names the pegs. Raising
+    them raises the transport — which is no booking, and neither is the electricity of pressing them. The
+    finding says where the figure goes and asks for the reconciliation, since the check cannot see a booking
+    inside another part or under a revised figure."""
+    exchanges = [
+        ("kilogram", 9.45, "m_frame * 1.05"),
+        ("ton kilometer", 4.6, "m_shipped / 1000 * 500"),
+        ("kilowatt hour", 0.5, "m_pegs * 2.5"),
+        ("kilogram", 0.0, "-(1 - eol_recycling) * (m_frame + m_pegs)"),
+    ]
+    found = _run([{"component": "ground pegs", "mass_kg": 0.2}], _SHIPPED, exchanges)
+    assert len(found) == 1
+    text = found[0][1]
+    assert "'m_pegs'" in text and "feeds only exchanges in kilowatt hour, ton kilometer" in text
+    assert "Find it in the model before you change anything" in text and "no non-zero exchange" not in text
+    # Parameters the probe cannot evaluate leave the names to decide — and a name in a transport formula is
+    # no booking either.
+    broken = [*_SHIPPED, {"name": "broken", "amount": 0.0, "unit": "", "formula": "nowhere * 2"}]
+    found = _run([{"component": "ground pegs", "mass_kg": 0.2}], broken, exchanges)
+    assert len(found) == 1 and "feeds only exchanges in" in found[0][1]
+
+
+def test_every_service_unit_spelling_is_no_booking_and_an_unknown_unit_still_is():
+    """Tonne-kilometres arrive spelt several ways from datasets and importers; each is transport. A unit with
+    no known dimension ("pair") keeps counting, as every unit did before — unknown is no sign of a service."""
+    for unit in ("tkm", "t*km", "t km", "tonne-kilometre", "tonne kilometre", "metric ton*km", "megajoule", "hour"):
+        found = _run(
+            [{"component": "ground pegs", "mass_kg": 0.2}],
+            _SHIPPED,
+            [("kilogram", 9.45, "m_frame * 1.05"), (unit, 4.6, "m_shipped / 1000 * 500")],
+        )
+        assert len(found) == 1 and f"feeds only exchanges in {unit}" in found[0][1], unit
+    found = _run(
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        _SHIPPED,
+        [("kilogram", 9.45, "m_frame * 1.05"), ("pair", 2.0, "m_pegs * 10")],
+    )
+    assert found == []
+
+
+def test_a_rising_transport_does_not_outvote_a_material_path_that_falls():
+    """The pegs enter the shipping weight and are subtracted from the rest the steel exchange books: the
+    transport rises with them, the material falls. Only the material path is asked."""
+    params = [
+        *_SHIPPED,
+        {"name": "m_total", "amount": 9.2, "unit": "kg"},
+        {"name": "m_rest", "amount": 9.0, "unit": "kg", "formula": "m_total - m_pegs"},
+    ]
+    found = _run(
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        params,
+        [("kilogram", 9.0, "m_rest"), ("ton kilometer", 4.6, "m_shipped / 1000 * 500")],
+    )
+    assert len(found) == 1 and "only reduces 'm_rest'" in found[0][1]
+
+
+def test_a_part_booked_under_a_revised_figure_is_asked_to_be_settled_not_added():
+    """The pegs' parameter sits only in the shipping weight while the steel exchange books them at the spec
+    sheet's 0.25 kg — outside the exact match, and the exact carrier keeps the loose one out. The check cannot
+    tell this from a missing part, so the finding asks to find the part and settle the figure before adding."""
+    found = _run(
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        _SHIPPED,
+        [("kilogram", 9.71, "(m_frame + 0.25) * 1.05"), ("ton kilometer", 4.6, "m_shipped / 1000 * 500")],
+    )
+    assert len(found) == 1
+    text = found[0][1]
+    assert "feeds only exchanges in ton kilometer" in text and "settle which is right from the sources" in text
+
+
+def test_a_part_in_the_shipping_weight_and_in_production_is_silence():
+    """The counter-case: the same shipping weight, and the pegs' steel booked beside the frame's."""
+    found = _run(
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        _SHIPPED,
+        [("kilogram", 9.66, "(m_frame + m_pegs) * 1.05"), ("ton kilometer", 4.6, "m_shipped / 1000 * 500")],
+    )
+    assert found == []
+
+
+def test_a_part_booked_by_its_volume_beside_the_shipping_weight_is_silence():
+    """Timber and boards are bought by the cubic metre: the shelves reach the model through a density, and the
+    shipping weight carries them as well. The volume books them; so would an area or a count of pieces."""
+    params = [
+        {"name": "m_frame", "amount": 9.0, "unit": "kg"},
+        {"name": "m_shelves", "amount": 6.12, "unit": "kg"},
+        {"name": "m_shipped", "amount": 15.12, "unit": "kg", "formula": "m_frame + m_shelves"},
+    ]
+    for unit, formula in (
+        ("cubic meter", "m_shelves / 680"),
+        ("square meter", "m_shelves / 11.9"),
+        ("unit", "m_shelves / 1.53"),
+    ):
+        found = _run(
+            [{"component": "shelves", "mass_kg": 6.12}],
+            params,
+            [("kilogram", 9.0, "m_frame"), (unit, 0.009, formula), ("ton kilometer", 7.56, "m_shipped / 2")],
+        )
+        assert found == [], unit
+
+
 def test_a_number_counts_only_where_it_raises_the_amount():
     """A figure in a comment is no number, a subtracted one books nothing, and neither does one switched off
     by a factor of zero. The run's own shape still books."""

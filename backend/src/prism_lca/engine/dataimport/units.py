@@ -45,6 +45,8 @@ _SPELLINGS: dict[str, str] = {
     "km": "kilometer", "kilometer": "kilometer", "kilometre": "kilometer",
     "m": "meter", "meter": "meter", "metre": "meter",
     "tkm": "ton kilometer", "ton kilometer": "ton kilometer", "tonne kilometer": "ton kilometer",
+    "tonne kilometre": "ton kilometer", "tonne-kilometre": "ton kilometer", "t*km": "ton kilometer",
+    "t km": "ton kilometer", "metric ton*km": "ton kilometer", "metric ton kilometer": "ton kilometer",
     "kgkm": "kilogram kilometer", "kilogram kilometer": "kilogram kilometer",
     "p": "unit", "unit": "unit", "item": "unit", "item(s)": "unit", "items": "unit", "piece": "unit",
     "a": "year", "year": "year", "h": "hour", "hour": "hour", "hr": "hour",
