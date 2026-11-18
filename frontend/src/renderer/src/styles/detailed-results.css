@@ -13,7 +13,7 @@
 .dr-field { display: grid; grid-template-columns: 1fr 104px; align-items: center; gap: 8px; font-size: var(--fs-sec); color: var(--muted); margin-top: 6px; }
 .dr-field > input, .dr-field > select { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 3px 6px; font: inherit; font-size: var(--fs-sec); }
 .dr-field > input[type="checkbox"] { width: auto; justify-self: start; margin: 0; }
-.dr-field > input:focus, .dr-field > select:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.dr-field > input:focus, .dr-field > select:focus { outline: none; border-color: var(--green); }
 .dr-agg { border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
 .dr-agg-title { font-size: var(--fs-body); color: var(--muted); }
 .dr-agg-bar { display: flex; height: 16px; border-radius: 5px; overflow: hidden; background: var(--surface-2); }
@@ -25,7 +25,7 @@
 .dr-agg-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .dr-agg-chart { height: 300px; width: 100%; }
 .dr-total { display: flex; align-items: baseline; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
-.dr-total-val { font-size: var(--fs-title); font-weight: 700; color: var(--prism-navy, #2f4e66); letter-spacing: -0.01em; }
+.dr-total-val { font-size: var(--fs-title); font-weight: 700; color: var(--navy); letter-spacing: -0.01em; }
 .dr-total-unit { font-size: var(--fs-sec); color: var(--muted); }
 
 .dr-tree-wrap { flex: 1; min-height: 0; display: flex; }
@@ -44,7 +44,7 @@
 .dr-flows-save:disabled { color: var(--faint); cursor: default; background: none; }
 .dr-flows-scope { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--muted); min-height: 20px; }
 .dr-flows-scope-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dr-flows-total { font-size: var(--fs-title); font-weight: 700; color: var(--prism-navy, #2f4e66); letter-spacing: -0.01em;
+.dr-flows-total { font-size: var(--fs-title); font-weight: 700; color: var(--navy); letter-spacing: -0.01em;
   padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .dr-flows-total span { font-size: var(--fs-label); font-weight: 400; color: var(--muted); }
 .dr-flows-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
@@ -52,10 +52,10 @@
 .dr-flow:last-child { border-bottom: none; }
 .dr-flow-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--fs-sec); }
 .dr-flow-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dr-flow-share { color: var(--green-ink, #769a1a); font-weight: 700; flex: none; }
+.dr-flow-share { color: var(--green-ink); font-weight: 700; flex: none; }
 .dr-flow-cat { font-size: var(--fs-label); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dr-flow-bar { height: 3px; background: var(--surface-2); border-radius: 2px; margin: 3px 0 2px; overflow: hidden; }
-.dr-flow-bar span { display: block; height: 100%; background: var(--prism-green, #93c120); border-radius: 2px; }
+.dr-flow-bar span { display: block; height: 100%; background: var(--green); border-radius: 2px; }
 .dr-flow-val { font-size: var(--fs-label); color: var(--muted); }
 .dr-flows-hint { font-size: var(--fs-label); color: var(--faint); }
 /* Selected subtree (only meaningful while the flows panel is on): green outline plus the

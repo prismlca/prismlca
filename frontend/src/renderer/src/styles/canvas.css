@@ -32,13 +32,13 @@
 .react-flow__nodesselection, .react-flow__nodesselection-rect { pointer-events: none; }
 .react-flow__nodesselection-rect { background: transparent; border: none; }
 
-.node-menu { position: fixed; z-index: 100; background: var(--panel, #fff); color: var(--ink, #303030);
-  border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+.node-menu { position: fixed; z-index: 100; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
   padding: 4px; min-width: 180px; }
 .node-menu button { display: block; width: 100%; text-align: left; background: none; border: none;
   padding: 7px 10px; font-size: var(--fs-body); color: inherit; border-radius: 4px; cursor: pointer; }
-.node-menu button:hover:not([disabled]) { background: var(--bg-muted, #f2f2f2); }
-.node-menu button[disabled] { color: var(--faint, #8a8a8a); cursor: default; }
+.node-menu button:hover:not([disabled]) { background: var(--surface-2); }
+.node-menu button[disabled] { color: var(--faint); cursor: default; }
 .node-menu button.danger { color: var(--bad); }
 .node-menu button.danger:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
 
@@ -47,14 +47,14 @@
 .react-flow__controls-button { width: 30px; height: 30px; background: var(--surface); border: none; border-bottom: 1px solid var(--border); }
 .react-flow__controls-button:last-child { border-bottom: none; }
 .react-flow__controls-button:hover { background: var(--surface-2); }
-.react-flow__controls-button svg { fill: var(--ink); max-width: 14px; max-height: 14px; }
+.react-flow__controls-button svg { fill: var(--text); max-width: 14px; max-height: 14px; }
 
 /* The amount and unit on an arrow ("0.5 kg"). React Flow draws the label as an SVG `rect` + `text` whose
    defaults are a white background and near-black type — on the dark canvas a white pill. Styled by
    class rather than through `labelBgStyle`, because those are inline styles: they would have to be recomputed
    whenever the theme flips, while `fill: var(--surface)` follows it by itself. */
 .react-flow__edge-textbg { fill: var(--surface); }
-.react-flow__edge-text { fill: var(--ink); }
+.react-flow__edge-text { fill: var(--text); }
 /* The arrows of the hovered or selected process (class set by highlightEdges, which also turns the line
    green and thicker): the amount chip takes the recipe of the green chips elsewhere — soft green ground,
    the number in the full green ink — so the flows in and out read as one with the lit card. */
@@ -123,7 +123,7 @@
   border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); }
 .tint-swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid; cursor: pointer; padding: 0; }
 .tint-swatch:hover { transform: scale(1.12); }
-.tint-swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink, #303030); }
+.tint-swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--text); }
 .group-tool { position: relative; display: flex; align-items: stretch; }
 .group-tool > .btn + .btn { border-left: 1px solid var(--border); }
 /* `fixed`, and anchored by its RIGHT edge: the picker is opened at the screen position of a dot that

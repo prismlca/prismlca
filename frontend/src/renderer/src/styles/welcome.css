@@ -42,7 +42,7 @@
      jump while clicking through, and 880 × 620 is the aspect ratio of the design. */
   width: min(820px, calc(100vw - 64px)); height: min(620px, calc(100vh - 64px));
   display: flex; flex-direction: column;
-  background: var(--panel); color: var(--text);
+  background: var(--surface); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-sheet);
   overflow: hidden; z-index: 2;
 }

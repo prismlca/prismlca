@@ -37,7 +37,7 @@
   flex: 1; min-width: 0; text-align: left; border: none; background: transparent;
   color: inherit; font: inherit; padding: 0; cursor: pointer; border-radius: 6px;
 }
-.ai-skill-meta:hover .ai-skill-name { color: var(--green-ink, var(--prism-green)); }
+.ai-skill-meta:hover .ai-skill-name { color: var(--green-ink); }
 .ai-skill-name { font-size: var(--fs-body); font-weight: 600; }
 .ai-skill-desc { font-size: var(--fs-sec); color: var(--faint); }
 .ai-skill-del { border: none; background: transparent; color: var(--faint); cursor: pointer; }
@@ -107,7 +107,7 @@
 /* Costs page: headline stat tiles + per-cell mini bar (share of the highest month cell). */
 .cost-stats { display: flex; gap: 10px; margin: 6px 0 14px; flex-wrap: wrap; }
 .cost-stat { border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); padding: 8px 16px; min-width: 96px; }
-.cost-stat-num { font-size: var(--fs-title); font-weight: 700; color: var(--ink); }
+.cost-stat-num { font-size: var(--fs-title); font-weight: 700; color: var(--text); }
 .cost-stat-label { font-size: var(--fs-label); color: var(--faint); }
 .cost-table tbody tr:nth-child(odd):not(.cost-total) { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
 /* The same hover as the model table above — this table was striped but dead under the pointer,
@@ -156,7 +156,7 @@
 }
 .effort-track::before {
   content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 6px; border-radius: 3px;
-  background: var(--bg-muted);
+  background: var(--surface-2);
 }
 .effort-fill {
   position: absolute; left: 0; top: 8px; height: 6px; border-radius: 3px;
