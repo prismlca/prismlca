@@ -147,6 +147,12 @@ jobs:
           PRISM_SMOKE=1 XDG_CONFIG_HOME="$RUNNER_TEMP/cfg" PRISM_DATA_DIR="$RUNNER_TEMP/data" \
             BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
             xvfb-run -a "$RUNNER_TEMP/squashfs-root/prism-lca" --no-sandbox
+      # An MCP client starts the program with --mcp-proxy and talks to it over three pipes; the end-to-end suite
+      # does that with the build tree, this with the program as shipped: handshake, tool list, exit 0 when the
+      # client leaves. AppRun is what the AppImage runs, so the bridge starts the way a client starts it.
+      - name: The packaged app's MCP bridge answers a client
+        working-directory: frontend
+        run: node scripts/release/ci.mjs bridge-check "$RUNNER_TEMP/squashfs-root/AppRun"
       # The runner is Ubuntu, so the rpm is tried where it belongs: dnf must resolve every dependency it names,
       # and the installed app must start. The image is pinned like the actions.
       - name: The rpm installs and starts on Fedora
@@ -221,6 +227,11 @@ jobs:
         run: |
           PRISM_SMOKE=1 PRISM_DATA_DIR="$RUNNER_TEMP/data" BRIGHTWAY2_DIR="$RUNNER_TEMP/data/brightway" \
             release/win-unpacked/PrismLCA.exe --user-data-dir="$RUNNER_TEMP/cfg"
+      # The signed PrismLCA.exe as an MCP client starts it (see the Linux job). Windows is where it matters:
+      # Electron gives the process an empty standard input there, and the bridge opens the client's pipe itself.
+      - name: The packaged app's MCP bridge answers a client
+        working-directory: frontend
+        run: node scripts/release/ci.mjs bridge-check release/win-unpacked/PrismLCA.exe
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows
