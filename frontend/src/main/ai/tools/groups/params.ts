@@ -256,15 +256,30 @@ export const paramsTools: Tool[] = [
       // scenario once and scores every indicator inside that window (V331). Same shape as before, so
       // nothing reading the answer had to change.
       try {
+        // partial: a method that does not resolve comes back under not_computed and the others are scored,
+        // instead of one misspelt indicator failing all of them.
         const r: any = await ctx.api('POST', '/api/v1/scenarios/compare', {
           database: ctx.activeDb,
           code: a.code,
           scenario_ids: a.scenario_ids,
           methods: many,
-          amount: a.amount ?? 1.0
+          amount: a.amount ?? 1.0,
+          partial: true
         })
-        const per: any[] = Array.isArray(r?.results) ? r.results : []
-        return batchResult(per.map((res, i) => ({ ok: true, item: many[i], result: res })))
+        const per: any[] = Array.isArray(r?.results) ? [...r.results] : []
+        const missing: any[] = Array.isArray(r?.not_computed) ? [...r.not_computed] : []
+        // Both lists keep the order asked, and a missing entry names its method as it was sent: so each
+        // method takes its own place in the batch, a failed one with the closest installed names.
+        const same = (x: any, m: unknown): boolean => JSON.stringify(x?.method) === JSON.stringify(m)
+        return batchResult(
+          many.map((m) => {
+            if (missing.length && same(missing[0], m)) {
+              const x = missing.shift()
+              return { ok: false, item: m, error: [x.error, x.hint].filter(Boolean).join(' ') }
+            }
+            return { ok: true, item: m, result: per.shift() }
+          })
+        )
       } catch (e) {
         return S({ error: e instanceof Error ? e.message : String(e) })
       }

@@ -86,6 +86,9 @@ class CompareRequest(BaseModel):
     methods: list[MethodRef] | None = None
     scenario_ids: list[str]
     amount: float = 1.0
+    #: With `methods`: score the ones that resolve and name the others under ``not_computed``, as
+    #: LciaRequest.partial does. The assistant's tool sets it.
+    partial: bool = False
 
 
 @router.get("", summary="List a model's scenarios")
@@ -242,6 +245,7 @@ def compute(request: Request, body: ComputeRequest) -> dict:
 def compare(request: Request, body: CompareRequest) -> dict:
     if body.methods:
         return scenarios.compare_many(
-            _store(), body.database, body.code, body.methods, body.scenario_ids, body.amount
+            _store(), body.database, body.code, body.methods, body.scenario_ids, body.amount,
+            partial=body.partial,
         )
     return scenarios.compare(_store(), body.database, body.code, body.method, body.scenario_ids, body.amount)

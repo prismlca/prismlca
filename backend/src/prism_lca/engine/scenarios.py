@@ -21,7 +21,15 @@ from contextlib import contextmanager
 
 from openpyxl import Workbook
 
-from prism_lca.engine import lca, param_window, params, scenario_lookup, scenario_reach, workbooks
+from prism_lca.engine import (
+    lca,
+    method_lookup,
+    param_window,
+    params,
+    scenario_lookup,
+    scenario_reach,
+    workbooks,
+)
 from prism_lca.engine._store import JsonFileStore
 from prism_lca.engine.model import new_uid
 from prism_lca.errors import PrismError, scenario_calc_error
@@ -760,7 +768,13 @@ def compute(store: ScenarioStore, database: str, code: str, method, scenario_id:
 
 
 def compare_many(
-    store: ScenarioStore, database: str, code: str, methods: list, scenario_ids: list[str], amount: float = 1.0
+    store: ScenarioStore,
+    database: str,
+    code: str,
+    methods: list,
+    scenario_ids: list[str],
+    amount: float = 1.0,
+    partial: bool = False,
 ) -> dict:
     """Baseline + scenarios for SEVERAL indicators, each scenario applied once.
 
@@ -770,8 +784,20 @@ def compare_many(
     used to fan out one request per indicator, each applying every scenario again: 16 indicators ×
     4 subjects = 64 factorisations, 187 s and 226 s in one run, where `calculate` over the
     same 16 indicators took 3 s (V331).
+
+    The methods are resolved before the scenario window opens, and each block carries the installed name.
+    ``partial``: one that does not resolve is named under ``not_computed`` with its way out, and the
+    baseline and every scenario are scored for the others; only when none resolves is it an error. Without
+    it, the first wrong method fails the whole comparison, as `lca.compute_multi` does without the flag.
     """
-    methods = [tuple(m) for m in methods]
+    not_computed: list[dict] = []
+    if partial:
+        methods, not_computed = method_lookup.resolve_methods(methods)
+        if not methods:
+            raise method_lookup.none_resolved(not_computed)
+    else:
+        # Resolved here too, not by tuple(): a method given as one string was echoed back letter by letter.
+        methods = [method_lookup.resolve_method(m) for m in methods]
     # Before the lock and the baseline: an id copied with a slip used to be found out only after the
     # baseline and the scenarios before it had been calculated. Only a check — each scenario is still read
     # right before it is applied, so an edit made while this waited for the lock is the one scored.
@@ -840,7 +866,10 @@ def compare_many(
             {"database": database, "code": code, "method": list(m), "amount": amount,
              "unit": units[j], "baseline_score": base_score, "results": results}
         )
-    return {"database": database, "code": code, "amount": amount, "results": out}
+    answer: dict = {"database": database, "code": code, "amount": amount, "results": out}
+    if not_computed:
+        answer["not_computed"] = not_computed
+    return answer
 
 
 def compare(store: ScenarioStore, database: str, code: str, method, scenario_ids: list[str], amount: float = 1.0) -> dict:

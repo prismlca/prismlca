@@ -452,6 +452,70 @@ def test_compare_scores_several_indicators_per_applied_scenario(client, token, p
     assert abs(_lcia(client, token) - 1.1) < 1e-6  # baseline restored
 
 
+def test_partial_scenario_comparison_scores_the_valid_methods_beside_a_wrong_one(client, token, project):
+    """One misspelt indicator used to fail every indicator of the comparison: the baseline was scored, and
+    the first wrong method threw it away. It is named now, and the others are scored for the baseline and
+    each scenario under the installed name — a name spelt otherwise, and given as one string, included."""
+    _seed(get_bd())
+    _param(client, token, "kwh", amount=2.0)
+    _formula(client, token, "bottle", "e", "kwh")
+    sid = _mk(client, token, "efficient", overrides={"kwh": 1.0})
+    wrong = ["test", "gwp20 guessed"]
+    body = {"database": "fg", "code": "bottle", "scenario_ids": [sid], "methods": [wrong, "TEST · GWP"]}
+    r = client.post("/api/v1/scenarios/compare", json={**body, "partial": True}, headers=token)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    [block] = out["results"]
+    assert block["method"] == METHOD
+    scores = {x["scenario"]: x["score"] for x in block["results"]}
+    assert scores["(baseline)"] == pytest.approx(1.1) and scores["efficient"] == pytest.approx(0.6)
+    [missing] = out["not_computed"]
+    assert missing["method"] == wrong and missing["code"] == "method_not_found"
+    assert missing["hint"].startswith("Closest: test · gwp")
+    assert abs(_lcia(client, token) - 1.1) < 1e-6  # baseline restored
+    # Without the flag the first wrong method fails the comparison, as before.
+    assert client.post("/api/v1/scenarios/compare", json=body, headers=token).status_code == 404
+
+
+def test_scenario_comparison_names_the_installed_method_it_scored(client, token, project):
+    """A method given as one string came back spelt letter by letter, with no unit; a missing one ended in
+    a server error. Both are resolved before anything is scored, with or without `partial`."""
+    _seed(get_bd())
+    _param(client, token, "kwh", amount=2.0)
+    _formula(client, token, "bottle", "e", "kwh")
+    sid = _mk(client, token, "efficient", overrides={"kwh": 1.0})
+    body = {"database": "fg", "code": "bottle", "scenario_ids": [sid]}
+    r = client.post("/api/v1/scenarios/compare", json={**body, "methods": ["TEST · GWP"]}, headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["results"][0]["method"] == METHOD
+    r = client.post("/api/v1/scenarios/compare", json=body, headers=token)
+    assert r.status_code == 400 and "No LCIA method specified" in r.text
+
+
+def test_partial_scenario_comparison_with_no_valid_method_opens_no_window(client, token, project, monkeypatch):
+    """When none resolves it is an error naming each — found before any scenario is applied."""
+    from prism_lca.engine import param_window
+
+    _seed(get_bd())
+    _param(client, token, "kwh", amount=2.0)
+    sid = _mk(client, token, "efficient", overrides={"kwh": 1.0})
+
+    def opened(*_args, **_kwargs):
+        raise AssertionError("a parameter window opened for a comparison with nothing to score")
+
+    monkeypatch.setattr(param_window, "open_window", opened)
+    r = client.post(
+        "/api/v1/scenarios/compare",
+        json={"database": "fg", "code": "bottle", "scenario_ids": [sid], "partial": True,
+              "methods": [["test", "gwp20 guessed"], ["test", "water guessed"]]},
+        headers=token,
+    )
+    assert r.status_code == 404
+    text = str(r.json())
+    assert "None of the 2 LCIA methods resolved" in text
+    assert "gwp20 guessed" in text and "water guessed" in text
+
+
 def test_a_variant_that_barely_moves_names_the_exchanges_its_overrides_reach(client, token, project):
     """V332: a run compared scenarios whose parameter reached only a side formula and read
     −0.1 % with nothing said. The row now says what the override reaches, so a typed constant that
