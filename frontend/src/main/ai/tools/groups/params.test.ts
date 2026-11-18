@@ -1,6 +1,7 @@
 /**
  * compare_scenarios' contract towards the model when several indicators are asked at once: one request
- * carrying every method, a partial answer asked for, and each method at its own place in the batch.
+ * carrying every method, a partial answer asked for, and each method at its own place in the batch. And
+ * when none is asked: a refusal that names the tool to find one, since there is no default indicator.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { paramsTools } from './params'
@@ -72,5 +73,32 @@ describe('compare_scenarios with several methods', () => {
     expect(out.results.map((r: any) => r.ok)).toEqual([false, true, false])
     expect(out.results[1].result.method).toEqual(['x', 'gwp'])
     expect(out.results[0].error).toBe('not found.')
+  })
+})
+
+describe('compare_scenarios without an indicator', () => {
+  // There is no default indicator: the call is refused before it reaches the backend, whose own refusal
+  // points at an HTTP route the model cannot call.
+  it.each([{}, { method: [] }, { method: '  ' }, { methods: [] }, { method: null, methods: [] }])(
+    'refuses %j and points at list_methods',
+    async (args) => {
+      const api = vi.fn<ToolCtx['api']>(async () => ({}))
+      const out = text(
+        await tool('compare_scenarios').run({ code: 'p', scenario_ids: ['s1'], ...args }, ctx(api))
+      )
+      expect(api).not.toHaveBeenCalled()
+      expect(out.error).toMatch(/No indicator given/)
+      expect(out.error).toMatch(/list_methods/)
+    }
+  )
+
+  it('still sends one method when only "method" is given', async () => {
+    const api = vi.fn<ToolCtx['api']>(async () => ({ method: ['x', 'gwp'], results: [] }))
+    await tool('compare_scenarios').run(
+      { code: 'p', scenario_ids: ['s1'], method: 'x · gwp', methods: [] },
+      ctx(api)
+    )
+    expect(api).toHaveBeenCalledTimes(1)
+    expect((api.mock.calls[0][2] as Record<string, unknown>).method).toBe('x · gwp')
   })
 })
