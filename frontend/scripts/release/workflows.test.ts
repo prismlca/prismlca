@@ -14,7 +14,8 @@
  *  - the release workflow starts only on tags and by hand, denies all permissions at the top, and every
  *    checkout keeps no credentials.
  *  - Windows is built on the release VM, and the signing session opens only after everything that needs no
- *    key is built and closes after the installer, also when a step failed.
+ *    key is built — the previous release's signed files included — and closes after the installer, also when a
+ *    step failed; the final check covers every program file of the package.
  *  - Both builds start the packaged program's MCP bridge once, as a client does, after their start check —
  *    on Windows after the signing session has closed.
  */
@@ -133,7 +134,15 @@ describe('GitHub workflows', () => {
     expect(job['runs-on']).toEqual(['self-hosted', 'prism-release-win'])
     const steps = job.steps ?? []
     const at = (re: RegExp) => steps.findIndex((s) => re.test(s.run ?? ''))
-    const order = [/pyinstaller/, /electron-vite build/, /sign-windows\.mjs wait/, /electron-builder --win/, /Stop-Process/, /sign-windows\.mjs check/].map(at)
+    const order = [
+      /pyinstaller/,
+      /electron-vite build/,
+      /sign-windows\.mjs previous/,
+      /sign-windows\.mjs wait/,
+      /electron-builder --win/,
+      /Stop-Process/,
+      /sign-windows\.mjs check/
+    ].map(at)
     expect(order.every((i) => i >= 0), `steps found: ${order}`).toBe(true)
     expect([...order].sort((a, b) => a - b)).toEqual(order)
     expect(steps[at(/Stop-Process/)].if, 'the session closes also after a failed step').toBe('always()')
@@ -149,5 +158,20 @@ describe('GitHub workflows', () => {
       if (jobName === 'windows')
         expect(at(/ci\.mjs bridge-check /), 'not while the signing session is open').toBeGreaterThan(at(/Stop-Process/))
     }
+  })
+
+  it('release workflow: the previous release is read before the sign-in, and every program file is checked', () => {
+    const name = files.find((f) => f.startsWith('release.yml'))!
+    const steps = load(name).wf.jobs!.windows.steps ?? []
+    type EnvStep = Step & { env?: Record<string, string> }
+    const step = (re: RegExp) => steps.find((s) => re.test(s.run ?? '')) as EnvStep
+    const previous = step(/sign-windows\.mjs previous/)
+    const build = step(/electron-builder --win/)
+    // afterSign finds the copies where the step before the sign-in left them, and both count against one limit.
+    expect(build.env?.PRISM_SIGN_PREVIOUS).toBe(previous.env?.PRISM_SIGN_PREVIOUS)
+    expect(previous.env?.PRISM_SIGN_PREVIOUS).toMatch(/runner\.temp/)
+    for (const s of [previous, build]) expect(s.env?.WINDOWS_SIGN_LIMIT).toBe('${{ vars.WINDOWS_SIGN_LIMIT }}')
+    // The whole unpacked app, not a list of our own executables: nothing unsigned may ship.
+    expect(step(/sign-windows\.mjs check/).run).toMatch(/sign-windows\.mjs check release\/win-unpacked release\/PrismLCA-Setup-\*\.exe/)
   })
 })

@@ -6,6 +6,11 @@ directories:
   output: release
   buildResources: build
 
+# Windows release builds: signs every program file of the unpacked app at once, after packing and before the
+# installer is made from it (scripts/release/sign-windows.mjs). electron-builder calls it only after a platform
+# signed, so Linux builds log that it was skipped.
+afterSign: ./scripts/release/sign-windows.mjs
+
 files:
   - out/**
   # Read at runtime through `?asset` imports (main/licence.ts, the window icon). Without them only
@@ -38,8 +43,10 @@ win:
   # Explicit, like linux.icon: build/ (electron-builder's default icon place) is gitignored, so a CI
   # build would otherwise ship Electron's own icon. 512×512 PNG, converted to .ico by the builder.
   icon: resources/icon.png
-  # Releases are signed on the release VM with Certum Open Source Code Signing: the hook signs only our own
-  # executables and only in release builds, so a local build stays unsigned. One SHA-256 signature per file.
+  # Releases are signed on the release VM with Certum Open Source Code Signing, only in release builds, so a local
+  # build stays unsigned. Every program file without a valid signature of its maker gets ours, one SHA-256
+  # signature per file: the sign hook signs what electron-builder signs one by one (installer, uninstaller,
+  # elevate.exe), and afterSign (top level, below) signs the unpacked app at once. The rule is in the script.
   signtoolOptions:
     sign: ./scripts/release/sign-windows.mjs
     signingHashAlgorithms:

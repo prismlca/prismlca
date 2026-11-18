@@ -1,24 +1,26 @@
 <#
 .SYNOPSIS
-  Signs PrismLCA's Windows executables with the SimplySign certificate and checks the result.
+  Signs PrismLCA's Windows program files with the SimplySign certificate, and says how files are signed.
 
 .DESCRIPTION
-  Called only through sign-windows.mjs, which decides which files are ours and passes the certificate subject in
+  Called only through sign-windows.mjs, which decides what is signed and passes the certificate subject in
   PRISM_SIGN_SUBJECT (win.signtoolOptions.publisherName in electron-builder.yml).
 
-    -Wait             waits until the SimplySign sign-in has made the certificate usable (30 minutes at most)
-    -Sign <file>      signs one file and checks it
-    -Check <files>    checks files signed earlier in the build
+    -Wait                          waits until the SimplySign sign-in has made the certificate usable (30 minutes at most)
+    -Sign -List <file>             signs the files listed (one path per line), timestamps them and checks each
+    -Inspect -List <file> -Out <f> writes what Windows says about each listed file's signature, as JSON; needs no key
 
-  A file passes when signtool verify accepts it with a timestamp, the digest is SHA-256 and the signer's subject
-  is exactly the expected one: the subject every installed PrismLCA compares an update against.
+  Ours passes when signtool verify accepts it with a timestamp, the digest is SHA-256, the signature is embedded and
+  the signer's subject is exactly the expected one: the subject every installed PrismLCA compares an update against.
 #>
-[CmdletBinding(DefaultParameterSetName = 'Sign')]
+[CmdletBinding(DefaultParameterSetName = 'Wait')]
 param(
   [Parameter(ParameterSetName = 'Wait', Mandatory)][switch]$Wait,
-  [Parameter(ParameterSetName = 'Sign', Mandatory)][string]$Sign,
-  [Parameter(ParameterSetName = 'Check', Mandatory)][switch]$Check,
-  [Parameter(ParameterSetName = 'Check', ValueFromRemainingArguments)][string[]]$Files
+  [Parameter(ParameterSetName = 'Sign', Mandatory)][switch]$Sign,
+  [Parameter(ParameterSetName = 'Inspect', Mandatory)][switch]$Inspect,
+  [Parameter(ParameterSetName = 'Sign', Mandatory)]
+  [Parameter(ParameterSetName = 'Inspect', Mandatory)][string]$List,
+  [Parameter(ParameterSetName = 'Inspect', Mandatory)][string]$Out
 )
 $ErrorActionPreference = 'Stop'
 $TimestampUrl = 'http://time.certum.pl'
@@ -39,19 +41,31 @@ function Find-Certificate {
     Sort-Object NotAfter -Descending | Select-Object -First 1
 }
 
-function Test-Signature([string]$file, [string]$signtool) {
-  if (-not (Test-Path -LiteralPath $file)) { throw "Not found: $file" }
+function Read-List([string]$path) {
+  @(Get-Content -LiteralPath $path -Encoding UTF8 | Where-Object { $_ })
+}
+
+# Older Windows PowerShell has no SignatureType; then the embedded table sign-windows.mjs found has to do.
+function Get-SignatureType($sig) {
+  if ($sig.PSObject.Properties['SignatureType']) { "$($sig.SignatureType)" } else { '' }
+}
+
+# Why a file falls short of our standard, or $null when it meets it.
+function Get-SignatureProblem([string]$file, [string]$signtool) {
+  if (-not (Test-Path -LiteralPath $file)) { return "Not found: $file" }
   # /tw turns a missing timestamp into a warning (exit 2); that fails here too.
   $out = & $signtool verify /pa /all /tw /v $file | Out-String
-  if ($LASTEXITCODE -ne 0) { throw "signtool verify rejects $file (exit $LASTEXITCODE).`n$out" }
-  if ($out -notmatch 'Hash of file \(sha256\)') { throw "$file is not signed with SHA-256.`n$out" }
+  if ($LASTEXITCODE -ne 0) { return "signtool verify rejects $file (exit $LASTEXITCODE).`n$out" }
+  if ($out -notmatch 'Hash of file \(sha256\)') { return "$file is not signed with SHA-256.`n$out" }
   $sig = Get-AuthenticodeSignature -LiteralPath $file
-  if ($sig.Status -ne 'Valid') { throw "$file has signature status $($sig.Status)." }
+  if ($sig.Status -ne 'Valid') { return "$file has signature status $($sig.Status)." }
+  $type = Get-SignatureType $sig
+  if ($type -and $type -ne 'Authenticode') { return "$file carries no embedded signature (found: $type)." }
   if ($sig.SignerCertificate.Subject -cne $Subject) {
-    throw "$file is signed by '$($sig.SignerCertificate.Subject)', expected '$Subject'."
+    return "$file is signed by '$($sig.SignerCertificate.Subject)', expected '$Subject'."
   }
-  if (-not $sig.TimeStamperCertificate) { throw "$file has no timestamp." }
-  Write-Host "signed and checked: $file"
+  if (-not $sig.TimeStamperCertificate) { return "$file has no timestamp." }
+  return $null
 }
 
 if ($Wait) {
@@ -86,21 +100,60 @@ if ($Wait) {
 }
 
 $signtool = Find-SignTool
+$files = Read-List $List
 
-if ($Check) {
-  if (-not $Files) { throw 'Nothing to check.' }
-  foreach ($f in $Files) { Test-Signature $f $signtool }
+if ($Inspect) {
+  $facts = foreach ($f in $files) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $f
+    $signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+    # Ours is held to our standard; another maker's signature only has to be valid.
+    $problem = if ($signer -ceq $Subject) { Get-SignatureProblem $f $signtool } else { $null }
+    [pscustomobject]@{ file = $f; status = "$($sig.Status)"; type = (Get-SignatureType $sig); subject = $signer; problem = $problem }
+  }
+  $json = ConvertTo-Json -InputObject @($facts) -Depth 3 -Compress
+  [System.IO.File]::WriteAllText($Out, $json, (New-Object System.Text.UTF8Encoding $false))
   exit 0
 }
 
+if (-not $files) { throw 'Nothing to sign.' }
 $cert = Find-Certificate
 if (-not $cert) { throw "No usable certificate with subject '$Subject'. Is SimplySign Desktop signed in?" }
-# The timestamp server is the part that fails now and then; a second or third try usually goes through.
-for ($i = 1; $i -le 3; $i++) {
-  & $signtool sign /fd SHA256 /tr $TimestampUrl /td SHA256 /sha1 $cert.Thumbprint $Sign
-  if ($LASTEXITCODE -eq 0) { break }
-  if ($i -eq 3) { throw "signtool could not sign $Sign (exit $LASTEXITCODE)." }
-  Write-Host "signtool sign failed (exit $LASTEXITCODE), try $i of 3"
+
+# Every file costs one signature from Certum's monthly allowance, so signing and timestamping are separate steps:
+# a call that fails is repeated only for the files that carry no signature at all afterwards, and the timestamp
+# server — the part that fails now and then — is asked again without signing anything again. A file that does
+# carry a signature after the call but not our valid one stops the run: signing it again would spend another
+# signature on a problem a new one does not solve (an untrusted chain on this machine, say).
+$todo = $files
+for ($i = 1; ; $i++) {
+  & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint @todo
+  $code = $LASTEXITCODE
+  $left = @()
+  foreach ($f in $todo) {
+    $sig = Get-AuthenticodeSignature -LiteralPath $f
+    if (-not $sig.SignerCertificate) { $left += $f }
+    elseif ($sig.SignerCertificate.Thumbprint -ne $cert.Thumbprint -or $sig.Status -ne 'Valid') {
+      throw "$f is signed but not validly by us after signing ($($sig.Status), $($sig.SignerCertificate.Subject)); not signing it again."
+    }
+  }
+  $todo = $left
+  if (-not $todo) { break }
+  if ($i -eq 3) { throw "signtool left $($todo.Count) file(s) unsigned (exit $code): $($todo -join ', ')" }
+  Write-Host "signtool sign left $($todo.Count) file(s) unsigned (exit $code), try $i of 3"
   Start-Sleep -Seconds (10 * $i)
 }
-Test-Signature $Sign $signtool
+$todo = $files
+for ($i = 1; ; $i++) {
+  & $signtool timestamp /tr $TimestampUrl /td SHA256 @todo
+  $code = $LASTEXITCODE
+  $todo = @($todo | Where-Object { -not (Get-AuthenticodeSignature -LiteralPath $_).TimeStamperCertificate })
+  if (-not $todo) { break }
+  if ($i -eq 6) { throw "$($todo.Count) file(s) still have no timestamp (exit $code): $($todo -join ', ')" }
+  Write-Host "signtool timestamp left $($todo.Count) file(s) without a timestamp (exit $code), try $i of 6"
+  Start-Sleep -Seconds (15 * $i)
+}
+foreach ($f in $files) {
+  $problem = Get-SignatureProblem $f $signtool
+  if ($problem) { throw $problem }
+  Write-Host "signed and checked: $f"
+}
