@@ -29,6 +29,7 @@ import { offeredSkills } from './skillRender'
 import { findModel } from './models'
 import { effortRejectionRetry } from './chatEffort'
 import { stallNudge } from './toolGuards'
+import { planReminderDue } from './planReminder'
 import { getActiveProvider } from './providers/state'
 import { researchBom, researchWeb } from './subagent'
 import { reviewDossier, reviewerModel } from './critic'
@@ -1744,6 +1745,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         outcome = 'stalled'
         break
       }
+      const planNudge =
+        planTool && !req.signal.aborted && !costStopped && planReminderDue(messages, currentPlan)
+      if (planNudge) messages.push({ role: 'user', content: planNudge })
     }
 
     // Running out of rounds used to end the turn silently: if the model spent every round on tool
