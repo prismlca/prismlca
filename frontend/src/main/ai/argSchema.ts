@@ -57,18 +57,51 @@ function validatorFor(name: string, schema: Schema): ValidateFunction | null {
 /**
  * `null` for a property the schema does not require reads as "not given". Models write
  * `"value": null` where the description says "omit value to clear", and the tools that take such a
- * field already treat null and absent alike. Top level only, and only where the key is optional: a
- * null in a required slot is a real fault and is reported as one.
+ * field already treat null and absent alike. On every level — inside list items and nested objects,
+ * by the schema of the item — and only where the key is optional: a null in a required slot is a
+ * real fault and is reported as one. It used to be the top level only, so `assignments[].value: null`
+ * was refused although the tool reads it as absent and the empty-argument rule (emptyArgs.ts) drops it
+ * right after this check anyway.
  */
 function withoutOptionalNulls(args: Record<string, unknown>, schema: Schema): Record<string, unknown> {
   const required = new Set(Array.isArray(schema.required) ? (schema.required as string[]) : [])
+  const props = (schema.properties ?? {}) as Record<string, Schema>
   let copy: Record<string, unknown> | null = null
   for (const [k, v] of Object.entries(args)) {
-    if (v !== null || required.has(k)) continue
+    const next =
+      v === null
+        ? required.has(k)
+          ? v
+          : undefined
+        : nestedWithoutNulls(v, Object.hasOwn(props, k) ? props[k] : undefined)
+    if (next === v) continue
     copy ??= { ...args }
-    delete copy[k]
+    if (next === undefined) delete copy[k]
+    else copy[k] = next
   }
   return copy ?? args
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === 'object' && !Array.isArray(v)
+
+/** The same rule one level down: the items of a list, the fields of an object with declared fields. */
+function nestedWithoutNulls(v: unknown, schema: Schema | undefined): unknown {
+  if (!schema) return v
+  if (Array.isArray(v)) {
+    const items = schema.items as Schema | undefined
+    if (!items?.properties) return v
+    let changed = false
+    // An item that is itself null stays: the list is the caller's, and the schema names that fault.
+    const out = v.map((item) => {
+      const next = isPlainObject(item) ? withoutOptionalNulls(item, items) : item
+      if (next !== item) changed = true
+      return next
+    })
+    return changed ? out : v
+  }
+  if (isPlainObject(v) && schema.properties) return withoutOptionalNulls(v, schema)
+  return v
 }
 
 /** `/exchanges/1/amount` → `exchanges[1].amount`; the root → `the arguments`. */

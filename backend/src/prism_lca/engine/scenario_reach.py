@@ -19,7 +19,7 @@ from functools import cached_property
 from typing import Any
 
 from prism_lca import _log
-from prism_lca.engine import lca, param_references, params
+from prism_lca.engine import lca, method_lookup, param_references, params
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.model import get_activity
 
@@ -235,7 +235,7 @@ class Reach:
         on_exchanges, _typed = self._exchanges()
         bound = {ex.key: ex for group in on_exchanges.values() for ex in group}
         root = get_activity(self.database, self.code)
-        m = lca.resolve_method(method)
+        m = method_lookup.resolve_method(method)
         with lca._LCA_LOCK:
             system = lca.get_lca({root.id: self.amount * lca._demand_sign(root)}, m)
             total = float(system.score)

@@ -8,6 +8,7 @@ import { formulaKept } from './formulaKept'
 import { ruleFor } from './paramRule'
 import { NEEDS_A_LOOK, NEEDS_A_LOOK_FLOOR, NEEDS_A_LOOK_TOP_N } from './advice/hotspots'
 import { unopenedHotspots } from './advice/opened'
+import { META_HOW_TO_READ, foregroundInputs, readableMeta } from './contributionReply'
 
 /** The model whose tag groups a group action changes: the one the call names, else the session's. */
 const tagModel = (a: { database?: unknown }, ctx: ToolCtx): string | null =>
@@ -209,6 +210,7 @@ export const IMPL: Record<string, Tool['run']> = {
     }
     walk(r?.tree)
     const unread = await unopenedHotspots(ctx, r?.tree, fg)
+    const named = await foregroundInputs(ctx, String(r?.meta?.database ?? fg), r?.meta)
     flat.push(...[...byKey.values()].map((v) => (v.paths > 1 ? v : ({ ...v, paths: undefined } as any))))
     flat.sort((x, y) => Math.abs(y.direct) - Math.abs(x.direct))
     // The 25 was fixed and undocumented, so the only way to learn of it was the footnote on a
@@ -216,7 +218,7 @@ export const IMPL: Record<string, Tool['run']> = {
     const limit = Number.isFinite(Number(a.top_n)) ? Math.max(1, Math.min(200, Number(a.top_n))) : 25
     const { items, note } = cap(flat, limit)
     return S({
-      meta: r?.meta,
+      meta: readableMeta(r?.meta, named, limit),
       aggregation: r?.aggregation,
       top_contributors_by_direct_impact: items,
       ...(unread.length
@@ -247,7 +249,8 @@ export const IMPL: Record<string, Tool['run']> = {
         'its own percentage: pairing a direct amount with a cumulative share overstates it. One row ' +
         'per activity: where "paths" is present the same dataset is reached by that many supply ' +
         'chains and its figures are already added together — a material with paths > 1 is bought ' +
-        'more than once, which is worth checking against your recipe.',
+        'more than once, which is worth checking against your recipe.' +
+        META_HOW_TO_READ,
       note
     })
   },

@@ -13,7 +13,8 @@ export const RULE_SCHEMA = {
   description:
     'Only when you CREATE this parameter, and only when its meaning fixes what it may be: kind="range" with ' +
     'min 0 and max 1 for a share, rate, efficiency or loss; kind="positive" for a mass, distance, count or ' +
-    'duration; kind="switch" for an on/off choice (0 or 1); kind="negative" for a credit kept as a negative ' +
+    'duration that can never be 0 — where 0 is a real value (none of it, no temperature rise), kind="range" ' +
+    'with min 0 instead; kind="switch" for an on/off choice (0 or 1); kind="negative" for a credit kept as a negative ' +
     'number. Omit it for a parameter that already exists, and when you are unsure.',
   properties: {
     kind: { type: 'string', enum: ['positive', 'negative', 'range', 'switch'] },

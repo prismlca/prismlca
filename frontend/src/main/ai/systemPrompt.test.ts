@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildSystemPrompt } from './systemPrompt'
+import { CALL_ORDER_RULE, buildSystemPrompt } from './systemPrompt'
+import { PARALLEL_SAFE_TOOLS } from './tools/registry'
 
 const base = { activeDb: 'window-study', skills: [] }
 
@@ -184,5 +185,28 @@ describe('buildSystemPrompt', () => {
     const text = buildSystemPrompt({ activeDb: 'Model A', skills: [] })
     expect(text).toContain('left of the chat input')
     expect(text).not.toMatch(/research_(web|bom)|eurostat_eol/)
+  })
+})
+
+describe('the order of the calls in one reply', () => {
+  it('is said in the chat, and left out when the caller says so (the MCP orientation)', () => {
+    expect(buildSystemPrompt(base)).toContain(CALL_ORDER_RULE)
+    expect(buildSystemPrompt({ ...base, callOrder: false })).not.toContain(CALL_ORDER_RULE)
+  })
+
+  it('describes what PARALLEL_SAFE_TOOLS holds — change one, change the other', () => {
+    // Words, not tool names: a chat may have the research tools switched off, and the prompt must not
+    // name a tool the model cannot call. Each tool that runs side by side maps to the word that covers it.
+    const covered: Record<string, string> = {
+      search_background: 'searches',
+      list_methods: 'searches',
+      get_process_details: 'dataset reads',
+      research_web: 'research calls',
+      research_bom: 'research calls',
+      distances: 'research calls',
+      eurostat_eol: 'research calls'
+    }
+    expect([...PARALLEL_SAFE_TOOLS].sort()).toEqual(Object.keys(covered).sort())
+    for (const words of new Set(Object.values(covered))) expect(CALL_ORDER_RULE).toContain(words)
   })
 })

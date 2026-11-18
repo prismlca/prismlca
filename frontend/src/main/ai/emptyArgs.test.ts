@@ -118,6 +118,18 @@ describe('withoutEmptyArgs — where empty means something (KEEP_EMPTY)', () => 
     }
   })
 
+  it('edit_exchange: null is never the instruction — it is left out where "" would clear', () => {
+    expect(norm('edit_exchange', { action: 'set_amount', uid: 'u', amount: 2, comment: null })).toEqual({
+      action: 'set_amount',
+      uid: 'u',
+      amount: 2
+    })
+    expect(
+      norm('edit_exchange', { action: 'set_formula', exchanges: [{ uid: 'u', formula: 'm', comment: null }] })
+    ).toEqual({ action: 'set_formula', exchanges: [{ uid: 'u', formula: 'm' }] })
+    expect(norm('edit_parameter', { name: 'm', value: 1, unit: null })).toEqual({ name: 'm', value: 1 })
+  })
+
   it('edit_exchange: on replace_input (and add) an empty formula or comment is padding', () => {
     // Three observed runs: `replace_input` with `formula: ""` dropped the formula it should carry over.
     expect(

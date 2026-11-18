@@ -45,7 +45,15 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 
-from prism_lca.engine import lca, param_rules, param_window, params, scenarios, sensitivity_fast
+from prism_lca.engine import (
+    lca,
+    method_lookup,
+    param_rules,
+    param_window,
+    params,
+    scenarios,
+    sensitivity_fast,
+)
 from prism_lca.engine.param_references import all_names_in
 from prism_lca.errors import PrismError
 
@@ -274,7 +282,7 @@ def tornado(database: str, code: str, methods: list, delta: float = 0.1, amount:
             code="sensitivity_delta",
             hint="Use a range above 0 and below 100 %; at 100 % a value would reach zero.",
         )
-    methods = [lca.resolve_method(m) for m in (methods or [None])]
+    methods = [method_lookup.resolve_method(m) for m in (methods or [None])]
     note = progress or (lambda *_: None)
     check = checkpoint or (lambda: None)
     with _Session(database, code, methods, amount, "one-at-a-time sensitivity analysis") as run:
@@ -360,7 +368,7 @@ def curve(database: str, code: str, method, param: str, values: list[float], sce
     if not values:
         raise PrismError("A curve needs at least one value.", code="sensitivity_no_values",
                          hint="Give the values to compute, for example from 10 to 30 in 11 points.")
-    m = lca.resolve_method(method)
+    m = method_lookup.resolve_method(method)
     variants = list(dict.fromkeys(scenario_ids or [None]))
     note = progress or (lambda *_: None)
     check = checkpoint or (lambda: None)

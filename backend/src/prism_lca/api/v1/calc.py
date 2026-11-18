@@ -8,7 +8,14 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import MethodRef, require_token
-from prism_lca.engine import calc_jobs, inventory_per_unit, lca, montecarlo, scenarios
+from prism_lca.engine import (
+    calc_jobs,
+    inventory_per_unit,
+    lca,
+    method_lookup,
+    montecarlo,
+    scenarios,
+)
 from prism_lca.engine import compare as compare_engine
 from prism_lca.engine.scenarios import ScenarioStore
 from prism_lca.errors import PrismError
@@ -65,6 +72,9 @@ class LciaRequest(BaseModel):
     amount: float = 1.0
     #: Also say how much of the score the activity emits ITSELF versus what its inputs bring.
     direct_split: bool = False
+    #: With several methods: compute those that resolve and name the others under ``not_computed``,
+    #: instead of failing the whole request on one misspelt indicator. The assistant's tool sets it.
+    partial: bool = False
 
 
 #: How many indicators a whole-family request returns at most. EF 3.1 has 25 standard categories; the
@@ -73,7 +83,7 @@ FAMILY_CAP = 25
 
 
 def _family_methods(family: str) -> tuple[list[list[str]], dict]:
-    found = lca.methods_in_family(family)
+    found = method_lookup.methods_in_family(family)
     if not found:
         raise PrismError(
             f"No LCIA method family matches '{family}'.",
@@ -146,7 +156,7 @@ class CharacterizationFactorsRequest(BaseModel):
 def methods(query: str | None = None, limit: int = 5000) -> list[dict]:
     # High default: the UI pickers need the COMPLETE catalog (ecoinvent ships 600+ methods);
     # the engine-level default of 100 would silently truncate the family list.
-    return lca.list_methods(query, limit)
+    return method_lookup.list_methods(query, limit)
 
 
 @router.post("/characterization-factors", summary="Characterisation factors of up to 4 indicators")
@@ -162,7 +172,9 @@ def lcia(body: LciaRequest) -> dict:
         out["family"] = note
         return out
     if body.methods:
-        return lca.compute_multi(body.database, body.code, body.methods, body.amount, body.direct_split)
+        return lca.compute_multi(
+            body.database, body.code, body.methods, body.amount, body.direct_split, partial=body.partial
+        )
     return lca.compute_lcia(body.database, body.code, body.method, body.amount, body.direct_split)
 
 
@@ -183,7 +195,15 @@ def start_job(body: LciaRequest) -> dict:
     answers at once with a job id; ``GET /jobs/{id}`` polls, ``?result=true`` reads the scores,
     ``POST /jobs/{id}/cancel`` stops between methods."""
     methods, note = _methods_of(body)
-    job = calc_jobs.start(body.database, body.code, methods, body.amount, body.direct_split, family=note)
+    # Resolved before the job starts: a misspelt indicator used to surface only when the worker reached it,
+    # and the job then ended in an error that threw away every score computed before it.
+    methods, not_computed = method_lookup.resolve_methods(methods)
+    if not methods:
+        raise method_lookup.none_resolved(not_computed)
+    job = calc_jobs.start(
+        body.database, body.code, methods, body.amount, body.direct_split, family=note,
+        not_computed=not_computed,
+    )
     return calc_jobs.snapshot(job)
 
 

@@ -10,8 +10,10 @@ import { splitId } from '../lib/canvas'
 import { viewLoaded, viewSet, viewSync } from '../lib/modelView'
 import { readLs } from '../lib/persist'
 import { fetchQuery } from '../lib/server/useQuery'
-import { tagFamiliesRoute } from '../lib/server/routes'
+import { activitiesRoute, scenariosRoute, tagFamiliesRoute } from '../lib/server/routes'
 import { resolveSplit } from '../views/results/splitBy'
+import { subjectRows } from '../views/results/subjectRows'
+import type { BgSubject, ModelSubject } from '../views/results/types'
 import type { MethodEntry } from '../lib/methods'
 import type { ViewKey } from './AppSidebar'
 import type { ResultsTab } from '../views/results/ResultsTabs'
@@ -305,6 +307,28 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
         const tagGroups = activeDb
           ? ((await fetchQuery(tagFamiliesRoute(activeDb)).catch(() => null))?.groups ?? [])
           : []
+        // The rows the page computes from this selection, by the page's own function: a model that sent
+        // a baseline and seven scenarios could not tell whether the view held eight rows.
+        const [acts, scenarioList, dbs] = activeDb
+          ? await Promise.all([
+              fetchQuery(activitiesRoute(activeDb)).catch(() => []),
+              fetchQuery(scenariosRoute(activeDb)).catch(() => []),
+              fetchQuery('/api/v1/databases').catch(() => [])
+            ])
+          : [[], [], []]
+        const dbNames = new Set(dbs.map((d) => d.name))
+        const rows = subjectRows({
+          activeDb,
+          acts,
+          subjSel: (held.subjSel as Record<string, boolean> | undefined) ?? {},
+          baselineOn: held.baseline !== false,
+          scenarios: scenarioList,
+          scenSel: (held.scenSel as Record<string, boolean> | undefined) ?? {},
+          otherModels: ((held.fgSubjects as ModelSubject[] | undefined) ?? []).filter(
+            (f) => f.database !== activeDb && dbNames.has(f.database)
+          ),
+          bgSubjects: (held.bgSubjects as BgSubject[] | undefined) ?? []
+        })
         return {
           tab: tab === 'detail' ? 'detailed' : 'overview',
           subjects: on(held.subjSel),
@@ -316,6 +340,8 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
           // only while this is on — an assistant reading one subject and three scenarios took its
           // baseline for lost and reported a view that was complete as wrong.
           baseline: held.baseline !== false,
+          rows: rows.length,
+          row_labels: rows.map((r) => r.label),
           methods: ((held.picked as Array<{ method: string[] }> | undefined) ?? []).map((m) => m.method),
           ...(unknownMethods.length ? { methods_not_found: unknownMethods } : {}),
           stacked: readLs('prism.ov.stacked', false),
@@ -330,7 +356,9 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
             : {}),
           note:
             'This is what the view holds now. Anything you asked for that is missing here did not ' +
-            'take — say so rather than reporting it as done. ' +
+            'take — say so rather than reporting it as done. "rows" is how many rows the page computes ' +
+            'from it (each ticked process, under each ticked scenario, plus the baseline while it is on), ' +
+            'named in "row_labels". ' +
             (run
               ? 'The Results page is open and calculating; this answer carries no scores.'
               : wasThere

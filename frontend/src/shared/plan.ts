@@ -113,6 +113,9 @@ export type PlanValidation =
   | { ok: true; input: PlanUpdateInput; cleared: boolean }
   | { ok: false; error: string }
 
+/** How many dropped unfinished steps a refusal names before it counts the rest. */
+const LOST_SHOWN = 5
+
 const norm = (s: string): string => s.trim().replace(/\s+/g, ' ').toLowerCase()
 
 /**
@@ -228,13 +231,23 @@ export function validatePlanUpdate(prev: ChatPlan | null, raw: unknown): PlanVal
   if (prev) {
     const now = new Set(steps.map((s) => norm(s.step)))
     const lost = prev.steps.filter((s) => !TERMINAL_STATUSES.has(s.status) && !now.has(norm(s.step)))
-    if (lost.length && !explanation)
+    // Every lost step is named, up to a few: naming only the first sent a model to restore that one
+    // and come back for the next, when the way out was the one `explanation` for all of them.
+    if (lost.length && !explanation) {
+      const shown = lost.slice(0, LOST_SHOWN).map((s) => `"${s.step}" (${s.status})`)
+      const rest = lost.length - shown.length
+      const names = rest
+        ? `${shown.join(', ')}, and ${rest} more`
+        : shown.length > 1
+          ? `${shown.slice(0, -1).join(', ')} and ${shown.at(-1)}`
+          : shown[0]
       return {
         ok: false,
         error:
-          `"${lost[0].step}" was ${lost[0].status} and is no longer in the list; ` +
-          'dropping or rewording unfinished steps needs an `explanation`.'
+          `${names} ${lost.length > 1 ? 'were unfinished and are' : 'was unfinished and is'} ` +
+          'no longer in the list; dropping or rewording unfinished steps needs an `explanation`.'
       }
+    }
   }
 
   return { ok: true, input: { title, explanation, steps }, cleared: false }

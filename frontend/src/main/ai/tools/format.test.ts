@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { batchResult } from './format'
+import { batchResult, oneScenario } from './format'
 import { failedItems, softError } from '../execute'
 
 const ok = (i: number) => ({ ok: true, item: i, result: { i } })
@@ -40,5 +40,21 @@ describe('batchResult', () => {
     expect(clean.hint).toBeUndefined()
     // An empty batch failed nothing.
     expect(JSON.parse(batchResult([])).error).toBeUndefined()
+  })
+})
+
+describe('oneScenario', () => {
+  it('drops the echoed list but keeps what the checks said beside the write', () => {
+    const scenario = { id: 's', name: 'Less incineration', overrides: { share_rec: 0.7, share_inc: 0.1 } }
+    expect(oneScenario({ scenario, scenarios: [scenario, { id: 't' }] })).toEqual({ scenario })
+    expect(
+      oneScenario({
+        scenario,
+        scenarios: [scenario],
+        redundant_overrides: ['share_rec'],
+        redundant_note: 'kept',
+        warnings: ['w']
+      })
+    ).toEqual({ scenario, redundant_overrides: ['share_rec'], redundant_note: 'kept', warnings: ['w'] })
   })
 })
