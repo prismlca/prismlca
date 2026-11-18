@@ -1,7 +1,8 @@
 /**
  * The entry a research_bom call leaves in the model's research log: the parts it found with a source — each
- * with how its figure was derived — and the check itself: what was summed, which requested components came back
- * without a mass, the whole-product masses found and the versions the figures rest on.
+ * with how its figure was derived —, the ingredients of a researched recipe once per substance, and the check
+ * itself: what was summed, which requested components came back without a mass, the whole-product masses found,
+ * the versions the figures rest on and whether the recipe closed.
  *
  * Written for every call, also one that found no mass at all. The reviewer compares the model's figures against
  * this log, and what the research could not settle is as much a fact about the study as what it found: a check
@@ -23,7 +24,7 @@ function partFindings(result: Partial<BomResult>): Item[] {
   const excerptOf = (url: unknown): string | undefined =>
     (result.evidence ?? []).find((e) => e.url === url && e.excerpt)?.excerpt
   return (result.items ?? [])
-    .filter((i) => i.source_url)
+    .filter((i) => i.source_url && i.group !== 'recipe')
     .map((i) => {
       const label =
         `${i.component}${i.material ? ` (${i.material})` : ''}` +
@@ -65,6 +66,52 @@ function partFindings(result: Partial<BomResult>): Item[] {
     })
 }
 
+const MIX_SOURCES = 5
+
+/**
+ * A recipe's ingredients, once per substance: water added and water of a surfactant solution are two contributions
+ * in the result, but one mass the model books — logged apart, the health check would name the smaller one as never
+ * booked. Without a mass, the shares go in as text the health check does not read.
+ */
+function recipeFindings(result: Partial<BomResult>): Item[] {
+  const mix = result.recipe
+  if (!mix) return []
+  const of = `recipe of ${mix.of}${mix.formulation ? ` (${mix.formulation.name})` : ''}`
+  const kg = (result.items ?? []).filter((i) => i.group === 'recipe')
+  if (kg.length) {
+    const bySubstance = new Map<string, typeof kg>()
+    for (const i of kg) {
+      const key = i.component.trim().toLowerCase()
+      bySubstance.set(key, [...(bySubstance.get(key) ?? []), i])
+    }
+    return [...bySubstance.values()].map((parts) => {
+      const mass = Number(parts.reduce((s, i) => s + i.mass_kg, 0).toFixed(6))
+      const share = Number(parts.reduce((s, i) => s + (i.share_pct ?? 0), 0).toFixed(2))
+      const sources = [...new Set(parts.map((i) => i.source_url).filter((u): u is string => !!u))]
+      const from = parts.map((i) =>
+        i.from_trade_form ? `${i.mass_kg} kg from ${i.from_trade_form}` : `${i.mass_kg} kg as dosed`
+      )
+      const first = parts[0]
+      return {
+        text: `${first.component} (${share} %): ${mass} kg`,
+        sources: sources.slice(0, MIX_SOURCES),
+        ...(first.source_class ? { source_class: first.source_class } : {}),
+        ...(first.confidence ? { confidence: first.confidence } : {}),
+        note: `${of}${parts.length > 1 ? `; ${from.join(' + ')}` : ''}`,
+        component: first.component,
+        mass_kg: mass
+      }
+    })
+  }
+  return mix.lines
+    .filter((l) => l.share_pct !== undefined)
+    .map((l) => ({
+      text: `${l.name}: ${l.share_pct} % of ${mix.of}`,
+      sources: [l.source_url ?? mix.formulation?.source_url].filter((u): u is string => !!u),
+      note: of
+    }))
+}
+
 /** What the call itself reported about its result — none of it a finding the health check reads. */
 function bomCheck(result: Partial<BomResult>): Item {
   const versions = result.versions
@@ -100,7 +147,30 @@ function bomCheck(result: Partial<BomResult>): Item {
               : {})
           }
         }
-      : {})
+      : {}),
+    ...(result.recipe ? { recipe: recipeCheck(result.recipe) } : {})
+  }
+}
+
+/** The recipe's own check: closed or not, by how much, against what, and what it lacks. */
+function recipeCheck(mix: NonNullable<BomResult['recipe']>): Item {
+  return {
+    of: mix.of,
+    ...(mix.formulation
+      ? {
+          formulation: mix.formulation.name,
+          kind: mix.formulation.kind,
+          ...(mix.formulation.source_url ? { source: mix.formulation.source_url } : {})
+        }
+      : {}),
+    closes: mix.closes,
+    note: mix.closes_note,
+    ...(mix.gap_pct !== undefined ? { gap_pct: mix.gap_pct } : {}),
+    ...(mix.gap_kg !== undefined ? { gap_kg: mix.gap_kg } : {}),
+    ...(mix.reachable_by_ranges !== undefined ? { reachable_by_ranges: mix.reachable_by_ranges } : {}),
+    ...(mix.mass_kg !== undefined ? { mass_kg: mix.mass_kg, mass_source: mix.mass_source } : {}),
+    ...(mix.missing_ingredients ? { missing_ingredients: mix.missing_ingredients } : {}),
+    ...(mix.split ? { split: mix.split } : {})
   }
 }
 
@@ -123,7 +193,7 @@ export function bomLogEntry(
   return {
     question: `Bill of materials: ${call.product}`,
     ...(context ? { context } : {}),
-    findings: partFindings(result),
+    findings: [...partFindings(result), ...recipeFindings(result)],
     bom_check: bomCheck(result)
   }
 }

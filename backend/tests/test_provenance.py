@@ -9,7 +9,7 @@ from __future__ import annotations
 from prism_lca.engine.report_checks import limitations_blocks
 from prism_lca.engine.report_prompts import brief_facts, build_brief, placeholder_paths
 from prism_lca.engine.report_sources import researched_sources
-from prism_lca.engine.research_log import ResearchLogStore, clean_entry
+from prism_lca.engine.research_log import ResearchLogStore, clean_bom_check, clean_entry
 from prism_lca.engine.review_log import ReviewLogStore, tagged_findings
 
 ENTRY = {
@@ -163,6 +163,26 @@ def test_a_repeat_keeps_its_finding_when_the_full_log_evicts_the_first_record(pr
         "frame: 9 kg"
     ]
     assert entries[-1]["findings"][0]["mass_kg"] == 9.0
+
+
+def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
+    check = clean_bom_check({
+        "summary": "The recipe of liquid soap does NOT close",
+        "recipe": {"of": "liquid soap (contents of the pouch)", "formulation": "MP-01", "kind": "frame",
+                   "source": "https://pcc.example/mp01.pdf", "closes": False, "note": "its lines sum to 91.12 %",
+                   "gap_pct": 8.88, "gap_kg": 0.045288, "mass_kg": 0.51, "mass_source": "given",
+                   "missing_ingredients": ["Glyceryl Oleate"] + [f"x{i}" for i in range(20)],
+                   "split": ["SLES 27 % solution"], "reachable_by_ranges": "yes"},
+    })
+    recipe = check["recipe"]
+    assert recipe["closes"] is False and recipe["gap_pct"] == 8.88 and recipe["gap_kg"] == 0.045288
+    assert recipe["kind"] == "frame" and recipe["mass_source"] == "given"
+    assert len(recipe["missing_ingredients"]) == 12 and recipe["split"] == ["SLES 27 % solution"]
+    assert "reachable_by_ranges" not in recipe
+    # Not checkable is an answer of its own, kept as null; an over-full recipe keeps its negative gap.
+    open_one = clean_bom_check({"recipe": {"of": "concrete", "closes": None, "gap_pct": -3.5, "kind": "guess"}})
+    assert open_one == {"recipe": {"of": "concrete", "closes": None, "gap_pct": -3.5}}
+    assert clean_bom_check({"recipe": {"closes": True}}) is None
 
 
 def test_an_entry_without_findings_needs_a_valid_check(project):

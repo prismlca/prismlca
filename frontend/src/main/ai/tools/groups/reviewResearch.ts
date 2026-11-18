@@ -55,6 +55,20 @@ interface BomCheck {
       source?: string
     }>
   }
+  recipe?: {
+    of: string
+    formulation?: string
+    kind?: string
+    closes?: boolean | null
+    note?: string
+    gap_pct?: number
+    gap_kg?: number
+    reachable_by_ranges?: boolean
+    mass_kg?: number
+    mass_source?: string
+    missing_ingredients?: string[]
+    split?: string[]
+  }
 }
 interface Entry {
   question: string
@@ -150,6 +164,37 @@ function checkLines(check: BomCheck): string[] {
       `  Whole-product masses found${new Set(check.totals.map((t) => t.mass_kg)).size > 1 ? ' (they differ)' : ''}: ` +
         check.totals.map(totalText).join('; ')
     )
+  const m = check.recipe
+  // A recipe that does not close is an open point like a part without a mass: said as such, with its gap.
+  if (m) {
+    const gap =
+      typeof m.gap_pct === 'number'
+        ? ` (${Math.abs(m.gap_pct)} %${typeof m.gap_kg === 'number' ? `, ${Math.abs(m.gap_kg)} kg` : ''} ${m.gap_pct >= 0 ? 'unaccounted' : 'over'})`
+        : ''
+    const whose =
+      m.kind === 'frame'
+        ? ', a frame formulation'
+        : m.kind === 'product'
+          ? ''
+          : ", not said whether the product's own"
+    lines.push(
+      `  Recipe of ${m.of}${m.formulation ? ` ("${m.formulation}"${whose})` : ''}: ` +
+        (m.closes === true
+          ? `closes${gap}`
+          : m.closes === false
+            ? `does NOT close${gap} — not settled`
+            : `closure not checked${m.note ? ` (${oneLine(m.note)})` : ''} — not settled`) +
+        (m.reachable_by_ranges !== undefined
+          ? `; its ranges ${m.reachable_by_ranges ? 'can' : 'cannot'} reach the total`
+          : '') +
+        (m.missing_ingredients?.length
+          ? `; lacks ingredients known from the product: ${m.missing_ingredients.join(', ')}`
+          : '') +
+        (typeof m.mass_kg === 'number'
+          ? `; scaled to ${m.mass_kg} kg (${m.mass_source ?? 'source not stated'})`
+          : '; shares only, no kg')
+    )
+  }
   const v = check.versions
   // One line per version: run together, a reader attached the boards to the version named after them.
   if (v?.conflict && v.used?.length)

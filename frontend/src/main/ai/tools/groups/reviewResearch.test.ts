@@ -103,6 +103,38 @@ describe('the dossier’s research on record', () => {
     )
   })
 
+  it('names a recipe that does not close as not settled, with its gap and what it lacks', () => {
+    const entry = (recipe: Record<string, unknown>) => ({
+      question: 'Bill of materials: liquid soap refill',
+      findings: [],
+      asked: '2026-11-15T21:00:00Z',
+      bom_check: { summary: 'checked', recipe }
+    })
+    const open = researchSection([
+      entry({
+        of: 'liquid soap',
+        formulation: 'MP-01',
+        kind: 'frame',
+        closes: false,
+        gap_pct: 8.88,
+        gap_kg: 0.045288,
+        mass_kg: 0.51,
+        mass_source: 'given',
+        missing_ingredients: ['Glyceryl Oleate', 'Betaine']
+      })
+    ])
+    expect(open).toContain(
+      'Recipe of liquid soap ("MP-01", a frame formulation): does NOT close (8.88 %, 0.045288 kg unaccounted) — not ' +
+        'settled; lacks ingredients known from the product: Glyceryl Oleate, Betaine; scaled to 0.51 kg (given)'
+    )
+    const unchecked = researchSection([
+      entry({ of: 'concrete', closes: null, note: 'parts by weight have no total of their own' })
+    ])
+    expect(unchecked).toContain(
+      'Recipe of concrete: closure not checked (parts by weight have no total of their own) — not settled; shares only, no kg'
+    )
+  })
+
   it('keeps every check as history: the latest whole, earlier ones a line with what they were given', () => {
     const text = researchSection([
       t4Entry('2026-11-14T10:00:00Z', 'Atlas, 4 mm boards'),

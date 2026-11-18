@@ -143,6 +143,7 @@ export interface ToolCtx {
     components?: string[]
     maxComponents?: number
     domains?: string[]
+    recipe?: { of?: string; mass_kg?: number; ingredients?: string[] }
   }) => Promise<unknown>
   /** Run the generic web-research sub-agent (injected, same reasoning as `research`). */
   researchWeb?: (opts: {

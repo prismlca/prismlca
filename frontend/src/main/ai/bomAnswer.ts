@@ -22,9 +22,17 @@ export interface BomItem {
    *  than one figure. `mass_kg` is the leg's chosen value inside it; the span is what a scenario spread can
    *  build on mechanically. */
   mass_range_kg?: [number, number]
-  /** Sales or transport packaging rather than the product itself — kept out of the parts' sum, because an
-   *  article weight does not contain it and a shipping weight does. */
-  packaging?: boolean
+  /** Packaging rather than the product itself, kept out of the parts' sum. `sales`: what the product is sold in (its
+   *  retail box, blister, film) — a gross article weight contains it; `transport`: shipping cartons, pallets,
+   *  stretch film shared by several units — no weight of the product contains it. */
+  packaging?: 'sales' | 'transport'
+  /** Set on the ingredients of a researched recipe: they are weighed by the recipe's own closure (recipeBalance.ts),
+   *  not by the rules for parts. */
+  group?: 'recipe'
+  /** A recipe ingredient's percent of the mixture, on the booking basis. */
+  share_pct?: number
+  /** The trade form a recipe ingredient was dosed in, when the entry is one of its stated constituents. */
+  from_trade_form?: string
   /** Other requested components whose mass this figure already contains, as the leg named them (a pouch
    *  weighed with its spout). A hint the balance reads, never a reason to remove a mass. */
   includes?: string[]
@@ -127,6 +135,14 @@ function rangeAround(raw: unknown, point: number): [number, number] | undefined 
     ? [lo, hi]
     : undefined
 }
+
+/** `"transport"` is transport packaging; `"sales"` and the older `true` are what the product is sold in. */
+const packagingOf = (v: unknown): BomItem['packaging'] =>
+  v === true || text(v).toLowerCase() === 'sales'
+    ? 'sales'
+    : text(v).toLowerCase() === 'transport'
+      ? 'transport'
+      : undefined
 
 const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : [])
 
@@ -248,7 +264,7 @@ export function parseBomAnswer(parsed: unknown): BomLeg {
               : range
           }
         : {}),
-      ...(r.packaging === true ? { packaging: true } : {}),
+      ...(packagingOf(r.packaging) ? { packaging: packagingOf(r.packaging) } : {}),
       ...(includes.length ? { includes } : {}),
       ...(version ? { version } : {}),
       source_url: sourceOf(r),

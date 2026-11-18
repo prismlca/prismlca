@@ -56,6 +56,15 @@ describe('withoutEmptyArgs — the central rule', () => {
       product: 'lamp',
       total_mass_kg: 0
     })
+    // An empty recipe is padding: a shelf must not get a recipe leg because a model filled every optional field.
+    expect(norm('research_bom', { product: 'shelf', recipe: {} })).toEqual({ product: 'shelf' })
+    expect(norm('research_bom', { product: 'shelf', recipe: { of: '', ingredients: [] } })).toEqual({
+      product: 'shelf'
+    })
+    expect(norm('research_bom', { product: 'concrete', recipe: { of: 'ready-mix concrete' } })).toEqual({
+      product: 'concrete',
+      recipe: { of: 'ready-mix concrete' }
+    })
     expect(norm('eurostat_eol', { dataset: 'env_waspac', year: 0, country: '' })).toEqual({
       dataset: 'env_waspac'
     })

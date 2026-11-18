@@ -76,6 +76,22 @@ describe('parseBomItems', () => {
   })
 })
 
+describe('parseBomAnswer — packaging', () => {
+  // A live run: offered only "sales" | "transport", a weak model marked a wheelbarrow's tray as sales packaging.
+  it('reads "no" as a part of the product, and keeps sales and transport packaging apart', () => {
+    const items = parseBomAnswer({
+      items: [
+        { component: 'tray', mass_kg: 11, packaging: 'no' },
+        { component: 'box', mass_kg: 1, packaging: 'sales' },
+        { component: 'pallet share', mass_kg: 0.2, packaging: 'transport' },
+        { component: 'film', mass_kg: 0.1, packaging: true },
+        { component: 'frame', mass_kg: 6, packaging: false }
+      ]
+    }).items
+    expect(items.map((i) => i.packaging)).toEqual([undefined, 'sales', 'transport', 'sales', undefined])
+  })
+})
+
 describe('parseBomAnswer — parts without a mass', () => {
   // PCFBench (arXiv 2608.27716): 47–86 % of generated BOMs carry zero-mass "ghost" parts and a quarter
   // to a third of the parts go missing. A 0 used to pass as a researched figure and a
@@ -176,7 +192,11 @@ describe('parseBomAnswer — what the leg says about its figure', () => {
       { component: 'pouch', mass_kg: 0.012, includes: ['spout', '', 7] },
       { component: 'odd', mass_kg: 1, packaging: 'yes', includes: 'spout' }
     ])
-    expect(box).toMatchObject({ packaging: true, version: 'EAN 5400431601480' })
+    expect(box).toMatchObject({ packaging: 'sales', version: 'EAN 5400431601480' })
+    expect(
+      parseBomAnswer({ items: [{ component: 'carton', mass_kg: 0.4, packaging: 'transport' }] }).items[0]
+        .packaging
+    ).toBe('transport')
     expect(pouch.includes).toEqual(['spout', '7'])
     expect(odd.packaging).toBeUndefined()
     expect(odd.includes).toBeUndefined()

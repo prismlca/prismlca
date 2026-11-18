@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { ToolCtx } from '../context'
 import type { BomItem, BomLeg } from '../../bomAnswer'
 import { weighBom } from '../../bomBalance'
+import { parseRecipeAnswer } from '../../bomRecipe'
+import { weighRecipe } from '../../recipeBalance'
 import { bomLogEntry } from './bomLogEntry'
 import { researchTools } from './research'
 
@@ -123,5 +125,112 @@ describe('the research log entry of a bill-of-materials call', () => {
     const { posts, out } = await run({ error: 'no provider' })
     expect(posts).toEqual([])
     expect(JSON.parse(out as string).error).toBe('no provider')
+  })
+})
+
+describe('the research log entry of a call with a recipe', () => {
+  const soap = weighRecipe(
+    parseRecipeAnswer({
+      formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
+      lines: [
+        { name: 'water', unit: '%', rest_to_total: true },
+        {
+          name: 'SLES 27 % solution',
+          amount: 30,
+          unit: '%',
+          trade_form: {
+            source_url: 'https://supplier.example/sles27.pdf',
+            constituents: [
+              { name: 'sodium laureth sulfate', pct: 27 },
+              { name: 'water', pct: 73 }
+            ]
+          }
+        }
+      ]
+    }),
+    { of: 'liquid soap', request: { mass_kg: 0.5 } }
+  )
+
+  it('logs each substance once — water added and water of the solution as one mass — beside the parts', async () => {
+    const result = {
+      product: 'soap refill',
+      ...weighBom(
+        [{ request: 'pouch', leg: leg({ items: [item('pouch', 0.02, { source_url: 'https://e.org/p' })] }) }],
+        {
+          recipe: soap
+        }
+      )
+    }
+    const { posts } = await run(result, { product: 'soap refill', recipe: { mass_kg: 0.5 } })
+    const entry = posts[0].body.entries[0]
+    expect(entry.findings.map((f: { text: string }) => f.text)).toEqual([
+      'pouch: 0.02 kg',
+      'water (91.9 %): 0.4595 kg',
+      'sodium laureth sulfate (8.1 %): 0.0405 kg'
+    ])
+    expect(entry.findings[1]).toMatchObject({
+      component: 'water',
+      mass_kg: 0.4595,
+      sources: ['https://pcc.example/mp01.pdf', 'https://supplier.example/sles27.pdf'],
+      note: 'recipe of liquid soap (MP-01); 0.35 kg as dosed + 0.1095 kg from SLES 27 % solution'
+    })
+    expect(entry.bom_check.recipe).toMatchObject({
+      of: 'liquid soap',
+      closes: true,
+      gap_pct: 0,
+      split: ['SLES 27 % solution']
+    })
+  })
+
+  it('logs shares without a mass as text the health check does not read', async () => {
+    const shares = weighRecipe(
+      parseRecipeAnswer({
+        formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
+        lines: [
+          { name: 'water', amount: 88, unit: '%' },
+          { name: 'SLES 70 %', amount: 12, unit: '%' }
+        ]
+      }),
+      { of: 'liquid soap', request: {} }
+    )
+    const { posts } = await run({ product: 'soap', ...weighBom([], { recipe: shares }) })
+    const findings = posts[0].body.entries[0].findings
+    expect(findings).toEqual([
+      {
+        text: 'water: 88 % of liquid soap',
+        sources: ['https://pcc.example/mp01.pdf'],
+        note: 'recipe of liquid soap (MP-01)'
+      },
+      {
+        text: 'SLES 70 %: 12 % of liquid soap',
+        sources: ['https://pcc.example/mp01.pdf'],
+        note: 'recipe of liquid soap (MP-01)'
+      }
+    ])
+  })
+
+  it('refuses a recipe sent as a string, naming how it arrived, and passes a real one through', async () => {
+    let passed: unknown
+    const call = (args: Record<string, unknown>) =>
+      researchBom.run(args, {
+        api: async () => ({}),
+        ui: async () => ({}),
+        research: async (o: unknown) => ((passed = o), { summary: 'x', items: [] })
+      } as unknown as ToolCtx)
+    const refused = JSON.parse(
+      String(await call({ product: 'soap', recipe: '{"of": "soap", "mass_kg": 0.5}' }))
+    )
+    expect(refused.error).toMatch(/"recipe" arrived as ONE string, not an object/)
+    expect(passed).toBeUndefined()
+    const bad = JSON.parse(String(await call({ product: 'soap', recipe: { ingredients: 'Aqua, Glycerin' } })))
+    expect(bad.error).toMatch(/"recipe.ingredients" arrived as ONE string, not an array/)
+    const mass = JSON.parse(String(await call({ product: 'soap', recipe: { mass_kg: '0.5' } })))
+    expect(mass.error).toMatch(/"recipe.mass_kg" arrived as "0.5"/)
+    await call({ product: 'soap', recipe: { of: ' liquid soap ', mass_kg: 0.5, ingredients: ['Aqua', ' '] } })
+    expect(passed).toMatchObject({ recipe: { of: 'liquid soap', mass_kg: 0.5, ingredients: ['Aqua'] } })
+    // 0 is padding, as in a count: left out, not refused.
+    await call({ product: 'soap', recipe: { of: 'liquid soap', mass_kg: 0 } })
+    expect(passed).toMatchObject({ recipe: { of: 'liquid soap' } })
+    expect((passed as { recipe: object }).recipe).not.toHaveProperty('mass_kg')
   })
 })

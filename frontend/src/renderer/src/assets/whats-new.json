@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-18",
+    "title": "Recipes in bill-of-materials research",
+    "details": "The assistant's bill-of-materials research now researches a mixture — a soap, a paint, a concrete — as one recipe from one named source, beside the container and packaging. The result says whether the recipe adds up to the total its source states, which ingredients from the label it lacks and whether it is the product's own recipe or a frame formulation; a recipe that does not add up keeps the mass balance unchecked."
+  },
+  {
+    "date": "2026-11-18",
     "title": "Run bar shows the run's time; question card waits for Answer",
     "details": "The chat's run bar now shows the whole run's time beside the current step's, and it names a single round that missed the prompt cache or got only part of it as such; only two misses in a row read as a cache that is not working. A question card with one question now also sends with Answer, so a slipped click can be corrected."
   },

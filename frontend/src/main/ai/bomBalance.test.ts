@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BomItem, BomLeg } from './bomAnswer'
-import {
-  gtinsIn,
-  massBalance,
-  sameReference,
-  versionsContradict,
-  weighBom,
-  type LegOutcome,
-  type TotalUsed
-} from './bomBalance'
+import { massBalance, weighBom, type LegOutcome, type TotalUsed } from './bomBalance'
+import { gtinsIn, sameReference, versionsContradict } from './bomVersions'
 
 /**
  * The verdict a parent model builds on. The cases are the recorded answers of real runs (T1, T4, T5, T9 of the
@@ -162,7 +155,7 @@ describe('massBalance', () => {
   })
 
   describe('packaging and the scope of the total', () => {
-    const withBox = [item('frame', 7), item('shelves', 6), item('box', 0.6, { packaging: true })]
+    const withBox = [item('frame', 7), item('shelves', 6), item('box', 0.6, { packaging: 'sales' })]
 
     it('keeps packaging out of the parts and compares a net total with the parts alone', () => {
       const r = massBalance({ items: withBox, total: given(13), open: [], locks: [] })
@@ -183,7 +176,7 @@ describe('massBalance', () => {
     // and they check different things. Neither verdict goes out; both differences do.
     it('gives no verdict on a total of unknown scope, and both residuals', () => {
       const r = massBalance({
-        items: [item('parts', 9), item('box', 1, { packaging: true })],
+        items: [item('parts', 9), item('box', 1, { packaging: 'sales' })],
         total: { mass_kg: 10, basis: 'unknown', source: 'researched' },
         open: [],
         locks: []
@@ -299,7 +292,7 @@ describe('weighBom — T4 when the legs can say what their figures are', () => {
       })
     },
     { request: T4.feet, leg: leg({ items: [item('Kunststofffüße', 0.048)] }) },
-    { request: T4.box, leg: leg({ items: [item('Verkaufsverpackung', 0.6, { packaging: true })] }) },
+    { request: T4.box, leg: leg({ items: [item('Verkaufsverpackung', 0.6, { packaging: 'sales' })] }) },
     {
       request: T4.total,
       leg: leg({

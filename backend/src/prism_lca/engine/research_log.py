@@ -28,8 +28,9 @@ from prism_lca.engine._store import JsonFileStore, now_z
 #: Entries per model. Beyond this the oldest go first — a model researched in waves keeps the
 #: recent evidence, and 80 questions is far past anything a study legitimately needs.
 MAX_ENTRIES = 80
-#: Findings per entry / sources per finding. The tools already condense; these only stop abuse.
-MAX_FINDINGS = 20
+#: Findings per entry / sources per finding. The tools already condense; these only stop abuse. A
+#: bill-of-materials call can bring eight parts and a recipe of up to thirty ingredients.
+MAX_FINDINGS = 40
 MAX_SOURCES = 5
 
 
@@ -56,6 +57,11 @@ MAX_TOTALS = 6
 MAX_VERSIONS_SEEN = 3
 #: Requested parts / open parts / version groups per check — research_bom asks for at most eight.
 MAX_CHECK_ROWS = 12
+#: A recipe's check: what it is of, which formulation, whether it closed — and the ingredients known from the
+#: product that it lacks, and the trade forms split into their constituents.
+RECIPE_KINDS = {"product", "frame", "unknown"}
+MASS_SOURCES = {"given", "researched"}
+MAX_RECIPE_NAMES = 12
 
 
 def _cut(value: object, limit: int) -> str:
@@ -119,7 +125,51 @@ def clean_bom_check(raw: object) -> dict | None:
     versions = _clean_versions(raw.get("versions"))
     if versions:
         check["versions"] = versions
+    recipe = _clean_recipe(raw.get("recipe"))
+    if recipe:
+        check["recipe"] = recipe
     return check or None
+
+
+def _number(value: object) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float("inf"):
+        return float(value)
+    return None
+
+
+def _clean_recipe(raw: object) -> dict | None:
+    """A researched recipe's own check: whether its lines closed against the total its source states
+    (``closes`` true, false or null with its ``note``), the gap in percent and kilograms (negative = over),
+    whether its ranges could reach the total, the mass it was scaled to, and what it lacks."""
+    if not isinstance(raw, dict):
+        return None
+    of = _cut(raw.get("of"), 160)
+    if not of:
+        return None
+    kept: dict = {"of": of, "closes": raw.get("closes") if isinstance(raw.get("closes"), bool) else None}
+    for key, limit in (("formulation", 160), ("source", 300), ("note", 300)):
+        value = _cut(raw.get(key), limit)
+        if value:
+            kept[key] = value
+    if raw.get("kind") in RECIPE_KINDS:
+        kept["kind"] = raw["kind"]
+    for key in ("gap_pct", "gap_kg"):
+        value = _number(raw.get(key))
+        if value is not None:
+            kept[key] = value
+    if isinstance(raw.get("reachable_by_ranges"), bool):
+        kept["reachable_by_ranges"] = raw["reachable_by_ranges"]
+    mass = _mass(raw.get("mass_kg"))
+    if mass is not None:
+        kept["mass_kg"] = mass
+        if raw.get("mass_source") in MASS_SOURCES:
+            kept["mass_source"] = raw["mass_source"]
+    for key in ("missing_ingredients", "split"):
+        listed = raw.get(key) if isinstance(raw.get(key), list) else []
+        names = [_cut(n, 120) for n in listed if str(n or "").strip()]
+        if names:
+            kept[key] = names[:MAX_RECIPE_NAMES]
+    return kept
 
 
 def _clean_versions(raw: object) -> dict | None:
