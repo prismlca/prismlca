@@ -269,11 +269,18 @@ def _project_parameters() -> dict:
 
 
 def _unbooked(component: str, detail: str) -> str:
+    # A reconciliation task, not a diagnosis: the check compares numbers, so a part booked inside another part,
+    # split differently or in another unit lands here too — and "model it or call it cut-off" would then mean
+    # booking it twice or recording a cut-off the study never made.
     return (
-        f"The bill-of-materials research recorded '{component}' at {detail}, and no non-zero exchange books "
-        "a mass near it. Either its production was never modelled, or it falls under the cut-off — model it, "
-        "or name it where the study records its cut-off decisions. A mass that is inside the shipping weight "
-        "but inside no process is invisible to every other check here."
+        f"The bill-of-materials research recorded '{component}' at {detail}, and the check could not match it "
+        "to anything the model books. Find it in the model before you change anything: it may sit inside "
+        "another part, be split over several inputs, or be booked as pieces, a volume or an area — judge by the "
+        "amounts and the sources, not by comments. If it is booked in full, add nothing; where its mass or "
+        "product version differs from the research, settle which is right from the sources — ask the user when "
+        "they do not decide it — and say why in the process comment. If it is missing in whole or in part, model "
+        "what is missing, or leave it out only where the study's cut-off criteria allow it and name it where the "
+        "study records its cut-off decisions."
     )
 
 
@@ -281,8 +288,9 @@ def _only_reduces(component: str, mass: float, carrier: str, what: str) -> str:
     return (
         f"The bill-of-materials research recorded '{component}' at {mass:g} kg. Parameter '{carrier}' carries "
         f"that figure but {what} — no exchange books it. If it is booked another way — its parts one by one, "
-        "or as a volume or an area — that is fine and nothing needs to change; otherwise its production was "
-        "never modelled: model it, or name it where the study records its cut-off decisions."
+        "or as a volume or an area — that is fine and nothing needs to change; otherwise model it, or leave it "
+        "out only where the study's cut-off criteria allow it and name it where the study records its cut-off "
+        "decisions."
     )
 
 

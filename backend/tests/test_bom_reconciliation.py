@@ -45,6 +45,35 @@ def test_the_pegs_case_a_figure_parked_in_a_dormant_branch():
     assert "heringe_masse" in detail and "no non-zero exchange" in detail
 
 
+def test_the_finding_asks_for_a_reconciliation_not_a_cut_off():
+    """The check compares numbers, so a part booked inside another part, split differently or in another unit
+    lands here as well: shelf boards booked as a set in m³ against a researched mass per board, small parts whose
+    axle sits in the wheel. The text must send the reader to find the part first, and offer the cut-off only
+    where the study's own criteria allow it — not as the other half of "never modelled or cut-off"."""
+    no_trail = _run([{"component": "small parts", "mass_kg": 0.38}], [], [("kilogram", 0.08, "m_kleinteile")])
+    dormant = _run(  # the other way in: a parameter carries the figure and feeds nothing
+        [{"component": "ground pegs", "mass_kg": 0.2}],
+        [{"name": "heringe_masse", "amount": 0.2, "unit": "kg"}],
+        [("kilogram", 0.0, "heringe_masse * schalter"), ("kilogram", 9.0, "")],
+    )
+    for found in (no_trail, dormant):
+        assert len(found) == 1
+        text = found[0][1]
+        assert "Find it in the model before you change anything" in text and "add nothing" in text
+        assert "only where the study's cut-off criteria allow it" in text
+        assert "ask the user when they do not decide it" in text
+        assert "never modelled" not in text
+    # The sister text, for a figure that only lowers what it reaches, offers the cut-off on the same condition.
+    reduces = _run(
+        [{"component": "part", "mass_kg": 0.2}],
+        [{"name": "m_part", "amount": 0.2, "unit": "kg"}],
+        [("kilogram", 0.8, "1 - m_part")],
+    )
+    assert len(reduces) == 1 and "only reduces" in reduces[0][1]
+    assert "only where the study's cut-off criteria allow it" in reduces[0][1]
+    assert "never modelled" not in reduces[0][1]
+
+
 def test_a_component_booked_directly_is_silence():
     found = _run(
         [{"component": "roof canopy", "mass_kg": 2.2}],
