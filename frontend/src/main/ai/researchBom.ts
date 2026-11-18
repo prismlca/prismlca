@@ -7,7 +7,15 @@ import { parseBomAnswer, type BomLeg } from './bomAnswer'
 import { weighBom, type BomWeighing, type LegOutcome } from './bomBalance'
 import { CitationBook, isProviderLink, type Evidence } from './citationBook'
 import { settleLinks } from './researchNote'
-import { RETRY_BUDGET_MS, extractJson, normalizeDomains, runResearch, type CostSink } from './subagent'
+import {
+  RETRY_BUDGET_MS,
+  extractJson,
+  legFailure,
+  normalizeDomains,
+  retryCanHelp,
+  runResearch,
+  type CostSink
+} from './subagent'
 
 const BOM_SYSTEM = `You research bills of materials for life-cycle assessment.
 Answer with ONE JSON object ONLY — no prose, no code fence:
@@ -171,13 +179,14 @@ export async function researchBom(opts: {
           onCitations: (c) => book.add(c)
         })
       } catch (e) {
-        // Out of time, or the connection died. One narrow retry is worth it; a second is not, and the
-        // user pressing Stop must still end everything at once.
-        if (!timedOut && !opts.signal?.aborted) {
+        // Out of time, or the connection died. One narrow retry is worth it; a second is not, the user
+        // pressing Stop must still end everything at once, and a refused key or account fails at once.
+        if (!timedOut && !opts.signal?.aborted && retryCanHelp(e)) {
           timedOut = true
-          opts.onProgress?.(`${label}: ran out of time — retrying with a narrower question`)
+          opts.onProgress?.(`${label}: ${legFailure(e)} — retrying with a narrower question`)
           continue
         }
+        if (!opts.signal?.aborted) opts.onProgress?.(`${label}: ${legFailure(e)}`)
         throw e
       }
       if (!text) continue

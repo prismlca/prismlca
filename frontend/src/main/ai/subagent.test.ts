@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { AiProviderError } from './providers/types'
 import {
+  ResearchTimeout,
   extractJson,
+  legFailure,
+  retryCanHelp,
   needsUpgradePass,
   normalizeDomain,
   normalizeDomains,
@@ -208,5 +212,25 @@ describe('domains the model names', () => {
       domains: [],
       text: 'plain finding (https://x.y)'
     })
+  })
+})
+
+describe('a failed research leg', () => {
+  it('is retried unless the provider refused the key, the account or the model', () => {
+    expect(retryCanHelp(new ResearchTimeout('ran past'))).toBe(true)
+    expect(retryCanHelp(new Error('connection reset'))).toBe(true)
+    expect(retryCanHelp(new AiProviderError('busy', 'rate_limit', true))).toBe(true)
+    for (const code of ['auth', 'no_key', 'credits', 'no_endpoint'] as const)
+      expect(retryCanHelp(new AiProviderError('refused', code))).toBe(false)
+  })
+
+  it('says "ran out of time" only when it did, and the error otherwise', () => {
+    expect(legFailure(new ResearchTimeout('The research ran past its 6-minute budget.'))).toBe(
+      'ran out of time'
+    )
+    expect(legFailure(new AiProviderError('OpenRouter API key invalid or missing.', 'auth'))).toBe(
+      'OpenRouter API key invalid or missing'
+    )
+    expect(legFailure(new Error('x'.repeat(200)))).toMatch(/^x{87}…$/)
   })
 })
