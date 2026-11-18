@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 import AuditLog from './AuditLog'
-import { isAttributed, type AuditEntry } from '../lib/api'
+import { AUDIT_LIMIT, isAttributed, type AuditEntry } from '../lib/api'
 
 /**
  * The half of the model-scoped history that lives in the browser: which entries are shown as this
@@ -157,6 +157,42 @@ describe('assistant-turn grouping', () => {
     // The user's entry and turn-b's single entry sit bare in the list.
     const list = container.querySelector('.audit-list')!
     expect(list.querySelectorAll(':scope > .aud')).toHaveLength(2)
+  })
+
+  it('says "200+" for the oldest turn of a list the limit cut, and the exact count otherwise', () => {
+    // One turn of the assistant longer than the limit: the backend hands back its newest 200 entries.
+    const turn = (n: number, over: Partial<AuditEntry> = {}): AuditEntry[] =>
+      Array.from({ length: n }, (_, i) =>
+        entry(100 + i, { database: 'Shampoo', source: 'ai', turn: 't', ...over })
+      )
+    const { container } = render(<AuditLog entries={turn(AUDIT_LIMIT)} />)
+    const head = container.querySelector('.aud-turn-head')!
+    expect(head.textContent).toBe(`assistant turn · ${AUDIT_LIMIT}+ changes`)
+    expect(head.getAttribute('title')).toBe('Older entries of this turn are not loaded.')
+  })
+
+  it('marks the cut turn of a copied model, past the line it came from that the backend keeps', () => {
+    const origin = entry(1, { database: 'Shampoo', copied_from: 'Soap', action: 'duplicate_model' })
+    const turn = Array.from({ length: AUDIT_LIMIT - 1 }, (_, i) =>
+      entry(100 + i, { database: 'Shampoo', source: 'ai', turn: 't' })
+    )
+    const { container } = render(<AuditLog entries={[origin, ...turn]} />)
+    const head = container.querySelector('.aud-turn-head')!
+    expect(head.textContent).toBe(`assistant turn · ${AUDIT_LIMIT - 1}+ changes`)
+  })
+
+  it('says the exact count when the list is short, or when its rest is filled from older history', () => {
+    const turn = Array.from({ length: 5 }, (_, i) =>
+      entry(100 + i, { database: 'Shampoo', source: 'ai', turn: 't' })
+    )
+    const short = render(<AuditLog entries={turn} />)
+    expect(short.container.querySelector('.aud-turn-head')!.textContent).toBe('assistant turn · 5 changes')
+    short.unmount()
+    // A full answer with lines from before entries named a model: the model's own lines came first, so
+    // none of them was cut.
+    const filler = Array.from({ length: AUDIT_LIMIT - 5 }, (_, i) => entry(i))
+    const full = render(<AuditLog entries={[...filler, ...turn]} />)
+    expect(full.container.querySelector('.aud-turn-head')!.textContent).toBe('assistant turn · 5 changes')
   })
 
   it('does not group entries that merely share a source without a turn', () => {

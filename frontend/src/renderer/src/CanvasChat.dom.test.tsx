@@ -123,7 +123,9 @@ describe('AskUserCard', () => {
     multiSelect
   })
 
-  it('answers a single question on the click itself — no extra confirm', async () => {
+  it('answers a single question only with "Answer" — a click picks, and a slipped click can be corrected', async () => {
+    // It used to send on the click itself: a click on the neighbouring option sent the run on with the
+    // wrong answer. Now it works like the form for several questions and the drawer's card.
     const user = userEvent.setup()
     const onAnswer = vi.fn()
     render(
@@ -132,10 +134,16 @@ describe('AskUserCard', () => {
         onAnswer={onAnswer}
       />
     )
-
+    const answer = screen.getByRole('button', { name: 'Answer' })
+    expect(answer).toBeDisabled()
+    await user.click(screen.getByText('DE'))
+    expect(onAnswer).not.toHaveBeenCalled()
     await user.click(screen.getByText('RER'))
+    expect(screen.getByText('RER').closest('button')).toHaveClass('on')
+    expect(screen.getByText('DE').closest('button')).not.toHaveClass('on')
+    await user.click(answer)
+    expect(onAnswer).toHaveBeenCalledTimes(1)
     expect(onAnswer).toHaveBeenCalledWith([['RER']], [false])
-    expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull()
   })
 
   it('collects several questions into one form with one Answer', async () => {
@@ -211,7 +219,7 @@ describe('AskUserCard', () => {
     await user.click(screen.getByRole('button', { name: 'Something else…' }))
     const field = screen.getByRole('textbox', { name: 'Your own answer to: Which geography?' })
     expect(field).toHaveFocus()
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Answer' })).toBeDisabled() // an empty field answers nothing
 
     await user.type(field, 'Swiss mix{Shift>}{Enter}{/Shift}please')
     expect(onAnswer).not.toHaveBeenCalled() // Shift+Enter breaks the line

@@ -78,12 +78,11 @@ export function useAskAnswers(questions: AskQuestion[]): {
  * A question's "Something else…" row: the quiet button while closed, the text field once opened.
  * The field grows with its text. Enter sends the card once every question is answered, as the chat
  * input does; Shift+Enter breaks the line, Escape closes the field (and only the field, not the
- * dialog around it). A card without an Answer button gets a Send beside the field.
+ * dialog around it).
  */
 export function OwnAnswerRow({
   question,
   own,
-  withSend,
   canSubmit,
   onOpen,
   onChange,
@@ -92,7 +91,6 @@ export function OwnAnswerRow({
 }: {
   question: string
   own: OwnAnswer | undefined
-  withSend: boolean
   canSubmit: boolean
   onOpen: () => void
   onChange: (text: string) => void
@@ -131,11 +129,6 @@ export function OwnAnswerRow({
             }
           }}
         />
-        {withSend ? (
-          <button type="button" className="chat-ask-send" disabled={!own.text.trim()} onClick={onSubmit}>
-            Send
-          </button>
-        ) : null}
       </div>
     </div>
   )

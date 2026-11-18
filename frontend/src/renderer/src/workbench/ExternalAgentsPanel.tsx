@@ -63,7 +63,6 @@ function AskCard({ ask }: { ask: PendingAsk }): JSX.Element {
           <OwnAnswerRow
             question={q.question}
             own={form.own(qi)}
-            withSend={false}
             canSubmit={form.complete}
             onOpen={() => form.openOwn(qi)}
             onChange={(text) => form.setOwnField(qi, { text })}

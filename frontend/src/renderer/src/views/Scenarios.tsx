@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { api, type AuditEntry } from '../lib/api'
+import { api, AUDIT_LIMIT, type AuditEntry } from '../lib/api'
 import { invalidate } from '../lib/server/useQuery'
 import { scenariosRoute } from '../lib/server/routes'
 import { ruleChoices, ruleViolation, toNumber, type ParamRule } from '../components/ParamRule'
@@ -91,7 +91,7 @@ export default function Scenarios({
       api<Scenario[]>('GET', `/api/v1/scenarios${q}`),
       api<Param[]>('GET', `/api/v1/params${q}`),
       api<Group[]>('GET', `/api/v1/params/groups${q}`),
-      api<AuditEntry[]>('GET', `/api/v1/model/audit${q}`) // query parameter, see Parameters.tsx
+      api<AuditEntry[]>('GET', `/api/v1/model/audit${q}&limit=${AUDIT_LIMIT}`) // query parameters, see Parameters.tsx
     ])
     setScenarios(sc)
     setParams(ps)

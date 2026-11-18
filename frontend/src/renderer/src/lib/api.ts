@@ -110,6 +110,18 @@ export function isAttributed(e: AuditEntry): boolean {
   return !!(e.database || e.related || e.databases?.length || e.workspace)
 }
 
+/** How many audit entries a page asks for: the newest, the model's own first in line (the backend's
+ *  rule). Sent as `limit` by every page that shows the log, so the list can tell when it was cut. */
+export const AUDIT_LIMIT = 200
+
+/** Whether a model-scoped audit answer cut the model's own entries short — then its oldest turn may be
+ *  missing entries. The backend fills the budget with the model's own entries first, then the
+ *  workspace-wide ones, then the history from before entries named a model; so the own list was cut
+ *  only when the answer is full and holds nothing from the other two. */
+export function auditListCut(entries: AuditEntry[]): boolean {
+  return entries.length >= AUDIT_LIMIT && !entries.some((e) => e.workspace || !isAttributed(e))
+}
+
 /** Undo/redo availability, from `GET /model/history?database=` — what the buttons would do on the open
  *  model. One stack for the workspace, session-local by design (the steps hold snapshots of the
  *  pre-change state). Scoped to a model, Undo reaches past other models' steps that are on the positive

@@ -597,11 +597,6 @@
   field-sizing: content; min-height: 2lh; max-height: 8lh;
 }
 .chat-ask-own-row textarea::placeholder { color: var(--faint); }
-.chat-ask-send {
-  border: none; cursor: pointer; border-radius: 6px; padding: 4px 10px; background: var(--green); color: #fff;
-  font-family: inherit; font-size: var(--fs-sec); font-weight: 600;
-}
-.chat-ask-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
 /* The questions the assistant asked and the user's answers, once the card is gone
    (chat/AnsweredQuestions.tsx): each pair on a quiet rule, the question small, the answer under it with
    the arrow in the accent. A rule under the block parts it from the text that follows. */
@@ -639,3 +634,6 @@
 /* Hovered while recording, the mic stays red and only darkens: the pointer is on it to stop the recording,
    so it must still read as recording. The rule has to outrank the green hover of `.chat-attach-btn`. */
 .chat-mic.rec:hover:not(:disabled) { color: #fff; background: color-mix(in srgb, var(--bad) 85%, black); }
+
+/* The run's own clock beside the step clock: quieter than the step's, which is the one that moves. */
+.chat-runbar-run { color: var(--faint); font-variant-numeric: tabular-nums; }

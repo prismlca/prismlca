@@ -8,7 +8,7 @@ import {
   type DragEvent,
   type KeyboardEvent
 } from 'react'
-import { api, type AuditEntry } from '../lib/api'
+import { api, AUDIT_LIMIT, type AuditEntry } from '../lib/api'
 import {
   AddIcon,
   ChevronIcon,
@@ -344,7 +344,7 @@ export default function Parameters({
       // A QUERY parameter, and it has to stay one: the route reads it from the query string, so
       // the same name in a request body silently returns the whole project's history and looks
       // exactly like a broken filter.
-      api<AuditEntry[]>('GET', `/api/v1/model/audit${q}`)
+      api<AuditEntry[]>('GET', `/api/v1/model/audit${q}&limit=${AUDIT_LIMIT}`)
     ])
     setRows(ps)
     setGroups(gs)

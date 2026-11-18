@@ -63,10 +63,12 @@ export function askQuestions(args: Record<string, unknown>): AskQuestion[] {
 }
 
 /**
- * The question card for ask_user. One question answers on a click, as it always did. Several
- * arrive as a single form with one Answer button: the agent usually knows all its open decisions
- * up front, and asking them one at a time stopped the run to wait for a human each time. Every
- * question also takes an answer in the user's own words (askAnswers.tsx).
+ * The question card for ask_user. A click picks an option and "Answer" sends — for one question as
+ * for several, as the External-agents drawer's card does. One question used to answer on the click
+ * itself, and a click that slipped to the neighbouring option sent the run on with the wrong answer,
+ * with no way back. Several questions arrive as one form: the agent usually knows all its open
+ * decisions up front, and asking them one at a time stopped the run to wait for a human each time.
+ * Every question also takes an answer in the user's own words (askAnswers.tsx).
  */
 export function AskUserCard({
   ask,
@@ -77,7 +79,6 @@ export function AskUserCard({
 }): JSX.Element {
   const form = useAskAnswers(ask.questions)
   const many = ask.questions.length > 1
-  const confirmButton = many || !!ask.questions[0]?.multiSelect
   const submit = (): void => {
     if (!form.complete) return
     const { answers, ownWords } = form.answers()
@@ -97,14 +98,7 @@ export function AskUserCard({
               <button
                 key={oi}
                 className={`chat-ask-opt${form.picked(qi, oi) ? ' on' : ''}`}
-                onClick={() => {
-                  // A single, single-select question keeps answering on the click itself.
-                  if (!confirmButton) {
-                    onAnswer([[o.label]], [false])
-                    return
-                  }
-                  form.pick(qi, oi)
-                }}
+                onClick={() => form.pick(qi, oi)}
               >
                 <span className="chat-ask-label">{o.label}</span>
                 {o.description ? <span className="chat-ask-desc">{o.description}</span> : null}
@@ -113,7 +107,6 @@ export function AskUserCard({
             <OwnAnswerRow
               question={q.question}
               own={form.own(qi)}
-              withSend={!confirmButton}
               canSubmit={form.complete}
               onOpen={() => form.openOwn(qi)}
               onChange={(text) => form.setOwnField(qi, { text })}
@@ -123,11 +116,9 @@ export function AskUserCard({
           </div>
         </div>
       ))}
-      {confirmButton ? (
-        <button className="chat-ask-confirm" disabled={!form.complete} onClick={submit}>
-          Answer
-        </button>
-      ) : null}
+      <button className="chat-ask-confirm" disabled={!form.complete} onClick={submit}>
+        Answer
+      </button>
     </div>
   )
 }

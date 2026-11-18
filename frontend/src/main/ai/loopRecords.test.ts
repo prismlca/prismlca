@@ -91,9 +91,9 @@ describe('the log of a run', () => {
     const d = deps()
     await runAgent(request(), d.deps)
     expect(d.events.filter((e) => e.type === 'cache-warning').map((e: any) => e.pattern)).toEqual([
-      'dropped',
+      'missed',
       'recovered',
-      'dropped',
+      'missed',
       'recovered'
     ])
     expect(warned.filter((l) => l.includes('[prism-ai] cache warning:'))).toHaveLength(2)
