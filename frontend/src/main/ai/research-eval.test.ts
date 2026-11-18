@@ -1,14 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import {
-  RESEARCH_MODEL,
-  extractJson,
-  researchBom,
-  researchWeb,
-  type BomResult,
-  type WebFinding
-} from './subagent'
+import { researchBom, type BomResult } from './researchBom'
+import { RESEARCH_MODEL, extractJson, researchWeb, type WebFinding } from './subagent'
 import { streamChat } from './client'
 import type { ChatMessage } from './providers/types'
 
@@ -364,7 +358,7 @@ describe.skipIf(!LIVE)('research evals', () => {
         evidence: r.evidence.length,
         cited_by_search: r.items.map((i) => i.cited_by_search)
       })
-      expect(r.coverage?.researched ?? 0).toBeGreaterThanOrEqual(2)
+      expect(r.coverage.with_mass).toBeGreaterThanOrEqual(2)
       for (const i of r.items) expect(i.source_url, `${i.component} has no source`).toBeTruthy()
       // The target ranges are wide on purpose — they catch an order-of-magnitude or unit slip, not
       // a lightweighting debate. Preforms for 0.5 l run ~12–28 g, PCO 1881 caps ~1–3 g.
@@ -494,12 +488,11 @@ describe.skipIf(!LIVE)('research evals', () => {
       for (const i of r.items) expect(i.mass_kg).toBeGreaterThan(0)
       const adhesive = r.items.find((i) => /adhesive|glue|hot-?melt/i.test(i.component))
       const open = r.unresolved.find((u) => /adhesive|glue|hot-?melt/i.test(u.component))
-      // One of the two, by construction: found with a source, or named as open. Lost (neither)
-      // is the pre-08.10 behaviour this scenario exists to catch — unless the leg itself died.
-      expect(
-        !!adhesive || !!open || (r.coverage?.researched ?? 0) < 2,
-        'the adhesive vanished: neither an item nor an unresolved entry'
-      ).toBe(true)
+      // One of the two, by construction: found with a source, or named as open — a leg that died is
+      // named too, under its request. Lost (neither) is the pre-08.10 behaviour this scenario exists to catch.
+      expect(!!adhesive || !!open, 'the adhesive vanished: neither an item nor an unresolved entry').toBe(
+        true
+      )
     },
     900_000
   )

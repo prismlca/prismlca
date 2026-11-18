@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-18",
+    "title": "Bill-of-materials research says what it could not check",
+    "details": "The research now looks for the product's own weight and checks the parts against it, counts a set of five shelves as five, keeps packaging apart and names every part without a mass and every research request that failed. When the sources show more than one version of the product, the result names them, so the assistant can ask which one you mean before it builds."
+  },
+  {
+    "date": "2026-11-18",
     "title": "Missing forming steps found per process",
     "details": "The health check now reads each process on its own: steel, aluminium, copper or plastic bought as cast slab, ingot or granulate without the step that shapes it is named with its mass, as is crude steel that is only deep-drawn and a forming step the linked material already contains. It goes by the background database's own classification, so new database versions need no list of names."
   },

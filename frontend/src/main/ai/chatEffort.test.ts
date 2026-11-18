@@ -80,7 +80,7 @@ describe('the research legs keep Luna free', () => {
   })
 
   it('runs a research leg on Luna at low, below its chat floor', async () => {
-    const { researchBom } = await import('./subagent')
+    const { researchBom } = await import('./researchBom')
     await researchBom({ product: 'widget', components: ['body'], model: LUNA.id })
     expect(chat.seen.map((c) => [c.model, c.reasoningEffort])).toEqual([[LUNA.id, 'low']])
   })

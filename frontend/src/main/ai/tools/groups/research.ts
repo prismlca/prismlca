@@ -14,7 +14,7 @@ export const researchTools: Tool[] = [
       function: {
         name: 'research_bom',
         description:
-          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Pass total_mass_kg whenever known: the result is mass-balance checked against it. Naming the components you want makes it much more accurate. READ THE BALANCE BEFORE BUILDING: "balance_ok" is true/false/null and **null means it could not be checked** — because a component could not be researched, so the list is incomplete by construction. "coverage" says how many of the requested components came back, "residual_kg" is the stated total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text.',
+          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, retailer, article number or EAN, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Naming the components you want makes it much more accurate; do not list the total weight as a component — every researcher reports the whole product\'s mass when a source states it ("totals_found"). READ "summary" FIRST: what was summed, against which total, and what is still open. "balance_ok" is true/false/null and **null means it could not be checked** — a component has no mass, a research leg failed, entries overlap, the figures rest on different versions of the product, or no usable total exists; the note says which. "mass_kg" is always the mass of all pieces of an entry together ("count" says how many); "packaging" entries are kept out of "sum_kg". "requests" gives each requested component\'s status, "unresolved" names every open one with its reason, "residual_kg" is the total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. "versions" appears when the sources showed more than one version of the product (another EAN, board thickness, weight): find out which one the user means before you build. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text.',
         parameters: obj(
           {
             product: str(
@@ -23,7 +23,9 @@ export const researchTools: Tool[] = [
             context: str(
               'Everything relevant you already know but the sub-agent cannot see: dimensions, volume/capacity, market or region, standard/model number, year, intended use, user constraints.'
             ),
-            total_mass_kg: num('Total product mass in kg, if known — enables the mass-balance check.'),
+            total_mass_kg: num(
+              "The product's own mass in kg WITHOUT sales packaging — only a figure the user stated or a source gave, never your own estimate (the balance would then check your estimate against itself). Leave it out when unknown: the research looks for it."
+            ),
             components: strArr(
               'Components to research individually (e.g. ["bottle body","cap","label"]). Omit to let the research enumerate them.'
             ),
@@ -53,7 +55,14 @@ export const researchTools: Tool[] = [
         maxComponents: typeof a.max_components === 'number' ? a.max_components : undefined,
         domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined
       })) as {
-        items?: Array<{ component?: string; material?: string; mass_kg?: number; source_url?: string }>
+        items?: Array<{
+          component?: string
+          material?: string
+          mass_kg?: number
+          count?: number
+          contains_listed?: string[]
+          source_url?: string
+        }>
         evidence?: Array<{ url: string; excerpt?: string }>
       }
       // Same provenance log the web research writes: the BOM's sourced masses are exactly the kind
@@ -65,19 +74,39 @@ export const researchTools: Tool[] = [
           (result.evidence ?? []).find((e) => e.url === url && e.excerpt)?.excerpt
         const findings = result.items
           .filter((i) => i.source_url)
-          .map((i: Record<string, unknown>) => ({
-            text: `${i.component}${i.material ? ` (${i.material})` : ''}: ${i.mass_kg} kg`,
-            sources: [String(i.source_url)],
-            ...(excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
-            // Structured on purpose: the health check reconciles these masses against what the
-            // model actually books (bom_item_unbooked), and the report can weigh a figure by its
-            // source class — neither works on prose alone.
-            component: String(i.component ?? ''),
-            ...(typeof i.mass_kg === 'number' ? { mass_kg: i.mass_kg } : {}),
-            ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {}),
-            ...(i.source_class ? { source_class: String(i.source_class) } : {}),
-            ...(i.confidence ? { confidence: String(i.confidence) } : {})
-          }))
+          .map((i: Record<string, unknown>) => {
+            const label =
+              `${i.component}${i.material ? ` (${i.material})` : ''}` +
+              (typeof i.count === 'number' && i.count > 1 ? ` (${i.count} pieces)` : '')
+            const shared = {
+              sources: [String(i.source_url)],
+              ...(excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
+              ...(i.source_class ? { source_class: String(i.source_class) } : {}),
+              ...(i.confidence ? { confidence: String(i.confidence) } : {})
+            }
+            // An entry whose figure contains other listed entries is kept as what was found, but not as a mass
+            // the model has to book: booking it whole beside them counts them twice. The contained entries stay
+            // booking duties, so the health check still names them when nothing books them. Without the
+            // structured fields, and with a text that does not end on the mass, the check does not read the
+            // container as a component.
+            if (Array.isArray(i.contains_listed) && i.contains_listed.length)
+              return {
+                text:
+                  `${label}: ${i.mass_kg} kg — contains ${i.contains_listed.join(', ')}, listed separately, ` +
+                  'so not a mass to book whole',
+                ...shared
+              }
+            return {
+              text: `${label}: ${i.mass_kg} kg`,
+              ...shared,
+              // Structured on purpose: the health check reconciles these masses against what the
+              // model actually books (bom_item_unbooked), and the report can weigh a figure by its
+              // source class — neither works on prose alone. The mass is the whole set's.
+              component: String(i.component ?? ''),
+              ...(typeof i.mass_kg === 'number' ? { mass_kg: i.mass_kg } : {}),
+              ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {})
+            }
+          })
         if (findings.length) {
           try {
             await ctx.api('POST', '/api/v1/provenance/research', {
