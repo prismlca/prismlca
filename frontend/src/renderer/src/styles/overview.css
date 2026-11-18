@@ -39,7 +39,7 @@
    and a gap on top of it reads as a doubled line (same move as `.results-rail > .acc-grp`). */
 .ov-folder + .ov-folder { margin-top: -8px; }
 /* The drop target is the whole group, header and body, so a short folder is not a hairline to aim at. */
-.ov-folder.over { background: var(--green-soft); outline: 1px dashed var(--prism-green, #93c120); outline-offset: -1px; }
+.ov-folder.over { background: var(--green-soft); outline: 1px dashed var(--green); outline-offset: -1px; }
 .ov-folder-h { display: flex; align-items: center; gap: 6px; padding: 9px 14px; margin-inline: -12px;
   background: none; color: var(--text); font-size: var(--fs-body); font-weight: 600;
   user-select: none; cursor: pointer; }
@@ -73,7 +73,7 @@
 .ov-folder-h:focus-within .ov-folder-acts { opacity: 1; pointer-events: auto; }
 @media (hover: none) { .ov-folder-acts { opacity: 1; pointer-events: auto; } }
 .ov-folder-rename { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text);
-  padding: 1px 6px; border: 1px solid var(--prism-green, #93c120); border-radius: 5px; background: var(--surface); }
+  padding: 1px 6px; border: 1px solid var(--green); border-radius: 5px; background: var(--surface); }
 .ov-folder-rename:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
 /* No indent rail. The mockup had one, and it does say "these belong to that" — but it costs
    eighteen pixels of a three-hundred-pixel panel on every card, and the folder header above them
@@ -106,7 +106,7 @@
    the pointer" across the app. */
 .ov-model:hover { border-color: var(--green); box-shadow: var(--shadow); }
 .ov-model-top { display: flex; align-items: flex-start; gap: 6px; }
-.ov-model-name { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.ov-model-name { flex: 1; min-width: 0; font-size: var(--fs-body); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 /* Reusable small icon-button (same look as the Overview model-card actions), for edit/duplicate/
    delete affordances across pages. */
 .act-icon { flex: none; display: inline-flex; align-items: center; justify-content: center; line-height: 0;
@@ -209,8 +209,8 @@
 .ov-hero { display: flex; flex-direction: column; align-items: flex-start; }
 .ov-prism {
   width: 58px; height: 58px; border-radius: 15px; flex: none; margin-bottom: 14px;
-  background: conic-gradient(from 210deg, #93c120, #2f4e66, #9f5987, #93c120);
-  box-shadow: 0 6px 18px rgba(47, 78, 102, .25);
+  background: conic-gradient(from 210deg, var(--mark-green), var(--mark-navy), var(--mark-purple), var(--mark-green));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--mark-navy) 25%, transparent);
 }
 .ov-hero h1 { margin: 0; font-size: var(--fs-page); line-height: 1.1; letter-spacing: -.02em;
   font-weight: 400; color: var(--text); }
@@ -292,7 +292,7 @@
 .ov-news-item { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
 .ov-news-item:last-child { border-bottom: none; }
 .ov-news-date { font-size: var(--fs-label); color: var(--faint); letter-spacing: .02em; }
-.ov-news-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin-top: 1px; }
+.ov-news-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); margin-top: 1px; }
 .ov-news-details { font-size: var(--fs-sec); color: var(--faint); line-height: 1.45; margin-top: 2px; }
 
 /* ---- Overview: the two cards under the numbers ----
@@ -348,7 +348,7 @@
 .ov-newsfeed-row > svg { flex: none; width: 14px; height: 14px; color: var(--faint); }
 .ov-newsfeed-date { flex: none; width: 84px; font-size: var(--fs-label); color: var(--faint); white-space: nowrap; }
 .ov-newsfeed-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ov-newsfeed-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink);
+.ov-newsfeed-title { font-size: var(--fs-body); font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-newsfeed-teaser { font-size: var(--fs-sec); color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -365,7 +365,7 @@
   background: url('../assets/substack-banner.png') right center / cover no-repeat, var(--surface);
 }
 .ov-substack-text { flex: 1; min-width: 0; }
-.ov-substack-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+.ov-substack-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
 .ov-substack-sub { margin-top: 2px; font-size: var(--fs-sec); line-height: 1.4; color: var(--faint); }
 .ov-substack > .btn { flex: none; }
 /* The mail tile sits ON the picture, so it is an opaque white card with a shadow and the purple

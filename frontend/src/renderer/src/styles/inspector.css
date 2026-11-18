@@ -7,28 +7,28 @@
 /* The textarea belongs in this list. Left out, it fell back to the browser's own textarea font —
    a different family at a different size, right beside the inputs it sits under.
    `font: inherit` is the part that fixes it: a textarea does not inherit the family on its own. */
-.efield input, .efield select, .efield textarea { padding: 5px 7px; border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 5px;
-  background: var(--bg, #fff); color: var(--ink, #303030); font: inherit; font-size: var(--fs-body); }
+.efield input, .efield select, .efield textarea { padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: 5px;
+  background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-body); }
 .efield textarea { width: 100%; box-sizing: border-box; resize: vertical; line-height: 1.45; }
-.efield input:focus, .efield select:focus, .efield textarea:focus { outline: none; border-color: var(--prism-green, #93c120); }
-.efield .val { font-size: var(--fs-body); color: var(--ink, #303030); padding: 4px 0; }
+.efield input:focus, .efield select:focus, .efield textarea:focus { outline: none; border-color: var(--green); }
+.efield .val { font-size: var(--fs-body); color: var(--text); padding: 4px 0; }
 .efield-row { display: flex; gap: 8px; }
 .efield-row .efield { flex: 1; min-width: 0; }
-.flow-head { margin-top: 6px; border-bottom: 1px solid var(--prism-gray-light, #cbcbcb); padding-bottom: 3px; display: flex; align-items: center; gap: 6px; }
-.flow-count { background: var(--bg-muted, #f2f2f2); border-radius: 8px; padding: 0 6px; font-size: var(--fs-label); color: var(--faint, #8a8a8a); }
-.flow-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid var(--border, #e0e0e0); flex: 0 0 auto; }
+.flow-head { margin-top: 6px; border-bottom: 1px solid var(--border-strong); padding-bottom: 3px; display: flex; align-items: center; gap: 6px; }
+.flow-count { background: var(--surface-2); border-radius: 8px; padding: 0 6px; font-size: var(--fs-label); color: var(--faint); }
+.flow-tabs { display: flex; gap: 4px; margin-top: 8px; border-bottom: 1px solid var(--border); flex: 0 0 auto; }
 .flow-tab { appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
   padding: 5px 6px 6px; margin-bottom: -1px; font: inherit; font-size: var(--fs-label); font-weight: 600;
-  text-transform: uppercase; letter-spacing: .04em; color: var(--faint, #8a8a8a); cursor: pointer;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--faint); cursor: pointer;
   display: inline-flex; align-items: center; gap: 5px; }
-.flow-tab:hover { color: var(--ink, #303030); }
-.flow-tab.on { color: var(--prism-navy, #2f4e66); border-bottom-color: var(--prism-green, #93c120); }
+.flow-tab:hover { color: var(--text); }
+.flow-tab.on { color: var(--navy); border-bottom-color: var(--green); }
 /* Sort toggles at the right edge of a flow-list header (shown only for longer lists). */
 .flow-sort { margin-left: auto; display: inline-flex; gap: 2px; align-items: center; }
 .flow-sort-btn { appearance: none; background: none; border: none; padding: 3px 4px; border-radius: 5px; color: var(--faint); cursor: pointer; display: inline-flex; }
 .flow-sort-btn svg { width: 14px; height: 14px; }
-.flow-sort-btn:hover { color: var(--ink, #303030); background: var(--bg-muted, #f2f2f2); }
-.flow-sort-btn.on { color: var(--prism-green-dark, #769a1a); background: rgba(147, 193, 32, 0.14); }
+.flow-sort-btn:hover { color: var(--text); background: var(--surface-2); }
+.flow-sort-btn.on { color: var(--green-ink); background: color-mix(in srgb, var(--green) 14%, transparent); }
 /* The inspector's own sort control: a glyph that only labels, then "A–Z 9–1" as text. Grey at rest; navy
    under the pointer and for the order in force, and the glyph turns navy with it. The labels are inline, not
    flex items, so the one space between them renders. */
@@ -57,42 +57,42 @@
 /* A read-only dataset (a background database) is read-only in every row, so its rows drop the
    comment and remove columns and give those 46 px to the name. */
 .flow.ro { grid-template-columns: 1fr 78px 26px; }
-.flow.ref { background: rgba(147, 193, 32, 0.08); }
+.flow.ref { background: color-mix(in srgb, var(--green) 8%, transparent); }
 /* The location chip is shown whole or not at all — a chip cut in half reads as a different code. The
    name and the chip wrap as two flex items in a box one line high: when both fit they share the line;
    when they don't, the chip wraps onto the hidden second line and the name, alone, takes the ellipsis.
    The location stays in the row's tooltip. */
-.flow-name { font-size: var(--fs-body); color: var(--ink, #303030); display: flex; flex-wrap: wrap; align-items: center;
+.flow-name { font-size: var(--fs-body); color: var(--text); display: flex; flex-wrap: wrap; align-items: center;
   align-content: flex-start; height: 1lh; overflow: hidden; }
 .flow-name-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-name .flow-geo { flex: none; }
-.flow-geo { margin-left: 5px;font-size: var(--fs-label); color: var(--faint, #8a8a8a); border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 3px; padding: 0 3px; }
-.flow-dup { margin-right: 4px; color: var(--prism-warning, #ffae00); cursor: help; font-size: var(--fs-sec); }
+.flow-geo { margin-left: 5px;font-size: var(--fs-label); color: var(--faint); border: 1px solid var(--border-strong); border-radius: 3px; padding: 0 3px; }
+.flow-dup { margin-right: 4px; color: var(--wait); cursor: help; font-size: var(--fs-sec); }
 .flow-amt { display: flex; gap: 3px; align-items: center; }
 .flow-amt.ro { justify-content: flex-end; gap: 3px; font-variant-numeric: tabular-nums; font-size: var(--fs-sec); overflow: hidden; white-space: nowrap; }
-.fx-mark { color: var(--prism-purple, #9f5987); font-style: italic; font-weight: 700; cursor: help; }
-.flow-amt input { width: 100%; min-width: 0; padding: 3px 5px; border: 1px solid var(--prism-gray-light, #cbcbcb);
-  border-radius: 4px; font-size: var(--fs-sec); text-align: right; background: var(--bg, #fff); color: var(--ink, #303030); }
+.fx-mark { color: var(--purple); font-style: italic; font-weight: 700; cursor: help; }
+.flow-amt input { width: 100%; min-width: 0; padding: 3px 5px; border: 1px solid var(--border-strong);
+  border-radius: 4px; font-size: var(--fs-sec); text-align: right; background: var(--bg); color: var(--text); }
 .flow-amt input.fx-input { text-align: left; font-family: ui-monospace, monospace; cursor: pointer; }
-.flow-amt input:focus { outline: none; border-color: var(--prism-green, #93c120); }
+.flow-amt input:focus { outline: none; border-color: var(--green); }
 /* An amount that cannot be read is said while it is typed, not swallowed on the commit. */
 .flow-amt input.refused, input.props-amt.refused, .fp-amt.refused, .lcia-cf-input.refused { border-color: var(--bad); }
 /* Full-width, multi-line formula editor that opens under the flow row (the narrow amount cell
    is too small for real formulas). Spans the whole grid so it never gets clipped by the list. */
 .flow .fx-expand, .refblock .fx-expand { margin-top: 4px; width: 100%; box-sizing: border-box;
   min-height: 66px; resize: vertical; font: 12.5px/1.5 ui-monospace, monospace; padding: 7px 9px;
-  border: 1px solid var(--prism-green, #93c120); border-radius: 6px; background: var(--bg, #fff);
-  color: var(--ink, #303030); white-space: pre-wrap; word-break: break-word; }
-.flow .fx-expand:focus, .refblock .fx-expand:focus { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--prism-green, #93c120) 30%, transparent); }
-.fxtog { border: 1px solid var(--prism-gray-light, #cbcbcb); border-radius: 4px; background: var(--bg, #fff);
-  font: italic 600 11px/1 ui-monospace, monospace; color: var(--faint, #8a8a8a); padding: 3px 4px; cursor: pointer; }
-.fxtog.on { background: var(--prism-purple, #9f5987); color: #fff; border-color: var(--prism-purple, #9f5987); }
-.flow-unit { font-size: var(--fs-label); color: var(--faint, #8a8a8a); text-align: left;
+  border: 1px solid var(--green); border-radius: 6px; background: var(--bg);
+  color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.flow .fx-expand:focus, .refblock .fx-expand:focus { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 30%, transparent); }
+.fxtog { border: 1px solid var(--border-strong); border-radius: 4px; background: var(--bg);
+  font: italic 600 11px/1 ui-monospace, monospace; color: var(--faint); padding: 3px 4px; cursor: pointer; }
+.fxtog.on { background: var(--purple); color: #fff; border-color: var(--purple); }
+.flow-unit { font-size: var(--fs-label); color: var(--faint); text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .flow-del { border: none; background: none; color: var(--bad); font-size: 16px; line-height: 1; cursor: pointer; opacity: .55; }
 .flow-del:hover { opacity: 1; }
 .flow-del-spacer { display: inline-block; width: 20px; }
-.hint-sm { font-size: var(--fs-label); color: var(--faint, #8a8a8a); margin: 6px 0 0; line-height: 1.4; }
+.hint-sm { font-size: var(--fs-label); color: var(--faint); margin: 6px 0 0; line-height: 1.4; }
 .editor-err { font-size: var(--fs-sec); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); border-radius: 5px; padding: 6px 8px; }
 /* A field with a link on its label line (Details, Properties): label left, link right, the value below
    across the full width. A grid rather than a wrapper row, so `.efield > label` keeps its label style. */
@@ -141,7 +141,7 @@ input.props-amt:focus { outline: none; border-color: var(--green); }
 
 /* Confirmation window */
 .confirm-modal { width: min(420px, 92vw); }
-.confirm-msg { font-size: var(--fs-body); color: var(--ink, #303030); line-height: 1.5; margin: 0 0 6px; }
+.confirm-msg { font-size: var(--fs-body); color: var(--text); line-height: 1.5; margin: 0 0 6px; }
 
 
 /* Flow-properties sheet: the body scrolls (the table no longer does on its own), and the table's top

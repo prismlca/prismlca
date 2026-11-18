@@ -123,13 +123,13 @@
   display: flex; align-items: center; gap: 8px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); background: var(--surface-2);
 }
-.plan-stop-why { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--ink); }
+.plan-stop-why { flex: 1; min-width: 0; font-size: var(--fs-label); color: var(--text); }
 .plan-continue {
   border: 1px solid var(--green); background: var(--green-soft); color: var(--green-ink);
   font-size: var(--fs-sec); padding: 3px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap;
 }
 .plan-continue:hover:not(:disabled) { background: var(--green); color: var(--surface); }
-.plan-continue.armed { border-color: var(--prism-warning); background: var(--surface); color: var(--text); }
+.plan-continue.armed { border-color: var(--wait); background: var(--surface); color: var(--text); }
 .plan-continue:disabled { opacity: .5; cursor: default; }
 .plan-steps { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; }
 .plan-step {
@@ -147,7 +147,7 @@
 .plan-step.completed, .plan-step.skipped { color: var(--faint); }
 .plan-step.completed .plan-mark { color: var(--green); }
 .plan-step.skipped .plan-text { text-decoration: line-through; text-decoration-color: var(--border-strong); }
-.plan-step.blocked .plan-mark { color: var(--prism-warning); }
+.plan-step.blocked .plan-mark { color: var(--wait); }
 
 /* Collapsed: the pill at the left edge of the dock column, bottom-aligned like the card. */
 .plan-pill {
@@ -158,7 +158,7 @@
   font-size: var(--fs-sec); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .plan-pill:hover { border-color: var(--green); }
-.plan-pill.stopped { border-color: var(--prism-warning); }
+.plan-pill.stopped { border-color: var(--wait); }
 .plan-pill-check { color: var(--green); font-weight: 700; }
 .plan-ring-track { fill: none; stroke: var(--border); stroke-width: 2.5; }
 .plan-ring-fill { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; }

@@ -69,8 +69,11 @@
   --shadow-sheet: 0 1px 1px rgba(0,0,0,.3), 0 12px 24px -8px rgba(0,0,0,.45), 0 40px 80px -24px rgba(0,0,0,.6);
 }
 
-/* Theme-independent: geometry, type scale and mono stack do not change with the palette. */
+/* Theme-independent: geometry, type scale, mono stack and the logo mark do not change with the palette. */
 :root {
+  /* The logo mark (the prism tile on the start page) keeps the light brand colours in both themes:
+     it is drawn like the app icon, not as text or a surface that has to read on the canvas. */
+  --mark-green: #93c120; --mark-navy: #2f4e66; --mark-purple: #9f5987;
   --r: 8px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
   /* One width for the app's side panels, on the 8px grid. The rail of Results and Report always has
      it; every page's right side panel (inspector, help, scenario detail) has it from 1500px of window
@@ -95,7 +98,8 @@
 @media (min-width: 1500px) { :root { --side-w: var(--rail-w); } }
 
 /* Legacy vocabulary (--prism-*, from the first mockup): aliases onto the live tokens so that
-   both names resolve correctly in both themes. New rules use the short names. */
+   both names resolve correctly in both themes. The app's sheets use the short names, and so do new
+   rules; the mockups under design/ still use some of the old ones. */
 :root {
   --ink: var(--text);
   --bg-muted: var(--surface-2);
@@ -107,8 +111,5 @@
   --prism-alert: var(--bad);
   --prism-info: var(--info);
   --prism-purple: var(--purple);
-  /* The app's warning colour. It was the one alias nobody defined, so fourteen rules fell back to a
-     literal #ffae00 that no theme could reach — a fixed orange on the dark canvas. --wait is the
-     token that already carries this role everywhere else. */
   --prism-warning: var(--wait);
 }

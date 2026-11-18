@@ -122,7 +122,7 @@ body {
 /* The note a double-click on a number leaves at the pointer ("Copied 0,123456789", lib/copyNumber.ts):
    an inverted chip above everything, passing clicks through, fading out on its own. */
 .copy-note { position: fixed; z-index: 10000; pointer-events: none; padding: 3px 8px; border-radius: var(--r-sm);
-  background: var(--ink); color: var(--surface); font-size: var(--fs-label); font-variant-numeric: tabular-nums;
+  background: var(--text); color: var(--surface); font-size: var(--fs-label); font-variant-numeric: tabular-nums;
   box-shadow: var(--shadow); animation: copy-note-fade 1.4s ease-in forwards; }
 @keyframes copy-note-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .copy-note { animation: none; } }
