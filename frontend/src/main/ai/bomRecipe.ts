@@ -10,7 +10,7 @@
  * researcher that sees the whole recipe can keep.
  */
 import { clipNote } from './researchNote'
-import { inciEntries } from './inciOrder'
+import { inciEntries, listNames } from './inciOrder'
 import type { VersionSeen } from './bomAnswer'
 
 export const RECIPE_SYSTEM = `You research the RECIPE (formulation) of a mixture for life-cycle assessment — a soap, a
@@ -68,11 +68,11 @@ The product:
 - "inci" on a line or on a trade form's constituent: the ingredient's name as THIS product's ingredient list prints
   it, when it has one.
 - "declared_ingredients": the ingredient list printed on THIS product (the INCI list on the label, the composition
-  section of its safety data sheet) — every name, in the printed order, with its page and "product": the product the
-  list belongs to, named as that page names it. "kind": "inci" ONLY for a cosmetic's ingredient list as its label
-  prints it (also where a retailer or the maker reproduces the label's list); "other" for any other list — the
-  composition section of a safety data sheet (even one that uses INCI names), a food's or a detergent's ingredient
-  list. Leave it out when none is found.
+  section of its safety data sheet) — every name, in the printed order (a "+/-" or "may contain" part too, with its
+  marker), with its page and "product": the product the list belongs to, named as that page names it. "kind":
+  "inci" ONLY for a cosmetic's ingredient list as its label prints it (also where a retailer or the maker reproduces
+  the label's list); "other" for any other list — the composition section of a safety data sheet (even one that uses
+  INCI names), a food's or a detergent's ingredient list. Leave it out when none is found.
 - "contents_mass": the mass of the mixture in THIS product as sources state it — a net fill mass, or a fill volume
   with a stated density; one entry per figure found, never computed by you, and never the fill of the product
   whose frame formulation you give.
@@ -179,7 +179,15 @@ export interface RecipeLeg {
 /** The question the recipe leg gets: what to research, what is known, and whose business the rest is. */
 export function recipeQuestion(brief: string, of: string, request: RecipeRequest, others: string[]): string {
   const known = (request.ingredients ?? []).map((i) => i.trim()).filter(Boolean)
-  const inci = inciEntries(request.inci_list)
+  // The names as the comparison reads them, a "may contain" part behind one marker: the leg copies a name into
+  // "inci", and "+/- MAY CONTAIN: CI 77891" would place nothing.
+  const inci = listNames(inciEntries(request.inci_list))
+  const may = inci.filter((n) => n.may).map((n) => n.name)
+  const printed =
+    inci
+      .filter((n) => !n.may)
+      .map((n) => n.name)
+      .join(', ') + (may.length ? ` [+/- ${may.join(', ')}]` : '')
   return (
     `${brief}\n\nResearch ONLY the recipe of ${of}: one formulation with every ingredient and its amount, as the ` +
     'JSON object.' +
@@ -189,7 +197,7 @@ export function recipeQuestion(brief: string, of: string, request: RecipeRequest
       : '') +
     // The name as printed is what places a line in the list: "glycerol" finds no "Glycerin".
     (inci.length
-      ? `\nTHIS product's INCI list, as printed: ${inci.join(', ')}. Give one its line only where your one ` +
+      ? `\nTHIS product's INCI list, as printed: ${printed}. Give one its line only where your one ` +
         'formulation names it, and write its name as printed here in "inci" (a trade form\'s constituents too); one ' +
         'it lacks is reported from this list — never fill it in from elsewhere.'
       : '') +

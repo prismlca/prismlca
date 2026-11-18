@@ -83,7 +83,7 @@ export const researchTools: Tool[] = [
                     'Ingredients known from THIS product, one per entry — what the user said, or a printed composition that is not an INCI list (a cosmetic\'s INCI list goes in "inci_list"); never a list of typical ingredients. The research covers each one and names those its recipe lacks.'
                   ),
                   inci_list: strArr(
-                    "THIS product's INCI list (a cosmetic's printed ingredient list), every name exactly as printed and in the printed order, one per entry. Covered like \"ingredients\" and held against the recipe's shares in place of any list the research finds — the label lists every ingredient above 1 % by descending mass."
+                    'THIS product\'s INCI list (a cosmetic\'s printed ingredient list), every name exactly as printed and in the printed order, one per entry — a "+/-" or "may contain" part too, with its marker. Covered like "ingredients" and held against the recipe\'s shares in place of any list the research finds — the label lists every ingredient above 1 % by descending mass, colourants aside.'
                   )
                 },
                 []

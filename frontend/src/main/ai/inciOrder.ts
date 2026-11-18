@@ -4,6 +4,13 @@
  * whose shares put two of those ingredients the other way round is not this product's recipe as labelled, even when
  * it closes. The result is a hint beside the balance, never part of its verdict. Pure, like recipeBalance.ts.
  *
+ * Colourants are the exception: the label may list them after the other ingredients whatever their amount, and a
+ * product sold in several shades may list every colourant of the range behind "+/-" or "may contain". Their place
+ * says nothing about their mass, so they are matched but not compared — an entry carrying a Colour Index number
+ * ("CI 77891", the name INCI gives a colourant), and every entry of a "may contain" part. Hair dyes are held to the
+ * order by the regulation; one written with a CI number is still set aside, which can miss a contradiction but never
+ * invent one.
+ *
  * Compared is what the recipe states, per substance: a trade form taken apart into the constituents its datasheet
  * states, and every contribution of one substance together (the water added and the water of a surfactant solution).
  * A share known only within bounds — a range, the rest that a range moves or that carries a line dosed without an
@@ -29,6 +36,13 @@ const CONSTITUENTS_MAX = 102
 const EPS = 1e-9
 /** Contradictions and unplaced ingredients handed on; the rest are counted. */
 const MAX_NAMED = 12
+/** A Colour Index number, alone or beside a name: "CI 77891", "Iron Oxides (CI 77491", "C.I. 15985". */
+const COLOUR_INDEX = /(?:^|[^\p{L}\p{N}])c\.?\s*i\.?\s*\d{5}(?!\d)/iu
+/**
+ * The words a shade range's colourants follow, with the bracket or colon around them: "[+/- ", "May contain: ". A
+ * label in several languages prints them more than once ("May contain/Peut contenir (+/-): ").
+ */
+const MAY_CONTAIN = /[[(]?\s*(?:\+\s*\/\s*[-–−]|±|\bmay\s+contain\b)\s*[)\]]?\s*:?\s*/giu
 
 /** One recipe line with its share of the mixture as weighed by recipeBalance.ts. */
 export interface LineShare {
@@ -58,7 +72,7 @@ export interface InciContradiction {
 
 /** The `inci_order` block of a recipe: where its shares contradict the order of the INCI list passed. */
 export interface InciOrder {
-  /** Entries of the list the recipe puts certainly above 1 % — compared with each other. */
+  /** Entries of the list the recipe puts certainly above 1 % — compared with each other; colourants are not. */
   compared: number
   contradictions: InciContradiction[]
   /** More contradictions than handed on. */
@@ -105,6 +119,67 @@ export function inciEntries(list: readonly string[] | undefined): string[] {
     .flatMap((e) => String(e).split(/,(?!\d)/))
     .map((e) => e.trim())
     .filter(Boolean)
+}
+
+/** An entry of the list as the comparison reads it. */
+export interface ListName {
+  name: string
+  /** A colourant by its Colour Index number: matched, but in no comparison. */
+  colourant: boolean
+  /** Of a "may contain" part: in no comparison, and the product need not contain it — a shade has some of them. */
+  may: boolean
+}
+
+/** A name of a "may contain" part without the bracket around the part: "CI 77499]" is "CI 77499". */
+const unbracket = (s: string): string => {
+  let t = s.trim().replace(/[.;]+$/, '')
+  for (const [open, close] of ['[]', '()']) {
+    if (t.startsWith(open) && !t.includes(close)) t = t.slice(1).trim()
+    if (t.endsWith(close) && !t.includes(open)) t = t.slice(0, -1).trim()
+  }
+  return t
+}
+
+/**
+ * What stands before the first marker of an entry: a name, or the marker's heading in another language. A heading is
+ * joined to the marker by a slash ("Peut contenir/May contain") or ends in the colon after it ("Kann enthalten [+/-]:
+ * CI 77891"); a name before it ends at a full stop ("Phenoxyethanol. Peut contenir/May contain (+/-): …") or stands
+ * before an open bracket ("Phenoxyethanol [+/- Mica").
+ */
+function beforeMarker(text: string, colon: boolean): string {
+  const t = text.trim()
+  if (!t.endsWith('/') && !colon) return t
+  const stop = [...t.matchAll(/\.(?:\s+|$)/g)].pop()
+  return stop ? t.slice(0, stop.index) : ''
+}
+
+/**
+ * The names of the list in their printed order, each marked when its place says nothing about its mass. The marker of
+ * a "may contain" part is no name: "Phenoxyethanol [+/- CI 77891" is two entries, a lone "+/-" none.
+ */
+export function listNames(entries: readonly string[]): ListName[] {
+  const out: ListName[] = []
+  let shades = false
+  const add = (raw: string): void => {
+    const name = shades ? unbracket(raw) : raw.trim()
+    if (name) out.push({ name, colourant: COLOUR_INDEX.test(name), may: shades })
+  }
+  for (const e of entries) {
+    const marks = [...e.matchAll(MAY_CONTAIN)]
+    if (!marks.length) {
+      add(e)
+      continue
+    }
+    // Before the first marker the name it follows, unless a heading; after the last the name it introduces — or after
+    // the colon that ends the marker in other languages ("May contain/Peut contenir: CI 15850"; never "CI 15850:1").
+    const last = marks[marks.length - 1]
+    const after = e.slice(last.index + last[0].length)
+    const colon = [...after.matchAll(/:(?!\d)\s*/g)].pop()
+    add(beforeMarker(e.slice(0, marks[0].index), !!colon || last[0].includes(':')))
+    shades = true
+    add(colon ? after.slice(colon.index + colon[0].length) : after)
+  }
+  return out
 }
 
 /**
@@ -218,10 +293,11 @@ export function inciOrder(
   lines: readonly LineShare[],
   opts: { unaccounted_pct?: number } = {}
 ): InciOrder {
-  const listNames = entries.map(identity)
+  const names = listNames(entries)
+  const ids = names.map((n) => identity(n.name))
   const placeOf = (c: Contribution): number => {
     for (const name of c.names) {
-      const i = listNames.indexOf(name)
+      const i = ids.indexOf(name)
       if (i >= 0) return i
     }
     return -1
@@ -242,10 +318,14 @@ export function inciOrder(
       if (!p.lines.includes(c.line)) p.lines.push(c.line)
       at.set(i, p)
     }
-  // Only what is certainly above 1 % has a place in the order; below it the label may list in any order.
-  const compared = [...at.entries()].filter(([, p]) => p.lo > ORDERED_ABOVE).sort((a, b) => a[0] - b[0])
+  // Only what is certainly above 1 % has a place in the order; below it the label may list in any order, and a
+  // colourant anywhere after the rest.
+  const above = [...at.entries()].filter(([, p]) => p.lo > ORDERED_ABOVE).sort((a, b) => a[0] - b[0])
+  const setAside = (i: number): boolean => names[i].colourant || names[i].may
+  const compared = above.filter(([i]) => !setAside(i))
+  const aside = above.filter(([i]) => setAside(i))
   const place = (i: number, p: { lo: number; hi: number; lines: string[] }): InciPlace => ({
-    inci: entries[i],
+    inci: names[i].name,
     position: i + 1,
     share_pct: shareOf(p.lo, p.hi),
     lines: p.lines
@@ -271,6 +351,15 @@ export function inciOrder(
         "contradiction with the list's order among them."
       : `Fewer than two of its ingredients are certainly above 1 % and named in the INCI list — nothing to compare.`
   const tail = [
+    aside.length
+      ? `Not compared, as a label may list colourants after the other ingredients whatever their amount (a shade ` +
+        `range's behind "+/-" or "may contain"): ` +
+        aside
+          .slice(0, MAX_NAMED)
+          .map(([i, p]) => `${names[i].name} (no. ${i + 1}) ${shareWords(shareOf(p.lo, p.hi))}`)
+          .join(', ') +
+        `${aside.length > MAX_NAMED ? ` and ${aside.length - MAX_NAMED} more` : ''}.`
+      : '',
     unknown.of.length
       ? Number.isFinite(unknown.pct)
         ? `Trade forms not stated in full could hold any listed ingredient in their unnamed part, so a contradiction ` +
