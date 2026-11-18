@@ -9,7 +9,8 @@ consistently, and the gap was visible to nobody.
 A component counts as booked when
 
 * a parameter carrying its figure raises a positive exchange amount when it is raised (``_probe``) — a figure
-  that only enters a subtraction (``rest = total - water - additives``) or a waste amount books nothing;
+  that only enters a subtraction (``rest = total - water - additives``) or a waste amount books nothing, and
+  neither does one that only raises a transport, energy or time amount (``_books_material``);
 * a positive exchange in the mass family carries (about) the figure itself — never a negative one: a treatment
   amount is waste leaving, and a cardboard disposal of 0.1 kg once answered for 0.14 kg of zinc;
 * a number in a positive mass exchange's formula is the figure and raises the amount (``0.14 / frame_kg``
@@ -17,6 +18,10 @@ A component counts as booked when
 
 ``health`` hands in the model's technosphere exchanges and turns each answer into an info finding
 (``bom_item_unbooked``).
+
+What this does not see: a part whose mass only scales another material (packaging taken as a share of the
+shipping weight), and a part booked only through a processing service sold by the kilogram (moulding, metal
+working) — an exchange carries no word of what its provider is.
 """
 from __future__ import annotations
 
@@ -46,6 +51,21 @@ _PROBE = 0.01
 
 #: (unit, amount, formula) of one technosphere exchange, as the caller's pass over the model collects them.
 Exchange = tuple[str, float, str]
+
+#: What an exchange measures when it buys something done TO a part rather than the part itself: hauling it
+#: (tkm), powering its making (kWh, MJ), running a machine for it (hours). A part's mass raises such an amount
+#: wherever the model sums the parts into a shipping weight and carries that — and a part that sits only in the
+#: shipping weight was produced nowhere. Volume, area, length and pieces stay bookings: timber is bought by the
+#: cubic metre, boards by the square metre, cable by the metre.
+_SERVICE_DIMENSIONS = frozenset({"transport", "energy", "time"})
+
+
+def _books_material(unit: str) -> bool:
+    """Whether an exchange in ``unit`` can book a part. A unit we have no dimension for keeps counting, as
+    every unit did before: unknown is no evidence of a service."""
+    from prism_lca.engine.dataimport.units import dimension
+
+    return dimension(unit) not in _SERVICE_DIMENSIONS
 
 
 def _researched(database: str) -> list[tuple[str, float, list[float]]]:
@@ -323,6 +343,7 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
         if placed and placed[0] == mass_family and placed[1] > 0:
             mass_params.append((str(param.get("name") or ""), placed[1]))
     inputs = _mass_inputs(exchanges)
+    material = [x for x in exchanges if _books_material(x[0])]
     try:
         formulas: _Formulas | None = _Formulas(stored)
     except ValueError as exc:  # unevaluable parameters: the names decide, as they did before the probe
@@ -355,15 +376,30 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
             if not _booked_directly(mass, inputs, _BOM_MATCH_TOLERANCE):
                 return _unbooked(component, f"{mass:g} kg")
             return None
-        named: list[str] = []  # carriers some non-zero exchange formula reaches, if only by name
+        named: list[str] = []  # carriers some non-zero material exchange formula reaches, if only by name
+        serviced: dict[str, list[str]] = {}  # carriers that reach only service exchanges, and their units
         for name in carriers:  # the figure may arrive one step removed, via a derived parameter
             ident = re.compile(r"\b(?:" + "|".join(map(re.escape, downstream_of(stored, name))) + r")\b")
-            if any(amount and f and ident.search(f) for _s, amount, f in exchanges):
+            reached = [unit for unit, amount, f in exchanges if amount and f and ident.search(f)]
+            if any(_books_material(unit) for unit in reached):
                 named.append(name)
+            elif reached:
+                serviced[name] = sorted(set(reached))
         if not named:
-            detail = f"{mass:g} kg — parameter '{carriers[0]}' carries the figure but feeds no non-zero exchange"
+            if serviced:
+                # Where the figure goes is known, and none of it is a booking; whether the part is booked under
+                # another figure or inside another part is not — the reconciliation the finding asks for.
+                name, used_in = next(iter(serviced.items()))
+                detail = (
+                    f"{mass:g} kg — parameter '{name}' carries the figure but feeds only exchanges in "
+                    f"{', '.join(used_in)} (transport, energy or time), which book no part"
+                )
+            else:
+                detail = f"{mass:g} kg — parameter '{carriers[0]}' carries the figure but feeds no non-zero exchange"
             return _unbooked(component, detail)
-        verdicts = [(name, _probe(formulas, name, exchanges) if formulas else None) for name in named]
+        # The probe asks the material exchanges only: a part's mass that raises a shipping weight in a tkm
+        # formula, or the kWh of its pressing, carries or processes the part and makes it nowhere.
+        verdicts = [(name, _probe(formulas, name, material) if formulas else None) for name in named]
         if any(v is None or v[0] for _n, v in verdicts):
             return None
         name, verdict = verdicts[0]
