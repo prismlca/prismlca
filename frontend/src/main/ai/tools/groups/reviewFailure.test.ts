@@ -169,4 +169,14 @@ describe('a review without a result says what goes into critical_review', () => 
     const m = /^NO_CRITICAL_REVIEW = "(.+)"$/m.exec(backend)
     expect(m?.[1]).toBe(NO_CRITICAL_REVIEW)
   })
+
+  it('is the sentence the critical_review field asks for, and the field names no tool', () => {
+    const params = (TOOL_BY_NAME.model_info?.spec.function.parameters ?? {}) as {
+      properties?: Record<string, { description?: string }>
+    }
+    const field = params.properties?.critical_review?.description ?? ''
+    expect(field).toContain(`"${NO_CRITICAL_REVIEW}"`)
+    // Read by the model while it fills the field: a tool's name there invited it to record that tool's run.
+    for (const name of Object.keys(TOOL_BY_NAME)) expect(field).not.toContain(name)
+  })
 })

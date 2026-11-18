@@ -537,3 +537,20 @@ def test_redo_of_a_sheet_import_keeps_the_inputs_a_later_tag_addresses(client, t
     _redo(client, token)
     _redo(client, token)
     assert _split(client, token, dst, w["R"]) == pytest.approx({"Production": 2.0, "Raw materials": 3.0})
+
+
+def test_the_full_listing_carries_the_process_tags_beside_the_input_tags(client, token, project):
+    """The review dossier reads the model through this listing. With only the inputs' tags on the exchanges,
+    a reviewer took those for the processes' own and asked where the phases were."""
+    w = _world(client, token)
+    _set(client, token, [{"uid": w["u_steel"]}], "Raw materials")
+    listing = client.get(f"/api/v1/model/activities/{w['db']}?with_exchanges=true", headers=token).json()
+    m = next(a for a in listing if a["code"] == w["M"])
+    assert m["tags"] == [{"dimension": PHASE, "value": "Production"}]
+    steel = next(e for e in m["exchanges"] if e["uid"] == w["u_steel"])
+    assert steel["tags"] == [{"dimension": PHASE, "value": "Raw materials"}]
+    r = next(a for a in listing if a["code"] == w["R"])
+    assert "tags" not in r
+    # The plain listing stays as light as it was.
+    plain = client.get(f"/api/v1/model/activities/{w['db']}", headers=token).json()
+    assert all("tags" not in a for a in plain)

@@ -26,6 +26,16 @@ UNIT_FAMILIES: tuple[dict[str, float], ...] = (
 #: dimensionless 0.85 gets written down: "85 %".
 PERCENT_FAMILY = len(UNIT_FAMILIES) - 1
 
+#: Mass units as datasets and processes spell them ("kilogram", "metric ton"), in kilograms — the units a
+#: check can add up or compare as a mass. Anything else — kWh, m3, unit, kg*year — is a different quantity
+#: and is left out rather than guessed at.
+MASS_IN_KG = {
+    "kg": 1.0, "kilogram": 1.0, "kilograms": 1.0,
+    "g": 0.001, "gram": 0.001, "grams": 0.001,
+    "mg": 1e-6,
+    "t": 1000.0, "ton": 1000.0, "tonne": 1000.0, "tonnes": 1000.0, "metric ton": 1000.0,
+}
+
 
 def base(value: float, symbol: str) -> tuple[int, float] | None:
     """(family, value in the family's base unit), or None for a symbol we do not convert."""

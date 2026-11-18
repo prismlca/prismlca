@@ -28,6 +28,7 @@ from prism_lca import _log
 from prism_lca.engine import prose_numbers as pn
 from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.health_bom import bom_items_unbooked
 from prism_lca.engine.health_forming import forming_findings
 from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
@@ -107,19 +108,17 @@ def _find_cycles(adjacency: dict) -> list[list]:
     return cycles
 
 
-#: Units this check can add up, in kilograms. Anything else — kWh, m3, unit, kg*year — is a different
-#: quantity and is left out of the sum rather than guessed at.
-_MASS_IN_KG = {
-    "kg": 1.0, "kilogram": 1.0, "kilograms": 1.0,
-    "g": 0.001, "gram": 0.001, "grams": 0.001,
-    "mg": 1e-6,
-    "t": 1000.0, "ton": 1000.0, "tonne": 1000.0, "tonnes": 1000.0, "metric ton": 1000.0,
-}
-
 #: How far below its own product a process's mass inputs may fall before this says anything. Wide on
 #: purpose: the point is to catch a process that declares a kilogram and was filled with a tenth of one,
 #: not to audit anybody's arithmetic.
 _MASS_SHORTFALL = 0.5
+
+#: How far below its own product the inputs may fall before a consumer of the process is compared with
+#: them (``mass_scaled_demand``). Much closer than the note's margin, because that warning does not rest on
+#: the shortfall: a consumer demanding almost exactly the inputs' sum is what makes it sharp. Behind the
+#: note's margin it missed a soap recipe of 1 kg filled with 0.51 kg and demanded at 0.51 kg — the result
+#: came out 49 % low on those inputs, and nothing said so.
+_DEMAND_SHORTFALL = 0.9
 
 #: Physical quantity per unit string, for the dimension check below. Only the families where a
 #: mix-up silently rescales a result; anything unlisted is "unknown" and is never reported.
@@ -173,7 +172,7 @@ def _dimension_note(ex: dict, provider_unit: str, param_units: dict[str, str]) -
     )
 
 
-def _mass_note(bd, act, exchanges: list) -> tuple[str, float, float] | None:
+def _mass_note(bd, act, exchanges: list) -> tuple[str | None, float, float] | None:
     """A gentle note when a mass-based process has far less mass going in than coming out — or None.
 
     This exists because of a real, expensive miss: a foreground process declared **1 kg** of film and
@@ -189,6 +188,9 @@ def _mass_note(bd, act, exchanges: list) -> tuple[str, float, float] | None:
 
     So the note fires only when mass appears out of nowhere, in a process that claims no environmental
     source for it — and even then it asks rather than asserts.
+
+    The text is None when the inputs fall short by more than 10 % (``_DEMAND_SHORTFALL``) but by less than
+    half: the numbers still come back, for the demand comparison in ``_rule_mass_shortfall``.
     """
     production = [e for e in exchanges if e.get("type") == "production" and (e.get("amount") or 0)]
     if len(production) != 1:
@@ -197,9 +199,9 @@ def _mass_note(bd, act, exchanges: list) -> tuple[str, float, float] | None:
     if made <= 0:
         return None  # treatment activity: the convention inverts, and waste in is the product
     unit = str(act.get("unit") or "").strip().lower()
-    if unit not in _MASS_IN_KG:
+    if unit not in units_of.MASS_IN_KG:
         return None
-    made_kg = made * _MASS_IN_KG[unit]
+    made_kg = made * units_of.MASS_IN_KG[unit]
 
     inputs_kg = 0.0
     counted = 0
@@ -220,12 +222,14 @@ def _mass_note(bd, act, exchanges: list) -> tuple[str, float, float] | None:
         if kind != "technosphere" or amount < 0:
             continue  # a negative technosphere amount leaves the process; it is not an input
         iu = str(inp.get("unit") or "").strip().lower()
-        if iu in _MASS_IN_KG:
-            inputs_kg += amount * _MASS_IN_KG[iu]
+        if iu in units_of.MASS_IN_KG:
+            inputs_kg += amount * units_of.MASS_IN_KG[iu]
             counted += 1
 
-    if not counted or inputs_kg >= made_kg * _MASS_SHORTFALL:
+    if not counted or inputs_kg >= made_kg * _DEMAND_SHORTFALL:
         return None
+    if inputs_kg >= made_kg * _MASS_SHORTFALL:
+        return None, made_kg, inputs_kg
     text = (
         f"Mass in ({inputs_kg:g} kg over {counted} input{'s' if counted != 1 else ''}) is well under "
         f"mass out ({made_kg:g} kg). Often that is fine — growth, water or mineral uptake all add mass "
@@ -514,139 +518,6 @@ def _declared_but_not_booked(database: str) -> list[tuple[str, str]]:
     return out
 
 
-#: How close a booked mass has to be to a researched component mass to count as "this component is
-#: in the model". Wide on purpose: loss factors (×1.05) and a modeller's deliberate deviation from
-#: the researched figure (0.3 kg booked where research said 0.4) are modelling, not gaps.
-_BOM_MATCH_TOLERANCE = 1.5
-
-#: Fallback for research entries logged before the masses were stored structured: the BOM tool has
-#: always written "component (material): 9 kg" into the finding text.
-_BOM_TEXT = re.compile(r"^(.+?)(?:\s*\([^)]*\))?:\s*([0-9]+(?:\.[0-9]+)?)\s*kg\s*$")
-
-
-def _bom_items_unbooked(
-    database: str, exchanges: list[tuple[str, float, str]]
-) -> list[tuple[str, str]]:
-    """Researched component masses that no non-zero exchange books — the unwatched hand-over.
-
-    The bill-of-materials researcher finds a component, sources its mass, logs it — and nothing ever
-    checks that the modeller built it. On a pavilion run the ground pegs (0.2 kg,
-    sourced from the manufacturer's own manual, 1.5 % of the product mass against a declared 0.5 %
-    cut-off) sat in the shipping weight and in a dormant end-of-life branch, and in no production
-    exchange at all; the research had delivered, the model computed consistently, and the gap was
-    visible to nobody.
-
-    `exchanges` is (unit symbol, evaluated amount, formula) per technosphere exchange, collected by
-    the caller's pass over the model. A component counts as booked when a non-zero exchange in the
-    mass family sits within `_BOM_MATCH_TOLERANCE` of its researched mass, or when a parameter
-    carrying the figure feeds a non-zero exchange — in its formula, or through derived parameters.
-    """
-    from prism_lca.engine.params import downstream_of, list_params
-    from prism_lca.engine.research_log import ResearchLogStore
-
-    placed = units_of.base(1.0, "kg")
-    if placed is None:  # pragma: no cover — kg is always convertible
-        return []
-    mass_family = placed[0]
-
-    items: list[tuple[str, float]] = []
-    seen_components: set[str] = set()
-    for entry in ResearchLogStore().list(database):
-        for finding in entry.get("findings") or []:
-            component = str(finding.get("component") or "").strip()
-            mass = finding.get("mass_kg")
-            if not component or not isinstance(mass, (int, float)):
-                m = _BOM_TEXT.match(str(finding.get("text") or "").strip())
-                if not m:
-                    continue
-                component, mass = m.group(1).strip(), float(m.group(2))
-            if not component or not isinstance(mass, (int, float)) or mass <= 0:
-                continue
-            key = component.lower()
-            if key in seen_components:
-                continue
-            seen_components.add(key)
-            items.append((component, float(mass)))
-    if not items:
-        return []
-
-    try:
-        stored = list_params(database, with_usage=False)
-    except Exception as exc:  # noqa: BLE001 — a linter must not fall over on an unreadable parameter file
-        _log.swallowed(exc, "_bom_items_unbooked")
-        stored = []
-    mass_params: list[tuple[str, float]] = []
-    for param in stored:
-        amount = param.get("amount")
-        if not isinstance(amount, (int, float)) or isinstance(amount, bool) or not amount:
-            continue
-        placed = units_of.base(float(amount), str(param.get("unit") or "").split("/")[0].strip())
-        if placed and placed[0] == mass_family and placed[1] > 0:
-            mass_params.append((str(param.get("name") or ""), placed[1]))
-
-    def close(a: float, b: float) -> bool:
-        return a > 0 and b > 0 and max(a / b, b / a) <= _BOM_MATCH_TOLERANCE
-
-    def direct_booking(mass: float, tolerance: float) -> bool:
-        # Exchange units are the datasets' long forms ("kilogram"), so they go through _MASS_IN_KG,
-        # not units.base.
-        for symbol, amount, _formula in exchanges:
-            if not amount:
-                continue
-            factor = _MASS_IN_KG.get(symbol.strip().lower())
-            if factor is None:
-                continue
-            value = abs(float(amount)) * factor
-            if value > 0 and mass > 0 and max(value / mass, mass / value) <= tolerance:
-                return True
-        return False
-
-    out: list[tuple[str, str]] = []
-    for component, mass in items:
-        # A parameter that carries the figure is the authoritative trail — when one exists, the
-        # question is whether IT feeds anything, and a coincidental exchange of similar size must
-        # not answer for it. Measured live on the pavilion model: the pegs' 0.2 kg sat in a dormant
-        # parameter, and a 0.22-kg polyurethane-coating exchange two components over would have
-        # declared them booked under the wide tolerance.
-        #
-        # Exact carriers displace loose ones for the same reason, measured on the same model in the
-        # next breath: the connectors' 0.3 kg sits at exactly 1.5x of the pegs' 0.2 kg, feeds a live
-        # exchange, and answered for them. A parameter holding the figure itself outranks one that
-        # merely lies within the deviation tolerance; the loose match exists only for the case where
-        # the modeller deviated AND parameterised (researched 0.4, booked as verbinder_masse = 0.3).
-        exact = [
-            name
-            for name, value in mass_params
-            if name and max(value / mass, mass / value) <= _BOOKED_TOLERANCE
-        ]
-        carriers = exact or [name for name, value in mass_params if name and close(value, mass)]
-        if carriers:
-            fed = False
-            for name in carriers:  # the figure may arrive one step removed, via a derived parameter
-                ident = re.compile(r"\b(?:" + "|".join(map(re.escape, downstream_of(stored, name))) + r")\b")
-                if any(amount and f and ident.search(f) for _s, amount, f in exchanges):
-                    fed = True
-                    break
-            # A literal booking of (almost) exactly the figure still counts — tight tolerance, so a
-            # neighbouring mass cannot stand in.
-            if fed or direct_booking(mass, _BOOKED_TOLERANCE):
-                continue
-            out.append(
-                (
-                    component,
-                    f"{mass:g} kg — parameter '{carriers[0]}' carries the figure but feeds no "
-                    "non-zero exchange",
-                )
-            )
-            continue
-        # No parameter trail: a non-zero mass exchange within the wide tolerance settles it, so a
-        # deliberate deviation from the researched figure stays modelling, not a gap.
-        if direct_booking(mass, _BOM_MATCH_TOLERANCE):
-            continue
-        out.append((component, f"{mass:g} kg"))
-    return out
-
-
 # ---------------------------------------------------------------------------
 # The rule registry.
 #
@@ -793,9 +664,9 @@ def _build_context(database: str) -> LintContext:
                 is_treatment = treatment_cache[tkey]
                 if amount > 0 and tkey[0] == database:
                     iu = str(inp.get("unit") or "").strip().lower()
-                    if iu in _MASS_IN_KG:
+                    if iu in units_of.MASS_IN_KG:
                         mass_demands.setdefault(tkey, []).append(
-                            (str(act.get("name") or ""), amount * _MASS_IN_KG[iu])
+                            (str(act.get("name") or ""), amount * units_of.MASS_IN_KG[iu])
                         )
                 if amount > 0 and tkey[0] != database and not is_treatment:
                     # A positive purchase of a dataset that PRODUCES recycled material. Legitimate on
@@ -1161,10 +1032,10 @@ def _rule_transport_distance(ctx: LintContext, a: _Activity) -> list[dict]:
         return []
     prod = a.production[0]
     unit = str(prod.get("unit") or a.act.get("unit") or "").strip().lower()
-    if unit not in _MASS_IN_KG:
+    if unit not in units_of.MASS_IN_KG:
         return []
     try:
-        made_kg = abs(float(prod.get("amount") or 0)) * _MASS_IN_KG[unit]
+        made_kg = abs(float(prod.get("amount") or 0)) * units_of.MASS_IN_KG[unit]
     except (TypeError, ValueError):
         return []
     if made_kg <= 0:
@@ -1344,21 +1215,11 @@ def _rule_declared_not_booked(ctx: LintContext) -> list[dict]:
 def _rule_bom_unbooked(ctx: LintContext) -> list[dict]:
     # Researched component masses the model never books. The complement of the research pipeline:
     # research_bom logs sourced masses, and until now nothing compared them with the model that was
-    # then built (the pavilion's pegs).
+    # then built (the pavilion's pegs). What counts as booked: engine/health_bom.py.
     out: list[dict] = []
     try:
-        for component, detail in _bom_items_unbooked(ctx.database, ctx.exchange_records):
-            out.append(
-                _finding(
-                    "info",
-                    "bom_item_unbooked",
-                    f"The bill-of-materials research recorded '{component}' at {detail}, and no "
-                    "non-zero exchange books a mass near it. Either its production was never "
-                    "modelled, or it falls under the cut-off — model it, or name it where the "
-                    "study records its cut-off decisions. A mass that is inside the shipping "
-                    "weight but inside no process is invisible to every other check here.",
-                )
-            )
+        for _component, text in bom_items_unbooked(ctx.database, ctx.exchange_records):
+            out.append(_finding("info", "bom_item_unbooked", text))
     except Exception as exc:  # noqa: BLE001 — an optional signal, never a reason to fail the linter
         _log.swallowed(exc, "_rule_bom_unbooked")
     return out
@@ -1388,7 +1249,8 @@ def _rule_mass_shortfall(ctx: LintContext) -> list[dict]:
     # The mass shortfall, judged now that every demand is known (V290). The info stays an info
     # until the model also CONSUMES the under-filled process by exactly its inputs' mass — the
     # shape of "the reference product says 1 kg, but the process holds a whole product's worth of
-    # materials". Brightway then scales the inputs twice, silently.
+    # materials". Brightway then scales the inputs twice, silently. That shape is looked for from a
+    # 10 % shortfall on (_DEMAND_SHORTFALL), the info only from half.
     out: list[dict] = []
     for a in ctx.activities:
         note = _mass_note(ctx.bd, a.act, a.exchanges)
@@ -1422,7 +1284,7 @@ def _rule_mass_shortfall(ctx: LintContext) -> list[dict]:
                     uid,
                 )
             )
-        else:
+        elif text:
             out.append(_finding("info", "mass_in_below_mass_out", text, a.act, uid))
     return out
 

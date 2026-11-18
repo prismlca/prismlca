@@ -3,7 +3,7 @@
 // the prose description and the handler are edited as a pair, and the description guard in
 // tools.test.ts scans spec text against implementation names.
 
-import type { Tool } from '../context'
+import type { Tool, ToolCtx } from '../context'
 import { num, obj, str, strArr } from '../schema'
 import { S, capText } from '../format'
 import { linkedHotspots, needsALook } from '../advice/hotspots'
@@ -13,6 +13,9 @@ import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './
 import { indicatorsSection, pickedMethods } from './reviewIndicators'
 import { searchesSection } from './reviewSearches'
 import { researchSection } from './reviewResearch'
+import { processesSection } from './reviewProcesses'
+import { paramsSection } from './reviewParams'
+import { numbersFingerprint, rememberJudged, withTextOnlyNote } from './reviewNumbers'
 import { afterReviewNote, outcomesAnswer, reviewerIdentity } from './reviewAnswer'
 import { scoredFor } from '../advice/scored'
 
@@ -74,16 +77,16 @@ export const reviewTools: Tool[] = [
       if (Array.isArray(a.resolutions) && a.resolutions.length) {
         // The answer lists the tagged findings that still have no outcome (reviewAnswer.ts): the log
         // cannot be read back, so counts alone left the ones never answered invisible.
+        // "fixed" after a mere rewording gets a note (reviewNumbers.ts).
         try {
-          return S(
-            outcomesAnswer(
-              await ctx.api('POST', '/api/v1/provenance/review/resolutions', {
-                database: db,
-                resolutions: a.resolutions,
-                ...(typeof a.review_id === 'string' && a.review_id ? { review_id: a.review_id } : {})
-              })
-            )
+          const answer = outcomesAnswer(
+            await ctx.api('POST', '/api/v1/provenance/review/resolutions', {
+              database: db,
+              resolutions: a.resolutions,
+              ...(typeof a.review_id === 'string' && a.review_id ? { review_id: a.review_id } : {})
+            })
           )
+          return S(await withTextOnlyNote(answer, a.resolutions, () => readNumbers(ctx, db)))
         } catch (e) {
           return S({ error: e instanceof Error ? e.message : String(e) })
         }
@@ -109,6 +112,10 @@ export const reviewTools: Tool[] = [
       // assistant a round to disprove.
       const activities = await part('process list', () =>
         ctx.api('GET', `/api/v1/model/activities/${encodeURIComponent(db)}?with_exchanges=true`)
+      )
+      // The values and notes behind the formulas (reviewParams.ts).
+      const params = await part('parameters', () =>
+        ctx.api('GET', `/api/v1/params?database=${encodeURIComponent(db)}`)
       )
       // First, because it decides whether the reviewer runs at all: this chat's review of the same model
       // came back without a result, and the same reviewer would take the same time again (reviewFailure.ts).
@@ -222,14 +229,25 @@ export const reviewTools: Tool[] = [
           )
         : null
 
+      // Compact, and shortened comment by comment when long — every cut named under GAPS (reviewProcesses.ts).
+      const processes = activities ? processesSection(activities, db) : null
+      const parameters = params ? paramsSection(params) : null
+      gaps.push(...(processes?.gaps ?? []), ...(parameters?.gaps ?? []))
+      const capped = (label: string, value: unknown, max: number): string => {
+        const text = JSON.stringify(value)
+        if (text.length > max) gaps.push(`${label}: cut at ${max.toLocaleString('en-US')} characters`)
+        return capText(text, max)
+      }
+
       const dossier = [
         `MODEL: ${db}`,
         `GOAL & SCOPE: ${study && Object.values(study).some((v) => v) ? JSON.stringify(study) : '(empty — nothing recorded)'}`,
-        `HEALTH CHECK: ${health ? capText(JSON.stringify(health), 8_000) : '(missing)'}`,
+        `HEALTH CHECK: ${health ? capped('health check', health, 8_000) : '(missing)'}`,
         // Larger than the rest on purpose: this is now the only place the reviewer can read a
         // quantity, and it is the part it is asked to challenge.
-        `PROCESSES (with exchanges): ${activities ? capText(JSON.stringify(activities), 24_000) : '(missing)'}`,
-        `HOTSPOTS: ${hotspots ? capText(JSON.stringify(hotspots), 8_000) : '(not analysed)'}`,
+        processes?.text || `PROCESSES (with exchanges): ${activities ? '(none)' : '(missing)'}`,
+        parameters?.text ?? '',
+        `HOTSPOTS: ${hotspots ? capped('hotspots', hotspots, 8_000) : '(not analysed)'}`,
         // Absence below a cutoff is not absence. Saying so is the difference between "the packaging
         // is missing" and "the packaging is under 1 % — worth a look at the mass estimate".
         hotspots
@@ -284,6 +302,7 @@ export const reviewTools: Tool[] = [
         } catch {
           /* the review still reaches the model; only the log entry is lost */
         }
+        rememberJudged(logged.id, activities && params ? numbersFingerprint(activities, params) : null)
         const who = reviewerIdentity(ctx.reviewModel, ctx.model)
         return S({
           database: db,
@@ -304,4 +323,10 @@ export const reviewTools: Tool[] = [
       return S(reviewFailed(subject, gaps, review))
     }
   }
+]
+
+/** The model's exchanges and parameters as they stand, for the comparison a recorded "fixed" gets. */
+const readNumbers = async (ctx: ToolCtx, db: string): Promise<[unknown, unknown]> => [
+  await ctx.api('GET', `/api/v1/model/activities/${encodeURIComponent(db)}?with_exchanges=true`),
+  await ctx.api('GET', `/api/v1/params?database=${encodeURIComponent(db)}`)
 ]
