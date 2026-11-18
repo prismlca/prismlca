@@ -92,6 +92,7 @@ export function readableMeta(meta: any, rows: ForegroundInput[] | undefined, lim
 export const META_HOW_TO_READ =
   ' In "meta": "foreground_inputs" lists every input the model draws from outside itself — the process that ' +
   'takes it, the dataset, its exact impact and share, largest first; quote these for "which input carries how ' +
-  'much". "foreground_direct" is the own emissions of the foreground processes the tree opened. ' +
+  'much". "foreground_direct" is what the model\'s own processes emit themselves — all of them, exactly, ' +
+  'however far the tree was cut; "total" minus it is what arises outside the model. ' +
   '"tree_remainder" is what the opened tree leaves with the root process — unopened suppliers included — not ' +
   'an emission of the model.'
