@@ -39,8 +39,8 @@
   padding: 7px 10px; font-size: var(--fs-body); color: inherit; border-radius: 4px; cursor: pointer; }
 .node-menu button:hover:not([disabled]) { background: var(--bg-muted, #f2f2f2); }
 .node-menu button[disabled] { color: var(--faint, #8a8a8a); cursor: default; }
-.node-menu button.danger { color: var(--prism-alert, #cc4b37); }
-.node-menu button.danger:hover { background: rgba(204,75,55,0.1); }
+.node-menu button.danger { color: var(--bad); }
+.node-menu button.danger:hover { background: color-mix(in srgb, var(--bad) 10%, transparent); }
 
 /* zoom / fit controls — themed so they're visible on the light + dark canvas */
 .react-flow__controls { box-shadow: 0 2px 12px rgba(0,0,0,0.2); border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
@@ -78,7 +78,7 @@
   padding: 7px 8px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; box-shadow: var(--shadow-lg); z-index: 40; }
 .brush-off { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--surface);
   color: var(--faint); cursor: pointer; font-size: var(--fs-label); line-height: 1; padding: 0; }
-.brush-off:hover { color: var(--prism-alert, #cc4b37); border-color: var(--prism-alert, #cc4b37); }
+.brush-off:hover { color: var(--bad); border-color: var(--bad); }
 .brush-active .react-flow__pane { cursor: crosshair; }
 
 /* Group boxes on the canvas ------------------------------------------------------------------

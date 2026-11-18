@@ -8,7 +8,7 @@
 .setup-path { font-size: var(--fs-sec); color: var(--faint, #8a8a8a); word-break: break-all; }
 .setup-status { margin-top: 14px; font-size: var(--fs-body); padding: 8px 10px; border-radius: 6px;
   background: var(--bg-muted, #f2f2f2); }
-.setup-status.error { background: rgba(204,75,55,0.12); color: var(--prism-alert, #cc4b37); }
+.setup-status.error { background: color-mix(in srgb, var(--bad) 12%, transparent); color: var(--bad); }
 .setup-status.done { background: rgba(147,193,32,0.15); }
 /* Import progress: a thin bar under the status line; the indeterminate one slides while bw2io
    works without reporting (the ecoinvent inventory step). */
@@ -84,7 +84,7 @@
 .imp-find svg { width: 13px; height: 13px; }
 /* The arithmetic the reviewer signs off. Marked when the conversion rests on an assumption. */
 .imp-scale { font-size: var(--fs-label); color: var(--muted); font-variant-numeric: tabular-nums; }
-.imp-scale.assumed { color: var(--prism-alert, #cc4b37); cursor: help; }
+.imp-scale.assumed { color: var(--bad); cursor: help; }
 .imp-search { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .imp-search input { flex: 1; min-width: 120px; font: inherit; font-size: var(--fs-sec);
   border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 3px 6px;

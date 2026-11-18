@@ -90,7 +90,7 @@
    amount in this list is one or two digits — it is a factor on a reference product, not a measured value. */
 .sd-amount .fp-amt { width: 62px; flex: none; }
 .sd-amount .fp-unit { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bg-rm { border: none; background: none; color: var(--prism-alert, #cc4b37); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 0 0 4px; opacity: .6; }
+.bg-rm { border: none; background: none; color: var(--bad); font-size: 15px; line-height: 1; cursor: pointer; padding: 0 0 0 4px; opacity: .6; }
 .bg-rm:hover { opacity: 1; }
 .modal.sheet.search-modal { width: min(680px, 94vw); max-height: 88vh; }
 .search-modal .search { margin: 0 0 8px; }

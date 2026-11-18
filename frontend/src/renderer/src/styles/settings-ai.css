@@ -41,7 +41,7 @@
 .ai-skill-name { font-size: var(--fs-body); font-weight: 600; }
 .ai-skill-desc { font-size: var(--fs-sec); color: var(--faint); }
 .ai-skill-del { border: none; background: transparent; color: var(--faint); cursor: pointer; }
-.ai-skill-del:hover { color: var(--prism-alert, #cc4b37); }
+.ai-skill-del:hover { color: var(--bad); }
 .ai-skill-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
 .ai-skill-add input[type='text'], .ai-skill-add > input:not([type]) { flex: 1; min-width: 120px; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; padding: 6px 8px; font: inherit; }
 .ai-skill-file { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sec); color: var(--faint); cursor: pointer; }

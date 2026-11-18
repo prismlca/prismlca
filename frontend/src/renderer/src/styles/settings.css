@@ -149,7 +149,7 @@
 .model-drop svg { width: 13px; height: 13px; display: block; }
 .model-own { color: var(--border-strong); }
 .model-drop { color: var(--muted); cursor: pointer; }
-.model-drop:hover { color: var(--prism-alert, #cc4b37); }
+.model-drop:hover { color: var(--bad); }
 
 /* Model-role rows. Six pickers used to sit a paragraph apart, which put the last of them below the
    fold on a laptop; the paragraphs moved into .info-tip, so the rows can close up.

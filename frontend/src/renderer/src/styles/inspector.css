@@ -89,11 +89,11 @@
 .fxtog.on { background: var(--prism-purple, #9f5987); color: #fff; border-color: var(--prism-purple, #9f5987); }
 .flow-unit { font-size: var(--fs-label); color: var(--faint, #8a8a8a); text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-del { border: none; background: none; color: var(--prism-alert, #cc4b37); font-size: 16px; line-height: 1; cursor: pointer; opacity: .55; }
+.flow-del { border: none; background: none; color: var(--bad); font-size: 16px; line-height: 1; cursor: pointer; opacity: .55; }
 .flow-del:hover { opacity: 1; }
 .flow-del-spacer { display: inline-block; width: 20px; }
 .hint-sm { font-size: var(--fs-label); color: var(--faint, #8a8a8a); margin: 6px 0 0; line-height: 1.4; }
-.editor-err { font-size: var(--fs-sec); color: var(--prism-alert, #cc4b37); background: rgba(204,75,55,0.1); border-radius: 5px; padding: 6px 8px; }
+.editor-err { font-size: var(--fs-sec); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, transparent); border-radius: 5px; padding: 6px 8px; }
 /* A field with a link on its label line (Details, Properties): label left, link right, the value below
    across the full width. A grid rather than a wrapper row, so `.efield > label` keeps its label style. */
 .efield.has-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: baseline; }
@@ -136,7 +136,7 @@ input.props-amt:focus { outline: none; border-color: var(--green); }
 .props-add input:focus { outline: none; border-color: var(--green); }
 
 /* Danger button (destructive confirmations) */
-.btn.danger { background: var(--prism-alert, #cc4b37); border-color: var(--prism-alert, #cc4b37); color: #fff; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
 .btn.danger:hover:not(:disabled) { filter: brightness(1.05); }
 
 /* Confirmation window */

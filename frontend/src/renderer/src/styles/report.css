@@ -273,8 +273,8 @@
   white-space: nowrap; border: 1px solid var(--border); color: var(--faint, #8a8a8a); }
 .rsec-plan-tag.go { border-color: color-mix(in srgb, var(--prism-green, #93c120) 55%, transparent);
   color: var(--prism-navy, #2f4e66); }
-.rsec-plan-tag.bad { border-color: color-mix(in srgb, var(--prism-alert, #cc4b37) 55%, transparent);
-  color: var(--prism-alert, #cc4b37); }
+.rsec-plan-tag.bad { border-color: color-mix(in srgb, var(--bad) 55%, transparent);
+  color: var(--bad); }
 /* Warning yellow is unreadable as text on a light surface, so the badge borrows it for the border
    and darkens it for the word itself. */
 .rsec-plan-tag.warn { border-color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, transparent);
@@ -292,8 +292,8 @@
    is where the path and the member it is pinned to live. */
 .rsec-pval { border-bottom: 1px dotted var(--prism-gray-light, #cbcbcb); cursor: help; }
 .rsec-pval.pinned { border-bottom-color: color-mix(in srgb, var(--prism-green, #93c120) 70%, transparent); }
-.rsec-pval.bad { color: var(--prism-alert, #cc4b37); font-weight: 600;
-  border-bottom-color: var(--prism-alert, #cc4b37); }
+.rsec-pval.bad { color: var(--bad); font-weight: 600;
+  border-bottom-color: var(--bad); }
 
 /* A correction, shown as what it is: a few words out, a few words in. A sheet, so the head's ✕ and
    the foot's action stand still while the diff scrolls between them. */
@@ -303,7 +303,7 @@
 .rsec-diff li { padding: 10px 12px; border-radius: 8px; background: var(--bg-muted, #f2f2f2);
   font-size: var(--fs-body); line-height: 1.55; }
 .rsec-diff del { display: block; text-decoration: line-through; opacity: 0.7;
-  color: var(--prism-alert, #cc4b37); }
+  color: var(--bad); }
 .rsec-diff ins { display: block; text-decoration: none; font-weight: 600; }
 .rsec-diff .why { display: block; margin-top: 5px; font-size: var(--fs-sec); color: var(--faint, #8a8a8a); }
 /* The replacement with its placeholders worked out. Set apart from the diff because it answers a
@@ -317,7 +317,7 @@
 .rsec-patch .hint ins { text-decoration: none; font-weight: 600;
   background: color-mix(in srgb, var(--green) 22%, transparent); border-radius: 3px; }
 .rsec-worddiff { font-size: var(--fs-body); line-height: 1.7; white-space: pre-wrap; }
-.rsec-worddiff del { text-decoration: line-through; opacity: 0.65; color: var(--prism-alert, #cc4b37); }
+.rsec-worddiff del { text-decoration: line-through; opacity: 0.65; color: var(--bad); }
 .rsec-worddiff ins { text-decoration: none; font-weight: 600;
   background: color-mix(in srgb, var(--prism-green, #93c120) 22%, transparent); border-radius: 3px; }
 /* A badge that is also a button — it opens the diff it is talking about. */
@@ -669,7 +669,7 @@
 /* A cover-image problem belongs at the cover control, not in the card's error line at the very bottom. */
 .cover-error {
   margin: -2px 0 4px; font-size: var(--fs-sec); line-height: 1.4;
-  color: var(--prism-alert, #cc4b37);
+  color: var(--bad);
 }
 
 /* The dry run as a sheet: the intro and the check stand, only the chapter list scrolls between head
@@ -789,7 +789,7 @@
 .report-pick-acts { flex: none; display: flex; align-items: stretch; gap: 8px; }
 .report-pick .report-del { justify-content: center; padding-top: 0; padding-bottom: 0; }
 .report-pick .report-del svg { width: 13px; height: 13px; }
-.report-pick .report-del:hover:not(:disabled) { color: var(--prism-alert); }
+.report-pick .report-del:hover:not(:disabled) { color: var(--bad); }
 
 /* ---- Chapter list: the one-line row, its icon actions, Add chapter on demand, the document bar ---- */
 /* The grip without the browser's button frame, which made it a grey box twice the width of its dots. At
@@ -837,8 +837,8 @@
 /* Writer v2. One state chip per chapter row: "Needs update" and "Couldn't finish" in the alert tone,
    "New" quiet — the rest keep the warning amber the chip has always had. */
 .rsec-stale.state-unfinished, .rsec-stale.state-update {
-  background: color-mix(in srgb, var(--prism-alert) 16%, var(--surface));
-  color: color-mix(in srgb, var(--prism-alert) 78%, var(--ink));
+  background: color-mix(in srgb, var(--bad) 16%, var(--surface));
+  color: color-mix(in srgb, var(--bad) 78%, var(--ink));
 }
 .rsec-stale.state-new {
   background: color-mix(in srgb, var(--green) 14%, var(--surface));

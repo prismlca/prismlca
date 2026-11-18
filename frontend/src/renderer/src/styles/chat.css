@@ -80,7 +80,7 @@
 }
 .chat-attach-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-attach-x { border: none; background: transparent; color: var(--faint); cursor: pointer; padding: 0 2px; }
-.chat-attach-x:hover { color: var(--prism-alert, #cc4b37); }
+.chat-attach-x:hover { color: var(--bad); }
 /* Several files per message: the chips wrap rather than squeezing, so a long name stays readable. */
 .chat-attach-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .chat-attach-busy { color: var(--faint); }
@@ -188,12 +188,12 @@
 .chat-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Voice input: pulsing red mic while recording, equalizer waves while transcribing. */
 .chat-mic.rec {
-  color: #fff; background: var(--prism-alert, #cc4b37);
+  color: #fff; background: var(--bad);
   animation: mic-pulse 1.2s ease-in-out infinite;
 }
 @keyframes mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(204, 75, 55, 0.45); }
-  50% { box-shadow: 0 0 0 7px rgba(204, 75, 55, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent); }
+  50% { box-shadow: 0 0 0 7px transparent; }
 }
 .chat-voice-status {
   display: flex; align-items: center; gap: 8px;
@@ -218,7 +218,7 @@
   background: var(--green); color: #fff; font-size: 15px; line-height: 1; display: grid; place-items: center;
 }
 .chat-send:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
-.chat-send.stop { background: var(--prism-alert, #cc4b37); }
+.chat-send.stop { background: var(--bad); }
 
 .chat-panel {
   /* The jump button hangs off the panel, not the transcript: inside a scrolling box it would
@@ -266,7 +266,7 @@
   font-size: var(--fs-sec); white-space: nowrap; padding: 4px 8px; border-radius: 7px; cursor: pointer;
 }
 .chat-head-elsewhere:hover { background: var(--surface-2); color: var(--text); }
-.chat-list-del:hover { color: var(--prism-alert, #cc4b37); }
+.chat-list-del:hover { color: var(--bad); }
 
 .chat-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 /* Back to the newest message, shown only while there is somewhere to go. Sits over the last line
@@ -399,10 +399,10 @@
   background: color-mix(in srgb, var(--prism-warning, #ffae00) 20%, var(--surface));
   color: color-mix(in srgb, var(--prism-warning, #ffae00) 70%, var(--ink));
 }
-.chat-trace.error { border-left-color: var(--prism-alert, #cc4b37); }
+.chat-trace.error { border-left-color: var(--bad); }
 .chat-trace.error .chat-trace-tag {
-  background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface));
-  color: var(--prism-alert, #cc4b37);
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+  color: var(--bad);
 }
 .chat-trace.running { border-left-color: var(--green); }
 .chat-trace.running .chat-trace-tag { color: var(--green-ink); background: var(--green-soft); }
@@ -454,7 +454,7 @@
   background: var(--green); color: #fff; font-family: inherit; font-size: var(--fs-body); font-weight: 600;
 }
 .chat-ask-confirm:disabled { background: var(--bg-muted); color: var(--faint); cursor: default; }
-.chat-error { font-size: var(--fs-body); color: var(--prism-alert, #cc4b37); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+.chat-error { font-size: var(--fs-body); color: var(--bad); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
 
 
 /* Key/value metadata (classification, fields) as a bordered card: the key column faint, the rows
@@ -470,7 +470,7 @@
 /* The context meter on the run bar: how full the model's window is, from the provider's own count.
    `.full` from the condensing threshold on — older tool results are summaries from there. */
 .chat-runbar-ctx { color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.chat-runbar-ctx.full { color: var(--prism-alert, #cc4b37); }
+.chat-runbar-ctx.full { color: var(--bad); }
 
 /* The confirmation card before an irreversible action: the question card's material, two buttons. */
 .chat-ask-actions { display: flex; gap: 8px; }
@@ -478,7 +478,7 @@
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
   border-radius: 8px; padding: 5px 12px; cursor: pointer; font-family: inherit; font-size: var(--fs-body); font-weight: 600;
 }
-.chat-ask-decline:hover { border-color: var(--prism-alert, #cc4b37); color: var(--prism-alert, #cc4b37); }
+.chat-ask-decline:hover { border-color: var(--bad); color: var(--bad); }
 .chat-ask-args summary { font-size: var(--fs-sec); color: var(--faint); cursor: pointer; }
 .chat-ask-args .chat-trace-pre { margin-top: 4px; }
 
@@ -638,4 +638,4 @@
 .chat-web-host { color: var(--faint); }
 /* Hovered while recording, the mic stays red and only darkens: the pointer is on it to stop the recording,
    so it must still read as recording. The rule has to outrank the green hover of `.chat-attach-btn`. */
-.chat-mic.rec:hover:not(:disabled) { color: #fff; background: color-mix(in srgb, var(--prism-alert) 85%, black); }
+.chat-mic.rec:hover:not(:disabled) { color: #fff; background: color-mix(in srgb, var(--bad) 85%, black); }
