@@ -306,6 +306,25 @@ def clean_entry(item: object) -> dict | None:
     return entry
 
 
+def _add_alternatives(stored: dict, repeat: dict) -> bool:
+    """Give a stored part the other figures a repeat of it found that it lacks; True when it took any.
+
+    A repeat is the same text — the same part at the same counted figure — and is not stored again. What it
+    found beside that figure is new all the same: a second research of the label that also met the direct print
+    has to make a booking of the print count for the label, and the health check reads the other figures from
+    the stored finding, never from the prose that documents them.
+    """
+    if "mass_kg" not in stored or not repeat.get("alternatives_kg"):
+        return False
+    have = list(stored.get("alternatives_kg") or [])
+    new = [v for v in repeat["alternatives_kg"] if v not in have and v != stored["mass_kg"]]
+    room = MAX_ALTERNATIVES - len(have)
+    if not new or room <= 0:
+        return False
+    stored["alternatives_kg"] = have + new[:room]
+    return True
+
+
 def _restore_evicted(kept: list[dict], repeated: list[tuple[dict, list[dict]]]) -> None:
     """Give a new entry back the repeated findings whose first record the trim just evicted.
 
@@ -340,34 +359,39 @@ class ResearchLogStore(JsonFileStore):
 
         An entry with a bill-of-materials check is appended every time, with only its new findings:
         the check is that call's own result, and a repeat that found the same masses may still have
-        settled a part or met another version.
+        settled a part or met another version. A repeated part that brings other figures for it the
+        stored one lacks hands them to the stored one (``_add_alternatives``).
         """
         with self._lock:
             data = self._load()
             stored = list(data.get(database) or [])
             # Dedup key is (question, finding text): the same question asked again with a NEW finding
             # is worth keeping; the same finding twice is not.
-            seen = {
-                (e.get("question"), f.get("text"))
+            known = {
+                (e.get("question"), f.get("text")): f
                 for e in stored
                 for f in e.get("findings") or []
             }
             added = 0
+            widened = False
             repeated: list[tuple[dict, list[dict]]] = []
             for raw in entries or []:
                 entry = clean_entry(raw)
                 if entry is None:
                     continue
-                fresh = [f for f in entry["findings"] if (entry["question"], f["text"]) not in seen]
+                fresh = [f for f in entry["findings"] if (entry["question"], f["text"]) not in known]
+                for f in entry["findings"]:
+                    if f not in fresh:
+                        widened |= _add_alternatives(known[(entry["question"], f["text"])], f)
                 if not fresh and "bom_check" not in entry:
                     continue
                 repeated.append((entry, [f for f in entry["findings"] if f not in fresh]))
                 entry["findings"] = fresh
                 for f in fresh:
-                    seen.add((entry["question"], f["text"]))
+                    known[(entry["question"], f["text"])] = f
                 stored.append(entry)
                 added += 1
-            if added:
+            if added or widened:
                 kept = stored[-MAX_ENTRIES:]
                 _restore_evicted(kept, repeated)
                 data[database] = kept
