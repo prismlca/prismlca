@@ -228,19 +228,29 @@ export function registerChatIpc(
             load: async (): Promise<StoredTranscript | null> => {
               const { status, body } = await safe('GET', `${chatPath()}/transcript`)
               if (status === 0 || status >= 400 || !body || typeof body !== 'object') return null
-              const t = body as { turn_id?: unknown; history_after?: unknown; messages?: unknown }
+              const t = body as {
+                turn_id?: unknown
+                history_after?: unknown
+                messages?: unknown
+                inspected?: unknown
+              }
               if (!Array.isArray(t.history_after) || !Array.isArray(t.messages)) return null
               return {
                 turnId: String(t.turn_id ?? ''),
                 historyAfter: t.history_after as StoredTranscript['historyAfter'],
-                messages: t.messages as StoredTranscript['messages']
+                messages: t.messages as StoredTranscript['messages'],
+                // Absent in a file written before the record was kept: the agent then falls back.
+                ...(Array.isArray(t.inspected)
+                  ? { inspected: t.inspected as NonNullable<StoredTranscript['inspected']> }
+                  : {})
               }
             },
             save: async (_id: string, t: StoredTranscript): Promise<void> => {
               const r = await safe('PUT', `${chatPath()}/transcript`, {
                 turn_id: t.turnId,
                 history_after: t.historyAfter,
-                messages: t.messages
+                messages: t.messages,
+                inspected: t.inspected
               })
               if (r.status === 0 || r.status >= 400) throw new Error(`HTTP ${r.status}`)
             }

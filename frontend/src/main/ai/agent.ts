@@ -23,7 +23,7 @@ import {
 } from './providers/types'
 import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import type { AgentEvent, AttachmentMeta, ToolTrace } from '../../shared/ipc'
-import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } from './tools'
+import { PARALLEL_SAFE_TOOLS, groupsForConversation, toolSpecs } from './tools'
 import { buildSystemPrompt, type Skill } from './systemPrompt'
 import { offeredSkills } from './skillRender'
 import { findModel } from './models'
@@ -33,6 +33,7 @@ import { getActiveProvider } from './providers/state'
 import { researchBom, researchWeb } from './subagent'
 import { reviewDossier, reviewerModel } from './critic'
 import { seedScored } from './tools/advice/scored'
+import { inspectedForTranscript, seedInspected, type InspectedDataset } from './inspectedAcrossTurns'
 import { capToolResult } from './resultBudget'
 import { createToolSession } from './execute'
 import { NOT_IN_CHAT } from './modelScope'
@@ -319,6 +320,8 @@ export interface StoredTranscript {
   turnId: string
   historyAfter: HistoryTurn[]
   messages: ChatMessage[]
+  /** The datasets the chat has opened so far (inspectedAcrossTurns.ts); absent in a transcript kept before it was stored. */
+  inspected?: InspectedDataset[]
 }
 
 /** Upper bound of a transcript file; above it whole rounds are dropped, never bytes (see boundTranscript). */
@@ -431,10 +434,10 @@ async function takeTranscript(
   chatId: string,
   history: HistoryTurn[],
   store?: AgentDeps['transcriptStore']
-): Promise<{ messages: ChatMessage[]; trailing: HistoryTurn[] } | null> {
+): Promise<{ messages: ChatMessage[]; trailing: HistoryTurn[]; inspected?: InspectedDataset[] } | null> {
   const hit = transcripts.get(chatId)
   const fromMap = hit ? historyTail(hit.historyAfter, history) : null
-  if (hit && fromMap) return { messages: hit.messages, trailing: fromMap }
+  if (hit && fromMap) return { messages: hit.messages, trailing: fromMap, inspected: hit.inspected }
   if (!store) return null
   const disk = await store.load(chatId).catch(() => null)
   if (!disk || !Array.isArray(disk.messages) || !Array.isArray(disk.historyAfter)) return null
@@ -445,7 +448,7 @@ async function takeTranscript(
     return null
   }
   transcripts.set(chatId, disk)
-  return { messages: disk.messages, trailing }
+  return { messages: disk.messages, trailing, inspected: disk.inspected }
 }
 
 /**
@@ -506,6 +509,7 @@ async function keepTranscript(
   finalText: string,
   messages: ChatMessage[],
   plan: ChatPlan | null,
+  inspected: ReadonlySet<string> | undefined,
   store?: AgentDeps['transcriptStore']
 ): Promise<void> {
   // What the renderer's history will be on the next turn: main persists the assistant answer
@@ -520,7 +524,9 @@ async function keepTranscript(
   ]
   // Drop the system message: it is rebuilt per turn (active model, skills, web-search state).
   const body = messages.filter((m) => m.role !== 'system')
-  const record: StoredTranscript = { turnId, historyAfter, messages: body }
+  // The run's record of opened datasets goes with it, so the next turn starts from it (inspectedAcrossTurns.ts).
+  const opened = inspectedForTranscript(inspected)
+  const record: StoredTranscript = { turnId, historyAfter, messages: body, inspected: opened }
   transcripts.set(chatId, record)
   if (transcripts.size > MAX_TRANSCRIPTS) {
     const oldest = transcripts.keys().next().value
@@ -530,7 +536,10 @@ async function keepTranscript(
   // The backend measures the WHOLE record (turn id, history, messages, its own fields), so the
   // messages get what is left after the rest, with a margin for the wire format.
   const overhead =
-    Buffer.byteLength(JSON.stringify({ turn_id: turnId, history_after: historyAfter }), 'utf8') + 4096
+    Buffer.byteLength(
+      JSON.stringify({ turn_id: turnId, history_after: historyAfter, inspected: opened }),
+      'utf8'
+    ) + 4096
   const bounded = boundTranscript(body, Math.max(0, TRANSCRIPT_MAX_BYTES - overhead), plan)
   if (!bounded) {
     aiLog(
@@ -539,7 +548,7 @@ async function keepTranscript(
     return
   }
   try {
-    await store.save(chatId, { turnId, historyAfter, messages: bounded })
+    await store.save(chatId, { turnId, historyAfter, messages: bounded, inspected: opened })
   } catch (e) {
     // Said, not swallowed — but never fatal: the memory map still has it for this process.
     aiLog(`transcript of chat ${chatId} could not be written: ${e instanceof Error ? e.message : String(e)}`)
@@ -917,25 +926,9 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const trailingTurns: ChatMessage[] = (taken?.trailing ?? []).map(
     (m) => ({ role: m.role, content: historyContent(m) }) as ChatMessage
   )
-  // Seed "already looked at" from the carried transcript: a dataset opened in an earlier turn is
-  // still opened, and a reminder to go and read it again would be noise. Reading the assistant's own
-  // tool CALLS (not their results) is enough — the arguments name the codes.
-  for (const m of carried ?? []) {
-    if (m.role !== 'assistant') continue
-    for (const tc of (m as { tool_calls?: Array<{ function?: { name?: string; arguments?: string } }> })
-      .tool_calls ?? []) {
-      if (tc.function?.name !== 'get_process_details') continue
-      try {
-        const args = JSON.parse(tc.function.arguments || '{}')
-        const db = args.database ?? req.activeDb
-        const codes: unknown[] = Array.isArray(args.codes) ? args.codes : [args.code]
-        for (const c of codes) if (db && c) ctx.inspected?.add(inspectedKey(String(db), String(c)))
-      } catch {
-        // Unparseable arguments only mean one fewer seed; the reminder erring towards "go and look"
-        // is the harmless direction.
-      }
-    }
-  }
+  // A dataset opened in an earlier turn is still opened, and a reminder to go and read it again would
+  // be noise — so the run's record starts from what the last turn kept (inspectedAcrossTurns.ts).
+  seedInspected(ctx.inspected, taken)
   // The indicators scored in an earlier turn, for the review dossier — read from each call's result.
   seedScored(ctx.scored, (carried ?? []) as Parameters<typeof seedScored>[1], req.activeDb)
   // Attached files ride WITH the user's turn as extra content parts — a PDF or an image as itself,
@@ -1257,6 +1250,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       turn.text,
       messages,
       currentPlan,
+      ctx.inspected,
       deps.transcriptStore
     )
     return { text: turn.text, aborted, outcome: out, turnId, trace, ...usageSoFar() }

@@ -33,6 +33,12 @@
  */
 export const inspectedKey = (database: string, code: string): string => `${database}\u0000${code}`
 
+/** The dataset a key names — the way back, for the transcript that carries the record into the next turn. */
+export const datasetOfKey = (key: string): { database: string; code: string } | null => {
+  const at = key.indexOf('\u0000')
+  return at > 0 && at < key.length - 1 ? { database: key.slice(0, at), code: key.slice(at + 1) } : null
+}
+
 /** Everything above this share of the result must be looked at, full stop. */
 export const NEEDS_A_LOOK = 0.1
 /** …and so must the biggest few below it, because rank is the better net for small models: */

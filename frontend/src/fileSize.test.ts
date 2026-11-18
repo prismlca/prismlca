@@ -32,7 +32,7 @@ const SHRINK = 50
 
 /** Paths relative to frontend/src. `<count + HEADROOM>` — the comment keeps the count. */
 const CEILINGS: Record<string, number> = {
-  'main/ai/agent.ts': 1864, // 1839, after the turn's visible text and the mark where its closing answer begins moved to turnText.ts
+  'main/ai/agent.ts': 1855, // 1830, after the record of opened datasets carried between turns moved to inspectedAcrossTurns.ts
   'renderer/src/Workbench.tsx': 1751, // 1726, after the canvas calculation (workbench/useCanvasCalc.ts) moved out
   'renderer/src/views/ReportSections.tsx': 1403, // 1378, after the correction path and the remark lists went (one state per chapter)
   'renderer/src/CanvasChat.tsx': 1195, // 1170, after the canvas requests moved to the Workbench (workbench/useCanvasUiTools.ts)

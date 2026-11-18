@@ -91,6 +91,9 @@ class TranscriptRequest(BaseModel):
     turn_id: str = Field(max_length=200)
     history_after: list[Any]
     messages: list[Any]
+    #: The datasets the chat has opened so far, ``[{database, code}]``. Optional: a request without it
+    #: stores a file without it, which main reads as "kept before the record was stored".
+    inspected: list[Any] | None = None
 
 
 def _chat_not_found() -> PrismError:
@@ -153,7 +156,8 @@ def put_run(database: str, chat_id: str, body: dict = Body(...)) -> dict:
 @router.put("/chats/{database}/{chat_id}/transcript", summary="Store the tool transcript of a chat's last turn")
 def put_transcript(database: str, chat_id: str, body: TranscriptRequest) -> dict:
     try:
-        size = _chats.save_transcript(database, chat_id, body.turn_id, body.history_after, body.messages)
+        size = _chats.save_transcript(database, chat_id, body.turn_id, body.history_after, body.messages,
+                                      body.inspected)
     except KeyError as e:
         raise _chat_not_found() from e
     except chat_transcripts.TranscriptTooLarge as e:

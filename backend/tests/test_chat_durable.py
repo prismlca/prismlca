@@ -203,6 +203,23 @@ def test_transcript_put_get_delete(client, token, project):
     assert r.status_code == 404 and r.json()["error"]["code"] == "chat_not_found"
 
 
+def test_the_record_of_opened_datasets_travels_with_the_transcript(client, token, project):
+    db = "fg-transcript-opened"
+    cid = _chat(client, token, db)
+    opened = [{"database": "ei", "code": "steel-row"}, {"database": "BAFU", "code": "pp"}]
+    r = client.put(f"{API}/{db}/{cid}/transcript", json={**_transcript(), "inspected": opened}, headers=token)
+    assert r.status_code == 200, r.text
+    assert client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()["inspected"] == opened
+
+    # An empty record is a record: nothing opened yet.
+    client.put(f"{API}/{db}/{cid}/transcript", json={**_transcript(), "inspected": []}, headers=token)
+    assert client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()["inspected"] == []
+
+    # Without it the file has none, which main tells apart from an empty one.
+    client.put(f"{API}/{db}/{cid}/transcript", json=_transcript(), headers=token)
+    assert "inspected" not in client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()
+
+
 def test_a_transcript_over_6_mb_is_refused_and_the_old_one_stays(client, token, project):
     db = "fg-transcript-big"
     cid = _chat(client, token, db)
