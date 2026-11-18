@@ -168,6 +168,36 @@ describe('the user turn', () => {
     )
     expect(String(last.content)).toContain(`[Today: ${localDate()}]`)
   })
+
+  it('stays out of the reply when the model copies it — on screen, in the answer and in the transcript', async () => {
+    chat.rounds = [
+      { text: '[Study language: English]\n\nLooking at the models.', ...listModels('t1') },
+      { text: '[Study language: English]\n[Today: 2026-11-18]\n\nOne model.' }
+    ]
+    const d = deps()
+    const res = await runAgent(request(), d.deps)
+    const shown = d.events
+      .filter((e) => e.type === 'delta')
+      .map((e) => (e as { text?: string }).text)
+      .join('')
+    expect(shown).not.toContain('[')
+    expect(res.text).toContain('Looking at the models.')
+    expect(res.text).toContain('One model.')
+    expect(res.text).not.toMatch(/\[(Study language|Today)/)
+    // What goes back to the model next round is the cleaned text, so it does not learn the habit.
+    const carried = chat.seen[1].messages.filter((m) => m.role === 'assistant')
+    expect(carried.at(-1)?.content).toBe('Looking at the models.')
+    expect(logged.filter((l) => l.includes('dropped a copy of the turn note'))).toHaveLength(2)
+  })
+
+  it('still lets the repetition cut-off end a model stuck on the note line', async () => {
+    // Dropping every copy would hide the loop: nothing would reach the turn's text, so the cut-off never
+    // looked, and the round ended as an empty one that is asked again — at a price.
+    chat.rounds = [{ text: '[Study language: English]\n'.repeat(40) }]
+    const res = await runAgent(request(), deps().deps)
+    expect(res.outcome).toBe('repetition')
+    expect(chat.seen).toHaveLength(1)
+  })
 })
 
 describe('live tool events', () => {
