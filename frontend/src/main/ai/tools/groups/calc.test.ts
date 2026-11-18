@@ -68,6 +68,35 @@ describe('compare', () => {
     expect(body.method_family).toBe('EF v3.1')
     expect(body).not.toHaveProperty('normalize_to_first')
   })
+
+  it('asks for a partial answer and hands the methods it could not compute to the model', async () => {
+    const missing = {
+      method: ['EF v3.1', 'guessed'],
+      code: 'method_not_found',
+      error: 'not found',
+      hint: 'Closest: …'
+    }
+    const api = vi.fn<ToolCtx['api']>(async () => ({
+      ...JSON.parse(JSON.stringify(matrix)),
+      not_computed: [missing]
+    }))
+    const out = text(
+      await tool('compare').run(
+        {
+          subjects: [
+            { database: 'd', code: 'a' },
+            { database: 'd', code: 'b' }
+          ],
+          methods: [['x', 'gwp'], ['x', 'w'], missing.method]
+        },
+        ctx(api)
+      )
+    )
+    expect(api.mock.calls[0][1]).toBe('/api/v1/calc/compare')
+    expect((api.mock.calls[0][2] as Record<string, unknown>).partial).toBe(true)
+    expect(out.not_computed).toEqual([missing])
+    expect(out.lowest_per_indicator).toEqual({ gwp: 'variant', water: 'other' })
+  })
 })
 
 describe('explain_result mode="matrix"', () => {

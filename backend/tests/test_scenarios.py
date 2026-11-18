@@ -130,6 +130,34 @@ def test_scenario_aware_results_matrix(client, token, project):
     assert abs(_lcia(client, token) - 1.1) < 1e-6  # baseline restored
 
 
+def test_partial_results_matrix_scores_a_scenario_subject_beside_a_wrong_method(client, token, project):
+    """A method that does not resolve is set aside before any scenario window opens: the baseline and the
+    scenario subject are both scored for the valid one, their split comes along, and the baseline is restored."""
+    _seed(get_bd())
+    _param(client, token, "kwh", amount=2.0)
+    _formula(client, token, "bottle", "e", "kwh")
+    sid = _mk(client, token, "efficient", overrides={"kwh": 1.0})
+    r = client.post(
+        "/api/v1/calc/compare",
+        json={"methods": [METHOD, ["test", "gwp20 guessed"]], "partial": True, "stacked_dimensions": ["isic"],
+              "subjects": [
+                  {"database": "fg", "code": "bottle", "label": "Baseline"},
+                  {"database": "fg", "code": "bottle", "label": "efficient", "scenario": sid},
+              ]},
+        headers=token,
+    )
+    assert r.status_code == 200, r.text
+    out = r.json()
+    key = " · ".join(METHOD)
+    assert [m["key"] for m in out["methods"]] == [key]
+    by = {s["label"]: s["scores"] for s in out["subjects"]}
+    assert by["Baseline"][key] == pytest.approx(1.1) and by["efficient"][key] == pytest.approx(0.6)
+    assert [x["method"] for x in out["not_computed"]] == [["test", "gwp20 guessed"]]
+    split = {s["label"]: s["methods"][key]["total"] for s in out["stacked"]["subjects"]}
+    assert split["efficient"] == pytest.approx(0.6)
+    assert abs(_lcia(client, token) - 1.1) < 1e-6  # baseline restored
+
+
 def test_scenario_aware_stacked(client, token, project):
     """compare-stacked applies a subject's scenario overrides, so the breakdown total shifts."""
     _seed(get_bd())

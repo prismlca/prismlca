@@ -347,6 +347,9 @@ class CompareRequest(BaseModel):
     #: `compare-stacked`'s dimensions: the stacked split comes back under "stacked", computed in the same
     #: pass — one scenario window per subject instead of one per request.
     stacked_dimensions: list[str] | None = None
+    #: Compute the methods that resolve for every subject and name the others under ``not_computed``, as
+    #: LciaRequest.partial does. The assistant's tool sets it; the Results page does not.
+    partial: bool = False
 
 
 @router.post("/compare", summary="Compare n subjects x m methods (matrix)")
@@ -366,6 +369,7 @@ def compare(request: Request, body: CompareRequest) -> dict:
             ScenarioStore(), subjects, methods,
             should_cancel=_canceller("compare", mine, key),
             stacked_dimensions=body.stacked_dimensions,
+            partial=body.partial,
         )
         if note:
             out["family"] = note

@@ -108,6 +108,38 @@ def test_partial_lcia_with_no_valid_method_is_an_error_naming_each(client, token
     assert "acidification: accumulated exceedance" in text and "water depletion potential" in text
 
 
+def test_partial_compare_scores_every_subject_for_the_valid_methods(client, token, project):
+    """One wrong method among several used to fail the whole matrix: no subject got a score for any method."""
+    _seed()
+    subjects = [{"database": DB, "code": c, "label": c} for c in ("a", "b")]
+    respelt = ["ipcc 2021 climate change total excl biogenic co2 gwp100"]  # GWP again, spelt otherwise
+    body = {"subjects": subjects, "methods": [list(GWP), GUESSED_ACID, list(EF_ACID), respelt]}
+    r = client.post("/api/v1/calc/compare", json={**body, "partial": True}, headers=token)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    # The installed names, in the order asked; the respelt GWP is the same indicator and no second row.
+    assert [m["method"] for m in out["methods"]] == [list(GWP), list(EF_ACID)]
+    keys = [m["key"] for m in out["methods"]]
+    for row in out["subjects"]:
+        assert sorted(row["scores"]) == sorted(keys)
+        assert row["scores"][" · ".join(GWP)] == pytest.approx(2.0)
+        assert row["scores"][" · ".join(EF_ACID)] == pytest.approx(0.01)
+    assert [x["method"] for x in out["not_computed"]] == [GUESSED_ACID]
+    assert out["not_computed"][0]["hint"].startswith("Closest: EF v3.1")
+    # Without the flag the matrix fails as before: the Results page shows the failure, not a missing row.
+    assert client.post("/api/v1/calc/compare", json=body, headers=token).status_code == 404
+
+
+def test_partial_compare_with_no_valid_method_is_an_error_naming_each(client, token, project):
+    _seed()
+    body = {"subjects": [{"database": DB, "code": "a"}], "methods": [GUESSED_ACID, GUESSED_WATER], "partial": True}
+    r = client.post("/api/v1/calc/compare", json=body, headers=token)
+    assert r.status_code == 404
+    text = str(r.json())
+    assert "None of the 2 LCIA methods resolved" in text
+    assert "acidification: accumulated exceedance" in text and "water depletion potential" in text
+
+
 def test_a_job_resolves_its_methods_before_it_starts(client, token, project):
     _seed()
     calc_jobs._reset_for_tests()
