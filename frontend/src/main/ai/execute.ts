@@ -26,7 +26,7 @@ import {
 import { validateToolArgs } from './argSchema'
 import { withoutEmptyArgs } from './emptyArgs'
 import { changesStructure, effectOf, type ToolEffect } from './tools/effects'
-import { apiError } from '../../shared/backendError'
+import { ApiError, apiError } from '../../shared/backendError'
 import { clampResearchQuestions } from '../../shared/aiDefaults'
 import {
   ignoredDatabase,
@@ -152,6 +152,39 @@ function anySignal(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
 export interface RunOpts {
   /** Stop pressed / client cancelled: a call queued behind a slow one must not start. */
   signal?: AbortSignal
+}
+
+/** The arguments did not pass the tool's own schema (argSchema.ts): the call did not run. */
+class ArgumentsRefused extends Error {}
+
+/**
+ * Backend codes that report the session's surroundings, not a verdict on the call: the app moved to
+ * another workspace (the MCP session ends on it, sessions.ts), a calculation was overtaken by a newer
+ * one. They stay failures.
+ */
+const NOT_A_REFUSAL = new Set([
+  'project_changed',
+  'import_project_changed',
+  'index_project_changed',
+  'job_other_project',
+  'calc_superseded'
+])
+
+/**
+ * Whether a thrown error is a refusal of the call rather than a failure to run it.
+ *
+ * The backend refuses with a 4xx and its own error code (`group_dimension_exists`, `param_not_found`,
+ * `outside_model_scope` …) — the same kind of "no" a tool says by RETURNING `{"error": …}`. Thrown, it
+ * used to count as a failure: an `edit_tags create_group` turned down for a twin group read as "failed"
+ * in the trace while the same refusal returned by another tool read as "rejected". A 5xx, a network
+ * error, a 401 and a 4xx without a code (FastAPI's own 422) stay failures. So does everything a tool
+ * throws itself — only the schema check is counted as a refusal: like the broken-JSON refusal above
+ * it, it is a guardrail turning down arguments before anything runs, and the message names the fix.
+ */
+export function isRefusal(e: unknown): boolean {
+  if (e instanceof ArgumentsRefused) return true
+  if (!(e instanceof ApiError)) return false
+  return e.status >= 400 && e.status < 500 && e.status !== 401 && !!e.code && !NOT_A_REFUSAL.has(e.code)
 }
 
 /**
@@ -353,7 +386,7 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       // diagnosis a fourth time, and after the tag check, whose cause outranks any schema symptom.
       const schema = tool.spec.function.parameters
       const invalid = validateToolArgs(name, schema, parsed)
-      if (invalid) throw new Error(invalid)
+      if (invalid) throw new ArgumentsRefused(invalid)
       // Empty optional fields read as "not given" (emptyArgs.ts). From here on every check and the tool
       // itself see these arguments — the fence, the approval card and the handler must agree on them.
       let args = withoutEmptyArgs(name, schema, parsed)
@@ -428,6 +461,18 @@ export function createToolSession(o: ToolSessionOpts): ToolSession {
       const error = withUnknownFields(e instanceof Error ? e.message : String(e), argText || undefined, tool)
       // What the call was told, for the repeat guard to quote if the model sends it unchanged again.
       if (!guardRefused) repeats.answered(name, argText, error)
+      // A refusal is told as one, whichever way it travelled: the model sees the same `{"error": …}`,
+      // and the trace, the run bar and the counts say "rejected" instead of "failed". Nothing was
+      // changed by the call that a refusal would have to report — the writes before a refusing request
+      // were already not counted as `mutated` when this path said "failed".
+      if (isRefusal(e))
+        return {
+          ok: true,
+          result: JSON.stringify({ error }),
+          soft: error,
+          mutated: false,
+          ms: Date.now() - startedAt
+        }
       return { ok: false, error, ms: Date.now() - startedAt }
     }
   }

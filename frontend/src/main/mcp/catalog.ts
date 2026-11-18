@@ -24,6 +24,11 @@ export const MCP_EXCLUDED_TOOLS: ReadonlySet<string> = new Set([
   'plan'
 ])
 
+// The chat's sentence on the order of the calls in one reply (ai/systemPrompt.ts `CALL_ORDER_RULE`)
+// reaches the orientation not at all: it describes the chat's loop, which runs consecutive reads side by
+// side. This server runs a session's calls one after another (sessions.ts), and how a client's own harness
+// orders several calls is for that harness to say.
+
 // The in-app chat's model fence (ai/modelScope.ts: its own model only, comparison models read-only,
 // no model lifecycle, no `delete_model`) reaches the MCP server not at all: an external agent is meant
 // to work across models — it opens, creates and compares them, and it keeps its own session, so it

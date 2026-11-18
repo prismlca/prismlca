@@ -80,6 +80,28 @@ describe('validateToolArgs — the shapes models actually send', () => {
     ).toBeNull()
   })
 
+  it('tolerates null for an optional field inside list items and nested objects', () => {
+    expect(
+      check('edit_tags', {
+        action: 'assign',
+        group: 'Life-cycle phase',
+        assignments: [
+          { keys: [{ database: 'd', code: 'c', uid: null }], value: null, group: null },
+          { keys: [{ database: 'd', code: 'e' }], value: 'Use' }
+        ]
+      })
+    ).toBeNull()
+  })
+
+  it('still reports null in a required field of a list item', () => {
+    const msg = check('edit_tags', {
+      action: 'assign',
+      group: 'g',
+      assignments: [{ keys: null, value: 'Use' }]
+    })
+    expect(msg).toMatch(/"assignments\[0\]\.keys" must be an array/)
+  })
+
   it('reports at most three faults and counts the rest', () => {
     const msg = check('plan', {
       steps: [{ status: 'nope' }, { status: 'nope' }, { status: 'nope' }, { status: 'nope' }]

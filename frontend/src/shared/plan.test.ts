@@ -82,6 +82,26 @@ describe('validatePlanUpdate', () => {
     if (!v.ok) expect(v.error).toContain('note')
   })
 
+  it('names every unfinished step that disappeared, up to five', () => {
+    const steps = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((step) => ({ step, status: 'pending' as const }))
+    const prev = plan([{ step: 'Start', status: 'in_progress' }, ...steps])
+    const two = validatePlanUpdate(prev, {
+      steps: [{ step: 'Start', status: 'in_progress' }, ...steps.slice(2)]
+    })
+    expect(!two.ok && two.error).toBe(
+      '"A" (pending) and "B" (pending) were unfinished and are no longer in the list; dropping or ' +
+        'rewording unfinished steps needs an `explanation`.'
+    )
+    const all = validatePlanUpdate(prev, { steps: [{ step: 'Start', status: 'in_progress' }] })
+    expect(!all.ok && all.error).toMatch(
+      /^"A" \(pending\), "B" \(pending\), "C" \(pending\), "D" \(pending\), "E" \(pending\), and 2 more were unfinished/
+    )
+    const one = validatePlanUpdate(prev, {
+      steps: [{ step: 'Start', status: 'in_progress' }, ...steps.slice(1)]
+    })
+    expect(!one.ok && one.error).toMatch(/^"A" \(pending\) was unfinished and is no longer in the list/)
+  })
+
   it('lets an unfinished step disappear only with an explanation', () => {
     const prev = plan([
       { step: 'Link PET granulate', status: 'in_progress' },

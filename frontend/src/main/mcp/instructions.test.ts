@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { INSTRUCTIONS, INSTRUCTIONS_MAX_CHARS, buildOrientation, stripBullets } from './instructions'
 import { MCP_EXCLUDED_TOOLS } from './catalog'
+import { CALL_ORDER_RULE } from '../ai/systemPrompt'
 
 describe('MCP instructions', () => {
   it('stay under the client cut-off and point at orientation', () => {
@@ -54,6 +55,8 @@ describe('buildOrientation', () => {
     expect(text).not.toContain('prism:process/')
     // The chat's "+" menu of switches is the chat's; an external session has none.
     expect(text).not.toContain('left of the chat input')
+    // How the chat's loop runs several calls of one reply is the chat's too: this server runs them in turn.
+    expect(text).not.toContain(CALL_ORDER_RULE.trim())
   })
 
   it('lists each skill on one line, as the chat does', () => {

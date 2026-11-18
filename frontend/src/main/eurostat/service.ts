@@ -13,6 +13,7 @@
  * learns one reading.
  */
 import { eurostatUrl, fetchSlice, type ClientOpts, type Decoded } from './client'
+import { sharesOf } from './shares'
 import {
   browserUrl,
   CAVEAT_FLAGS,
@@ -53,7 +54,7 @@ export interface EolResult {
     rows: ValueRow[]
     count: number
   }
-  /** Each operation's share of total treatment per country, from the tonnes rows (V415, `sharesOf`). */
+  /** Each operation's share of the table's total (TRT, or GEN for packaging) per country (V415, shares.ts). */
   shares?: Record<string, Record<string, number>>
   shares_note?: string
   lookups: {
@@ -363,7 +364,7 @@ export async function queryEurostatEol(raw: unknown, opts: ServiceOpts = {}): Pr
     ...(wasteCode ? { waste_code: wasteCode, waste_label: d.labels.waste?.[wasteCode] ?? wasteCode } : {}),
     notes,
     values: { columns: VALUE_COLUMNS, rows: valueRows, count: valueRows.length },
-    ...sharesOf(valueRows),
+    ...sharesOf(q.dataset, valueRows),
     lookups: {
       countries,
       operations,
@@ -388,41 +389,6 @@ export async function queryEurostatEol(raw: unknown, opts: ServiceOpts = {}): Pr
       attribution: EUROSTAT_ATTRIBUTION
     },
     lca_note: LCA_NOTE
-  }
-}
-
-/**
- * Each operation's share of total treatment (TRT), per country, from the tonnes rows.
- *
- * The model used to derive these by hand from the tonnes (V415) and had to decide alone
- * what "incineration" is. The arithmetic belongs here; the decision is named beside it: energy
- * recovery (R1, RCV_E) and disposal by incineration (D10, DSP_I) are both thermal, and an LCA
- * incineration share is usually their sum — for plastics R1 includes co-incineration in cement kilns.
- * Tonnes first, kilograms per capita where a table has no tonnes; the percent unit of env_wasoper is
- * already a share and is left alone.
- */
-export function sharesOf(rows: ValueRow[]): {
-  shares?: Record<string, Record<string, number>>
-  shares_note?: string
-} {
-  const unit = rows.some((r) => r[2] === 'T') ? 'T' : rows.some((r) => r[2] === 'KG_HAB') ? 'KG_HAB' : null
-  if (!unit) return {}
-  const shares: Record<string, Record<string, number>> = {}
-  for (const [geo, op, u, value] of rows) {
-    if (u !== unit || op === 'TRT') continue
-    const total = rows.find((r) => r[0] === geo && r[1] === 'TRT' && r[2] === unit)?.[3]
-    if (!total) continue
-    ;(shares[geo] ??= {})[op] = Math.round((value / total) * 10000) / 10000
-  }
-  if (!Object.keys(shares).length) return {}
-  return {
-    shares,
-    shares_note:
-      `Share of total treatment (TRT) per operation, from the ${unit === 'T' ? 'tonnes' : 'kg per capita'} ` +
-      'rows. RCV_R_B contains RCV_R and RCV_B; DSP_L_OTH contains DSP_L and DSP_OTH. An LCA ' +
-      '"incineration" share is usually RCV_E (R1, energy recovery) + DSP_I (D10) — both are thermal ' +
-      'treatment, and for plastics R1 includes co-incineration in cement kilns. Shares of the top-level ' +
-      'operations (RCV_R_B, RCV_E, DSP_L_OTH, DSP_I) sum to 1 up to rounding.'
   }
 }
 

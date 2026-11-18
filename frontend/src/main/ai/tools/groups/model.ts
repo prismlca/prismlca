@@ -14,6 +14,8 @@ import { type LinkedInput, withLinkReminder } from '../advice/linkReminder'
 import { expandBatch, explainNotFound, ignoredNote, topLevelOnly } from './exchangeBatch'
 import { checkFormulaBeforeAdd, refusedOnWrite } from './addWithFormula'
 import { actionOf } from './exchangeAction'
+import { KEPT_COMMENT_NOTE, alreadyReplaced, replaceInput } from './replaceInput'
+import { missingInputDatabase } from './inputHolder'
 import { SAME_INPUT_NOTE, watchSameInput } from './sameInput'
 import { watchReachedTwice } from './reachedTwice'
 
@@ -464,6 +466,8 @@ export const modelTools: Tool[] = [
 
       /** Background datasets this call linked (add / replace_input), for the reminder in withLinks. */
       const linked: LinkedInput[] = []
+      /** A replace_input of this call carried an old comment over: said once, beside the batch. */
+      let keptComment = false
       const noteLink = (ex: any, database: unknown, code: unknown, type: unknown): void => {
         const kind = String(ex?.type ?? type ?? 'technosphere')
         if (kind === 'biosphere' || kind === 'production') return
@@ -557,9 +561,8 @@ export const modelTools: Tool[] = [
         const base = { activity_database: db, activity_code: resolved.code }
 
         if (action === 'add') {
-          for (const k of ['input_database', 'input_code'] as const) {
-            if (!it?.[k]) throw new Error(`action="add" also requires: ${k}.`)
-          }
+          if (!it?.input_database) throw new Error(await missingInputDatabase(ctx, db, it?.input_code))
+          if (!it?.input_code) throw new Error('action="add" also requires: input_code.')
           // A formula IS the amount: the engine evaluates it and stores the result (params
           // .set_exchange_formula → recalculate_exchanges). Demanding a number alongside it made the
           // MODEL do that arithmetic by hand on every parameterised exchange — two truths for one
@@ -631,113 +634,21 @@ export const modelTools: Tool[] = [
           return answer
         }
 
-        // Doing it twice is the same as doing it once. When nothing carries the old input any more
-        // but something already carries the NEW one, this replacement has already happened, and
-        // "No exchange on this process has input X" sends the caller hunting for a wrong code
-        // instead of telling it the job is done. Measured in a real run: a repeated batch
-        // cost two refused items and a round, on a model that was already correct.
         if (action === 'replace_input') {
-          const wanted = String(it?.new_input_code ?? '').trim()
-          if (!wanted) throw new Error('action="replace_input" also requires: new_input_code.')
-          const before = await ctx.api(
-            'GET',
-            `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(resolved.code)}`
-          )
-          const rows = (before?.exchanges ?? []).filter((e: any) => e?.type !== 'production')
-          const oldCode = typeof it?.input_code === 'string' ? it.input_code.trim() : ''
-          const stillThere = it?.uid
-            ? rows.some((e: any) => e.uid === it.uid)
-            : rows.some((e: any) => e?.input?.code === oldCode)
-          const already = rows.find((e: any) => e?.input?.code === wanted)
-          if (!stillThere && already)
-            return {
-              uid: already.uid,
-              input_code: wanted,
-              amount: already.amount,
-              formula: already.formula ?? null,
-              already_replaced: true,
-              note: 'Already points at the new input — an earlier call did this. Nothing was changed. Use action="set_comment" if only the comment is missing.'
-            }
+          const done = await alreadyReplaced(ctx, db, resolved.code, it)
+          if (done) return done
         }
 
         const uid = await uidOf(resolved.code, it)
 
-        // Swapping one background dataset for another — the commonest repair after a review — was
-        // five calls: search, find the exchange, remove it, add the replacement, restore the amount.
-        // Four of those carried no decision, and dropping the old link before the new one is what
-        // made it risky. Add first, then remove: a failure leaves the model as it was.
         if (action === 'replace_input') {
-          const newCode = String(it?.new_input_code ?? '').trim()
-          if (!newCode) throw new Error('action="replace_input" also requires: new_input_code.')
-          const detail = await ctx.api(
-            'GET',
-            `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(resolved.code)}`
-          )
-          const cur = (detail?.exchanges ?? []).find((e: any) => e?.uid === uid)
-          // What the exchange MEANT carries over unless the caller says otherwise; only the dataset
-          // behind it changes. A replacement that silently reset the amount to 1 would be worse than
-          // the five calls it replaces.
-          const amount = it.amount ?? cur?.amount
-          const formula = it.formula ?? cur?.formula ?? undefined
-          const comment = it.comment ?? cur?.comment ?? undefined
-          // The input's own tags (its life-cycle phase) belong to the input, not to the dataset behind it.
-          const tags: Record<string, string> | undefined =
-            Array.isArray(cur?.tags) && cur.tags.length
-              ? Object.fromEntries(cur.tags.map((t: any) => [t.dimension, t.value]))
-              : undefined
-          if (amount === undefined || amount === null)
-            throw new Error('Could not read the old amount — pass "amount" explicitly.')
-          const made: any = await IMPL.add_exchange(
-            {
-              ...base,
-              input_database: it.new_input_database ?? it.input_database ?? cur?.input?.database,
-              input_code: newCode,
-              amount,
-              type: it.type ?? cur?.type,
-              ...(tags ? { tags } : {})
-            },
-            ctx
-          )
-          const parsed = typeof made === 'string' ? JSON.parse(made) : made
-          const newUid = parsed?.exchange?.uid
-          let finalAmount = amount
-          try {
-            if (newUid && formula) {
-              const set = await IMPL.set_exchange_formula({ ...base, uid: newUid, formula }, ctx)
-              // The formula's own value, not the amount read before it was set.
-              const parsedSet = typeof set === 'string' ? JSON.parse(set) : set
-              if (typeof parsedSet?.exchange?.amount === 'number') finalAmount = parsedSet.exchange.amount
-            }
-            if (newUid && comment) await IMPL.set_exchange_comment({ ...base, uid: newUid, comment }, ctx)
-          } catch (e) {
-            // A formula the backend refuses must not leave the old AND the new input in the model:
-            // the replacement is taken back out, the old one stays as it was.
-            if (newUid) await IMPL.remove_exchange({ ...base, uid: newUid }, ctx).catch(() => {})
-            throw e
-          }
-          await IMPL.remove_exchange({ ...base, uid }, ctx)
-          const newDb = it.new_input_database ?? it.input_database ?? cur?.input?.database
-          noteLink(parsed?.exchange, newDb, newCode, it.type ?? cur?.type)
-          if (newUid) reachedTwice.added(resolved.code, parsed?.exchange?.input?.database ?? newDb, newCode)
-          return {
-            replaced: uid,
-            uid: newUid,
-            input_code: newCode,
-            amount: finalAmount,
-            formula: formula ?? null,
-            // Same field, same meaning, same spelling as the "add" path: your comment was written.
-            // The only field mentioning the comment was `carried_over.comment`,
-            // which is `false` EXACTLY WHEN one was written — the opposite of how it reads next to
-            // `commented: true` on the sibling action. In that run the model replaced two inputs
-            // successfully, read `comment: false`, replayed the whole batch (two refused items and a
-            // round, because the old inputs were gone) and then set the comments a third time.
-            commented: Boolean(it.comment),
-            kept_old: {
-              amount: it.amount === undefined,
-              formula: it.formula === undefined,
-              comment: it.comment === undefined
-            }
-          }
+          const r = await replaceInput(ctx, base, uid, it)
+          const newCode = r.answer.input_code
+          noteLink(r.exchange, r.database, newCode, r.type)
+          if (r.answer.uid)
+            reachedTwice.added(resolved.code, r.exchange?.input?.database ?? r.database, newCode)
+          if (r.answer.kept_comment !== undefined) keptComment = true
+          return r.answer
         }
 
         if (action === 'remove') return JSON.parse(String(await IMPL.remove_exchange({ ...base, uid }, ctx)))
@@ -798,6 +709,7 @@ export const modelTools: Tool[] = [
         const note = {
           ...ignoredNote(ignored),
           ...(sameInput.seen ? { same_input_note: SAME_INPUT_NOTE } : {}),
+          ...(keptComment ? { kept_comment_note: KEPT_COMMENT_NOTE } : {}),
           ...reachedTwice.note()
         }
         return trimUnitNotes(Object.keys(note).length ? S({ ...JSON.parse(out), ...note }) : out, ctx)
