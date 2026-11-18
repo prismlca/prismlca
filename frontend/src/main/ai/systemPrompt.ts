@@ -132,7 +132,7 @@ export function buildSystemPrompt(opts: {
   vetted background database: its datasets can carry unlinked inputs, and the user is responsible
   for their completeness, not you.`
     : ''
-  // The title instruction moved into the first user turn (agent.ts `turnNote`, V418): it was the one
+  // The title instruction moved into the first user turn (turnNote.ts, V418): it was the one
   // line that made the system prompt of turn 2 differ from turn 1, and a changed system block
   // invalidates the whole cached prefix — the first follow-up question paid the full context uncached
   // (0.82 $ / 263k tokens, measured). `isNewChat` is kept in the options for callers/tests.
@@ -144,12 +144,15 @@ export function buildSystemPrompt(opts: {
   // source now, and deliberately also for the ANSWERS: a wrong setting then shows itself in the
   // first reply instead of hiding in the artifacts.
   // Static since V418: the language itself arrives in the bracketed note that opens each
-  // user turn (agent.ts `turnNote`), so this block reads the same whether or not the study has one yet.
+  // user turn (turnNote.ts), so this block reads the same whether or not the study has one yet.
   // It used to switch between two sentences, and the switch — a study that got its language during
   // turn 1 — broke the cached prefix on every chat's second turn. `studyLanguage` stays in the options
   // for the callers; it is read where the note is built.
+  // The last sentence keeps the note out of replies (turnNote.ts drops a copy that slips through). It
+  // stands after the rule and does not say that the user cannot see the note: said up front, that cost
+  // the note its authority, and a German question got a German answer under an English study language.
   void studyLanguage
-  const langLine = `- Every user turn opens with a bracketed note naming the study language, e.g. \`[Study language: German]\` — the language recorded in the study metadata. Write EVERYTHING in it: your answers, your \`ask_user\` questions, and everything you create in the model (process names, reference products, tags, comments) — whatever language the user or the source material uses. If the user plainly wants another language, do not fight them: point at the \`language\` field (model_info) and follow their wish once it is changed. When the note says \`[No study language recorded yet]\`: use the language the user writes in — for your answers and for everything you create in the model — and record it (model_info, field \`language\`, as a two-letter code: en, de, fr, es or pt) when you set the goal & scope, so it stays one language from then on.`
+  const langLine = `- Every user turn opens with a bracketed note naming the study language, e.g. \`[Study language: German]\` — the language recorded in the study metadata. Write EVERYTHING in it: your answers, your \`ask_user\` questions, and everything you create in the model (process names, reference products, tags, comments) — whatever language the user or the source material uses. If the user plainly wants another language, do not fight them: point at the \`language\` field (model_info) and follow their wish once it is changed. When the note says \`[No study language recorded yet]\`: use the language the user writes in — for your answers and for everything you create in the model — and record it (model_info, field \`language\`, as a two-letter code: en, de, fr, es or pt) when you set the goal & scope, so it stays one language from then on. The bracketed lines (study language, today's date) are added by the app — never copy them into your reply.`
   const webLine = webSearch
     ? '\n- **Web search** is enabled for this chat, but it is a SECONDARY source: your primary sources are the foreground model and the released background database(s) via the PrismLCA tools — answer LCA/data questions from them first. Reach for the web only for what the databases cannot answer (current events, external documentation, prices, literature), and name your sources in the answer.'
     : ''

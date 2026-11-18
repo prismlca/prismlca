@@ -24,7 +24,7 @@ import {
 import { PROVIDER_CAPS } from '../../shared/providerCaps'
 import type { AgentEvent, AttachmentMeta, ToolTrace } from '../../shared/ipc'
 import { PARALLEL_SAFE_TOOLS, groupsForConversation, inspectedKey, toolSpecs } from './tools'
-import { buildSystemPrompt, LANGUAGE_NAMES, type Skill } from './systemPrompt'
+import { buildSystemPrompt, type Skill } from './systemPrompt'
 import { offeredSkills } from './skillRender'
 import { findModel } from './models'
 import { effortRejectionRetry } from './chatEffort'
@@ -51,7 +51,7 @@ import { CHAT_OFFLINE_MS } from './providers/retryPolicy'
 import { refusalNote } from './stopNotes'
 import { TurnText } from './turnText'
 import { aiLog } from './aiLog'
-import { localDate } from './localTime'
+import { noteEcho, turnNote } from './turnNote'
 import { createRunTelemetry } from './roundLog'
 import { describeWebLookups, RoundLookups } from './webLookups'
 import { logProviderError, storedError } from './providerErrorLog'
@@ -942,24 +942,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   // a spreadsheet as the Markdown the backend converted. `userText` stays the prose the user typed,
   // because that is what the renderer persists and what `keepTranscript` has to match next turn.
   const attached = req.attachments?.filter((a) => a.id && !a.error) ?? []
-  // What changes from turn to turn rides on the USER turn, not in the system prompt (V418):
-  // the study language (unset in turn 1, "de" by turn 2 of every build) and the
-  // new-chat title instruction were the two lines that made the system block of turn 2 differ from
-  // turn 1 — and a changed system block invalidates the entire cached prefix, so the first follow-up
-  // question of a long chat paid the whole context uncached (0.82 $ / 263k tokens, twice measured).
-  // Here it sits behind the cached prefix and costs a few tokens. The renderer shows `userText`.
-  const langName = studyLanguage ? (LANGUAGE_NAMES[studyLanguage] ?? studyLanguage) : undefined
-  // Today's date rides here too: no model knows it, and one guessed a study date three months back.
-  const turnNote = [
-    langName ? `[Study language: ${langName}]` : '[No study language recorded yet]',
-    `[Today: ${localDate()}]`,
-    req.history.length === 0
-      ? 'This is a NEW chat: your first action must be to call `set_chat_title` with a short, punchy title (3–6 words) for the conversation. Do not mention the title to the user.'
-      : ''
-  ]
+  // What changes from turn to turn rides on the USER turn, not in the system prompt (turnNote.ts).
+  const notedText = [turnNote(studyLanguage, req.history.length === 0), req.userText]
     .filter(Boolean)
-    .join('\n')
-  const notedText = req.userText ? `${turnNote}\n\n${req.userText}` : turnNote
+    .join('\n\n')
   const userContent: ChatMessage['content'] = attached.length
     ? [
         { type: 'text', text: notedText },
@@ -1327,6 +1313,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         try {
           roundText = ''
           toolCalls = null
+          // A copy of the turn note at the head of the reply is held back and dropped (turnNote.ts).
+          const echo = noteEcho()
           let nextRepeatCheck = REPEAT_MIN_CHARS
           // Per round: the count answers "is this round still moving?", so it starts at zero with
           // the round rather than accumulating across a turn.
@@ -1363,8 +1351,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             }
             if (ev.type === 'delta') {
               telemetry.output()
-              roundText += ev.text
-              turn.add(ev.text)
+              const text = echo.pass(ev.text)
+              if (!text) continue
+              roundText += text
+              turn.add(text)
               // Checked every few hundred characters rather than per delta: the scan is cheap but not
               // free, and a collapse takes far longer than that to become detectable anyway.
               if (roundText.length >= nextRepeatCheck) {
@@ -1426,6 +1416,13 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
               replay = ev.replay
             }
           }
+          const held = echo.end()
+          // After Stop the renderer keeps what it has; a late piece would land behind it.
+          if (held && !req.signal.aborted) {
+            roundText += held
+            turn.add(held)
+          }
+          if (echo.dropped) aiLog(`dropped a copy of the turn note from the reply (${echo.dropped} line(s))`)
           answerWeb = web = endLookups()
           telemetry.end()
           break

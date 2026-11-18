@@ -45,13 +45,24 @@ describe('buildSystemPrompt', () => {
     // The old rule governed only the ANSWERS, so one run produced English answers over German
     // process names and German ask_user questions. Deliberately also for the answers: a wrong
     // setting then shows itself in the first reply instead of hiding in the artifacts.
-    // Since V418 the language itself travels in the per-turn note (agent.ts), so the rule reads the
+    // Since V418 the language itself travels in the per-turn note (turnNote.ts), so the rule reads the
     // same with and without a recorded language — that sameness is what keeps the prefix cached.
     const p = buildSystemPrompt({ ...base, studyLanguage: 'de' })
     expect(p).toContain('[Study language: German]')
     expect(p).toMatch(/answers.*ask_user.*process names/s)
     expect(p).not.toMatch(/Answer in the user's language/)
     expect(p).toBe(buildSystemPrompt(base))
+  })
+
+  it('says the note comes from the app and is no part of a reply — after the rule, not in its place', () => {
+    // GPT-6 Luna opened nearly every answer with a copy of the note; turnNote.ts drops what slips through.
+    // Said up front, with "the user neither writes nor sees it", the sentence cost the note its authority:
+    // Luna answered a German question in German under an English study language.
+    const p = buildSystemPrompt(base)
+    expect(p).toMatch(
+      /so it stays one language from then on\. The bracketed lines .* added by the app — never copy them into your reply\./
+    )
+    expect(p).not.toMatch(/neither writes nor sees/)
   })
 
   it('tells the model what to do while no language is recorded, and asks for it to be recorded', () => {
