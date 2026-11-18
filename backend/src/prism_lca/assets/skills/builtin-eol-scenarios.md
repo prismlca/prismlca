@@ -125,8 +125,9 @@ the avoided-burden model does instead of cut-off. Under cut-off there are no cre
    overriding only the parameters that change (`edit_scenario` for single tweaks).
 3. Keep the fractions summing to 1 in every scenario; a scenario that sums to 1.2 inflates the
    product's mass, not just its end-of-life.
-4. `compare_scenarios` for one indicator against the baseline, then report the *spread* — "climate
-   impact varies by ±12 % across plausible end-of-life routes" is the finding, not a single number.
+4. `compare_scenarios` against the baseline — the study's indicators in one call (`methods`) —, then
+   report the *spread* — "climate impact varies by ±12 % across plausible end-of-life routes" is the
+   finding, not a single number.
 
 ## Scenarios are not only for end-of-life
 The same pattern fits transport distance, electricity mix, lifetime/service life, loss rates and
