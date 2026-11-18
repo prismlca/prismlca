@@ -273,6 +273,18 @@ def _direct_impact(lca, act) -> float:
     return float(lca.characterized_inventory[:, col].sum())
 
 
+def _own_impact_of(lca, database: str) -> float:
+    """The score the processes of ``database`` carry with their OWN biosphere exchanges for the lca's current
+    demand: their columns of the characterised inventory, summed. Read off the solved system, so every process
+    the demand runs counts, however deep in the chain, however small its share, and every round of a loop."""
+    from bw2data.backends.schema import ActivityDataset
+
+    columns = lca.dicts.activity
+    ids = ActivityDataset.select(ActivityDataset.id).where(ActivityDataset.database == database).tuples()
+    cols = [columns[i] for (i,) in ids if i in columns]
+    return float(lca.characterized_inventory[:, cols].sum()) if cols else 0.0
+
+
 def _split(total: float, direct: float) -> dict:
     return {
         "direct": _sig(direct),
@@ -571,31 +583,19 @@ def contribution(
                 prod_cache[a.id] = _production_amount(a)
             return prod_cache[a.id]
 
-        # What a foreground process emits ITSELF, per run: its own biosphere exchanges, characterised.
-        # The tree's "dir" is not that — it is what the cutoff and the depth limit left unexplained under
-        # a node, which for the root is the whole truncated remainder. Printed as "x % arise directly in
-        # the foreground processes" it read 0.7 % for a foreground with no elementary flows at all
-        # (V411). Only foreground nodes are summed: for the background the question is the
-        # database's, and the per-node "dir" stays what the tree viewer draws.
-        bio_ix = lca.dicts.biosphere
         fg_db = root.key[0]
-        own_cache: dict[int, float] = {}
-        fg_direct = [0.0]
-
-        def own_unit_impact(a) -> float:
-            if a.id not in own_cache:
-                total_own = 0.0
-                for ex in a.biosphere():
-                    row = bio_ix.get(ex.input.id)
-                    if row is not None:
-                        total_own += float(ex.get("amount") or 0.0) * float(cf[row])
-                own_cache[a.id] = total_own
-            return own_cache[a.id]
-
         # Demand-sign normalisation: for a treatment root (production −1), amount=1 means
         # "treat 1 unit", so the effective product-flow demand is amount·sign (see _demand_sign).
         root_amt = amount * _demand_sign(root)
         total = root_amt * unit_impact(root.id)
+        # What the model's processes emit THEMSELVES. The tree's "dir" is not that — it is what the cutoff
+        # and the depth limit left unexplained under a node, which for the root is the whole truncated
+        # remainder; printed as "x % arise directly in the foreground processes" it read 0.7 % for a
+        # foreground with no elementary flows at all (V411). Nor is it a sum over the tree's nodes, which
+        # misses every process the tree does not open: below the cutoff, past the depth limit, a loop's
+        # second round. So it is read off the solved system. Only the root's model counts: for the background
+        # the question is the database's, and the per-node "dir" stays what the tree viewer draws.
+        fg_direct = root_amt * _own_impact_of(lca, fg_db)
 
         def build(act, amt: float, depth: int, ancestors: frozenset) -> dict:
             n_nodes[0] += 1
@@ -610,8 +610,6 @@ def contribution(
                 # production_amount units — so inputs scale with amt/prod, NOT with amt alone
                 # (prod=−1 for treatments flips the sign; foreground prods may be ≠ ±1).
                 runs = amt / prod_amount(act)
-                if act.key[0] == fg_db:
-                    fg_direct[0] += runs * own_unit_impact(act)
                 for ex in act.technosphere():
                     inp = ex.input
                     child_amt = runs * (ex.get("amount") or 0.0)
@@ -681,10 +679,10 @@ def contribution(
             "unit": unit,
             "direct": _sig(tree["dir"]),
             "upstream": _sig(total - tree["dir"]),
-            # The foreground's own emissions (see own_unit_impact) — the figure a sentence about "directly
-            # in the foreground processes" may quote. `direct`/`upstream` keep the tree's reading for the
-            # viewers that draw it.
-            "foreground_direct": _sig(fg_direct[0]),
+            # The model's own emissions, exact whatever the tree's cutoff and depth — the figure a sentence
+            # about "directly in the foreground processes" may quote. `direct`/`upstream` keep the tree's
+            # reading for the viewers that draw it.
+            "foreground_direct": _sig(fg_direct),
             "n_nodes": n_nodes[0],
             "cutoff": cutoff,
             "max_depth": max_depth,
