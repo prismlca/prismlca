@@ -209,7 +209,7 @@ interface OaiState {
   calls: Record<number, AccumTool>
   /** Paid web_search invocations, counted into the synthesized cost. */
   webSearches: number
-  /** What those searches looked for — the pages they returned are not requested, so not known here. */
+  /** What those searches looked for, and the pages they returned. */
   searched: WebSearch[]
   /** Drops the raw citation markers a model leaves in text it writes between tool calls. */
   markers: CitationMarkerFilter
@@ -217,8 +217,8 @@ interface OaiState {
 
 /**
  * A `web_search_call`'s search, from its `action`: the search text (`query`, or a `queries` list), and
- * the pages only where the request asked for them (`sources` — this transport does not). Opening a page or
- * finding text in one is no search and is left out; the counter prices every call all the same.
+ * the pages it returned (`sources`, which the request asks for; addresses only, no titles). Opening a page
+ * or finding text in one is no search and is left out; the counter prices every call all the same.
  */
 function searchOf(action: unknown): WebSearch | null {
   if (!action || typeof action !== 'object') return null
@@ -306,6 +306,9 @@ export const openaiTransport: ChatTransport<OaiState> = {
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       ...(opts.reasoningEffort ? { reasoning: { effort: opts.reasoningEffort } } : {}),
       ...(tools.length ? { tools } : {}),
+      // The pages each search returned, which the API leaves out of a web_search_call unless asked: the
+      // chat lists them, and a later turn names them ahead of the reply's text (searchNote.ts).
+      ...(opts.webSearch ? { include: ['web_search_call.action.sources'] } : {}),
       // The per-reply ceiling on web lookups: OpenAI's cap on built-in tool calls, and web_search is the
       // only built-in tool we attach. Each lookup re-runs the conversation, so this bounds the cost.
       ...(opts.webSearch && opts.webLookupsCap && opts.webLookupsCap > 0
