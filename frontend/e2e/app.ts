@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
-import { endAll, listed, processTree } from './processes'
+import { endAll, leftovers, listed, processTree, type ProcessInfo } from './processes'
 
 export const FRONTEND = resolve(__dirname, '..')
 export const FIXTURES = resolve(FRONTEND, '..', 'backend', 'tests', 'fixtures')
@@ -122,14 +122,23 @@ export async function quit(running: RunningApp, install: Install): Promise<void>
   if (running.stopped) return
   running.stopped = true
   const proc = running.app.process()
-  const started = processTree(proc.pid === undefined ? [] : [proc.pid], install.root).map((p) => p.pid)
+  let snapshot: ProcessInfo[]
+  try {
+    snapshot = processTree(proc, install.root)
+  } catch (e) {
+    // Without a snapshot nothing can be checked after a quit; the app is ended through Node's own hold on
+    // it, which cannot reach another process.
+    proc.kill('SIGKILL')
+    throw e
+  }
+  const look = leftovers(snapshot, install.root)
   let timer: ReturnType<typeof setTimeout> | undefined
   const outcome = await Promise.race([
     running.app.close().then(() => 'closed' as const),
     new Promise<'hung'>((done) => (timer = setTimeout(() => done('hung'), QUIT_MS)))
   ])
   clearTimeout(timer)
-  let left = processTree(started, install.root)
+  let left = look()
   if (outcome === 'hung') {
     endAll(left)
     const main =
@@ -142,7 +151,7 @@ export async function quit(running: RunningApp, install: Install): Promise<void>
   }
   for (const until = Date.now() + AFTERMATH_MS; left.length > 0 && Date.now() < until; ) {
     await sleep(500)
-    left = processTree(started, install.root)
+    left = look()
   }
   if (left.length > 0) {
     endAll(left)
