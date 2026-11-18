@@ -49,7 +49,8 @@
 .side-fold { appearance: none; background: none; border: none; padding: 0; margin-left: auto; flex: none;
   display: grid; place-items: center; width: 24px; height: 24px; border-radius: var(--r-sm);
   color: var(--muted); cursor: pointer; transition: color 140ms ease, background 140ms ease, opacity 140ms ease; }
-.side-fold:hover { color: var(--green); background: var(--green-soft); }
+/* Hovered, the glyph takes --green-ink: --green on --green-soft is too faint for it in the light theme. */
+.side-fold:hover { color: var(--green-ink); background: var(--green-soft); }
 .side-fold:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
 .side-fold svg { width: 16px; height: 16px; }
 /* The rows sit above one shared highlight (.nav-pill) that slides between them, so the green
