@@ -6,7 +6,7 @@
  */
 import { spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { endAll, leftovers, ours, processTree, sameProcess, type ProcessInfo } from './processes'
+import { endAll, leftovers, listed, ours, processTree, sameProcess, type ProcessInfo } from './processes'
 
 const ROOT = 'C:\\Users\\runner\\AppData\\Local\\Temp\\prism-e2e-Ab12'
 const SECOND = 1_000_000
@@ -92,17 +92,22 @@ describe('on this machine', () => {
     const exited = new Promise<void>((done) => child.once('exit', () => done()))
     const nowhere = `prism-e2e-nowhere-${process.pid}-${Date.now()}`
     try {
+      // The child and what it started: on Windows a console program gets a conhost.exe of its own.
       const tree = processTree(child, nowhere)
-      expect(tree.map((p) => p.pid)).toEqual([child.pid])
-      const listedChild = tree[0]
-      expect(listedChild.started).toEqual(expect.any(Number))
+      const listedChild = tree.find((p) => p.pid === child.pid)
+      expect(listedChild, listed(tree)).toBeDefined()
+      expect(listedChild!.started).toEqual(expect.any(Number))
+      expect(
+        tree.every((p) => p === listedChild || p.ppid === child.pid),
+        listed(tree)
+      ).toBe(true)
 
       // The same pid with another start time is another process: left alone.
-      endAll([{ ...listedChild, started: listedChild.started! - 5 * SECOND }])
+      endAll([{ ...listedChild!, started: listedChild!.started! - 5 * SECOND }])
       await sleep(500)
       expect(child.exitCode).toBeNull()
       expect(child.signalCode).toBeNull()
-      expect(leftovers(tree, nowhere)().map((p) => p.pid)).toEqual([child.pid])
+      expect(leftovers(tree, nowhere)().map((p) => p.pid)).toContain(child.pid)
 
       endAll(tree)
       const ended = await Promise.race([exited.then(() => true), sleep(15_000).then(() => false)])
