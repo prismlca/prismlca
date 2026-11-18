@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_ANTHROPIC_MODEL_ID,
   DEFAULT_GOOGLE_MODEL_ID,
-  DEFAULT_OPENAI_MODEL_ID
+  DEFAULT_OPENAI_MODEL_ID,
+  defaultReviewModelFor
 } from '../../shared/aiDefaults'
 import { billedBy, labKey } from '../../shared/labKey'
 import { priceFor, priceOn } from './directModels'
@@ -153,6 +154,14 @@ describe('provider-aware model resolution', () => {
     expect(modelBelongsTo('', 'openai')).toBe(false)
   })
 
+  it('reviews with the strong model of each list, the one the settings page names as the default', () => {
+    expect(
+      (['openrouter', 'anthropic', 'google', 'openai'] as const).map((p) => providerDefaults(p).review)
+    ).toEqual(['z-ai/glm-5.3', 'claude-sonnet-5-5', 'gemini-4-argon', 'gpt-6.1-sol'])
+    for (const p of ['openrouter', 'anthropic', 'google', 'openai'] as const)
+      expect(providerDefaults(p).review).toBe(defaultReviewModelFor(p))
+  })
+
   it('names only catalogue models in the per-provider defaults, chat defaults included', () => {
     for (const p of ['openrouter', 'anthropic', 'google', 'openai'] as const) {
       const d = providerDefaults(p)
@@ -237,9 +246,9 @@ describe('reasoning effort per row', () => {
     ).toEqual(['gpt-6-luna', 'openai/gpt-6-luna'])
     expect(findModel('gpt-6-luna', 'openai').minChatEffort).toBe('high')
     expect(findModel('openai/gpt-6-luna', 'openrouter').minChatEffort).toBe('high')
-    // The floor is the chat's: Luna stays the default for research, review, writer fallback and matching.
-    const { research, review, writerFallback, match } = providerDefaults('openai')
-    expect([research, review, writerFallback, match]).toEqual(Array(4).fill('gpt-6-luna'))
+    // The floor is the chat's: Luna stays the default for research, writer fallback and matching.
+    const { research, writerFallback, match } = providerDefaults('openai')
+    expect([research, writerFallback, match]).toEqual(Array(3).fill('gpt-6-luna'))
     expect(providerDefaults('openrouter').match).toBe('openai/gpt-6-luna')
   })
 })
