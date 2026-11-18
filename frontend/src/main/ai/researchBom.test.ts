@@ -132,6 +132,82 @@ describe('researchBom', () => {
     expect(r.balance_ok).toBeNull()
   })
 
+  it('counts a part once and keeps its other figures with their pages, telling the leg where they go', async () => {
+    chat.rounds = [
+      answer({
+        items: [
+          {
+            component: 'pouch',
+            material: 'PET/PE',
+            mass_kg: 0.0102,
+            source_url: 'https://e.org/alufrei',
+            alternatives: [{ mass_kg: 0.0103, material: 'PET/ALU/PE', source_url: 'https://e.org/alu' }]
+          }
+        ]
+      })
+    ]
+    const r = await researchBom({ product: 'refill pouch', components: ['pouch'], totalMassKg: 0.0102 })
+    expect(asked()[0]).toContain(
+      'Other figures for "pouch" itself — a variant, another source — go under "alternatives"'
+    )
+    expect(r.sum_kg).toBeCloseTo(0.0102, 6)
+    expect(r.balance_ok).toBe(true)
+    expect(r.items[0].alternatives).toEqual([
+      { mass_kg: 0.0103, material: 'PET/ALU/PE', source_url: 'https://e.org/alu' }
+    ])
+    expect(r.sources).toEqual(['https://e.org/alufrei', 'https://e.org/alu'])
+  })
+
+  it('keeps the figures a gap came with beside the one its follow-up found', async () => {
+    chat.rounds = [
+      answer({
+        items: [
+          {
+            component: 'label',
+            mass_kg: null,
+            alternatives: [
+              { mass_kg: 0.0013, material: 'PP', source_url: 'https://e.org/pp' },
+              { mass_kg: 0.0008, material: 'paper', source_url: 'https://e.org/paper' }
+            ]
+          }
+        ]
+      }),
+      answer({ items: [{ component: 'label', mass_kg: 0.0011, source_url: 'https://e.org/label' }] })
+    ]
+    const r = await researchBom({ product: 'refill pouch', components: ['label'] })
+    expect(r.follow_up).toEqual({ asked: 1, resolved: 1 })
+    expect(r.unresolved).toEqual([])
+    expect(r.items).toHaveLength(1)
+    expect(r.items[0].mass_kg).toBe(0.0011)
+    expect(r.items[0].alternatives?.map((a) => a.mass_kg)).toEqual([0.0013, 0.0008])
+    expect(r.note).toMatch(/"label" 0\.0013 kg \(PP\), 0\.0008 kg \(paper\) \(counted: 0\.0011 kg\)/)
+    expect(r.sources).toEqual(['https://e.org/label', 'https://e.org/pp', 'https://e.org/paper'])
+  })
+
+  it('leaves a gap open with its figures when the follow-up finds nothing', async () => {
+    chat.rounds = [
+      answer({
+        items: [
+          {
+            component: 'label',
+            mass_kg: null,
+            alternatives: [{ mass_kg: 0.0013, material: 'PP', source_url: 'https://e.org/pp' }]
+          }
+        ]
+      })
+    ]
+    chat.fallbackText = '{"items": []}'
+    const r = await researchBom({ product: 'refill pouch', components: ['label'] })
+    expect(r.items).toEqual([])
+    expect(r.unresolved).toEqual([
+      expect.objectContaining({
+        component: 'label',
+        reason: 'unclear_mass',
+        alternatives: [{ mass_kg: 0.0013, material: 'PP', source_url: 'https://e.org/pp' }]
+      })
+    ])
+  })
+
   it('still reads the bare array older answers come as', async () => {
     chat.rounds = [answer([{ component: 'body', mass_kg: 0.019, source_url: 'https://e.org/b' }])]
     const r = await researchBom({ product: 'bottle', components: ['body'], totalMassKg: 0.019 })

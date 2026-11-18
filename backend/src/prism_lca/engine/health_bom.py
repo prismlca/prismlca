@@ -48,11 +48,12 @@ _PROBE = 0.01
 Exchange = tuple[str, float, str]
 
 
-def _researched(database: str) -> list[tuple[str, float]]:
-    """(component, kg) per researched component with a mass, first record of a name wins."""
+def _researched(database: str) -> list[tuple[str, float, list[float]]]:
+    """(component, kg, other figures) per researched component with a mass, first record of a name wins. The
+    other figures are the ones the research found for the same part beside the one it counted."""
     from prism_lca.engine.research_log import ResearchLogStore
 
-    items: list[tuple[str, float]] = []
+    items: list[tuple[str, float, list[float]]] = []
     seen: set[str] = set()
     for entry in ResearchLogStore().list(database):
         for finding in entry.get("findings") or []:
@@ -68,7 +69,12 @@ def _researched(database: str) -> list[tuple[str, float]]:
             if component.lower() in seen:
                 continue
             seen.add(component.lower())
-            items.append((component, float(mass)))
+            others = [
+                float(v)
+                for v in finding.get("alternatives_kg") or []
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
+            ]
+            items.append((component, float(mass), others))
     return items
 
 
@@ -315,11 +321,11 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
         _log.swallowed(exc, "bom_items_unbooked")
         formulas = None
 
-    out: list[tuple[str, str]] = []
-    for component, mass in items:
+    def finding(component: str, mass: float) -> str | None:
+        """The finding for one researched figure of a component, or None when the model books it."""
         # A typed amount or a formula number that IS the figure books it, whatever the parameters say.
         if _booked_directly(mass, inputs, _EXACT_TOLERANCE) or _figure_in_formula(mass, inputs, formulas):
-            continue
+            return None
         # A parameter that carries the figure is the authoritative trail — when one exists, the question is
         # whether IT feeds anything, and a coincidental exchange of similar size must not answer for it.
         # Measured live on the pavilion model: the pegs' 0.2 kg sat in a dormant parameter, and a 0.22-kg
@@ -339,8 +345,8 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
             # No parameter trail: a positive mass exchange within the wide tolerance settles it, so a
             # deliberate deviation from the researched figure stays modelling, not a gap.
             if not _booked_directly(mass, inputs, _BOM_MATCH_TOLERANCE):
-                out.append((component, _unbooked(component, f"{mass:g} kg")))
-            continue
+                return _unbooked(component, f"{mass:g} kg")
+            return None
         named: list[str] = []  # carriers some non-zero exchange formula reaches, if only by name
         for name in carriers:  # the figure may arrive one step removed, via a derived parameter
             ident = re.compile(r"\b(?:" + "|".join(map(re.escape, downstream_of(stored, name))) + r")\b")
@@ -348,11 +354,19 @@ def bom_items_unbooked(database: str, exchanges: list[Exchange]) -> list[tuple[s
                 named.append(name)
         if not named:
             detail = f"{mass:g} kg — parameter '{carriers[0]}' carries the figure but feeds no non-zero exchange"
-            out.append((component, _unbooked(component, detail)))
-            continue
+            return _unbooked(component, detail)
         verdicts = [(name, _probe(formulas, name, exchanges) if formulas else None) for name in named]
         if any(v is None or v[0] for _n, v in verdicts):
-            continue
+            return None
         name, verdict = verdicts[0]
-        out.append((component, _only_reduces(component, mass, name, verdict[1])))
+        return _only_reduces(component, mass, name, verdict[1])
+
+    out: list[tuple[str, str]] = []
+    for component, mass, others in items:
+        text = finding(component, mass)
+        # A booking of another figure the research found for the part (the variant the user's product turned out
+        # to be) books it as well; when none is booked, the finding names the counted figure.
+        if text is None or any(finding(component, other) is None for other in others):
+            continue
+        out.append((component, text))
     return out

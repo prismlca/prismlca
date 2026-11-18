@@ -8,6 +8,7 @@
  * by total, by version — and the verdict stays null until the caller has settled it.
  */
 import type { BomItem, BomLeg, ProductMass, UnresolvedComponent, VersionSeen } from './bomAnswer'
+import { alternativesNote, onePerName, severalEntries } from './bomEntries'
 import { gtinsIn, sameReference, versionsContradict, versionsOf, type Versions } from './bomVersions'
 import type { RecipeBlock, RecipeWeighing } from './recipeBalance'
 
@@ -83,8 +84,6 @@ const host = (url?: string): string | undefined => {
 }
 
 const close = (a: number, b: number): boolean => Math.abs(a - b) <= SAME_TOTAL * Math.max(a, b)
-/** Two figures for one part that agree within 2 % are one figure reported twice. */
-const close2 = (a: number, b: number): boolean => Math.abs(a - b) <= 0.02 * Math.max(a, b)
 
 /** "frame (no mass found)" — the words a reason is named by in notes. */
 const REASON_WORDS: Record<UnresolvedComponent['reason'], string> = {
@@ -472,40 +471,14 @@ export function weighBom(
   const seen: VersionSeen[] = []
   const productOnly: string[] = []
   const repeats: string[] = []
+  const several: string[] = []
   for (let o of outcomes) {
-    // One request, one name, one entry: the follow-up pass answered "Glycerin" again beside the first answer, and a
-    // leg listed a part both with a mass and as a null entry. A repeat with the same mass (2 %) is dropped and named;
-    // the same name with different masses is no repeat but a contradiction — both figures go to unresolved as
-    // unclear, none is chosen. A null entry of that name is dropped only when it carries no figures of its own
-    // (no_mass, zero_mass); an unclear one stays, so its contradiction stays visible.
     if (o.leg) {
-      const key = (n: string): string => norm(n)
-      const byName = new Map<string, BomItem[]>()
-      for (const i of o.leg.items) byName.set(key(i.component), [...(byName.get(key(i.component)) ?? []), i])
-      const items: BomItem[] = []
-      const unclear: UnresolvedComponent[] = []
-      for (const group of byName.values()) {
-        const first = group[0]
-        if (group.every((i) => close2(i.mass_kg, first.mass_kg))) {
-          items.push(first)
-          if (group.length > 1) repeats.push(`"${first.component}"`)
-        } else
-          unclear.push({
-            component: first.component,
-            ...(first.material ? { material: first.material } : {}),
-            reason: 'unclear_mass',
-            note: `Came back ${group.length} times with different masses: ${group.map((i) => `${i.mass_kg} kg`).join(', ')} — no figure is preferred.`
-          })
-      }
-      const named = new Set(items.map((i) => key(i.component)))
-      const unresolved = [
-        ...o.leg.unresolved.filter(
-          (u) => !(named.has(key(u.component)) && (u.reason === 'no_mass' || u.reason === 'zero_mass'))
-        ),
-        ...unclear
-      ]
-      if (items.length !== o.leg.items.length || unresolved.length !== o.leg.unresolved.length)
-        o = { ...o, leg: { ...o.leg, items, unresolved } }
+      const read = onePerName(o.leg)
+      repeats.push(...read.repeats)
+      o = { ...o, leg: read.leg }
+      const many = o.request !== null ? severalEntries(o.request, read.leg) : undefined
+      if (many) several.push(many)
     }
     const status = statusOf(o.leg)
     const name = o.request ?? 'the component list'
@@ -539,11 +512,14 @@ export function weighBom(
       `${relabelled.join(', ')} came back as ${relabelled.length === 1 ? 'a part' : 'parts'} but with exactly the mass ` +
         'of a whole-product weight the research found — counted as that weight (totals_found), not as a part.'
     )
+  notes.push(...several)
   const cap = opts.itemCap ?? Infinity
   if (items.length > cap) {
     locks.push(`${items.length - cap} further entries were cut from the list`)
     items = items.slice(0, cap)
   }
+  const others = alternativesNote(items)
+  if (others) notes.push(others)
   if (opts.notResearched?.length)
     locks.push(
       `${opts.notResearched.length} requested component${opts.notResearched.length === 1 ? ' was' : 's were'} ` +

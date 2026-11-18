@@ -128,6 +128,59 @@ describe('the research log entry of a bill-of-materials call', () => {
   })
 })
 
+describe('the research log entry of a part with other figures', () => {
+  // The health check reads a finding as a part to book when it carries a component and a mass, or when its text ends
+  // on "<mass> kg" (older entries); an alternative must be neither, or it is named as never booked.
+  const BOM_TEXT = /^(.+?)(?:\s*\([^)]*\))?:\s*([0-9]+(?:\.[0-9]+)?)\s*kg\s*$/
+
+  it('logs each alternative with its own page as a documented figure, after the masses to book', () => {
+    const weighed = weighBom([
+      {
+        request: 'pouch',
+        leg: leg({
+          items: [
+            item('Nachfüllbeutel', 0.0102, {
+              material: 'PET/PE',
+              source_url: 'https://e.org/alufrei',
+              alternatives: [
+                {
+                  mass_kg: 0.0103,
+                  material: 'PET/ALU/PE',
+                  source_url: 'https://e.org/alu',
+                  note: 'barrier variant'
+                },
+                { mass_kg: 0.012 }
+              ]
+            })
+          ]
+        })
+      }
+    ])
+    const entry = bomLogEntry(
+      { product: 'refill pouch' },
+      { ...weighed, product: 'refill pouch', sources: [], evidence: [] }
+    )!
+    const findings = entry.findings as Array<Record<string, unknown>>
+    // The counted figure stays the part to book, and names its other figures: a booking of one of them books it too.
+    expect(findings[0]).toMatchObject({
+      component: 'Nachfüllbeutel',
+      mass_kg: 0.0102,
+      alternatives_kg: [0.0103, 0.012]
+    })
+    expect(findings.map((f) => f.text)).toEqual([
+      'Nachfüllbeutel (PET/PE): 0.0102 kg',
+      'Alternative figure for "Nachfüllbeutel": 0.0103 kg (PET/ALU/PE) — not counted (the research counted 0.0102 kg)'
+    ])
+    const alt = findings[1]
+    expect(alt).toEqual({
+      text: alt.text,
+      sources: ['https://e.org/alu'],
+      note: 'barrier variant'
+    })
+    expect(String(alt.text)).not.toMatch(BOM_TEXT)
+  })
+})
+
 describe('the research log entry of a call with a recipe', () => {
   const soap = weighRecipe(
     parseRecipeAnswer({

@@ -31,7 +31,8 @@ const BOM_SYSTEM = `You research bills of materials for life-cycle assessment.
 Answer with ONE JSON object ONLY — no prose, no code fence:
 {"items": [{"component": string, "material": string, "mass_kg": number | null, "count": integer,
             "mass_each_kg": number, "mass_range_kg": [number, number], "packaging": "no" | "sales" | "transport",
-            "includes": [string], "version": string, "source_url": string, "source_class": string,
+            "includes": [string], "alternatives": [{"mass_kg": number, "material": string, "source_url": string,
+            "note": string}], "version": string, "source_url": string, "source_class": string,
             "confidence": string, "note": string}],
  "product_mass": [{"mass_kg": number, "basis": "net" | "gross" | "unknown", "version": string,
                    "source_url": string, "note": string}],
@@ -47,6 +48,14 @@ Items:
 - An entry is one part, or a set of identical parts — never the whole product. A weight your source gives for
   the complete product (article weight, shipping weight) goes into "product_mass", also when you were asked
   for a part, and is never that part's figure.
+- Every entry is summed as a part of the product, so never give the same part twice. Figures that stand for the
+  same part — either this or that: another variant of it (with or without an aluminium layer, a label or a direct
+  print), another source's figure, a comparable product's part — are not parts of their own: write the one you
+  would model with as the entry's figure and the others under "alternatives" (each with its "mass_kg" for all
+  pieces like the entry's, its "source_url", and its "material" when it differs), and say in "note" why you
+  chose that one. An alternative could replace the entry's figure; the mass of something inside it (the valve
+  in a tube's weight) is not one. Parts that are ALL in the product together (a tyre and its tube) stay separate
+  entries, each with its own material.
 - Name the concrete polymer/metal/alloy in "material" (e.g. "PET", "HDPE", "aluminium 3104"), not a generic
   word like "plastic"; every entry needs a source_url you actually consulted; if a figure is a typical
   industry value rather than a measured one, say so in "note". Prefer standards, EPDs, manufacturer data and
@@ -286,8 +295,9 @@ export async function researchBom(opts: {
         ask(
           `${brief}${siblings(c)}\n\nResearch ONLY the component "${c}": its material and its mass in kg. ` +
             `Answer with the JSON object; "items" holds the entry for "${c}" — more than one only when it ` +
-            'consists of parts of different materials, or when part of it has no mass found (that part gets ' +
-            'its own entry with "mass_kg": null).',
+            'consists of parts of different materials that are all in the product, or when part of it has no ' +
+            'mass found (that part gets its own entry with "mass_kg": null). Other figures for ' +
+            `"${c}" itself — a variant, another source — go under "alternatives" of its entry.`,
           c
         )
       )
@@ -369,8 +379,15 @@ export async function researchBom(opts: {
       // A figure that landed replaces the gap with what the follow-up found — including any part of it the
       // follow-up again named without a mass. Only a gap with nothing left open counts as resolved.
       const landed = r.value.items.length > 0
+      // A gap that came with figures only as alternatives keeps them: they stand beside the figure the follow-up
+      // found, so a landing answers the gap without erasing what made it one.
+      const carried = u.alternatives?.length
+        ? r.value.items.map((it, k) =>
+            k === 0 ? { ...it, alternatives: [...(it.alternatives ?? []), ...(u.alternatives ?? [])] } : it
+          )
+        : r.value.items
       outcomes[o].leg = {
-        items: leg.items.concat(r.value.items),
+        items: leg.items.concat(carried),
         unresolved: landed
           ? leg.unresolved.flatMap((x) => (x === u ? r.value.unresolved : [x]))
           : leg.unresolved,
@@ -419,7 +436,10 @@ export async function researchBom(opts: {
     }
     return page
   }
-  for (const i of items) i.source_url = settle(i.source_url)
+  for (const i of items) {
+    i.source_url = settle(i.source_url)
+    for (const a of i.alternatives ?? []) if (a.source_url) a.source_url = settle(a.source_url)
+  }
   for (const t of weighed.totals_found ?? []) if (t.source_url) t.source_url = settle(t.source_url)
   const mix = weighed.recipe
   if (mix) {
@@ -434,12 +454,22 @@ export async function researchBom(opts: {
     const s = settleLinks(u, (url) => book.page(url))
     const url = u.source_url ? book.page(u.source_url) : null
     const { source_url: _dropped, ...rest } = s
-    return url ? { ...rest, source_url: url } : rest
+    const alternatives = u.alternatives?.map((a) => {
+      const page = a.source_url ? book.page(a.source_url) : null
+      const { source_url: _gone, ...figure } = a
+      return page ? { ...figure, source_url: page } : figure
+    })
+    return {
+      ...rest,
+      ...(url ? { source_url: url } : {}),
+      ...(alternatives ? { alternatives } : {})
+    }
   })
   const sources = [
     ...new Set(
       [
         ...items.map((i) => i.source_url),
+        ...items.flatMap((i) => (i.alternatives ?? []).map((a) => a.source_url)),
         ...(weighed.totals_found ?? []).map((t) => t.source_url),
         mix?.formulation?.source_url,
         mix?.declared_source
