@@ -555,3 +555,85 @@ def test_clean_entry_keeps_the_other_figures_only_beside_a_figure_of_its_own():
     # Strings, booleans and non-positive figures go; at most four stay.
     assert pouch["alternatives_kg"] == [0.0103, 0.01206, 0.011, 0.0099]
     assert "alternatives_kg" not in spout
+
+
+def test_a_text_only_alternative_never_books_the_part():
+    """The inverse of the case above: the documented direct print is prose, not a figure of the part, so a booking of
+    it leaves the label unbooked when the label's own finding names no other figure."""
+    found = _run(
+        [
+            {k: v for k, v in _LABEL.items() if k != "alternatives_kg"},
+            {
+                "text": 'Alternative figure for "label": 0.00015 kg (direct print ink) — not counted '
+                "(the research counted 0.0006 kg)",
+                "sources": ["https://print.example"],
+            },
+        ],
+        [],
+        [("kilogram", 0.00015, "")],
+    )
+    assert [c for c, _t in found] == ["label"]
+
+
+# A part researched again: the log appends, so the same name comes back in a later entry with another figure — a
+# corrected source, another version. Either research may be the one the model went with.
+def _run_log(entries: list[tuple[str, list[dict]]], params: list[dict], exchanges: list[tuple]) -> list[tuple[str, str]]:
+    log = [{"question": f"Bill of materials: {product}", "findings": f} for product, f in entries]
+    with (
+        patch("prism_lca.engine.research_log.ResearchLogStore.list", return_value=log),
+        patch("prism_lca.engine.params.list_params", return_value=params),
+    ):
+        return health_bom.bom_items_unbooked("any-model", exchanges)
+
+
+_PEGS_THEN = [
+    ("garden pavilion 3x3", [{"component": "ground pegs", "mass_kg": 0.2}]),
+    ("Pavilion Basic 3x3, retail version", [{"component": "Ground  Pegs", "mass_kg": 0.4}]),
+]
+
+
+def test_a_part_researched_again_is_booked_by_its_later_figure():
+    """The defect: the check held the model to the first figure, and a booking of the corrected one was a gap."""
+    assert _run_log(_PEGS_THEN, [], [("kilogram", 0.4, "")]) == []
+
+
+def test_a_part_researched_again_is_still_booked_by_its_earlier_figure():
+    """A later research is not a better one: a model that kept the sourced first figure has booked the part."""
+    assert _run_log(_PEGS_THEN, [], [("kilogram", 0.2, "")]) == []
+
+
+def test_a_part_researched_again_and_booked_nowhere_is_one_finding_with_all_its_figures():
+    found = _run_log(_PEGS_THEN, [], [("kilogram", 9.0, "")])
+    assert len(found) == 1
+    component, text = found[0]
+    # Named by the figure the last research counted, in its spelling; the earlier one beside it, each with what it
+    # was researched for — the reader tells a second research of the part from a namesake by that.
+    assert component == "Ground  Pegs" and "at 0.4 kg" in text
+    assert (
+        "also recorded 0.2 kg for 'garden pavilion 3x3' (the 0.4 kg for 'Pavilion Basic 3x3, retail version') — "
+        "another research of the part, a variant of it, or a namesake" in text
+    )
+
+
+def test_figures_of_one_research_are_named_without_what_it_was_for():
+    found = _run([_LABEL], [], [("kilogram", 0.5, "")])
+    assert "also recorded 0.00015 kg — another research" in found[0][1]
+
+
+def test_the_other_figures_of_an_earlier_research_count_too():
+    """The first research counted the label and kept the direct print beside it; the second counted another label."""
+    entries = [("soap", [_LABEL]), ("soap, refill", [{"component": "label", "mass_kg": 0.0008}])]
+    assert _run_log(entries, [], [("kilogram", 0.00015, "")]) == []
+    found = _run_log(entries, [], [("kilogram", 9.0, "")])
+    assert len(found) == 1 and "at 0.0008 kg" in found[0][1]
+    assert "0.0006 kg, 0.00015 kg for 'soap' (the 0.0008 kg for 'soap, refill')" in found[0][1]
+
+
+def test_an_old_figure_parked_in_a_parameter_does_not_veto_the_booked_new_one():
+    """The modeller built the pegs at 0.2 kg, the research corrected them to 0.4, and the model books 0.4 while
+    the old parameter sits unused. Each figure is judged on its own, so the dormant carrier of the old one is no
+    gap. The price, accepted: a figure without a carrier of its own can be answered for by a neighbouring one."""
+    params = [{"name": "heringe_masse", "amount": 0.2, "unit": "kg"}]
+    assert _run_log(_PEGS_THEN, params, [("kilogram", 0.4, "")]) == []
+    # Without the later research, the same model is the pegs case.
+    assert len(_run_log(_PEGS_THEN[:1], params, [("kilogram", 0.4, "")])) == 1
