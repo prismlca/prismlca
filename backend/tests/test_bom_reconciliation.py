@@ -7,7 +7,7 @@ model computed consistently, and no check compared the two.
 """
 from unittest.mock import patch
 
-from prism_lca.engine import health
+from prism_lca.engine import health_bom
 from prism_lca.engine.research_log import clean_entry
 
 
@@ -17,7 +17,7 @@ def _run(findings: list[dict], params: list[dict], exchanges: list[tuple]) -> li
         patch("prism_lca.engine.research_log.ResearchLogStore.list", return_value=entries),
         patch("prism_lca.engine.params.list_params", return_value=params),
     ):
-        return health._bom_items_unbooked("any-model", exchanges)
+        return health_bom.bom_items_unbooked("any-model", exchanges)
 
 
 def test_the_pegs_case_a_figure_parked_in_a_dormant_branch():
@@ -148,7 +148,7 @@ def test_a_check_and_a_derivation_are_never_read_as_parts():
         patch("prism_lca.engine.research_log.ResearchLogStore.list", return_value=entries),
         patch("prism_lca.engine.params.list_params", return_value=[]),
     ):
-        found = health._bom_items_unbooked("any-model", [("kilogram", 0.5, "")])
+        found = health_bom.bom_items_unbooked("any-model", [("kilogram", 0.5, "")])
     assert found == [("boards", found[0][1])]
 
 
@@ -201,3 +201,157 @@ def test_a_literal_booking_of_the_exact_figure_counts_even_beside_a_parameter():
         [("kilogram", 0.2, "")],
     )
     assert found == []
+
+
+def test_a_waste_amount_never_books_a_component():
+    """A shelving run booked 0.14 kg of zinc as `0.14 / frame_kg` per kilogram of frame, and the check stayed
+    silent — because a cardboard DISPOSAL of 0.1056 kg sat within 1.5x of 0.14. Waste leaving the system
+    books nothing; without the formula the zinc is the finding."""
+    found = _run(
+        [{"component": "zinc coating", "mass_kg": 0.14}],
+        [{"name": "frame_kg", "amount": 7.0, "unit": "kg"}],
+        [("kilogram", -0.1056, "-carton_kg * eol_carton_incineration"), ("kilogram", 0.02, "0.02")],
+    )
+    assert len(found) == 1 and found[0][0] == "zinc coating"
+
+
+def test_a_number_in_a_formula_books_the_figure():
+    """The same zinc, booked the way the run booked it: 0.14 kg spread over the frame's kilograms. Silence,
+    now for the right reason."""
+    found = _run(
+        [{"component": "zinc coating", "mass_kg": 0.14}],
+        [{"name": "frame_kg", "amount": 7.0, "unit": "kg"}],
+        [("kilogram", -0.1056, "-carton_kg * eol_carton_incineration"), ("kilogram", 0.02, "0.14 / frame_kg")],
+    )
+    assert found == []
+
+
+def test_a_number_in_a_formula_counts_only_in_a_positive_mass_input():
+    """The figure in an electricity formula, or in a disposal, is no booking of the part — and a digit inside
+    a name or an exponent is no figure."""
+    found = _run(
+        [{"component": "zinc coating", "mass_kg": 0.14}],
+        [],
+        [
+            ("kilowatt hour", 0.02, "0.14 / frame_kg"),
+            ("kilogram", -0.02, "-0.14 / frame_kg"),
+            ("kilogram", 1.0, "m0_14 * 0.14e3"),
+        ],
+    )
+    assert len(found) == 1
+
+
+_RECIPE = [
+    {"name": "m_fill", "amount": 0.51, "unit": "kg"},
+    {"name": "m_water", "amount": 0.377, "unit": "kg"},
+    {"name": "m_surfactants", "amount": 0.0595, "unit": "kg"},
+    {"name": "m_additives", "amount": 0.0181, "unit": "kg"},
+    {
+        "name": "m_other_ingredients", "amount": 0.0552, "unit": "kg",
+        "formula": "m_fill - m_water - m_surfactants - m_additives",
+    },
+    {"name": "m_salt", "amount": 0.0112, "unit": "kg", "formula": "m_fill * 0.022"},
+]
+
+
+def test_a_figure_that_only_reduces_the_rest_books_nothing():
+    """A soap recipe: the additives' 0.0181 kg is subtracted from the fill to give the rest, and the rest
+    goes into the water exchange — so the name `m_additives` reaches an exchange, but raising it LOWERS the
+    water. The additives are booked one by one (`m_fill * 0.022` for the salt), which is fine, and the
+    finding says exactly that instead of claiming the parameter feeds nothing."""
+    found = _run(
+        [{"component": "additives", "mass_kg": 0.0181}],
+        _RECIPE,
+        [
+            ("kilogram", 0.4322, "m_water + m_other_ingredients"),
+            ("kilogram", 0.0595, "m_surfactants"),
+            ("kilogram", 0.0112, "m_salt"),
+        ],
+    )
+    assert len(found) == 1
+    text = found[0][1]
+    assert "'m_additives'" in text and "only reduces 'm_other_ingredients'" in text
+    assert "booked another way" in text and "feeds no non-zero exchange" not in text
+
+
+def test_a_closed_recipe_books_each_figure_it_adds():
+    """`water = m_water + m_other_ingredients` does not move when the water rises — the rest falls by as
+    much — and the water is booked all the same: the chain that adds it is what counts."""
+    found = _run(
+        [{"component": "water", "mass_kg": 0.377}, {"component": "surfactants", "mass_kg": 0.0595}],
+        _RECIPE,
+        [("kilogram", 0.4322, "m_water + m_other_ingredients"), ("kilogram", 0.0595, "m_surfactants")],
+    )
+    assert found == []
+
+
+def test_a_figure_that_only_reaches_end_of_life_is_named_as_such():
+    """The pegs' shape with a live end-of-life branch: the handles' mass is disposed of, and produced
+    nowhere. The waste amount names the parameter; it books nothing."""
+    found = _run(
+        [{"component": "handles", "mass_kg": 0.2}],
+        [{"name": "m_handles", "amount": 0.2, "unit": "kg"}, {"name": "eol_burn", "amount": 0.244, "unit": ""}],
+        [("kilogram", -0.0488, "-m_handles * eol_burn"), ("cubic meter", 0.000238, "")],
+    )
+    assert len(found) == 1 and "only enters outputs" in found[0][1]
+
+
+def test_a_chain_the_probe_cannot_evaluate_keeps_to_the_names():
+    """A formula the probe cannot compute (a name outside the parameter list) says nothing either way —
+    then the name that reaches a live exchange counts, as it always did."""
+    found = _run(
+        [{"component": "frame", "mass_kg": 9.0}],
+        [{"name": "m_frame", "amount": 9.0, "unit": "kg"}],
+        [("kilogram", 9.45, "m_frame * (1 + group_loss)")],
+    )
+    assert found == []
+
+
+def test_a_negative_step_on_the_way_keeps_its_sign():
+    """`neg = -m_part` falls when the part rises; `-neg / 2` then rises with it — booked. A probe that
+    multiplied a negative value by 1.01 lowered it and read both steps the wrong way round."""
+    params = [
+        {"name": "m_part", "amount": 0.2, "unit": "kg"},
+        {"name": "neg", "amount": -0.2, "unit": "kg", "formula": "-m_part"},
+    ]
+    assert _run([{"component": "part", "mass_kg": 0.2}], params, [("kilogram", 0.1, "-neg / 2")]) == []
+    found = _run([{"component": "part", "mass_kg": 0.2}], params, [("kilogram", 0.8, "1 + neg")])
+    assert len(found) == 1 and "only reduces 'neg'" in found[0][1]
+
+
+def test_a_contribution_switched_off_or_cancelled_books_nothing():
+    """The probe computed, and nothing moved: a figure behind a factor of zero, or added and taken off in the
+    same formula, books nothing — it is not handed back to the names, which would call it booked."""
+    for formula in ("1 + enabled * m_part", "1 + m_part - m_part"):
+        found = _run(
+            [{"component": "part", "mass_kg": 0.2}],
+            [{"name": "m_part", "amount": 0.2, "unit": "kg"}, {"name": "enabled", "amount": 0, "unit": ""}],
+            [("kilogram", 1.0, formula)],
+        )
+        assert len(found) == 1, formula
+        assert "moves no input amount" in found[0][1]
+
+
+def test_a_number_counts_only_where_it_raises_the_amount():
+    """A figure in a comment is no number, a subtracted one books nothing, and neither does one switched off
+    by a factor of zero. The run's own shape still books."""
+    zinc = [{"component": "zinc coating", "mass_kg": 0.14}]
+    params = [{"name": "frame_kg", "amount": 7.0, "unit": "kg"}, {"name": "enabled", "amount": 0, "unit": ""}]
+    for formula, amount in (
+        ("9 # omitted zinc: 0.14 kg", 9.0),
+        ("1 - 0.14", 0.86),
+        ("1 + 0.14 * enabled", 1.0),
+    ):
+        assert len(_run(zinc, params, [("kilogram", amount, formula)])) == 1, formula
+    assert _run(zinc, params, [("kilogram", 0.02, "0.14 / frame_kg")]) == []
+    # Grams: the number is read in the exchange's unit.
+    assert _run(zinc, params, [("gram", 20.0, "140 / frame_kg")]) == []
+
+
+def test_a_formula_the_probe_cannot_compute_still_shows_its_numbers():
+    """A name outside the parameter list leaves the formula unevaluable: its number then counts by the
+    syntax — never by a comment."""
+    zinc = [{"component": "zinc coating", "mass_kg": 0.14}]
+    params = [{"name": "frame_kg", "amount": 7.0, "unit": "kg"}]
+    assert _run(zinc, params, [("kilogram", 0.02, "0.14 / group_frame_kg")]) == []
+    assert len(_run(zinc, params, [("kilogram", 1.0, "group_total # 0.14 kg zinc")])) == 1

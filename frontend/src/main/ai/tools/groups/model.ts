@@ -18,6 +18,7 @@ import { KEPT_COMMENT_NOTE, alreadyReplaced, replaceInput } from './replaceInput
 import { missingInputDatabase } from './inputHolder'
 import { SAME_INPUT_NOTE, watchSameInput } from './sameInput'
 import { watchReachedTwice } from './reachedTwice'
+import { NO_CRITICAL_REVIEW } from './reviewFailure'
 
 /**
  * The batch list — plus the top-level entry when the model filled BOTH. Both shapes are in the schema
@@ -379,10 +380,10 @@ export const modelTools: Tool[] = [
               )
             },
             critical_review: str(
-              'The critical review by independent experts (ISO 14044): who reviewed the study and ' +
-                'when. review_model is an AI second opinion, not such a review — never record it here. ' +
-                'Leaving it empty is meaningful: a public comparative assertion without a recorded review ' +
-                'has to say so.'
+              'Who carried out a critical review of the study, and when: internal or external experts or a ' +
+                'panel (ISO 14044), as the user names them. Checks made by an AI or by this app are not ' +
+                `mentioned in this field. Without a review by people, write "${NO_CRITICAL_REVIEW}"; a field ` +
+                'that already names a review by people stays as it is.'
             ),
             notes: str('Any other study notes.')
           },

@@ -142,6 +142,10 @@ def list_activities(database: str, with_exchanges: bool = False) -> list[dict]:
     acts = model.list_activities(database)
     if not with_exchanges:
         return acts
+    # The process's own tags ride along too (its life-cycle phase, its component group): the exchanges carry
+    # only their inputs' tags, and a reviewer reading this listing took those for the processes' and asked
+    # where the phases were.
+    tag_map = _tags().load_map()
     out = []
     for a in acts:
         code = a.get("code")
@@ -159,7 +163,13 @@ def list_activities(database: str, with_exchanges: bool = False) -> list[dict]:
         # hits, where an ecoinvent comment of several hundred characters would be paid for on every
         # load and read by nobody (see the note in engine/model.py:187).
         comment = (detail.get("activity") or {}).get("comment") or ""
-        out.append({**a, "comment": comment, "exchanges": detail.get("exchanges", [])})
+        tags = tag_map.get(f"{a.get('database') or database}/{code}")
+        out.append({
+            **a,
+            **({"tags": [dict(t) for t in tags]} if tags else {}),
+            "comment": comment,
+            "exchanges": detail.get("exchanges", []),
+        })
     return out
 
 

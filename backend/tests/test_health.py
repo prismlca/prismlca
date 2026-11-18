@@ -329,6 +329,44 @@ def test_a_demand_unlike_the_inputs_mass_keeps_the_gentle_hint(client, token, pr
     assert len(hint) == 1 and hint[0]["severity"] == "info"
 
 
+def test_the_scaled_demand_needs_no_half_shortfall(client, token, project):
+    """A soap recipe declared per kilogram, filled with 0.51 kg and demanded at 0.51 kg: the inputs entered
+    the result at 51 % of themselves. 0.51 is inside the hint's margin of a half, and the warning used to
+    wait for the hint — so nothing was said. The equality of the demand with the inputs' sum is what makes
+    the warning sharp; the margin protects it from nothing."""
+    db = _fg(client, token)
+    ref = _create(client, token, db, "filling")
+    recipe = _create(client, token, db, "soap recipe")     # declares 1 kg
+    water = _create(client, token, db, "water")
+    _edge(client, token, db, recipe, water, 0.51)          # holds 0.51 kg
+    _edge(client, token, db, ref, recipe, 0.51)            # ...and 0.51 kg is demanded
+
+    h = client.get(f"/api/v1/model/health/{db}", headers=token).json()
+    scaled = [f for f in h["findings"] if f["code"] == "mass_scaled_demand"]
+    assert len(scaled) == 1 and scaled[0]["activity"]["code"] == recipe
+    assert "multiplied by 0.51" in scaled[0]["message"]
+    # The hint keeps its own margin: above half, it stays silent.
+    assert "mass_in_below_mass_out" not in _codes(h)
+
+
+def test_a_small_shortfall_or_another_demand_says_nothing(client, token, project):
+    """Within 10 % of its product a process is not compared with its consumers at all (rounding, a
+    moisture uptake), and a shortfall the consumer does not mirror is no scaled demand."""
+    db = _fg(client, token)
+    ref = _create(client, token, db, "reference flow")
+    near = _create(client, token, db, "nearly balanced")   # 0.95 kg in, demanded at 0.95
+    other = _create(client, token, db, "under-filled")     # 0.8 kg in, demanded at 1
+    pe = _create(client, token, db, "pe pellets")
+    _edge(client, token, db, near, pe, 0.95)
+    _edge(client, token, db, other, pe, 0.8)
+    _edge(client, token, db, ref, near, 0.95)
+    _edge(client, token, db, ref, other, 1.0)
+
+    h = client.get(f"/api/v1/model/health/{db}", headers=token).json()
+    assert "mass_scaled_demand" not in _codes(h)
+    assert "mass_in_below_mass_out" not in _codes(h)
+
+
 # ---- recyclate bought at end of life (V289) --------------------------------
 def _recyclate_provider() -> None:
     """A background dataset that PRODUCES recycled pellets — the thing an EoL process must not buy."""
