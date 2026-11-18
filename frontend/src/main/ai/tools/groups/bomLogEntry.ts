@@ -1,6 +1,7 @@
 /**
  * The entry a research_bom call leaves in the model's research log: the parts it found with a source — each
- * with how its figure was derived —, the ingredients of a researched recipe once per substance, and the check
+ * with how its figure was derived —, the ingredients of a researched recipe once per substance, the other figures
+ * found for a part (documented, not to be booked), and the check
  * itself: what was summed, which requested components came back without a mass, the whole-product masses found,
  * the versions the figures rest on and whether the recipe closed.
  *
@@ -62,9 +63,33 @@ function partFindings(result: Partial<BomResult>): Item[] {
         // prose alone. The mass is the whole set's.
         component: String(i.component ?? ''),
         ...(typeof i.mass_kg === 'number' ? { mass_kg: i.mass_kg } : {}),
-        ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {})
+        ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {}),
+        // The other figures found for this part: the model may book one of them when the user's product is that
+        // variant, and the health check then counts the part as booked instead of naming it as missing.
+        ...(i.alternatives?.length ? { alternatives_kg: i.alternatives.map((a) => a.mass_kg) } : {})
       }
     })
+}
+
+/**
+ * The other figures the research found for a part, each with its own page: what a reviewer holds a booked figure
+ * against when it is not the counted one. Text only — no structured component or mass, and a text that does not end
+ * on the mass — so the health check never reads one as a part the model still has to book.
+ */
+function alternativeFindings(result: Partial<BomResult>): Item[] {
+  return (result.items ?? [])
+    .filter((i) => i.group !== 'recipe')
+    .flatMap((i) =>
+      (i.alternatives ?? [])
+        .filter((a) => a.source_url)
+        .map((a) => ({
+          text:
+            `Alternative figure for "${i.component}": ${a.mass_kg} kg${a.material ? ` (${a.material})` : ''} — ` +
+            `not counted (the research counted ${i.mass_kg} kg)`,
+          sources: [String(a.source_url)],
+          ...(a.note ? { note: a.note } : {})
+        }))
+    )
 }
 
 const MIX_SOURCES = 5
@@ -197,7 +222,8 @@ export function bomLogEntry(
   return {
     question: `Bill of materials: ${call.product}`,
     ...(context ? { context } : {}),
-    findings: [...partFindings(result), ...recipeFindings(result)],
+    // Alternatives last: when the backend's cap cuts, it cuts documented figures before masses to book.
+    findings: [...partFindings(result), ...recipeFindings(result), ...alternativeFindings(result)],
     bom_check: bomCheck(result)
   }
 }

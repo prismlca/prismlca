@@ -355,3 +355,63 @@ def test_a_formula_the_probe_cannot_compute_still_shows_its_numbers():
     params = [{"name": "frame_kg", "amount": 7.0, "unit": "kg"}]
     assert _run(zinc, params, [("kilogram", 0.02, "0.14 / group_frame_kg")]) == []
     assert len(_run(zinc, params, [("kilogram", 1.0, "group_total # 0.14 kg zinc")])) == 1
+
+
+# Other figures for one part: the research counts one and keeps the others beside it (a label, or a direct print —
+# either one or the other). The assistant is told to book an alternative when the user's product is that variant.
+_LABEL = {
+    "text": "label (PP): 0.0006 kg",
+    "component": "label",
+    "mass_kg": 0.0006,
+    "alternatives_kg": [0.00015],
+}
+
+
+def test_a_booking_of_an_alternative_books_the_part():
+    """The direct print is booked, four times lighter than the counted label: the part is in the model."""
+    assert _run([_LABEL], [], [("kilogram", 0.00015, "")]) == []
+
+
+def test_without_the_alternative_on_record_the_same_booking_is_the_finding():
+    """The counter-case: the same booking against a part with no other figure is not that part."""
+    found = _run([{k: v for k, v in _LABEL.items() if k != "alternatives_kg"}], [], [("kilogram", 0.00015, "")])
+    assert [c for c, _t in found] == ["label"]
+
+
+def test_a_part_none_of_whose_figures_is_booked_is_named_by_its_counted_figure():
+    found = _run([_LABEL], [], [("kilogram", 0.5, "")])
+    assert len(found) == 1 and "'label' at 0.0006 kg" in found[0][1]
+
+
+def test_an_alternative_logged_as_text_is_never_a_part_to_book():
+    """The log documents each alternative with its own page, in a text the reconciliation must not read as a part."""
+    found = _run(
+        [
+            _LABEL,
+            {
+                "text": 'Alternative figure for "label": 0.00015 kg (direct print ink) — not counted '
+                "(the research counted 0.0006 kg)",
+                "sources": ["https://print.example"],
+            },
+        ],
+        [],
+        [("kilogram", 0.0006, "")],
+    )
+    assert found == []
+
+
+def test_clean_entry_keeps_the_other_figures_only_beside_a_figure_of_its_own():
+    entry = clean_entry(
+        {
+            "question": "Bill of materials: refill pouch",
+            "findings": [
+                {"text": "pouch: 0.0102 kg", "component": "pouch", "mass_kg": 0.0102,
+                 "alternatives_kg": [0.0103, "0.012", True, -1, 0.01206, 0.011, 0.0099, 0.0098]},
+                {"text": "spout", "alternatives_kg": [0.002]},
+            ],
+        }
+    )
+    pouch, spout = entry["findings"]
+    # Strings, booleans and non-positive figures go; at most four stay.
+    assert pouch["alternatives_kg"] == [0.0103, 0.01206, 0.011, 0.0099]
+    assert "alternatives_kg" not in spout

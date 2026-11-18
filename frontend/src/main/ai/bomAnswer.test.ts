@@ -238,3 +238,105 @@ describe('parseBomAnswer — what the leg says about its figure', () => {
     ])
   })
 })
+
+// A part researcher returned one refill pouch three times — an aluminium-free variant, a barrier variant and a
+// measured comparison pouch — as three entries, and the sum counted the pouch three times. The other figures have a
+// place of their own now, inside the one entry.
+describe('parseBomAnswer — other figures for the same part', () => {
+  it('keeps alternatives inside their entry, never as entries of their own', () => {
+    const leg = parseBomAnswer({
+      items: [
+        {
+          component: 'Nachfüllbeutel',
+          material: 'PET/PE',
+          mass_kg: 0.0102,
+          source_url: 'https://e.org/alufrei',
+          alternatives: [
+            {
+              mass_kg: 0.0103,
+              material: 'PET/ALU/PE',
+              source_url: 'https://e.org/alu',
+              note: 'barrier variant'
+            },
+            { mass: '0.01206', source: 'https://e.org/recoup' }
+          ]
+        }
+      ]
+    })
+    expect(leg.items).toHaveLength(1)
+    expect(leg.items[0].mass_kg).toBe(0.0102)
+    expect(leg.items[0].alternatives).toEqual([
+      { mass_kg: 0.0103, material: 'PET/ALU/PE', source_url: 'https://e.org/alu', note: 'barrier variant' },
+      { mass_kg: 0.01206, source_url: 'https://e.org/recoup' }
+    ])
+  })
+
+  it("puts an alternative's piece mass on the entry's basis and drops one without a figure", () => {
+    const [shelves] = parseBomItems([
+      {
+        component: 'shelf',
+        mass_each_kg: 1.3,
+        count: 5,
+        alternatives: [{ mass_each_kg: 1.4 }, { mass_kg: 7.2 }, { material: 'MDF' }, { mass_kg: 0 }]
+      }
+    ])
+    expect(shelves.mass_kg).toBeCloseTo(6.5, 6)
+    expect(shelves.alternatives?.map((a) => a.mass_kg)).toEqual([7, 7.2])
+  })
+
+  it('keeps at most four alternatives', () => {
+    const [part] = parseBomItems([
+      { component: 'cap', mass_kg: 0.002, alternatives: [1, 2, 3, 4, 5].map((n) => ({ mass_kg: n / 1000 })) }
+    ])
+    expect(part.alternatives).toHaveLength(4)
+  })
+
+  it('chooses none when an entry gives figures only as alternatives', () => {
+    const leg = parseBomAnswer({
+      items: [
+        {
+          component: 'Etikett',
+          mass_kg: null,
+          alternatives: [
+            { mass_kg: 0.0013, material: 'PP', source_url: 'https://e.org/pp' },
+            { mass_kg: 0.0008, material: 'Papier', source_url: 'https://e.org/paper' }
+          ]
+        }
+      ]
+    })
+    expect(leg.items).toEqual([])
+    expect(leg.unresolved[0]).toMatchObject({ component: 'Etikett', reason: 'unclear_mass' })
+    expect(leg.unresolved[0].note).toMatch(
+      /only alternatives: 0\.0013 kg \(PP\), 0\.0008 kg \(Papier\) — none chosen/
+    )
+    // Kept with their pages, so a follow-up that lands a figure can carry them onto it.
+    expect(leg.unresolved[0].alternatives).toEqual([
+      { mass_kg: 0.0013, material: 'PP', source_url: 'https://e.org/pp' },
+      { mass_kg: 0.0008, material: 'Papier', source_url: 'https://e.org/paper' }
+    ])
+  })
+
+  // The entry's own rules hold for its alternatives: a piece mass needs a count, and a set mass beside it must agree.
+  it('reads no alternative one way when its figures allow two, and says what it left out', () => {
+    const [shelves, cap] = parseBomItems([
+      {
+        component: 'shelves',
+        mass_kg: 6.5,
+        count: 5,
+        note: 'five HDF boards',
+        alternatives: [
+          { mass_each_kg: 1.4, mass_kg: 1.4 },
+          { mass_each_kg: 1.5, mass_kg: 7.5 }
+        ]
+      },
+      { component: 'cap', mass_kg: 0.002, alternatives: [{ mass_each_kg: 0.0025 }] }
+    ])
+    expect(shelves.alternatives).toEqual([{ mass_kg: 7.5 }])
+    expect(shelves.note).toBe(
+      "five HDF boards Other figures not readable on this entry's basis, left out: 1.4 kg for the set against " +
+        '5 × 1.4 kg = 7 kg.'
+    )
+    expect(cap.alternatives).toBeUndefined()
+    expect(cap.note).toMatch(/left out: 0\.0025 kg per piece \(no count of pieces\)/)
+  })
+})

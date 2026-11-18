@@ -36,6 +36,10 @@ export interface BomItem {
   /** Other requested components whose mass this figure already contains, as the leg named them (a pouch
    *  weighed with its spout). A hint the balance reads, never a reason to remove a mass. */
   includes?: string[]
+  /** Other figures the sources gave for this same part — another variant of it, another source, a comparable
+   *  product's part — beside the one the leg chose to model with. Documented, never summed: listed as entries
+   *  of their own they counted one pouch three times. */
+  alternatives?: BomAlternative[]
   /** The version of THIS product the figure belongs to — an EAN, an article number or the spec that tells
    *  versions apart. Empty for a comparable product's figure. */
   version?: string
@@ -54,6 +58,14 @@ export interface BomItem {
   cited_by_search?: boolean
 }
 
+/** Another figure for the same part, on the entry's basis: the mass of all the pieces the entry stands for. */
+export interface BomAlternative {
+  mass_kg: number
+  material?: string
+  source_url?: string
+  note?: string
+}
+
 /**
  * A requested or named component without a usable mass. Kept and reported rather than dropped:
  * PCFBench (arXiv 2608.27716) measures 47–86 % of generated bills of materials carrying "ghost"
@@ -65,13 +77,17 @@ export interface UnresolvedComponent extends NotedLinks {
   material?: string
   /**
    * `no_mass`: the leg found the part but no figure; `zero_mass`: it wrote 0, which is a ghost;
-   * `unclear_mass`: a per-piece mass without a count, or a set mass that contradicts count × piece mass —
-   * no reading is preferred, the figures stay in the note; `whole_product_only`: the research for it found the
-   * whole product's mass and nothing for the part; `failed`: the research for it never came back.
+   * `unclear_mass`: a per-piece mass without a count, a set mass that contradicts count × piece mass, or
+   * figures given only as alternatives — no reading is preferred, the figures stay in the note;
+   * `whole_product_only`: the research for it found the whole product's mass and nothing for the part;
+   * `failed`: the research for it never came back.
    */
   reason: 'no_mass' | 'zero_mass' | 'unclear_mass' | 'whole_product_only' | 'failed'
   /** The page the leg named for it, when it named one. */
   source_url?: string
+  /** The figures a leg gave only as alternatives, none as its own: kept with their pages, and carried onto the
+   *  entry a follow-up finds, so a figure that lands later does not erase them. */
+  alternatives?: BomAlternative[]
 }
 
 /** A mass the sources give for the WHOLE product — never summed as a part. */
@@ -135,6 +151,56 @@ function rangeAround(raw: unknown, point: number): [number, number] | undefined 
     ? [lo, hi]
     : undefined
 }
+
+/** Other figures kept per part — a survey beyond that belongs in the note. */
+const MAX_ALTERNATIVES = 4
+
+/**
+ * The other figures a leg gave for one part, on the entry's basis and by the entry's rules: a piece mass needs the
+ * entry's count and is multiplied by it, and a set mass beside it must agree with that product. A figure that
+ * cannot be read one way is not read at all — named in `unread`, never a reading picked. A variant named without a
+ * figure stays in the note.
+ */
+function alternativesOf(
+  raw: unknown,
+  count: number | undefined
+): { kept: BomAlternative[]; unread: string[] } {
+  const kept: BomAlternative[] = []
+  const unread: string[] = []
+  for (const a of listOf(raw)) {
+    if (!a || typeof a !== 'object') continue
+    const r = a as Record<string, unknown>
+    const each = num(r.mass_each_kg)
+    const stated = num(r.mass_kg ?? r.mass)
+    let mass = stated
+    if (Number.isFinite(each) && each > 0) {
+      if (!count) {
+        unread.push(`${each} kg per piece (no count of pieces)`)
+        continue
+      }
+      mass = Number((each * count).toFixed(6))
+      if (Number.isFinite(stated) && stated > 0 && Math.abs(stated - mass) / mass > COUNT_SLACK) {
+        unread.push(`${stated} kg for the set against ${count} × ${each} kg = ${mass} kg`)
+        continue
+      }
+    }
+    if (!Number.isFinite(mass) || mass <= 0) continue
+    if (kept.length >= MAX_ALTERNATIVES) continue
+    const material = text(r.material ?? r.materials)
+    const note = text(r.note)
+    kept.push({
+      mass_kg: mass,
+      ...(material ? { material } : {}),
+      ...(sourceOf(r) ? { source_url: sourceOf(r) } : {}),
+      ...(note ? { note } : {})
+    })
+  }
+  return { kept, unread }
+}
+
+/** "0.0103 kg (PET/ALU/PE)" — an alternative as a note names it. */
+export const alternativeWords = (a: BomAlternative): string =>
+  `${a.mass_kg} kg${a.material ? ` (${a.material})` : ''}`
 
 /** `"transport"` is transport packaging; `"sales"` and the older `true` are what the product is sold in. */
 const packagingOf = (v: unknown): BomItem['packaging'] =>
@@ -212,14 +278,19 @@ export function parseBomAnswer(parsed: unknown): BomLeg {
     const each = num(r.mass_each_kg)
     const countRaw = num(r.count ?? r.quantity)
     const count = Number.isInteger(countRaw) && countRaw >= 1 ? countRaw : undefined
-    const open = (reason: UnresolvedComponent['reason'], why?: string): void => {
-      const note = [why, text(r.note)].filter(Boolean).join(' ')
+    const { kept: alternatives, unread } = alternativesOf(r.alternatives, count)
+    const unreadWords = unread.length
+      ? `Other figures not readable on this entry's basis, left out: ${unread.join('; ')}.`
+      : ''
+    const open = (reason: UnresolvedComponent['reason'], why?: string, alts?: BomAlternative[]): void => {
+      const note = [why, text(r.note), unreadWords].filter(Boolean).join(' ')
       unresolved.push({
         component,
         ...(material ? { material } : {}),
         reason,
         ...(note ? clipNote(note) : {}),
-        ...(sourceOf(r) ? { source_url: sourceOf(r) } : {})
+        ...(sourceOf(r) ? { source_url: sourceOf(r) } : {}),
+        ...(alts?.length ? { alternatives: alts } : {})
       })
     }
     // Two readable shapes and no third: a set mass, or a piece mass with an explicit count. Anything else is
@@ -242,6 +313,14 @@ export function parseBomAnswer(parsed: unknown): BomLeg {
       }
     } else if (Number.isFinite(stated) && stated > 0) {
       mass = stated
+    } else if (alternatives.length) {
+      // Figures only as alternatives, none as the entry's own: the leg chose none, and neither does the reading.
+      open(
+        'unclear_mass',
+        `No figure of its own, only alternatives: ${alternatives.map(alternativeWords).join(', ')} — none chosen.`,
+        alternatives
+      )
+      continue
     } else {
       open(Number.isFinite(stated) ? 'zero_mass' : 'no_mass')
       continue
@@ -266,10 +345,11 @@ export function parseBomAnswer(parsed: unknown): BomLeg {
         : {}),
       ...(packagingOf(r.packaging) ? { packaging: packagingOf(r.packaging) } : {}),
       ...(includes.length ? { includes } : {}),
+      ...(alternatives.length ? { alternatives } : {}),
       ...(version ? { version } : {}),
       source_url: sourceOf(r),
       ...judgement(r),
-      note: r.note ? String(r.note) : undefined
+      note: [r.note ? String(r.note) : '', unreadWords].filter(Boolean).join(' ') || undefined
     })
   }
   return {

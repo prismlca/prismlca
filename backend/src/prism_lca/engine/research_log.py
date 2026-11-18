@@ -23,6 +23,8 @@ chat itself, not a piece of the model.
 """
 from __future__ import annotations
 
+import math
+
 from prism_lca.engine._store import JsonFileStore, now_z
 
 #: Entries per model. Beyond this the oldest go first — a model researched in waves keeps the
@@ -32,6 +34,8 @@ MAX_ENTRIES = 80
 #: bill-of-materials call can bring eight parts and a recipe of up to thirty ingredients.
 MAX_FINDINGS = 40
 MAX_SOURCES = 5
+#: Other figures kept per bill-of-materials part — as many as the research leg may give.
+MAX_ALTERNATIVES = 4
 
 
 #: The research legs' closed judgement vocabularies. Everything else is dropped, not stored: a
@@ -213,7 +217,8 @@ def clean_entry(item: object) -> dict | None:
     A finding may additionally carry the leg's judgement (``source_class``, ``confidence``,
     ``confidence_note``), whether its source came back from the search engine (``cited_by_search``)
     and — for bill-of-materials research — the structured figure itself (``component``, ``mass_kg``,
-    and ``mass_range_kg`` when the sources gave a span rather than one number) with its derivation
+    ``mass_range_kg`` when the sources gave a span rather than one number, ``alternatives_kg`` when they gave
+    other figures for the same part) with its derivation
     (``note``) and the product version it belongs to (``version``), which is what lets the health check reconcile researched masses against what the
     model actually books. The entry may carry the ``context`` the research was given and, for a
     bill-of-materials call, its ``bom_check`` — with a valid check an entry without findings is kept:
@@ -266,6 +271,17 @@ def clean_entry(item: object) -> dict | None:
             and 0 < float(rng[0]) < float(rng[1])
         ):
             finding["mass_range_kg"] = [float(rng[0]), float(rng[1])]
+        # Other figures the research found for the same part (another variant, another source): never summed, but a
+        # booking of one of them books the part, so the health check reads them. Only beside a figure of its own.
+        alternatives = raw.get("alternatives_kg")
+        if "mass_kg" in finding and isinstance(alternatives, (list, tuple)):
+            kept = [
+                float(v)
+                for v in alternatives
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+            ]
+            if kept:
+                finding["alternatives_kg"] = kept[:MAX_ALTERNATIVES]
         derivation = _cut(raw.get("note"), NOTE_CHARS)
         if derivation:
             finding["note"] = derivation
