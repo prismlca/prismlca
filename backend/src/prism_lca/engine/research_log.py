@@ -63,8 +63,10 @@ MAX_VERSIONS_SEEN = 3
 MAX_CHECK_ROWS = 12
 #: A recipe's check: what it is of, which formulation, whether it closed — and the ingredients known from the
 #: product that it lacks, the trade forms split into their constituents, and where its shares contradict the
-#: order of the product's INCI list (one sentence each).
+#: order of an INCI list (one sentence each) together with which list: the one the caller passed, or a label list
+#: the research found (with the product it belongs to and its page).
 RECIPE_KINDS = {"product", "frame", "unknown"}
+INCI_LIST_ORIGINS = {"passed", "found"}
 MASS_SOURCES = {"given", "researched"}
 MAX_RECIPE_NAMES = 12
 INCI_ORDER_CHARS = 300
@@ -147,7 +149,7 @@ def _clean_recipe(raw: object) -> dict | None:
     """A researched recipe's own check: whether its lines closed against the total its source states
     (``closes`` true, false or null with its ``note``), the gap in percent and kilograms (negative = over),
     whether its ranges could reach the total, the mass it was scaled to, what it lacks, and where it contradicts
-    the order of the product's INCI list."""
+    the order of an INCI list and which one."""
     if not isinstance(raw, dict):
         return None
     of = _cut(raw.get("of"), 160)
@@ -176,6 +178,14 @@ def _clean_recipe(raw: object) -> dict | None:
         names = [_cut(n, limit) for n in listed if str(n or "").strip()]
         if names:
             kept[key] = names[:MAX_RECIPE_NAMES]
+    listed = raw.get("inci_list")
+    if "inci_order" in kept and isinstance(listed, dict) and listed.get("from") in INCI_LIST_ORIGINS:
+        origin = {"from": listed["from"]}
+        for key, limit in (("product", 160), ("source", 300)):
+            value = _cut(listed.get(key), limit)
+            if value:
+                origin[key] = value
+        kept["inci_list"] = origin
     return kept
 
 

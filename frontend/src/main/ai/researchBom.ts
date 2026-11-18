@@ -15,7 +15,7 @@ import {
   type RecipeRequest
 } from './bomRecipe'
 import { weighRecipe } from './recipeBalance'
-import { CitationBook, isProviderLink, type Evidence } from './citationBook'
+import { CitationBook, type Evidence } from './citationBook'
 import { settleLinks } from './researchNote'
 import {
   RETRY_BUDGET_MS,
@@ -400,6 +400,10 @@ export async function researchBom(opts: {
     opts.onProgress?.(`follow-up: ${resolved} of ${targets.length} resolved`)
   }
 
+  // A leg may quote the provider's link to a page instead of the page (Google): stored as the page —
+  // and a link that leads to no page is no source at all, so the figure stays and loses it. The recipe is weighed
+  // with the same rule, so nothing it decides rests on a source that is dropped below.
+  const livePage = (url: string): string | undefined => book.page(url) ?? undefined
   const recipeOutcome = recipeSettled[0]
   const recipe =
     opts.recipe && recipeOf
@@ -407,6 +411,7 @@ export async function researchBom(opts: {
           of: recipeOf,
           request: opts.recipe,
           canonical: (url) => book.canonical(url),
+          page: livePage,
           ...(recipeOutcome?.status === 'rejected'
             ? {
                 error:
@@ -424,16 +429,11 @@ export async function researchBom(opts: {
     ...(recipe ? { recipe } : {})
   })
   const { items } = weighed
-  // A leg may quote the provider's link to a page instead of the page (Google): stored as the page —
-  // and a link that leads to no page is no source at all, so the figure stays and loses it.
   let deadLinks = 0
   const settle = (url: string | undefined): string | undefined => {
     if (!url) return undefined
-    const page = book.canonical(url)
-    if (isProviderLink(page) && !book.has(page)) {
-      deadLinks++
-      return undefined
-    }
+    const page = livePage(url)
+    if (!page) deadLinks++
     return page
   }
   for (const i of items) {

@@ -193,7 +193,9 @@ def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
                    "missing_ingredients": ["Glyceryl Oleate"] + [f"x{i}" for i in range(20)],
                    "split": ["SLES 27 % solution"], "reachable_by_ranges": "yes",
                    "inci_order": ["Cocamidopropyl Betaine (no. 4) is listed before Glycerin (no. 5), but the recipe "
-                                  "gives 1.05 % against 2 %", "x" * 400, ""] + ["y"] * 20},
+                                  "gives 1.05 % against 2 %", "x" * 400, ""] + ["y"] * 20,
+                   "inci_list": {"from": "found", "product": "Balea Flüssigseife", "source": "https://dm.example/p",
+                                 "extra": "dropped"}},
     })
     recipe = check["recipe"]
     assert recipe["closes"] is False and recipe["gap_pct"] == 8.88 and recipe["gap_kg"] == 0.045288
@@ -203,11 +205,18 @@ def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
     order = recipe["inci_order"]
     assert order[0].startswith("Cocamidopropyl Betaine (no. 4)") and len(order) == 12
     assert len(order[1]) == 300 and order[1].endswith("…")
+    # Which list: a field of its own, so a cut sentence cannot lose it.
+    assert recipe["inci_list"] == {"from": "found", "product": "Balea Flüssigseife", "source": "https://dm.example/p"}
     assert "reachable_by_ranges" not in recipe
     # Not checkable is an answer of its own, kept as null; an over-full recipe keeps its negative gap.
     open_one = clean_bom_check({"recipe": {"of": "concrete", "closes": None, "gap_pct": -3.5, "kind": "guess"}})
     assert open_one == {"recipe": {"of": "concrete", "closes": None, "gap_pct": -3.5}}
     assert clean_bom_check({"recipe": {"closes": True}}) is None
+    # An origin no one wrote, or one without a contradiction to qualify, is not kept.
+    odd = clean_bom_check({"recipe": {"of": "soap", "inci_order": ["a"], "inci_list": {"from": "guessed"}}})
+    assert "inci_list" not in odd["recipe"]
+    bare = clean_bom_check({"recipe": {"of": "soap", "inci_list": {"from": "passed"}}})
+    assert "inci_list" not in bare["recipe"]
 
 
 def test_an_entry_without_findings_needs_a_valid_check(project):

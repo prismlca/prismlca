@@ -178,7 +178,7 @@ function bomCheck(result: Partial<BomResult>): Item {
   }
 }
 
-/** The recipe's own check: closed or not, by how much, against what, what it lacks, where it contradicts the INCI list. */
+/** The recipe's own check: closed or not, by how much, against what, what it lacks, where it contradicts which INCI list. */
 function recipeCheck(mix: NonNullable<BomResult['recipe']>): Item {
   return {
     of: mix.of,
@@ -198,7 +198,15 @@ function recipeCheck(mix: NonNullable<BomResult['recipe']>): Item {
     ...(mix.missing_ingredients ? { missing_ingredients: mix.missing_ingredients } : {}),
     ...(mix.split ? { split: mix.split } : {}),
     ...(mix.inci_order?.contradictions.length
-      ? { inci_order: mix.inci_order.contradictions.map(contradictionWords) }
+      ? {
+          inci_order: mix.inci_order.contradictions.map(contradictionWords),
+          // Which list they contradict, in a field of its own: a sentence the log cuts must not lose it.
+          inci_list: {
+            from: mix.inci_order.list,
+            ...(mix.inci_order.product ? { product: mix.inci_order.product } : {}),
+            ...(mix.inci_order.source_url ? { source: mix.inci_order.source_url } : {})
+          }
+        }
       : {})
   }
 }

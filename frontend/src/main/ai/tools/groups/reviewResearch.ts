@@ -68,8 +68,10 @@ interface BomCheck {
     mass_source?: string
     missing_ingredients?: string[]
     split?: string[]
-    /** Where its shares contradict the order of the product's INCI list, one sentence each. */
+    /** Where its shares contradict the order of an INCI list, one sentence each. */
     inci_order?: string[]
+    /** Which list: the one the caller passed, or a label list the research found (its product and page). */
+    inci_list?: { from?: string; product?: string; source?: string }
   }
 }
 interface Entry {
@@ -151,6 +153,13 @@ const totalText = (t: Total): string =>
   `${t.mass_kg} kg ${t.basis === 'unknown' ? 'scope not stated' : t.basis}` +
   `${t.version ? `, ${t.version}` : ''}${t.source ? ` — ${sourceId(t.source)}` : ''}`
 
+/** Which INCI list a recipe contradicts: one the research found is named with its product and page, unconfirmed. */
+const inciListWords = (l?: { from?: string; product?: string; source?: string }): string =>
+  l?.from === 'found'
+    ? `contradicts the order of the INCI list the research found for ${l.product ? `"${l.product}"` : 'the product'}` +
+      `${l.source ? ` (${l.source})` : ''}, not confirmed as this product's`
+    : "contradicts the order of the product's INCI list"
+
 function checkLines(check: BomCheck): string[] {
   const lines: string[] = []
   if (check.requests?.length)
@@ -192,9 +201,7 @@ function checkLines(check: BomCheck): string[] {
         (m.missing_ingredients?.length
           ? `; lacks ingredients known from the product: ${m.missing_ingredients.join(', ')}`
           : '') +
-        (m.inci_order?.length
-          ? `; contradicts the order of the product's INCI list: ${m.inci_order.join('; ')}`
-          : '') +
+        (m.inci_order?.length ? `; ${inciListWords(m.inci_list)}: ${m.inci_order.join('; ')}` : '') +
         (typeof m.mass_kg === 'number'
           ? `; scaled to ${m.mass_kg} kg (${m.mass_source ?? 'source not stated'})`
           : '; shares only, no kg')

@@ -339,6 +339,36 @@ describe('researchBom', () => {
       expect(r.recipe?.inci_order).toBeDefined()
     })
 
+    it('holds the answer against a label list the leg found, unless its page is a link that leads nowhere', async () => {
+      const withList = (source_url: string) => ({
+        ...soap,
+        lines: [
+          { name: 'water', inci: 'Aqua', amount: 90, unit: '%' },
+          { name: 'Glycerin', amount: 2, unit: '%' },
+          { name: 'Sodium Laureth Sulfate', amount: 8, unit: '%' }
+        ],
+        declared_ingredients: {
+          names: ['Aqua', 'Glycerin', 'Sodium Laureth Sulfate'],
+          kind: 'inci',
+          product: 'some soap',
+          source_url
+        }
+      })
+      chat.rounds = [answer(withList('https://shop.example/soap'))]
+      const live = await researchBom({ product: 'liquid soap', recipe: {} })
+      expect(live.recipe?.inci_order).toMatchObject({
+        list: 'found',
+        source_url: 'https://shop.example/soap'
+      })
+      expect(live.recipe?.inci_order?.contradictions).toHaveLength(1)
+      // A provider's link the search never resolved is dropped as a source — and so it carries no comparison.
+      chat.rounds = [answer(withList('https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9'))]
+      const dead = await researchBom({ product: 'liquid soap', recipe: {} })
+      expect(dead.recipe?.inci_order).toBeUndefined()
+      expect(dead.recipe?.declared_source).toBeUndefined()
+      expect(dead.summary).not.toMatch(/INCI list/)
+    })
+
     it('asks no recipe leg when the call names none', async () => {
       chat.fallbackText = '{"items": []}'
       const r = await researchBom({ product: 'rack', components: ['frame'] })
