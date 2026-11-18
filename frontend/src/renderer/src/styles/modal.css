@@ -105,7 +105,7 @@
 .mfield input:hover, .mfield textarea:hover, .mfield select:hover { border-color: var(--border-strong); }
 .mfield input:focus, .mfield textarea:focus, .mfield select:focus { outline: none; border-color: var(--green-ink);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 24%, transparent); }
-.mfield-err { color: var(--prism-alert, #cc4b37); font-size: var(--fs-sec); font-weight: 600; }
+.mfield-err { color: var(--bad); font-size: var(--fs-sec); font-weight: 600; }
 /* Hybrid unit combo: suggestions pop from the first typed character. */
 .unit-combo { position: relative; display: flex; flex-direction: column; }
 .unit-combo input { width: 100%; }

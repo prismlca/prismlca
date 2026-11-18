@@ -159,7 +159,7 @@
 .rchip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface-3); color: var(--ink);
   border-radius: 999px; padding: 2px 4px 2px 9px; font-size: var(--fs-sec); }
 .rchip button { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
-.rchip button:hover { color: var(--bad, #cc4b37); }
+.rchip button:hover { color: var(--bad); }
 .search { margin: 4px 12px 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 7px 10px; background: var(--surface-2); color: var(--faint); }
 .search input { border: none; background: transparent; font: inherit; color: var(--text); width: 100%; outline: none; }
 .srow { display: flex; gap: 6px; padding: 0 12px; }
@@ -340,7 +340,7 @@
 .xa-session-head .btn { margin-left: auto; }
 .xa-approval-mode { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-label); }
 .xa-calls { margin: 0; padding-left: 22px; font-size: var(--fs-label); display: flex; flex-direction: column; gap: 3px; }
-.xa-calls li.err code { color: var(--prism-alert); }
+.xa-calls li.err code { color: var(--bad); }
 .xa-calls li.soft code { color: var(--prism-warning); }
 .xa-effect { font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .xa-detail { color: var(--muted); }

@@ -114,7 +114,7 @@
 .act-icon svg { width: 13px; height: 13px; }  /* match the Overview model-card buttons (.ov-model-act) */
 .act-icon:hover { background: var(--navy-soft); color: var(--navy); }
 .act-icon.on { background: var(--navy-soft); color: var(--navy); }
-.act-icon.danger:hover { background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface)); color: var(--prism-alert, #cc4b37); }
+.act-icon.danger:hover { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: var(--bad); }
 .act-icon:disabled { opacity: .45; cursor: default; }
 
 /* Four buttons beside the name cost about ninety pixels of a three-hundred-pixel panel, and the
@@ -144,8 +144,8 @@
 .ov-model-act svg { width: 13px; height: 13px; }
 .ov-model-act:hover { background: var(--navy-soft); color: var(--navy); }
 .ov-model-act.danger:hover {
-  background: color-mix(in srgb, var(--prism-alert, #cc4b37) 14%, var(--surface));
-  color: var(--prism-alert, #cc4b37);
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+  color: var(--bad);
 }
 .ov-model-snippet {
   font-size: var(--fs-sec); color: var(--faint); line-height: 1.4;
