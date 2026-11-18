@@ -239,3 +239,49 @@ def test_a_market_group_per_square_metre_shows_no_supplier_inputs(project):
         },
     })
     assert market_main_supplier_inputs(bd.get_node(database="gg", code="coat-group")) is None
+
+
+def test_a_market_group_quotes_no_member_markets_boilerplate_as_its_suppliers_comment(project):
+    """A market group buys from markets, so the supplier it mostly consists of is a member market, and that
+    comment is the market boilerplate. Quoted, the group's detail presented it as what its supplier states, and
+    the review dossier repeated it so. The group carries no supplier comment; the member market still quotes
+    its own producer."""
+    from prism_lca.engine.market_suppliers import market_main_supplier_comment
+    from prism_lca.engine.model import activity_detail
+
+    bd = get_bd()
+    boilerplate = "This is a market activity. Each market represents the consumption mix of a product."
+    bd.Database("dg").write({
+        ("dg", "refinery"): {
+            "name": "diesel production, petroleum refinery operation", "unit": "kilogram", "location": "RER",
+            "reference product": "diesel", "comment": "Refinery data for European refineries.",
+            "exchanges": [{"input": ("dg", "refinery"), "amount": 1, "type": "production"}],
+        },
+        ("dg", "diesel-rer"): {
+            "name": "market for diesel", "unit": "kilogram", "location": "RER", "reference product": "diesel",
+            "comment": boilerplate,
+            "exchanges": [
+                {"input": ("dg", "diesel-rer"), "amount": 1, "type": "production"},
+                {"input": ("dg", "refinery"), "amount": 1.0, "type": "technosphere"},
+            ],
+        },
+        ("dg", "diesel-group"): {
+            "name": "market group for diesel", "unit": "kilogram", "location": "GLO", "reference product": "diesel",
+            "comment": "This is a market group activity.",
+            "exchanges": [
+                {"input": ("dg", "diesel-group"), "amount": 1, "type": "production"},
+                {"input": ("dg", "diesel-rer"), "amount": 1.0, "type": "technosphere"},
+            ],
+        },
+    })
+    group = bd.get_node(database="dg", code="diesel-group")
+    assert market_main_supplier_comment(group) is None
+    detail = activity_detail(group)["activity"]
+    assert "main_supplier_comment" not in detail
+    assert detail["comment"] == "This is a market group activity."  # its own words, attributed to itself
+
+    member = market_main_supplier_comment(bd.get_node(database="dg", code="diesel-rer"))
+    assert member is not None
+    assert (member["name"], member["comment"]) == (
+        "diesel production, petroleum refinery operation", "Refinery data for European refineries."
+    )

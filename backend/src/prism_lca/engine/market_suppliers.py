@@ -7,7 +7,7 @@ that has to look through a market reads the link here:
 
 - the detail of a market quotes the producer it mostly buys from (:func:`market_main_supplier_comment`),
   and for a market billed per square metre or metre lists what that producer consumes for one unit
-  (:func:`market_main_supplier_inputs`),
+  (:func:`market_main_supplier_inputs`); a market group buys from markets and gets neither,
 - a "processing only" note is inherited from that producer (``engine/model.py``, ``service_only_note``),
 - the assistant's record of the datasets it has opened counts a market as read once a producer behind it
   was read, and asks :func:`suppliers_of` which those are.
@@ -79,11 +79,18 @@ def market_main_supplier_comment(act) -> dict | None:
     activity's comment, and inheriting a supplier's story onto a producer would attribute words to
     the wrong dataset. The largest same-product supplier, because that is what the market mostly is;
     transport and losses inside the market have different products and never qualify.
+
+    ``None`` when that supplier is a market itself: a market group buys from markets, and a member
+    market's comment is the same boilerplate, which the answer would then present as what the supplier
+    states: long text that says nothing, quoted where the calibration sentence is expected. The
+    producer is one level further down, on the member market's own detail.
     """
     found = main_supplier(act, "market_main_supplier_comment")
     if found is None:
         return None
     best, share = found
+    if is_market(best):
+        return None
     comment = (best.get("comment") or "").strip()
     if not comment:
         return None
