@@ -49,6 +49,7 @@ import { costOf } from './stream'
 import { summariseDropped, summaryTask } from './compactionSummary'
 import { CHAT_OFFLINE_MS } from './providers/retryPolicy'
 import { refusalNote } from './stopNotes'
+import { TurnText } from './turnText'
 import { aiLog } from './aiLog'
 import { localDate } from './localTime'
 import { createRunTelemetry } from './roundLog'
@@ -1026,21 +1027,10 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   )
   if (groups)
     aiLog(`focused tools: ${specs.length} of ${toolSpecs(model.vision).length} (${[...groups].join(', ')})`)
-  let finalText = ''
+  const turn = new TurnText((text) => deps.emit({ chatId: req.chatId, type: 'delta', text }))
   // The leftover lines stay visible where they took effect, as a delivered steer does.
-  for (const t of leftover) {
-    const shown = `> **You (earlier):** ${t.replace(/\n+/g, ' ')}\n\n`
-    finalText += shown
-    deps.emit({ chatId: req.chatId, type: 'delta', text: shown })
-  }
-  /**
-   * Where the closing answer begins in `finalText`: moved behind every tool round, every line the
-   * user sent and the notice of a request sent again, so what follows is what the model wrote last,
-   * and the stop note when the run did not finish. The text before it is the turn's record (answered
-   * questions, notes between tool rounds), kept in the message; a reader with one line to show
-   * starts here.
-   */
-  let answerFrom = finalText.length
+  for (const t of leftover) turn.add(`> **You (earlier):** ${t.replace(/\n+/g, ' ')}\n\n`)
+  turn.markAnswerStart()
   let totalCost = 0
   /** The research agents' share of `totalCost` — shown beside it, since it can be most of a run. */
   let researchCost = 0
@@ -1239,10 +1229,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         role: 'user',
         content: `(Sent while you were working — take it into account from here on.) ${t}`
       })
-      const shown = `\n\n> **You:** ${t.replace(/\n+/g, ' ')}\n\n`
-      finalText += shown
-      deps.emit({ chatId: req.chatId, type: 'delta', text: shown })
-      answerFrom = finalText.length
+      turn.add(`\n\n> **You:** ${t.replace(/\n+/g, ' ')}\n\n`)
+      turn.markAnswerStart()
     }
     return texts.length
   }
@@ -1259,8 +1247,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   })
   const costNote = (): void => {
     const note = `\n\n_Stopped: the cost limit of $${(req.maxCostUsd ?? 0).toFixed(2)} for this run was reached._`
-    finalText += note
-    deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+    turn.add(note)
   }
   /** How the run ended; 'answered' until something says otherwise. */
   let outcome: RunOutcome = 'answered'
@@ -1274,19 +1261,19 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     closeOpenCalls(messages)
     const last = messages[messages.length - 1]
     const web = answerWeb && !messages.some((m) => m.web === answerWeb) ? { web: answerWeb } : {}
-    if (finalText && !(last?.role === 'assistant' && last.content === finalText))
-      messages.push({ role: 'assistant', content: finalText, ...web })
+    if (turn.text && !(last?.role === 'assistant' && last.content === turn.text))
+      messages.push({ role: 'assistant', content: turn.text, ...web })
     await keepTranscript(
       req.chatId,
       turnId,
       req.history,
       req.userText,
-      finalText,
+      turn.text,
       messages,
       currentPlan,
       deps.transcriptStore
     )
-    return { text: finalText, aborted, outcome: out, turnId, trace, ...usageSoFar() }
+    return { text: turn.text, aborted, outcome: out, turnId, trace, ...usageSoFar() }
   }
   try {
     for (let round = 0; round < maxRounds; round++) {
@@ -1377,8 +1364,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             if (ev.type === 'delta') {
               telemetry.output()
               roundText += ev.text
-              finalText += ev.text
-              deps.emit({ chatId: req.chatId, type: 'delta', text: ev.text })
+              turn.add(ev.text)
               // Checked every few hundred characters rather than per delta: the scan is cheap but not
               // free, and a collapse takes far longer than that to become detectable anyway.
               if (roundText.length >= nextRepeatCheck) {
@@ -1455,9 +1441,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           // A reasoning level this model's API does not take: retry on the floor or the default (chatEffort.ts).
           const retry = effortRejectionRetry(e, reasoningEffort, model)
           if (retry) {
-            finalText += retry.note
-            deps.emit({ chatId: req.chatId, type: 'delta', text: retry.note })
-            answerFrom = finalText.length
+            turn.add(retry.note)
+            turn.markAnswerStart()
             reasoningEffort = retry.next
             continue
           }
@@ -1495,8 +1480,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           `\n\n_Stopped: the reply started repeating itself ("${unit}" ${repetitionLoop.repeats}× in a row) ` +
           `and was cut off. Nothing after that point was carried out — tell me to continue, and say ` +
           `what to pick up if you know._`
-        finalText += note
-        deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+        turn.add(note)
         outcome = 'repetition'
         break
       }
@@ -1514,8 +1498,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       if (finishReason === 'content_filter') {
         // Calls a refused reply streamed before the stop are part of what was declined: none is run.
         const note = refusalNote(finishDetail)
-        finalText += note
-        deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+        turn.add(note)
         answered = true
         break // declined by the provider: neither an empty round to nudge nor an answer to go on from
       }
@@ -1556,8 +1539,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             `${MAX_EMPTY_ROUNDS + 1}× in a row. That is a provider-side failure, not a finished ` +
             `answer, and nothing was carried out. Send it again; if it repeats, pick another model ` +
             `under Settings → AI._`
-          finalText += note
-          deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+          turn.add(note)
           break
         }
         // The model is done — but the user said something meanwhile. Their words become the next
@@ -1571,8 +1553,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           // The provider stopped the output at its token limit; the text ends mid-sentence and used
           // to be stored as a finished answer.
           const note = `\n\n_The answer was cut off at the model's output limit — say "continue" to go on from here._`
-          finalText += note
-          deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+          turn.add(note)
           outcome = 'output_limit'
         } else if (announcesUnfinishedWork(roundText)) {
           // A note for whoever reads the log, nothing more (see announcesUnfinishedWork).
@@ -1584,8 +1565,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       if (roundText) {
         // Separate this round's text from the next round's — emitted as a delta too, so the
         // streamed view matches the final persisted text exactly.
-        finalText += '\n\n'
-        deps.emit({ chatId: req.chatId, type: 'delta', text: '\n\n' })
+        turn.add('\n\n')
       }
 
       // Record the assistant's tool-call turn.
@@ -1642,8 +1622,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             // ask_user: the Q + chosen answer become part of the assistant's visible text, so the
             // interaction survives in the persisted chat history and on reload. (ask_user is never
             // in a parallel group, so this append keeps its order.)
-            finalText += oc.transcript
-            deps.emit({ chatId: req.chatId, type: 'delta', text: oc.transcript })
+            turn.add(oc.transcript)
           }
           deps.emit({
             chatId: req.chatId,
@@ -1754,7 +1733,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         }
       }
       messages.push(...imageParts)
-      answerFrom = finalText.length
+      turn.markAnswerStart()
 
       // The stall guard: rounds that only ever hear "no". Reset by any call that lands, because a
       // model working through a batch of refusals one by one IS making progress.
@@ -1770,8 +1749,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         const note =
           `\n\n_Stopped: ${STALL_STOP_AT} rounds in a row produced only rejected or failed tool calls. ` +
           `Nothing after that point was carried out — tell me to continue, and say what to change if you know._`
-        finalText += note
-        deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+        turn.add(note)
         outcome = 'stalled'
         break
       }
@@ -1781,8 +1759,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     // calls without writing prose, the chat stayed empty and looked like a hang. Say so instead.
     if (!answered && !costStopped && !emptyStopped && outcome === 'answered') {
       const note = `\n\n_Stopped: the limit of ${maxRounds} tool rounds was reached before I finished. Tell me to continue, or raise the limit in Settings → AI._`
-      finalText += note
-      deps.emit({ chatId: req.chatId, type: 'delta', text: note })
+      turn.add(note)
       outcome = 'rounds'
     }
 
@@ -1794,8 +1771,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     deps.emit({
       chatId: req.chatId,
       type: 'done',
-      text: finalText,
-      answerFrom,
+      text: turn.text,
+      answerFrom: turn.answerFrom,
       cost: totalCost || undefined,
       researchCost: researchCost || undefined,
       promptTokens: totalPromptTokens || undefined,
