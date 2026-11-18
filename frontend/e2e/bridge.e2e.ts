@@ -10,7 +10,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { expect, test } from '@playwright/test'
 import { FRONTEND, cleanEnv, freshInstall, removeInstall, type Install } from './app'
-import { endAll, listed, processTree, type ProcessInfo } from './processes'
+import { endAll, leftovers, listed, processTree, type ProcessInfo } from './processes'
 
 /** In Node, the `electron` package is the path of its binary. */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -101,24 +101,10 @@ function startBridge(install: Install): Bridge {
   }
 }
 
-/**
- * What of the snapshot `before` is still running. A process counts only if it is the same one — same
- * pid AND same command line — or names the test's data folder: Windows hands the pid of an exited
- * process to the next one that starts, and a stranger with a recycled pid is not a leftover of ours.
- */
-function stillRunning(before: ProcessInfo[], install: Install): ProcessInfo[] {
-  return processTree(
-    before.map((p) => p.pid),
-    install.root
-  ).filter(
-    (p) => p.command.includes(install.root) || before.some((b) => b.pid === p.pid && b.command === p.command)
-  )
-}
-
 test('the stdio bridge answers a client over pipes, stays, and leaves when the client does', async () => {
   const install = freshInstall()
   const bridge = startBridge(install)
-  const pid = bridge.proc.pid
+  let look: (() => ProcessInfo[]) | undefined
   try {
     const init = (await bridge.request('initialize', {
       protocolVersion: '2025-06-18',
@@ -138,7 +124,7 @@ test('the stdio bridge answers a client over pipes, stays, and leaves when the c
     expect(await bridge.request('ping')).toEqual({})
 
     // The client goes: its end of stdin closes, and the bridge ends on its own, saying why.
-    const before = processTree(pid === undefined ? [] : [pid], install.root)
+    look = leftovers(processTree(bridge.proc, install.root), install.root)
     bridge.proc.stdin?.end()
     const code = await Promise.race([bridge.exited, sleep(20_000).then(() => 'still running' as const)])
     expect(code, bridge.log()).toBe(0)
@@ -149,18 +135,17 @@ test('the stdio bridge answers a client over pipes, stays, and leaves when the c
     expect(bridge.log()).toContain('The client closed standard input')
     expect(bridge.noise()).toEqual([])
 
-    let left = stillRunning(before, install)
+    let left = look()
     for (const until = Date.now() + 10_000; left.length > 0 && Date.now() < until; ) {
       await sleep(500)
-      left = stillRunning(before, install)
+      left = look()
     }
     expect(left.length, `The bridge exited, but what it started is still running:${listed(left)}`).toBe(0)
   } finally {
     // Whatever went wrong above, nothing of this bridge outlives the test: its helpers name the test's
-    // own data folder, and the main process is taken by its pid only while it is still ours — the pid of
-    // a process that has exited may belong to anything by now.
-    const alive = bridge.proc.exitCode === null && bridge.proc.signalCode === null && pid !== undefined
-    const left = processTree(alive ? [pid] : [], install.root)
+    // own data folder or were seen as the bridge's, and the main process counts only while it is still
+    // ours — the pid of a process that has exited may belong to anything by now.
+    const left = look?.() ?? processTree(bridge.proc, install.root)
     if (left.length > 0) {
       endAll(left)
       await Promise.race([bridge.closed, sleep(5_000)])

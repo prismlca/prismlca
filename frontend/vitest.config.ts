@@ -37,7 +37,8 @@ export default defineConfig({
         assetsInclude: ['**/*.md'],
         test: {
           name: 'node',
-          include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+          // e2e/ holds the Playwright suite (`*.e2e.ts`); its `*.test.ts` are unit tests of the harness itself.
+          include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts', 'e2e/**/*.test.ts'],
           exclude: ['**/node_modules/**', '**/*.dom.test.tsx'],
           environment: 'node'
         }
