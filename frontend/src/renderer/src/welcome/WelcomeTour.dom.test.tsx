@@ -156,6 +156,15 @@ describe('welcome tour', () => {
     expect(text).toMatch(/resold/i)
   })
 
+  it('says that the BAFU download needs a free account, and never that it needs none', () => {
+    // openLCA Nexus hands the database out only after a sign-in. The import sheet says so; a tour
+    // card promising "no account" sends the user there unprepared.
+    const data = TOUR_CARDS.find((c) => c.id === 'data')
+    const text = JSON.stringify([data?.body, data?.visual])
+    expect(text).toMatch(/openLCA Nexus needs a\s+free account/)
+    expect(text).not.toMatch(/no account/i)
+  })
+
   it('names every way out of the machine, and that they can be closed', () => {
     // The privacy promise is a claim about the product, so it is asserted as a claim: a card that
     // stops naming one of the services has quietly narrowed what the user was told. Prose and

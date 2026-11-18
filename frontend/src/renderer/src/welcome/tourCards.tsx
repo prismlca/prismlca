@@ -86,8 +86,9 @@ export const TOUR_CARDS: TourCard[] = [
         </p>
         <p>
           <b>BAFU:20XY</b> — the Swiss Federal Administration&rsquo;s inventory database,{' '}
-          <b>11 947 datasets, free to use</b>. No licence to buy, no account. If you have no ecoinvent
-          licence, this is where you start; if you have one, import both and use them side by side.
+          <b>11 947 datasets, free to use</b>. No licence to buy; the download from openLCA Nexus needs a free
+          account. If you have no ecoinvent licence, this is where you start; if you have one, import both and
+          use them side by side.
         </p>
         <p className="wt-muted">
           BAFU asks to be cited and not resold — the citation goes into your report&rsquo;s bibliography by
