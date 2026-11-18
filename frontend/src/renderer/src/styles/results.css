@@ -212,8 +212,8 @@
 .stale-banner {
   margin-top: 12px; margin-bottom: 12px; padding: 9px 14px; border-radius: var(--r-lg);
   font-size: var(--fs-body); color: var(--text);
-  border: 1px solid color-mix(in srgb, #ffae00 45%, var(--border));
-  background: color-mix(in srgb, #ffae00 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--wait) 45%, var(--border));
+  background: color-mix(in srgb, var(--wait) 12%, var(--surface));
 }
 /* `flex: none` is the fix for a table two pixels tall. A scroll container's automatic minimum size is zero —
    the `min-content` floor every other
