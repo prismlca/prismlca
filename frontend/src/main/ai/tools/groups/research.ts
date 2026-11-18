@@ -9,6 +9,41 @@ import { RESEARCH_CAP_PHRASE, S, batchResult, runItem } from '../format'
 import type { BomResult } from '../../researchBom'
 import { bomLogEntry } from './bomLogEntry'
 
+/**
+ * The `recipe` argument read, or the refusal that names how it arrived. A weak model JSON-encodes nested values into
+ * strings; the refusal says so, since "recipe must be an object" alone gets the same string back.
+ */
+export function recipeArg(
+  raw: unknown
+): { of?: string; mass_kg?: number; ingredients?: string[] } | string | undefined {
+  if (raw === undefined || raw === null) return undefined
+  const asObject =
+    '{"of": "liquid soap (contents of the pouch)", "mass_kg": 0.51, "ingredients": ["Aqua", "Sodium Laureth Sulfate"]}'
+  if (typeof raw === 'string')
+    return `"recipe" arrived as ONE string, not an object — the object was JSON-encoded into a string. Resend it as a real JSON object value, e.g. ${asObject} — do not wrap it in quotes.`
+  if (typeof raw !== 'object' || Array.isArray(raw))
+    return `"recipe" must be an object, e.g. ${asObject}; for a product that is the mixture itself, "of" names the product.`
+  const r = raw as Record<string, unknown>
+  if (
+    r.mass_kg !== undefined &&
+    // 0 is padding, as in any count: a mixture of no mass is not a figure anyone means.
+    r.mass_kg !== 0 &&
+    !(typeof r.mass_kg === 'number' && Number.isFinite(r.mass_kg) && r.mass_kg > 0)
+  )
+    return `"recipe.mass_kg" arrived as ${JSON.stringify(r.mass_kg)} — it must be a positive number of kilograms (e.g. 0.51), or left out when unknown.`
+  if (r.ingredients !== undefined && !Array.isArray(r.ingredients))
+    return typeof r.ingredients === 'string'
+      ? '"recipe.ingredients" arrived as ONE string, not an array — resend it as a real JSON array value with one ingredient per entry, e.g. ["Aqua", "Sodium Laureth Sulfate", "Glycerin"].'
+      : '"recipe.ingredients" must be an array of strings, one ingredient per entry.'
+  const of = typeof r.of === 'string' && r.of.trim() ? r.of.trim() : undefined
+  const ingredients = Array.isArray(r.ingredients) ? r.ingredients.map(String).filter((i) => i.trim()) : []
+  return {
+    ...(of ? { of } : {}),
+    ...(typeof r.mass_kg === 'number' && r.mass_kg > 0 ? { mass_kg: r.mass_kg } : {}),
+    ...(ingredients.length ? { ingredients } : {})
+  }
+}
+
 export const researchTools: Tool[] = [
   {
     spec: {
@@ -16,7 +51,7 @@ export const researchTools: Tool[] = [
       function: {
         name: 'research_bom',
         description:
-          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, retailer, article number or EAN, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Naming the components you want makes it much more accurate; do not list the total weight as a component — every researcher reports the whole product\'s mass when a source states it ("totals_found"). READ "summary" FIRST: what was summed, against which total, and what is still open. "balance_ok" is true/false/null and **null means it could not be checked** — a component has no mass, a research leg failed, entries overlap, the figures rest on different versions of the product, or no usable total exists; the note says which. "mass_kg" is always the mass of all pieces of an entry together ("count" says how many); "packaging" entries are kept out of "sum_kg". "requests" gives each requested component\'s status, "unresolved" names every open one with its reason, "residual_kg" is the total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. "versions" appears when the sources showed more than one version of the product (another EAN, board thickness, weight): find out which one the user means before you build. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text.',
+          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, retailer, article number or EAN, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Naming the components you want makes it much more accurate; do not list the total weight as a component — every researcher reports the whole product\'s mass when a source states it ("totals_found"). A MIXTURE in the product (soap, detergent, paint, food, concrete, a rubber compound) goes under "recipe", never its ingredients under "components": researched one by one, ingredients come from different recipes on different bases and do not add up. READ "summary" FIRST: what was summed, against which total, and what is still open. "balance_ok" is true/false/null and **null means it could not be checked** — a component has no mass, a research leg failed, entries overlap, the figures rest on different versions of the product, or no usable total exists; the note says which. "mass_kg" is always the mass of all pieces of an entry together ("count" says how many); "packaging" entries ("sales" or "transport") are kept out of "sum_kg". "recipe" in the result says whether the mixture\'s lines close against the total its source states ("closes", "gap_pct", "gap_kg"), which known ingredients it lacks ("missing_ingredients"), and whether it is the product\'s own recipe or a frame formulation; its ingredients stand in "items" with "group": "recipe" once a mass is known, and a recipe that does not close keeps "balance_ok" null. "requests" gives each requested component\'s status, "unresolved" names every open one with its reason, "residual_kg" is the total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. "versions" appears when the sources showed more than one version of the product (another EAN, board thickness, weight): find out which one the user means before you build. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text.',
         parameters: obj(
           {
             product: str(
@@ -29,8 +64,26 @@ export const researchTools: Tool[] = [
               "The product's own mass in kg WITHOUT sales packaging — only a figure the user stated or a source gave, never your own estimate (the balance would then check your estimate against itself). Leave it out when unknown: the research looks for it."
             ),
             components: strArr(
-              'Components to research individually (e.g. ["bottle body","cap","label"]). Omit to let the research enumerate them.'
+              'Components to research individually (e.g. ["bottle body","cap","label"]). Omit to let the research enumerate them. A mixture\'s ingredients go under "recipe", not here.'
             ),
+            recipe: {
+              ...obj(
+                {
+                  of: str(
+                    'What the mixture is, e.g. "liquid soap (contents of the pouch)", "tread compound" — or the product itself when it is the mixture ("ready-mix concrete C30/37").'
+                  ),
+                  mass_kg: num(
+                    "The mixture's mass in the product in kg — from the label or the user; a stated fill volume times a stated density will do. It scales the recipe's shares to kg and is never checked. Omit when unknown: the research looks for it, and without one the ingredients come back as shares only."
+                  ),
+                  ingredients: strArr(
+                    'Ingredients known from THIS product, one per entry — its printed INCI list, or what the user said; never a list of typical ingredients. The research covers each one and names those its recipe lacks.'
+                  )
+                },
+                []
+              ),
+              description:
+                'Research the recipe of a MIXTURE in the product — or of the product, when it is one — in one leg of its own: one named formulation, checked against the total its source states. Containers, caps and packaging stay in "components".'
+            },
             max_components: num('Cap on components researched (default 8, max 8).'),
             domains: strArr(
               'Bare hosts to restrict the web search to, e.g. ["meffert.de","hornbach.de"] — ONLY when you already know where the document lives (the manufacturer\'s site, the retailer page that links the safety data sheet, a register the result named under "suggested_domains"). Leave it out otherwise: a restricted search that misses the host returns "not found", not a wider search.'
@@ -49,6 +102,8 @@ export const researchTools: Tool[] = [
         })
       }
       if (!ctx.research) return S({ error: 'Web research is not available in this context.' })
+      const recipe = recipeArg(a.recipe)
+      if (typeof recipe === 'string') return S({ error: recipe })
       const call = {
         product: a.product,
         context: a.context ? String(a.context) : undefined,
@@ -58,7 +113,8 @@ export const researchTools: Tool[] = [
         ...call,
         components: Array.isArray(a.components) ? a.components.map(String) : undefined,
         maxComponents: typeof a.max_components === 'number' ? a.max_components : undefined,
-        domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined
+        domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined,
+        ...(recipe ? { recipe } : {})
       })) as Partial<BomResult>
       // Same provenance log the web research writes: the BOM's sourced masses are exactly the kind of figure a
       // report has to be able to attribute, and the check — also of a call that found no mass at all — is what

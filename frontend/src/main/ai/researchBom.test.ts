@@ -172,6 +172,91 @@ describe('researchBom', () => {
     expect(r.items).toHaveLength(1)
   })
 
+  describe('with a recipe', () => {
+    const soap = {
+      formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
+      lines: [
+        { name: 'water', amount: null, unit: '%', rest_to_total: true },
+        { name: 'SLES 70 %', amount: 12, unit: '%' },
+        { name: 'glycerin', amount: 2, unit: '%' }
+      ]
+    }
+
+    it('researches the mixture in one leg of its own and tells the part legs it is taken', async () => {
+      chat.rounds = [
+        answer(soap),
+        answer({
+          items: [{ component: 'pouch', material: 'PE/PET', mass_kg: 0.02, source_url: 'https://e.org/p' }]
+        })
+      ]
+      const r = await researchBom({
+        product: 'liquid soap refill, 500 ml',
+        components: ['pouch'],
+        recipe: { of: 'liquid soap (contents of the pouch)', mass_kg: 0.5 },
+        totalMassKg: 0.52
+      })
+      expect(chat.seen).toHaveLength(2)
+      expect(String(chat.seen[0].messages[0].content)).toMatch(
+        /You research the RECIPE \(formulation\) of a mixture/
+      )
+      expect(asked()[0]).toMatch(/Research ONLY the recipe of liquid soap \(contents of the pouch\)/)
+      expect(asked()[0]).toMatch(
+        /The product's other parts are researched separately, by other researchers: "pouch"/
+      )
+      expect(asked()[1]).toContain(
+        'Researched separately, by other researchers: "the recipe of liquid soap (contents of the pouch)".'
+      )
+      expect(r.recipe).toMatchObject({ closes: true, mass_kg: 0.5, mass_source: 'given' })
+      expect(r.items.map((i) => i.component)).toEqual(['pouch', 'water', 'SLES 70 %', 'glycerin'])
+      expect(r.balance_ok).toBe(true)
+      expect(r.sources).toContain('https://pcc.example/mp01.pdf')
+    })
+
+    it('keeps the recipe out of the follow-up pass, which would ask its ingredients one by one', async () => {
+      chat.rounds = [
+        answer({
+          ...soap,
+          lines: [...soap.lines, { name: 'perfume', amount: null, unit: '%', range: [0.5, 1] }]
+        }),
+        answer({ items: [{ component: 'cap', mass_kg: null }] }),
+        answer({ items: [{ component: 'cap', mass_kg: 0.003, source_url: 'https://e.org/c' }] })
+      ]
+      const r = await researchBom({ product: 'soap', components: ['cap'], recipe: { mass_kg: 0.5 } })
+      expect(chat.seen).toHaveLength(3)
+      expect(asked()[2]).toMatch(/ONLY the component "cap"/)
+      expect(r.follow_up).toEqual({ asked: 1, resolved: 1 })
+      expect(r.recipe?.closes).toBeNull()
+    })
+
+    it('runs the recipe leg alone when no components are named, and says nothing else was researched', async () => {
+      chat.rounds = [answer(soap)]
+      const r = await researchBom({ product: 'liquid soap', recipe: {} })
+      expect(chat.seen).toHaveLength(1)
+      expect(asked()[0]).toMatch(/Research ONLY the recipe of liquid soap:/)
+      expect(r.summary).toMatch(/Only the recipe was researched, no other part of the product/)
+      expect(r.balance_ok).toBe(true)
+      expect(r.note ?? '').not.toMatch(/no usable figures/)
+    })
+
+    it('asks a timed-out recipe leg again for one table, not for a mass', async () => {
+      chat.rounds = [{ throws: new Error('connection reset') }, answer(soap)]
+      const r = await researchBom({ product: 'liquid soap', recipe: { ingredients: ['Aqua', 'Glycerin'] } })
+      expect(asked()[0]).toMatch(
+        /Ingredients known from the product \(its printed list\): Aqua, Glycerin\. Give one its line only/
+      )
+      expect(asked()[1]).toMatch(/BE BRIEF: one formulation table/)
+      expect(asked()[1]).not.toMatch(/the mass in kg and one source URL/)
+      expect(r.recipe?.missing_ingredients).toEqual(['Aqua'])
+    })
+
+    it('asks no recipe leg when the call names none', async () => {
+      chat.fallbackText = '{"items": []}'
+      const r = await researchBom({ product: 'rack', components: ['frame'] })
+      expect(asked().some((q) => /recipe/i.test(q))).toBe(false)
+      expect(r.recipe).toBeUndefined()
+    })
+  })
+
   it('does the same for a web research leg', async () => {
     chat.rounds = [{ throws: new FakeOpenRouterError('OpenRouter API key invalid or missing.', 'auth') }]
     const progress: string[] = []

@@ -8,6 +8,8 @@
  * by total, by version — and the verdict stays null until the caller has settled it.
  */
 import type { BomItem, BomLeg, ProductMass, UnresolvedComponent, VersionSeen } from './bomAnswer'
+import { gtinsIn, sameReference, versionsContradict, versionsOf, type Versions } from './bomVersions'
+import type { RecipeBlock, RecipeWeighing } from './recipeBalance'
 
 /** How one requested component came back. */
 export type RequestStatus = 'with_mass' | 'partial' | 'no_mass' | 'product_mass_only' | 'failed'
@@ -35,15 +37,6 @@ export interface Overlap {
   includes: string[]
 }
 
-export interface Versions {
-  /** Figures that claim to be this product's own name different versions (by EAN or by words). */
-  conflict: boolean
-  /** The product references the entries and whole-product masses rest on, when there is more than one. */
-  used?: Array<{ version: string; entries: string[] }>
-  /** Other versions of this product the sources showed — information, not a verdict. */
-  seen?: VersionSeen[]
-}
-
 export interface BomWeighing {
   summary: string
   requests?: Array<{ component: string; status: RequestStatus }>
@@ -53,13 +46,18 @@ export interface BomWeighing {
   totals_found?: ProductMass[]
   total_used?: TotalUsed
   sum_kg: number
+  /** Sales packaging: what a gross article weight contains on top of the parts. */
   packaging_kg?: number
+  /** Transport packaging (shipping cartons, pallets): in no weight of the product, so in no comparison. */
+  transport_packaging_kg?: number
   sum_range_kg?: [number, number]
   balance_ok: boolean | null
   residual_kg?: number
   residual_if_total_includes_packaging_kg?: number
   overlaps?: Overlap[]
   versions?: Versions
+  /** The mixture's own check, when a recipe was researched (recipeBalance.ts). */
+  recipe?: RecipeBlock
   note?: string
 }
 
@@ -84,66 +82,9 @@ const host = (url?: string): string | undefined => {
   }
 }
 
-/** EAN/GTIN numbers in a reference (12–14 digits) — the only part of a version string that identifies. */
-export function gtinsIn(version: string): string[] {
-  return [...new Set(version.match(/(?<!\d)\d{12,14}(?!\d)/g) ?? [])]
-}
-
-/** The words of a reference, for comparing references written differently. */
-const words = (v: string): string[] =>
-  norm(v)
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((w) => w.length > 1)
-
-/**
- * Whether two references name the same version: with EAN/GTIN numbers on both sides, when they share one; with
- * none on either, when every word of one is in the other ("Atlas 175 HDF4" and "Steckregal Atlas 175 HDF4"). A
- * number on one side only is no match, and an empty reference matches only an empty one. For grouping what was
- * said, never for verifying it: a leg that ties the wrong EAN to a listing is grouped with that EAN.
- */
-export function sameReference(a?: string, b?: string): boolean {
-  const x = a?.trim() ?? ''
-  const y = b?.trim() ?? ''
-  if (!x || !y) return !x && !y
-  const gx = gtinsIn(x)
-  const gy = gtinsIn(y)
-  if (gx.length || gy.length) return gx.some((g) => gy.includes(g))
-  const wx = words(x)
-  const wy = words(y)
-  const within = (p: string[], q: string[]): boolean => p.length > 0 && p.every((w) => q.includes(w))
-  return within(wx, wy) || within(wy, wx)
-}
-
 const close = (a: number, b: number): boolean => Math.abs(a - b) <= SAME_TOTAL * Math.max(a, b)
 /** Two figures for one part that agree within 2 % are one figure reported twice. */
 const close2 = (a: number, b: number): boolean => Math.abs(a - b) <= 0.02 * Math.max(a, b)
-
-/**
- * Whether two references contradict each other about which version this is. EAN/GTIN numbers on both sides must
- * share one. Otherwise only the numbers count — a board thickness, a model number, a size ("HDF4", "4 mm", "175"):
- * they contradict when each side carries one the other lacks. Different wording of the same product does not
- * ("500-ml refill pouch, DE 2025" against "500 ml refill pack, Germany 2025"): measured on a live run, a leg that
- * writes a version for every figure would otherwise lock every balance on words alone.
- */
-export function versionsContradict(a: string, b: string): boolean {
-  const ga = gtinsIn(a)
-  const gb = gtinsIn(b)
-  if (ga.length && gb.length) return !ga.some((g) => gb.includes(g))
-  // The numbers in the words, split off their letters ("HDF4" and "HDF 4 mm" both give 4); single digits count.
-  const tokens = (v: string): string[] =>
-    norm(v)
-      .split(/[^\p{L}\p{N}]+|(?<=\p{L})(?=\d)|(?<=\d)(?=\p{L})/u)
-      .filter((w) => /^\d+$/.test(w) && !gtinsIn(w).length)
-  const year = (w: string): boolean => /^(19|20)\d\d$/.test(w)
-  const ta = tokens(a)
-  const tb = tokens(b)
-  // A year counts only when both sides carry one: "model year 2024" against "2025" are two versions, but
-  // "reference year 2025" against an article number was a false conflict in a live run.
-  const bothYears = ta.some(year) && tb.some(year)
-  const na = ta.filter((w) => bothYears || !year(w))
-  const nb = tb.filter((w) => bothYears || !year(w))
-  return na.some((w) => !nb.includes(w)) && nb.some((w) => !na.includes(w))
-}
 
 /** "frame (no mass found)" — the words a reason is named by in notes. */
 const REASON_WORDS: Record<UnresolvedComponent['reason'], string> = {
@@ -164,13 +105,16 @@ export interface BalanceInput {
   locks: string[]
   /** Overlapping entries are listed: the sum may count a part twice, so a residual is not missing mass. */
   overlapping?: boolean
+  /** The mixture's mass, when a recipe was scaled to one: it enters the sum as one block in place of its
+   *  ingredients (`group: "recipe"`), whose own gap the recipe's closure reports. */
+  mixtureKg?: number
   tolerance?: number
 }
 
 /** A total's scope in words a reader does not have to decode. */
 const SCOPE: Record<TotalUsed['basis'], string> = {
   net: 'without packaging',
-  gross: 'with packaging',
+  gross: 'with sales packaging',
   unknown: 'packaging not stated'
 }
 
@@ -210,6 +154,7 @@ export function massBalance(
   BomWeighing,
   | 'sum_kg'
   | 'packaging_kg'
+  | 'transport_packaging_kg'
   | 'sum_range_kg'
   | 'balance_ok'
   | 'residual_kg'
@@ -217,20 +162,25 @@ export function massBalance(
   | 'note'
 > {
   const tolerance = input.tolerance ?? TOLERANCE
-  const parts = input.items.filter((i) => !i.packaging)
-  const pack = input.items.filter((i) => i.packaging)
-  const sum = r6(parts.reduce((s, i) => s + i.mass_kg, 0))
+  const parts = input.items.filter((i) => !i.packaging && i.group !== 'recipe')
+  const pack = input.items.filter((i) => i.packaging === 'sales')
+  const mixture = input.mixtureKg ?? 0
+  const sum = r6(parts.reduce((s, i) => s + i.mass_kg, 0) + mixture)
   const packaging = r6(pack.reduce((s, i) => s + i.mass_kg, 0))
+  const transport = r6(
+    input.items.filter((i) => i.packaging === 'transport').reduce((s, i) => s + i.mass_kg, 0)
+  )
   // Items with a researched range contribute [min, max]; the rest their point value.
   const span: [number, number] | undefined = parts.some((i) => i.mass_range_kg)
     ? [
-        r6(parts.reduce((s, i) => s + (i.mass_range_kg?.[0] ?? i.mass_kg), 0)),
-        r6(parts.reduce((s, i) => s + (i.mass_range_kg?.[1] ?? i.mass_kg), 0))
+        r6(parts.reduce((s, i) => s + (i.mass_range_kg?.[0] ?? i.mass_kg), 0) + mixture),
+        r6(parts.reduce((s, i) => s + (i.mass_range_kg?.[1] ?? i.mass_kg), 0) + mixture)
       ]
     : undefined
   const base = {
     sum_kg: sum,
     ...(packaging ? { packaging_kg: packaging } : {}),
+    ...(transport ? { transport_packaging_kg: transport } : {}),
     ...(span ? { sum_range_kg: span } : {})
   }
   const openWords = input.open.length ? `no usable mass for ${input.open.join(', ')}` : ''
@@ -289,7 +239,7 @@ export function massBalance(
   }
   const off = Math.abs(compared - t.mass_kg) / t.mass_kg
   const packed =
-    t.basis === 'gross' && packaging ? ' (packaging included, as the total is a gross weight)' : ''
+    t.basis === 'gross' && packaging ? ' (sales packaging included, as the total is a gross weight)' : ''
   if (off > tolerance) {
     // With ranges on record the verdict can say which of the two repairs applies: masses placed
     // differently inside their researched spans, or a genuinely missing component / wrong total.
@@ -437,37 +387,6 @@ function researchedTotal(totals: ProductMass[]): TotalUsed | string | undefined 
   )
 }
 
-/**
- * The references the used figures rest on, and whether two of them contradict each other (versionsContradict):
- * different EAN numbers, or numbers in the words that cannot both hold ("HDF4" against "HDF5"). `version` is asked
- * for only where a figure belongs to THIS product, so such a pair is two claims about which product this is.
- */
-function versionsOf(items: BomItem[], found: ProductMass[], seen: VersionSeen[]): Versions | undefined {
-  const used: Array<{ version: string; entries: string[] }> = []
-  const add = (version: string | undefined, entry: string): void => {
-    if (!version?.trim()) return
-    let row = used.find((r) => sameReference(r.version, version))
-    if (!row) used.push((row = { version, entries: [] }))
-    if (!row.entries.includes(entry)) row.entries.push(entry)
-  }
-  for (const i of items) add(i.version, i.component)
-  for (const t of found) add(t.version, `whole product (${t.mass_kg} kg)`)
-  const conflict = used.some((x, i) =>
-    used.slice(i + 1).some((y) => versionsContradict(x.version, y.version))
-  )
-  const otherSeen: VersionSeen[] = []
-  for (const s of seen) {
-    const known = [...used.map((r) => r.version), ...otherSeen.map((o) => o.version)]
-    if (!known.some((v) => sameReference(v, s.version))) otherSeen.push(s)
-  }
-  if (!conflict && !otherSeen.length) return undefined
-  return {
-    conflict,
-    ...(conflict ? { used } : {}),
-    ...(otherSeen.length ? { seen: otherSeen.slice(0, 6) } : {})
-  }
-}
-
 const statusOf = (leg: BomLeg | undefined): RequestStatus =>
   !leg
     ? 'failed'
@@ -488,9 +407,18 @@ const statusOf = (leg: BomLeg | undefined): RequestStatus =>
  */
 export function weighBom(
   outcomes: LegOutcome[],
-  opts: { totalMassKg?: number; notResearched?: string[]; itemCap?: number; tolerance?: number } = {}
+  opts: {
+    totalMassKg?: number
+    notResearched?: string[]
+    itemCap?: number
+    tolerance?: number
+    /** The mixture, weighed on its own: its ingredients pass by the rules for parts, and its closure is its check. */
+    recipe?: RecipeWeighing
+  } = {}
 ): BomWeighing {
   const componentMode = outcomes.some((o) => o.request !== null)
+  const recipe = opts.recipe
+  const recipeOnly = !!recipe && !outcomes.length
   // An entry with exactly the mass of a whole-product weight some leg reported, beside other parts with a mass,
   // cannot be a part: the leg returned the whole product in the wrong place (asked for "the total weight" as a
   // component, it answered with an entry). It is read as what it is — a whole-product figure — and said so. Exact
@@ -626,6 +554,22 @@ export function weighBom(
       `the research for ${productOnly.map((p) => `"${p}"`).join(', ')} returned only the whole product's mass ` +
         '(see totals_found) — if that names a part, its own mass is missing'
     )
+  // The mixture's ingredients join after the cap and outside the rules above: water and water from a trade form are
+  // two contributions, not a repeat, and the recipe's lines have a ceiling of their own. Its name is a group, so a
+  // part that "includes" the mixture (a tread with its compound) is an overlap like any other.
+  const mixtureKg = recipe?.block.mass_kg
+  if (recipe) {
+    items = items.concat(recipe.items)
+    groups.push({ name: recipe.block.of, items: recipe.items })
+    seen.push(...recipe.versions_seen)
+    notes.push(...recipe.notes)
+    if (recipe.lock) locks.push(recipe.lock)
+    if (mixtureKg === undefined && (componentMode || opts.totalMassKg))
+      locks.push(
+        `the mixture ${recipe.block.of} has no mass in kg — pass recipe.mass_kg (its mass in the product), or nothing ` +
+          'can be weighed against a total'
+      )
+  }
   const overlaps = overlapsOf(groups)
   if (overlaps.length)
     locks.push(
@@ -654,7 +598,7 @@ export function weighBom(
   // A part as heavy as the whole product, beside other parts with a mass, is suspected of being the whole
   // product's figure. Named, never removed — a dominant part can be real (9.85 of 10 kg). It locks the verdict
   // only when the parts then overshoot the total, which a real dominant part leaves no room for.
-  const parts = items.filter((i) => !i.packaging)
+  const parts = items.filter((i) => !i.packaging && i.group !== 'recipe')
   const partsSum = parts.reduce((s, i) => s + i.mass_kg, 0)
   if (total)
     for (const p of parts) {
@@ -665,7 +609,17 @@ export function weighBom(
       if (partsSum > total.mass_kg) locks.push(`${words}; the parts overshoot the total`)
       else notes.push(`${words}.`)
     }
-  const versions = versionsOf(items, found, seen)
+  const versions = versionsOf(items, found, seen, [
+    ...(recipe?.version ? [{ version: recipe.version, entry: `recipe of ${recipe.block.of}` }] : []),
+    ...(recipe?.contents_version
+      ? [
+          {
+            version: recipe.contents_version,
+            entry: `contents of ${recipe.block.of} (${recipe.block.mass_kg} kg)`
+          }
+        ]
+      : [])
+  ])
   if (versions?.conflict && versions.used)
     locks.push(
       "figures that claim to be this product's own name different versions: " +
@@ -681,14 +635,28 @@ export function weighBom(
         .join('; ')} — if the description does not settle which one the user means, ask.`
     )
   const open = unresolved.map((u) => `${u.component} (${REASON_WORDS[u.reason]})`)
-  const balance = massBalance({
+  const weighed = massBalance({
     items,
     total,
     open,
     locks,
     overlapping: overlaps.length > 0,
-    tolerance: opts.tolerance
+    tolerance: opts.tolerance,
+    ...(mixtureKg !== undefined ? { mixtureKg } : {})
   })
+  // A recipe alone, with no total: its closure is the whole check — "no total mass" would be a false gap.
+  const balance =
+    recipeOnly && !total
+      ? {
+          ...weighed,
+          balance_ok: locks.length || open.length ? null : true,
+          ...(recipe.block.gap_kg !== undefined ? { residual_kg: recipe.block.gap_kg } : {}),
+          note:
+            locks.length || open.length
+              ? `Balance NOT checked: ${[...open, ...locks].join('; ')}.`
+              : undefined
+        }
+      : weighed
   const withMass = requests.filter((r) => r.status === 'with_mass').length
   const coverage = componentMode
     ? { requested: requests.length + (opts.notResearched?.length ?? 0), with_mass: withMass }
@@ -701,7 +669,9 @@ export function weighBom(
     open,
     versions,
     totalsDisagree: !total && totals.length > 0,
-    tolerance: opts.tolerance ?? TOLERANCE
+    tolerance: opts.tolerance ?? TOLERANCE,
+    recipe,
+    recipeOnly
   })
   return {
     summary,
@@ -714,6 +684,7 @@ export function weighBom(
     ...balance,
     ...(overlaps.length ? { overlaps } : {}),
     ...(versions ? { versions } : {}),
+    ...(recipe ? { recipe: recipe.block } : {}),
     note: [balance.note, ...notes].filter(Boolean).join(' ') || undefined
   }
 }
@@ -728,17 +699,37 @@ function summarise(s: {
   versions?: Versions
   totalsDisagree: boolean
   tolerance: number
+  recipe?: RecipeWeighing
+  recipeOnly: boolean
 }): string {
   const c = s.coverage as { requested?: number; listed?: number; with_mass: number }
-  const parts = s.componentMode
-    ? `${c.with_mass} of ${c.requested} requested components came back with a mass of their own`
-    : `${c.with_mass} of ${c.listed} listed components have a mass`
-  const sum = `parts sum to ${s.balance.sum_kg} kg${s.balance.packaging_kg ? ` (packaging ${s.balance.packaging_kg} kg on top)` : ''}`
+  const mixture = s.recipe?.block.mass_kg
+  const parts = s.recipeOnly
+    ? 'Only the recipe was researched, no other part of the product (a container or packaging would go in components)'
+    : s.componentMode
+      ? `${c.with_mass} of ${c.requested} requested components came back with a mass of their own`
+      : `${c.with_mass} of ${c.listed} listed components have a mass`
+  const packs = [
+    s.balance.packaging_kg ? `sales packaging ${s.balance.packaging_kg} kg` : '',
+    s.balance.transport_packaging_kg ? `transport packaging ${s.balance.transport_packaging_kg} kg` : ''
+  ].filter(Boolean)
+  const sum =
+    s.recipeOnly && mixture === undefined
+      ? ''
+      : `${s.recipeOnly ? 'the mixture weighs' : mixture !== undefined ? 'parts and mixture sum to' : 'parts sum to'} ` +
+        `${s.balance.sum_kg} kg${packs.length ? ` (${packs.join(', ')} on top)` : ''}`
+  // Scaling is not checking: a mixture scaled to a given mass leaves the total to check the other parts alone.
+  const scaled =
+    mixture !== undefined
+      ? ', the mixture counted at the mass it was scaled to, so this checks the other parts'
+      : ''
   const against = s.total
-    ? `Checked against ${totalWords(s.total)}`
+    ? `Checked against ${totalWords(s.total)}${scaled}`
     : s.totalsDisagree
       ? 'The whole-product masses the research found disagree, so none was used'
-      : 'No total mass is known, so nothing was checked'
+      : s.recipeOnly
+        ? "The recipe's closure is the check"
+        : 'No total mass is known, so nothing was checked'
   // The share beside the kilograms: "0.418 kg" alone read as a gap to close before building, on a list that
   // landed 2 % from its total.
   const share =
@@ -746,16 +737,23 @@ function summarise(s: {
       ? `${Math.round((Math.abs(s.balance.residual_kg) / s.total.mass_kg) * 100)} % of the total`
       : ''
   const verdict =
-    s.balance.balance_ok === true
-      ? `the parts add up (residual ${s.balance.residual_kg} kg, ${share}, within the ${Math.round(s.tolerance * 100)} % tolerance).`
-      : s.balance.balance_ok === false
-        ? `the parts do NOT add up (residual ${s.balance.residual_kg} kg, ${share}).`
-        : s.balance.residual_kg !== undefined
-          ? `not judged; residual ${s.balance.residual_kg} kg.`
-          : 'not judged.'
+    s.recipeOnly && !s.total
+      ? s.balance.balance_ok === true
+        ? 'it closes.'
+        : 'not judged.'
+      : s.balance.balance_ok === true
+        ? `the parts add up (residual ${s.balance.residual_kg} kg, ${share}, within the ${Math.round(s.tolerance * 100)} % tolerance).`
+        : s.balance.balance_ok === false
+          ? `the parts do NOT add up (residual ${s.balance.residual_kg} kg, ${share}).`
+          : s.balance.residual_kg !== undefined
+            ? `not judged; residual ${s.balance.residual_kg} kg.`
+            : 'not judged.'
   const next = [
     s.open.length ? `open: ${s.open.join(', ')}` : '',
     s.versions?.conflict ? 'the figures rest on different versions of the product' : ''
   ].filter(Boolean)
-  return `${parts}; ${sum}. ${against} — ${verdict}${next.length ? ` Still ${next.join('; ')} — see note.` : ''}`
+  return (
+    `${s.recipe ? `${s.recipe.sentence} ` : ''}${parts}${sum ? `; ${sum}` : ''}. ${against} — ${verdict}` +
+    (next.length ? ` Still ${next.join('; ')} — see note.` : '')
+  )
 }

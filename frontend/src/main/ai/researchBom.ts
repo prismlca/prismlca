@@ -1,10 +1,20 @@
 /**
  * The bill-of-materials researcher behind `research_bom`: one isolated web-research leg per named component
- * (or one that enumerates them), a bounded retry and follow-up pass, and the sources settled against what the
- * search engine actually cited. Reading a leg's answer lives in bomAnswer.ts, judging the list in bomBalance.ts.
+ * (or one that enumerates them), one for the recipe of a mixture when the caller asks for it, a bounded retry and
+ * follow-up pass, and the sources settled against what the search engine actually cited. Reading a leg's answer
+ * lives in bomAnswer.ts and bomRecipe.ts, judging the list in bomBalance.ts and recipeBalance.ts.
  */
 import { parseBomAnswer, type BomLeg } from './bomAnswer'
 import { weighBom, type BomWeighing, type LegOutcome } from './bomBalance'
+import {
+  RECIPE_BRIEF,
+  RECIPE_SYSTEM,
+  parseRecipeAnswer,
+  recipeQuestion,
+  type RecipeLeg,
+  type RecipeRequest
+} from './bomRecipe'
+import { weighRecipe } from './recipeBalance'
 import { CitationBook, isProviderLink, type Evidence } from './citationBook'
 import { settleLinks } from './researchNote'
 import {
@@ -20,7 +30,7 @@ import {
 const BOM_SYSTEM = `You research bills of materials for life-cycle assessment.
 Answer with ONE JSON object ONLY — no prose, no code fence:
 {"items": [{"component": string, "material": string, "mass_kg": number | null, "count": integer,
-            "mass_each_kg": number, "mass_range_kg": [number, number], "packaging": boolean,
+            "mass_each_kg": number, "mass_range_kg": [number, number], "packaging": "no" | "sales" | "transport",
             "includes": [string], "version": string, "source_url": string, "source_class": string,
             "confidence": string, "note": string}],
  "product_mass": [{"mass_kg": number, "basis": "net" | "gross" | "unknown", "version": string,
@@ -53,9 +63,11 @@ Items:
   what you did find (a material, a range for a similar product, "no figure anywhere"). Never write 0 for an
   unknown mass and never guess one — a null is a gap the caller can close, a guess is not. Equally, do not
   list a part you have no evidence exists.
-- "packaging": true for sales or transport packaging (box, film, pallet) — not for parts of the product.
-- "includes": when your figure already contains another listed component (a pouch weighed with its spout),
-  name that component as it was listed.
+- "packaging": "no" for every part of the product itself (a frame, a shelf, a wheel, the pouch that holds a soap);
+  "sales" only for what the product is sold in (its retail box, blister, film); "transport" only for shipping
+  cartons, pallets and stretch film shared by several units.
+- "includes": when your figure already contains another listed component (a pouch weighed with its spout, a tread
+  with its rubber compound), name that component as it was listed.
 - "version": only when your sources tell versions of THIS product apart (EAN, article number, board thickness,
   weight, market) — the version of the WHOLE product your figure belongs to, never the number of a spare part or
   of the part itself. Omit it when the sources show one version, and for a comparable product's figure.
@@ -72,7 +84,7 @@ Items:
 product_mass (leave it out when no source states one): the mass of THIS complete product, or of one of its
 versions, as a source states it — never a comparable product's, which belongs in a note — one entry per figure
 found, never computed by you. "basis": "net" without packaging (article weight),
-"gross" with packaging (shipping weight), "unknown" when the source does not say.
+"gross" with its sales packaging (the weight as sold), "unknown" when the source does not say.
 
 versions_seen (leave it out when the sources show only one version): every other version of THIS product your
 sources showed — its EAN, article number or name, what differs, its weight if stated, where it is sold. Not
@@ -96,6 +108,45 @@ export interface BomResult extends BomWeighing {
 
 /** A leg that found nothing parses to this — the weighing calls it failed, with the reason given. */
 const EMPTY: BomLeg = { items: [], unresolved: [], product_masses: [], versions_seen: [] }
+
+/** How one kind of leg is asked and read: its instruction, its answer's reader, its short question after a timeout. */
+interface LegKind<T> {
+  system: string
+  parse: (json: unknown) => T
+  /** Appended to the question for the one short attempt a timed-out leg gets. */
+  brief: string
+  /** The progress line for an answer that was read. */
+  progress: (answer: T) => string
+  empty: T
+}
+
+const PARTS: LegKind<BomLeg> = {
+  system: BOM_SYSTEM,
+  parse: parseBomAnswer,
+  brief:
+    'BE BRIEF: the JSON object with one entry — the mass in kg and one source URL. ' +
+    'Do not survey alternatives: one sourced figure is enough, and its note still says whose figure it is.',
+  progress: (leg) => {
+    const n = leg.items.length
+    const open = leg.unresolved.length
+    return (
+      `${n} entr${n === 1 ? 'y' : 'ies'}` +
+      (open ? `, ${open} without a mass` : '') +
+      (leg.product_masses.length ? ', whole-product mass found' : '')
+    )
+  },
+  empty: EMPTY
+}
+
+const RECIPE: LegKind<RecipeLeg> = {
+  system: RECIPE_SYSTEM,
+  parse: parseRecipeAnswer,
+  brief: RECIPE_BRIEF,
+  progress: (leg) =>
+    `${leg.lines.length} line${leg.lines.length === 1 ? '' : 's'}` +
+    (leg.formulation ? ` from ${leg.formulation.name}` : ''),
+  empty: { lines: [], contents_masses: [], versions_seen: [], problems: [] }
+}
 
 /**
  * Research a product's bill of materials. Each named component is researched in its own parallel
@@ -127,6 +178,9 @@ export async function researchBom(opts: {
   domains?: string[]
   /** Ceiling on the provider's web lookups inside one request of a leg (Settings → AI → Limits). */
   webLookups?: number
+  /** Research the recipe of a mixture in one leg of its own (bomRecipe.ts): what it is of, the mass it is scaled
+   *  to, the ingredients known. Without components, it is the only leg. */
+  recipe?: RecipeRequest
 }): Promise<BomResult> {
   const cap = Math.max(1, Math.min(opts.maxComponents ?? 8, 8))
   const named = (opts.components ?? []).map((c) => c.trim()).filter(Boolean)
@@ -137,7 +191,7 @@ export async function researchBom(opts: {
   // Every page the engine cited across all legs and passes — the evidence the items can point to.
   const book = new CitationBook()
 
-  const ask = async (question: string, label: string, brief = false): Promise<BomLeg> => {
+  const askAs = async <T>(kind: LegKind<T>, question: string, label: string, brief = false): Promise<T> => {
     opts.onProgress?.(`researching ${label}`)
     // Two failure shapes, two remedies. An answer that will not parse gets a stricter instruction on
     // the same budget; a leg that runs out of TIME gets one shorter, narrower attempt. Without the
@@ -150,12 +204,7 @@ export async function researchBom(opts: {
     const attempts: Array<{ q: string; budgetMs?: number }> = [
       { q: question },
       { q: `${question}\n\nReturn ONLY the JSON object, nothing else.` },
-      {
-        q:
-          `${question}\n\nBE BRIEF: the JSON object with one entry — the mass in kg and one source URL. ` +
-          'Do not survey alternatives: one sourced figure is enough, and its note still says whose figure it is.',
-        budgetMs: RETRY_BUDGET_MS
-      }
+      { q: `${question}\n\n${kind.brief}`, budgetMs: RETRY_BUDGET_MS }
     ]
     // The follow-up pass for unresolved components runs the short, narrow attempt only: one figure,
     // one source, 90 seconds — the same shape the timeout retry has.
@@ -170,7 +219,7 @@ export async function researchBom(opts: {
           logAs: 'research_bom',
           webLookups: opts.webLookups,
           question: attempts[i].q,
-          system: BOM_SYSTEM,
+          system: kind.system,
           model: opts.model,
           signal: opts.signal,
           onCost: opts.onCost,
@@ -191,22 +240,20 @@ export async function researchBom(opts: {
       }
       if (!text) continue
       try {
-        const leg = parseBomAnswer(extractJson(text))
-        const n = leg.items.length
-        const open = leg.unresolved.length
-        opts.onProgress?.(
-          `${label}: ${n} entr${n === 1 ? 'y' : 'ies'}` +
-            (open ? `, ${open} without a mass` : '') +
-            (leg.product_masses.length ? ', whole-product mass found' : '')
-        )
-        return leg
+        const answer = kind.parse(extractJson(text))
+        opts.onProgress?.(`${label}: ${kind.progress(answer)}`)
+        return answer
       } catch {
         /* try once more with a stricter instruction */
       }
     }
     opts.onProgress?.(`${label}: nothing usable`)
-    return EMPTY
+    return kind.empty
   }
+  const ask = (question: string, label: string, brief = false): Promise<BomLeg> =>
+    askAs(PARTS, question, label, brief)
+  // The mixture, when the caller names one: "of" defaults to the product itself (a concrete, a mortar).
+  const recipeOf = opts.recipe ? opts.recipe.of?.trim() || opts.product : undefined
 
   // Everything the leg needs to know, since it shares no history with the parent conversation. A total the
   // caller passed helps the leg find the right product, and is fenced off from becoming a part's mass: a leg
@@ -220,11 +267,20 @@ export async function researchBom(opts: {
   // Each leg learns which components the others cover: so a figure that contains one of them can say so
   // ("includes"), and a leg asked for the frame knows the shelves are not its business.
   const siblings = (c: string): string => {
-    const others = components.filter((o) => o !== c)
+    const others = [...components.filter((o) => o !== c), ...(recipeOf ? [`the recipe of ${recipeOf}`] : [])]
     return others.length
       ? `\nResearched separately, by other researchers: ${others.map((o) => `"${o}"`).join(', ')}.`
       : ''
   }
+  // The recipe leg runs beside the component legs and outside their follow-up pass, which would ask the ingredients
+  // one by one again — the very cut that made a recipe from four sources.
+  const recipeLeg = recipeOf
+    ? askAs(
+        RECIPE,
+        recipeQuestion(brief, recipeOf, opts.recipe as RecipeRequest, components),
+        `the recipe of ${recipeOf}`
+      )
+    : undefined
   const legs = components.length
     ? components.map((c) =>
         ask(
@@ -235,20 +291,25 @@ export async function researchBom(opts: {
           c
         )
       )
-    : [
-        ask(
-          `${brief}\n\nList every relevant component with its material and mass in kg (at most ${cap} entries) ` +
-            'in the JSON object. Include the small parts a teardown would find — coatings, adhesives, ' +
-            'fasteners, labels, seals, additives — when the product has them; a part whose mass you cannot ' +
-            'find is listed with "mass_kg": null, not left out and not guessed.',
-          'the component list'
-        )
-      ]
+    : recipeOf
+      ? []
+      : [
+          ask(
+            `${brief}\n\nList every relevant component with its material and mass in kg (at most ${cap} entries) ` +
+              'in the JSON object. Include the small parts a teardown would find — coatings, adhesives, ' +
+              'fasteners, labels, seals, additives — when the product has them; a part whose mass you cannot ' +
+              'find is listed with "mass_kg": null, not left out and not guessed.',
+            'the component list'
+          )
+        ]
 
   // Settled, not all: a leg that runs out of its time budget or loses its connection used to take every
   // other leg's findings with it, so eight researched components became an empty result because the
   // ninth timed out. What came back is kept, and what did not is named by component.
-  const settled = await Promise.allSettled(legs)
+  const [settled, recipeSettled] = await Promise.all([
+    Promise.allSettled(legs),
+    recipeLeg ? Promise.allSettled([recipeLeg]) : Promise.resolve([])
+  ])
   const outcomes: LegOutcome[] = settled.map((r, i) => ({
     request: components.length ? components[i] : null,
     ...(r.status === 'fulfilled'
@@ -322,10 +383,28 @@ export async function researchBom(opts: {
     opts.onProgress?.(`follow-up: ${resolved} of ${targets.length} resolved`)
   }
 
+  const recipeOutcome = recipeSettled[0]
+  const recipe =
+    opts.recipe && recipeOf
+      ? weighRecipe(recipeOutcome?.status === 'fulfilled' ? recipeOutcome.value : undefined, {
+          of: recipeOf,
+          request: opts.recipe,
+          canonical: (url) => book.canonical(url),
+          ...(recipeOutcome?.status === 'rejected'
+            ? {
+                error:
+                  recipeOutcome.reason instanceof Error
+                    ? recipeOutcome.reason.message
+                    : String(recipeOutcome.reason)
+              }
+            : {})
+        })
+      : undefined
   const weighed = weighBom(outcomes, {
     totalMassKg: opts.totalMassKg,
     notResearched,
-    itemCap: Math.max(cap * 3, 12)
+    itemCap: Math.max(cap * 3, 12),
+    ...(recipe ? { recipe } : {})
   })
   const { items } = weighed
   // A leg may quote the provider's link to a page instead of the page (Google): stored as the page —
@@ -342,6 +421,13 @@ export async function researchBom(opts: {
   }
   for (const i of items) i.source_url = settle(i.source_url)
   for (const t of weighed.totals_found ?? []) if (t.source_url) t.source_url = settle(t.source_url)
+  const mix = weighed.recipe
+  if (mix) {
+    if (mix.formulation?.source_url) mix.formulation.source_url = settle(mix.formulation.source_url)
+    for (const l of mix.lines) if (l.source_url) l.source_url = settle(l.source_url)
+    for (const c of mix.contents_found ?? []) if (c.source_url) c.source_url = settle(c.source_url)
+    if (mix.declared_source) mix.declared_source = settle(mix.declared_source)
+  }
   // The addresses an unresolved component's note names get the same treatment: the page, not the
   // provider's link to it, and no link that leads nowhere.
   const unresolved = weighed.unresolved.map((u) => {
@@ -352,9 +438,12 @@ export async function researchBom(opts: {
   })
   const sources = [
     ...new Set(
-      [...items.map((i) => i.source_url), ...(weighed.totals_found ?? []).map((t) => t.source_url)].filter(
-        (u): u is string => !!u
-      )
+      [
+        ...items.map((i) => i.source_url),
+        ...(weighed.totals_found ?? []).map((t) => t.source_url),
+        mix?.formulation?.source_url,
+        mix?.declared_source
+      ].filter((u): u is string => !!u)
     )
   ]
   // The engine's record against the model's: an item whose URL the search never returned is marked,
@@ -370,7 +459,7 @@ export async function researchBom(opts: {
     ? `${deadLinks} figure${deadLinks === 1 ? '' : 's'} named a search-result link that leads to no page — kept without a source_url; verify before relying on it.`
     : ''
   const emptyNote =
-    items.length === 0 && !unresolved.length
+    items.length === 0 && !unresolved.length && !mix?.lines.length
       ? 'The research returned no usable figures — ask the user for the composition, or try a more specific product description.'
       : ''
   return {
