@@ -9,6 +9,7 @@ import {
 } from '../../shared/aiDefaults'
 import { billedBy, labKey } from '../../shared/labKey'
 import { priceFor, priceOn } from './directModels'
+import { isSlow, MIN_STUDIES, RUN_TIMES, slowdown, type RunTimeMeasurement } from './measuredPace'
 import {
   DEFAULT_MODEL_ID,
   findModel,
@@ -250,5 +251,48 @@ describe('reasoning effort per row', () => {
     const { research, writerFallback, match } = providerDefaults('openai')
     expect([research, writerFallback, match]).toEqual(Array(3).fill('gpt-6-luna'))
     expect(providerDefaults('openrouter').match).toBe('openai/gpt-6-luna')
+  })
+})
+
+describe('the pace word in a descriptor', () => {
+  // A strength or price word follows a figure that covers every row; "slow" follows our own runs, and
+  // a row nobody has timed must not carry it, however slow it feels (measuredPace.ts).
+  it('says "slow" exactly where our own measurements earn it, and says it last', () => {
+    for (const m of AI_MODELS.filter((r) => !r.userAdded)) {
+      const slow = isSlow(RUN_TIMES[m.id])
+      expect(/\bslow\b/.test(m.descriptor), `${m.id}: "${m.descriptor}"`).toBe(slow)
+      if (slow) expect(m.descriptor, m.id).toMatch(/[,·] slow$/)
+    }
+  })
+
+  it('rests every measurement on a catalogue row, a default chat model and enough paired studies', () => {
+    const defaultChats = (['openrouter', 'anthropic', 'google', 'openai'] as const).map(
+      (p) => providerDefaults(p).chat
+    )
+    for (const [id, t] of Object.entries(RUN_TIMES)) {
+      expect(AI_MODELS.map((m) => m.id)).toContain(id)
+      expect(defaultChats, id).toContain(t.reference)
+      expect(t.studies.length, id).toBeGreaterThanOrEqual(MIN_STUDIES)
+      expect(t.minutes, id).toHaveLength(t.studies.length)
+      expect(t.referenceMinutes, id).toHaveLength(t.studies.length)
+      expect(Math.min(...t.minutes, ...t.referenceMinutes), id).toBeGreaterThan(0)
+      expect(t.measured, id).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }
+  })
+
+  it('compares medians and needs more than the factor, not the factor itself', () => {
+    const base = { measured: '2026-11-15', effort: 'high', studies: ['a', 'b', 'c'], reference: 'x' } as const
+    const run = (minutes: number[], referenceMinutes: number[]): RunTimeMeasurement => ({
+      ...base,
+      studies: [...base.studies],
+      minutes,
+      referenceMinutes
+    })
+    // One outlier on either side moves neither median.
+    expect(slowdown(run([60, 20, 21], [7, 7, 30]))).toBe(3)
+    expect(isSlow(run([60, 20, 21], [7, 7, 30]))).toBe(false)
+    expect(isSlow(run([60, 22, 21], [7, 7, 30]))).toBe(true)
+    expect(slowdown(run([10, 40], [3, 5]))).toBe(6.25)
+    expect(isSlow(undefined)).toBe(false)
   })
 })

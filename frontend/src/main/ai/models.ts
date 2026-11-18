@@ -114,7 +114,9 @@ export interface AiModel {
    *  list a superlative is about that list, the only one the table shows. A price word is a class,
    *  not a number: "cheapest" ≈ $0.10/$0.50, "very cheap" under $0.50 in, "cheap" under $1 in,
    *  "mid" ≈ $2/$10, "upper-mid" ≈ $4/$20, "premium" ≈ $8/$40, "priciest" the top row; "lowest
-   *  price here" is the one row below all of them. */
+   *  price here" is the one row below all of them. "slow" goes last, and only on a row whose runs we
+   *  timed ourselves at more than three times a default chat model's: no measurement, no "slow". The
+   *  measurements and the rule are in measuredPace.ts; models.test.ts holds every row to them. */
   descriptor: string
   temperature: number | null // researched per-model value; null = omit the parameter (vendor default)
   intelligence: number | null // Artificial Analysis Intelligence Index
@@ -482,7 +484,7 @@ const CATALOGUE: AiModel[] = [
     // parameter is omitted — the catalogue's reasoning-model rule.
     id: 'tencent/hy4',
     label: 'Hy4 (Tencent)',
-    descriptor: 'solid, very cheap',
+    descriptor: 'solid, very cheap, slow',
     temperature: null,
     intelligence: 34.6,
     vision: true,
@@ -502,7 +504,7 @@ const CATALOGUE: AiModel[] = [
     // reasoning-model rule.
     id: 'mistralai/mistral-large-4-0',
     label: 'Mistral Large 4',
-    descriptor: 'European lab · open weight',
+    descriptor: 'European lab · open weight · slow',
     temperature: null,
     // AA's "(High)" row, its top effort and Mistral's own recommendation.
     intelligence: 26.1,
