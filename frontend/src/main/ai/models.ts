@@ -77,6 +77,7 @@ import {
   DEFAULT_GOOGLE_MODEL_ID,
   DEFAULT_OPENAI_MODEL_ID,
   defaultChatModelFor,
+  defaultReviewModelFor,
   type AiProviderId,
   type ReasoningEffort
 } from '../../shared/aiDefaults'
@@ -714,8 +715,9 @@ export function findModel(id: string | undefined, provider: ProviderKey = 'openr
 /**
  * The default model per JOB, per provider. On OpenRouter these are the ids that have carried the
  * sub-agents since GLM 5.3 replaced 5.2 (research/review) and the writer's cheap fallback; under
- * OpenAI the cheap tier (Luna) takes over all three cheap roles — same "inexpensive, solid
- * synthesis" reasoning, one family. The exported constants at the historic sites (RESEARCH_MODEL,
+ * OpenAI the cheap tier (Luna) takes over the cheap roles — same "inexpensive, solid synthesis"
+ * reasoning, one family. The reviewer is no cheap role: it comes from defaultReviewModelFor, which the
+ * settings page reads too. The exported constants at the historic sites (RESEARCH_MODEL,
  * REVIEW_MODEL, FALLBACK_MODEL) are assigned FROM here, so the two can never drift. The context
  * summariser has no role here: it runs on the chat model (compactionSummary.ts, summariseDropped).
  */
@@ -734,24 +736,20 @@ export function providerDefaults(p: ProviderKey): {
     return {
       chat: DEFAULT_OPENAI_MODEL_ID,
       research: 'gpt-6-luna',
-      review: 'gpt-6-luna',
+      review: defaultReviewModelFor('openai'),
       writerFallback: 'gpt-6-luna',
       match: 'gpt-6-luna'
     }
-  // Under Google every role runs on 3.8 Flash: it is the cheap tier and the only chat model a
-  // free-tier key reaches. The reviewer is therefore the same model as the researcher, which the
-  // OpenRouter defaults avoid on purpose — accepted here because the Google list has no second cheap
-  // model; whoever wants a different reviewer picks Argon under Settings → AI → Models. Unmeasured as
-  // matcher (the OpenRouter/OpenAI choice was measured on four import sets); the first paid run says.
-  // Under Anthropic the cheap roles go to Haiku 5.5, as they go to Luna under OpenAI: the cheapest
-  // class, and Anthropic's strongest model at that price. The reviewer is therefore the researcher's
-  // model, as under Google; Sonnet 5.5 is one pick away under Settings → AI → Models, at twenty times the
-  // price. Unmeasured as matcher.
+  // Under Google the cheap roles run on 3.8 Flash: it is the cheap tier and the only chat model a
+  // free-tier key reaches. Unmeasured as matcher (the OpenRouter/OpenAI choice was measured on four
+  // import sets); the first paid run says. Under Anthropic the cheap roles go to Haiku 5.5, as they go to
+  // Luna under OpenAI: the cheapest class, and Anthropic's strongest model at that price. Unmeasured as
+  // matcher. The reviewer is not a cheap role on any of them (defaultReviewModelFor).
   if (p === 'anthropic')
     return {
       chat: DEFAULT_ANTHROPIC_MODEL_ID,
       research: 'claude-haiku-5-5',
-      review: 'claude-haiku-5-5',
+      review: defaultReviewModelFor('anthropic'),
       writerFallback: 'claude-haiku-5-5',
       match: 'claude-haiku-5-5'
     }
@@ -759,17 +757,17 @@ export function providerDefaults(p: ProviderKey): {
     return {
       chat: DEFAULT_GOOGLE_MODEL_ID,
       research: 'gemini-3.8-flash',
-      review: 'gemini-3.8-flash',
+      review: defaultReviewModelFor('google'),
       writerFallback: 'gemini-3.8-flash',
       match: 'gemini-3.8-flash'
     }
   return {
     chat: DEFAULT_MODEL_ID,
     // Research on the Flash sibling: same lab and price class, chosen on its agentic score under
-    // v4.3, 1M context — and the review deliberately stays on the NON-flash sibling, so the
-    // reviewer is at least a different model than the researcher.
+    // v4.3, 1M context — and the review on the NON-flash sibling, so the reviewer is at least a
+    // different model than the researcher.
     research: 'z-ai/glm-5.3-flash',
-    review: 'z-ai/glm-5.3',
+    review: defaultReviewModelFor('openrouter'),
     writerFallback: 'deepseek/deepseek-v4.1-flash',
     match: 'openai/gpt-6-luna'
   }

@@ -50,6 +50,20 @@ export function defaultChatModelFor(p: AiProviderId): string {
   return DEFAULT_MODEL_ID
 }
 
+/**
+ * The review default per provider — the model that argues against the study (review_model) and reads
+ * every drafted report chapter. The strong model of each list rather than its cheapest: in a series of
+ * practice runs the review was the only check that found errors in the substance of a model. Not
+ * measured as reviewers. Under Anthropic and OpenAI it is the chat default itself, so an untouched setup
+ * reviews its own work; the review answer then calls it a self-review, and Settings says so.
+ */
+export function defaultReviewModelFor(p: AiProviderId): string {
+  if (p === 'anthropic') return 'claude-sonnet-5-5'
+  if (p === 'openai') return 'gpt-6.1-sol'
+  if (p === 'google') return 'gemini-4-argon'
+  return 'z-ai/glm-5.3'
+}
+
 /** A stored or IPC-supplied provider value, sanitised: anything unknown is OpenRouter. */
 export function asAiProvider(value: unknown): AiProviderId {
   return value === 'anthropic' || value === 'openai' || value === 'google' ? value : 'openrouter'

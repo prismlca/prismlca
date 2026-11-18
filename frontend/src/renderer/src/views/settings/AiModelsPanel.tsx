@@ -16,6 +16,7 @@ import {
   chatEffort,
   chatEffortLevels,
   defaultChatModelFor,
+  defaultReviewModelFor,
   GOOGLE_PRICES_CHECKED,
   planToolOn,
   OPENAI_PRICES_CHECKED
@@ -145,6 +146,9 @@ export function AiModelsPanel(): JSX.Element {
   const foreign = (id: string): boolean => models.length > 0 && !!id && !inCatalogue(id)
   const shownValue = (id: string): string => (id && inCatalogue(id) ? id : '')
   const defaultChatId = defaultChatModelFor(provider)
+  const defaultReviewId = defaultReviewModelFor(provider)
+  /** The model a review actually goes to, and whether that is the model building the study. */
+  const selfReview = (shownValue(reviewModel) || defaultReviewId) === (shownValue(model) || defaultChatId)
   const sortVal = (m: AiModelInfo, key: ModelSortKey): string | number | null => {
     if (key === 'lab') return labKey(m.id)
     if (key === 'label') return m.label
@@ -319,22 +323,23 @@ export function AiModelsPanel(): JSX.Element {
         }
         value={shownValue(reviewModel)}
         onPick={pickReviewModel}
-        // Not "different from the chat": under Google the default reviewer is the chat default (Gemini 3.8
-        // Flash), the one cheap model that list has.
-        blank="Default (a cheap model)"
+        // Named, not described: the default is the strong model of each list, and under Anthropic and
+        // OpenAI it is the chat default itself (shared/aiDefaults.ts, defaultReviewModelFor).
+        blank={`Default (${providerModels.find((m) => m.id === defaultReviewId)?.label ?? defaultReviewId})`}
         models={providerModels}
         note={
           <>
-            {/* Not a warning, a fact: choosing the chat model here is allowed and sometimes deliberate
-                (one strong model, one bill). It just stops being a second opinion, and that is the whole
-                reason the reviewer exists — so it stays on the page, not in the hover panel: a
-                consequence you have already caused is not an explanation you go looking for. */}
+            {/* Not a warning, a fact: reviewing with the chat model is allowed and sometimes deliberate
+                (one strong model, one bill), and under Anthropic and OpenAI it is what the defaults do. It
+                just stops being a second opinion, and that is the whole reason the reviewer exists — so it
+                stays on the page, not in the hover panel: a consequence already in effect is not an
+                explanation you go looking for. */}
             <p className="settings-hint">
               The review model also reads every drafted report chapter as it will print, against the figures
               and the study, and settles its points with the writer — you only hear about what the two could
               not settle.
             </p>
-            {reviewModel && reviewModel === model ? (
+            {selfReview ? (
               <p className="settings-hint warn">
                 This is the same model that builds the study. It will review its own work — a reviewer usually
                 agrees with itself, so expect fewer findings than a different model would raise.
