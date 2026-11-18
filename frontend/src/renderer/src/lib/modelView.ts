@@ -537,9 +537,10 @@ async function _viewFetch(db: string): Promise<ModelView> {
 
 /**
  * Read a model's view again because the backend may have changed it on its own: a merged tag group takes
- * the saved breakdowns along (the Results split, the Detailed grouping, the short report's), and so does
- * the undo of a merge. Called after every model change, from whichever side it came. The copy held here
- * would otherwise keep the old name on screen, and its next write — of any section — would send it back.
+ * the saved breakdowns along (the Results split, the Detailed grouping, the short report's), a deleted one
+ * is taken out of them, and the undo of either puts them back. Called after every model change, from
+ * whichever side it came. The copy held here would otherwise keep the old name on screen, and its next
+ * write — of any section — would send it back.
  *
  * Only for a model this window has read already: any other one is read when a panel or the canvas asks
  * for it. A read still on its way may predate the change, so a new one follows it.

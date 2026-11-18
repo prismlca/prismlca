@@ -15,7 +15,7 @@ import { splitId } from '../lib/canvas'
 import { groupsFromTags } from '../lib/groups'
 import { boxTags, isBox, shownTags, type BoxData } from '../lib/occurrences'
 import type { useCanvasModel } from './useCanvasModel'
-import { mergeNotice, type MergePreview } from '../components/tagMergeNotice'
+import { deleteNotice, mergeNotice, type TagReferences } from '../components/tagChangeNotice'
 
 // Stable fallback: `?? []` would be a fresh array each render and rattle every dependent memo.
 const NO_GROUPS: TagGroup[] = []
@@ -302,16 +302,17 @@ export function useTagging(deps: TaggingDeps) {
       if (activeDb) await reloadGraph(activeDb)
       await reloadAudit()
     })
-  // What a merge touches besides the tags, for its confirm (components/tagMergeNotice). A preview that cannot
-  // be read leaves the confirm as it was: the merge itself does not depend on it.
-  const describeMerge = (group: string, value: string | null, into: string): Promise<string> => {
+  // What a merge into `into` — or a delete, `into` null — touches besides the tags, for its confirm
+  // (components/tagChangeNotice). A preview that cannot be read leaves the confirm as it was: the step itself
+  // does not depend on it.
+  const describeChange = (group: string, value: string | null, into: string | null): Promise<string> => {
     const q = new URLSearchParams({
       database: activeDb ?? '',
       group,
-      ...(value === null ? { into } : { value })
+      ...(value !== null ? { value } : into !== null ? { into } : {})
     })
-    return api<MergePreview>('GET', `/api/v1/model/tag-groups/merge-preview?${q}`)
-      .then((p) => mergeNotice(p, group, value, into))
+    return api<TagReferences>('GET', `/api/v1/model/tag-groups/references?${q}`)
+      .then((p) => (into === null ? deleteNotice(p, group, value) : mergeNotice(p, group, value, into)))
       .catch(() => '')
   }
   const mergeTagGroup = (name: string, into: string): void =>
@@ -361,7 +362,7 @@ export function useTagging(deps: TaggingDeps) {
     removeTagValue,
     mergeTagValue,
     mergeTagGroup,
-    describeMerge,
+    describeChange,
     groupByTagGroup,
     hlTag,
     setHlTag,

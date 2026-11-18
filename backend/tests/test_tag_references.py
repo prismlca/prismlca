@@ -1,8 +1,11 @@
-"""What a tag merge does beside the tags (engine/tag_references.py).
+"""What a tag merge or delete does beside the tags (engine/tag_references.py).
 
 A merged group is the same dimension under the surviving name, so the model's saved breakdowns and its
 reports follow it — and undo takes them back, but not a choice the user made in between. A merged value is
 not followed: the reports whose chapters cite it are named, before the merge and in its result.
+
+A deleted group is taken out of the saved breakdowns, which go back to what they are when nobody has chosen;
+the reports keep it and are named. A deleted value is named in the reports that cite it, like a merged one.
 """
 from __future__ import annotations
 
@@ -11,6 +14,7 @@ import uuid
 import pytest
 
 from prism_lca.engine.report_store import ReportStore
+from prism_lca.engine.tags import TagStore
 from prism_lca.engine.view_store import ViewStore
 
 GROUPS = "/api/v1/model/tag-groups"
@@ -206,7 +210,7 @@ def test_the_preview_names_what_a_group_merge_would_take_along(client, token, pr
     rep = _report(db, "geo", [{"kind": "system_model", "colour_by": "tag:Bauteil"}])
     _report(db, "geo", [_chapter("geo")], name="Unrelated")
 
-    r = _ok(client.get(f"{GROUPS}/merge-preview", params={"database": db, "group": "Bauteil"}, headers=token))
+    r = _ok(client.get(f"{GROUPS}/references", params={"database": db, "group": "Bauteil"}, headers=token))
     assert r["views"] == ["the Results split"]
     assert r["reports"] == [{"id": rep["id"], "name": "Study"}]
 
@@ -235,7 +239,7 @@ def test_a_value_merge_names_the_reports_whose_chapters_cite_the_value(client, t
     _report(db, "tag:Bauteil", [_citing("Use Phase", cited=False)], name="Orphaned pin")
     _report(db, "geo", [_citing("Use Phase")], name="Other breakdown")
 
-    preview = _ok(client.get(f"{GROUPS}/merge-preview", params={"database": db, "group": "Bauteil", "value": "Use Phase"},
+    preview = _ok(client.get(f"{GROUPS}/references", params={"database": db, "group": "Bauteil", "value": "Use Phase"},
                              headers=token))
     assert preview["reports_citing"] == [{"id": rep["id"], "name": "Study", "chapters": 2}]
     assert preview["note"].startswith("Report “Study” (2 chapters) cites “Use Phase”")
@@ -273,7 +277,7 @@ def test_a_report_that_splits_by_both_groups_keeps_its_breakdowns(client, token,
     both = _report(db, "isic", sections, name="Both")
     single = _report(db, "tag:Bauteil", [_chapter("tag:Bauteil")], name="Single")
 
-    preview = _ok(client.get(f"{GROUPS}/merge-preview", params={"database": db, "group": "Bauteil", "into": "Component"},
+    preview = _ok(client.get(f"{GROUPS}/references", params={"database": db, "group": "Bauteil", "into": "Component"},
                              headers=token))
     assert preview["reports"] == [{"id": single["id"], "name": "Single"}]
     assert preview["reports_kept"] == [{"id": both["id"], "name": "Both"}]
@@ -334,3 +338,185 @@ def test_an_undo_that_cannot_read_the_reports_changes_nothing(client, token, pro
     path.write_text(good, encoding="utf-8")
     _undo(client, token, db)
     assert ViewStore().get(db) == SAVED
+
+
+# ---- a deleted group --------------------------------------------------------------------------------------
+
+
+def _delete_group(client, token, db: str, name: str = "Bauteil") -> dict:
+    return _ok(client.post(f"{GROUPS}/delete", json={"database": db, "name": name}, headers=token))
+
+
+CLEARED = {
+    "results": {"stackBy": "", "picked": ["x"]},
+    "detailed": {"groupBy": "", "cutoff": 1},
+    "short_report": {"breakdowns": ["geo"], "colour_by": "", "head": {"title": "T"}},
+}
+
+
+def test_a_deleted_group_is_taken_out_of_the_saved_breakdowns_and_undo_puts_it_back(client, token, project):
+    """Left on the gone name, the Results bars were one "untagged" block; empty, each choice is what it is when
+    nobody has chosen — the split follows the model again, the grouping is off, the colour is the accent."""
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+
+    r = _delete_group(client, token, db)
+    assert ViewStore().get(db) == CLEARED
+    assert r["cleared"] == [
+        "the Results split", "the Detailed results grouping", "the short report's breakdowns",
+        "the short report's system figure colours",
+    ]
+    assert r["reports_kept"] == []
+
+    _undo(client, token, db)
+    assert ViewStore().get(db) == SAVED
+    assert "Bauteil" in [g["name"] for g in _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"]]
+    _redo(client, token, db)
+    assert ViewStore().get(db) == CLEARED
+
+
+def test_undo_of_a_delete_leaves_a_breakdown_chosen_in_between(client, token, project):
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+    _delete_group(client, token, db)
+    _view(db, {**CLEARED, "results": {"stackBy": "tag:Component", "picked": ["x"]}})
+
+    _undo(client, token, db)
+    view = ViewStore().get(db)
+    assert view["results"]["stackBy"] == "tag:Component"
+    assert view["detailed"] == SAVED["detailed"]
+    assert view["short_report"] == SAVED["short_report"]
+
+
+def test_a_deleted_group_leaves_the_reports_as_they_are_and_names_them(client, token, project):
+    """A report's breakdown is what its chapters speak about: no default makes that text right, and taking it out
+    would move every later breakdown's table labels. The confirm and the result name the report instead."""
+    db = _two_groups(client, token)
+    _view(db, {"detailed": {"groupBy": "Bauteil"}})
+    rep = _report(db, "tag:Bauteil", [
+        _chapter("tag:Bauteil"),
+        {"kind": "contribution", "aggregate_by": "geo"},
+        {"kind": "system_model", "colour_by": "tag:Bauteil"},
+    ])
+    coloured = _report(db, "geo", [{"kind": "system_model", "colour_by": "tag:Bauteil"}], name="Coloured")
+    other = _report(db, "tag:Component", [_chapter("tag:Component")], name="Other")
+
+    preview = _ok(client.get(f"{GROUPS}/references", params={"database": db, "group": "Bauteil"}, headers=token))
+    assert preview["views"] == ["the Detailed results grouping"]
+    assert preview["reports"] == [{"id": rep["id"], "name": "Study"}, {"id": coloured["id"], "name": "Coloured"}]
+
+    r = _delete_group(client, token, db)
+    assert r["cleared"] == ["the Detailed results grouping"]
+    assert r["reports_kept"] == preview["reports"]
+    for stored in (rep, coloured, other):
+        assert _stored(db, stored["id"]) == stored
+
+
+def test_a_delete_leaves_another_models_saved_breakdowns(client, token, project):
+    db, elsewhere = _two_groups(client, token), _two_groups(client, token)
+    _view(elsewhere, SAVED)
+    _delete_group(client, token, db)
+    assert ViewStore().get(elsewhere) == SAVED
+
+
+def test_a_view_that_cannot_be_saved_stops_the_delete_whole(client, token, project, monkeypatch):
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+    groups_before = _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"]
+    tags_before = TagStore().model_items(db)
+
+    def refuse(self, database, change):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ViewStore, "edit", refuse)
+    with pytest.raises(OSError):  # the test client raises what the server did not turn into an answer
+        client.post(f"{GROUPS}/delete", json={"database": db, "name": "Bauteil"}, headers=token)
+    monkeypatch.undo()
+    assert ViewStore().get(db) == SAVED
+    assert _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"] == groups_before
+    assert TagStore().model_items(db) == tags_before
+
+
+@pytest.mark.parametrize("failing", ["tags", "group"])
+def test_a_write_that_fails_after_the_view_takes_the_whole_delete_back(client, token, project, monkeypatch, failing):
+    """The view is written first; when stripping the tags or deleting the group fails afterwards, everything comes
+    back as it was — the group in its place and colour, not rebuilt from its tags at the end of the list."""
+    from prism_lca.engine.tag_groups import TagGroupStore
+
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+    groups_before = _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"]
+    tags_before = TagStore().model_items(db)
+
+    def refuse(self, database, name):
+        raise OSError("disk full")
+
+    if failing == "tags":
+        monkeypatch.setattr(TagStore, "remove_dimension", refuse)
+    else:
+        monkeypatch.setattr(TagGroupStore, "delete_group", refuse)
+    with pytest.raises(OSError):
+        client.post(f"{GROUPS}/delete", json={"database": db, "name": "Bauteil"}, headers=token)
+    monkeypatch.undo()
+    assert ViewStore().get(db) == SAVED
+    assert _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"] == groups_before
+    assert TagStore().model_items(db) == tags_before
+
+
+def test_a_report_store_that_cannot_be_read_refuses_the_delete_before_anything_moved(client, token, project):
+    from prism_lca.engine._store import prism_meta_dir
+
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+    _report(db, "tag:Bauteil", [])
+    groups_before = _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"]
+    tags_before = TagStore().model_items(db)
+    (prism_meta_dir() / ReportStore.FILENAME).write_text("{ not json", encoding="utf-8")
+
+    r = client.post(f"{GROUPS}/delete", json={"database": db, "name": "Bauteil"}, headers=token)
+    assert r.status_code >= 400 and r.json()["error"]["code"] == "report_store_unreadable"
+    assert ViewStore().get(db) == SAVED
+    assert _ok(client.get(f"{GROUPS}?database={db}", headers=token))["groups"] == groups_before
+    assert TagStore().model_items(db) == tags_before
+
+
+def test_a_view_write_from_a_copy_older_than_the_delete_is_refused(client, token, project):
+    """As after a merge: the renderer's whole copy, queued before the delete, would put the gone name back."""
+    db = _two_groups(client, token)
+    _view(db, SAVED)
+    read = _ok(client.get(f"/api/v1/views/{db}", headers=token))
+    _delete_group(client, token, db)
+
+    r = client.put(f"/api/v1/views/{db}", json={"view": read["view"], "rev": read["rev"]}, headers=token)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "view_changed"
+    assert ViewStore().get(db)["results"]["stackBy"] == ""
+
+
+# ---- a deleted value ---------------------------------------------------------------------------------------
+
+
+def _remove_value(client, token, db: str, value: str) -> dict:
+    return _ok(client.post(f"{GROUPS}/values/remove", json={"database": db, "group": "Bauteil", "value": value},
+                           headers=token))
+
+
+def test_removing_a_value_names_the_reports_whose_chapters_cite_it(client, token, project, phases):
+    db = phases
+    rep = _report(db, "tag:Bauteil", [_citing("Use Phase"), _citing("Use")])
+    _report(db, "tag:Bauteil", [_citing("Use")], name="Cites the other")
+
+    preview = _ok(client.get(f"{GROUPS}/references", params={"database": db, "group": "Bauteil", "value": "Use Phase"},
+                             headers=token))
+    assert preview["reports_citing"] == [{"id": rep["id"], "name": "Study", "chapters": 1}]
+
+    r = _remove_value(client, token, db, "Use Phase")
+    assert r["reports_citing"] == preview["reports_citing"]
+    assert r["note"] == (
+        "Report “Study” (1 chapter) cites “Use Phase”; those figures show as missing until the chapters are updated."
+    )
+    assert _stored(db, rep["id"]) == rep
+
+
+def test_removing_a_value_nobody_cites_says_nothing_about_reports(client, token, project, phases):
+    r = _remove_value(client, token, phases, "Use Phase")
+    assert r["removed"] is True and "reports_citing" not in r and "note" not in r

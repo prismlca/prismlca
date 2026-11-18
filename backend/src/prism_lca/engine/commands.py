@@ -2046,7 +2046,9 @@ def _code_of(database: str, key: str) -> str:
 
 class DeleteTagGroupCommand(Command):
     """Delete a tag group of a model including the cascade (untags every process and input of the model
-    carrying it). Undo restores the group with its colour, values, list position AND every assignment."""
+    carrying it). The model's saved view choices let go of the group; its reports keep it and are named
+    (`tag_references` says why). Undo restores the group with its colour, values, list position, every
+    assignment and the view choices."""
 
     action = "delete_tag_group"
     audit_attr = "database"
@@ -2061,8 +2063,10 @@ class DeleteTagGroupCommand(Command):
         self._group: dict | None = None
         self._index: int | None = None
         self._assignments: list[tuple[str, str]] = []  # (code, value)
+        self._dropped: list[dict] = []
 
     def execute(self) -> dict:
+        self._dropped = []  # a redo runs this instance again; see MergeTagValueCommand
         groups = self.group_store.list_groups(self.database)
         self._index = next((i for i, g in enumerate(groups) if g["name"] == self.name), None)
         if self._index is None:
@@ -2076,13 +2080,30 @@ class DeleteTagGroupCommand(Command):
             for t in tags
             if t["dimension"] == self.name
         ]
-        self.group_store.delete_group(self.database, self.name)
-        self.tag_store.remove_dimension(self.database, self.name)
-        return {"deleted": True, "untagged": len(self._assignments)}
+        # Read before anything moves: a report store that cannot be read refuses here, not after the delete.
+        kept = tag_references.reports_using(self.database, self.name)
+        # A split by a group that is gone draws one "untagged" block, so the view lets go of it — first, because
+        # it is the write taken back exactly: a view that cannot be saved stops the delete before the tags are
+        # touched, and a tag or group write that fails afterwards takes the view back with everything else.
+        # The tags go before the group: the group store completes its list from the tags, so a group deleted
+        # while its tags were still there would come back from them, at the end of the list in a new colour,
+        # before `restore_group` could put it back where it was.
+        self._dropped = tag_references.drop_group(self.database, self.name)
+        try:
+            self.tag_store.remove_dimension(self.database, self.name)
+            self.group_store.delete_group(self.database, self.name)
+        except Exception:
+            self.undo()  # restoring a group or a tag that is still there is a no-op
+            raise
+        return {
+            "deleted": True, "untagged": len(self._assignments),
+            "cleared": tag_references.view_labels(self._dropped), "reports_kept": kept,
+        }
 
     def undo(self) -> None:
         if self._group is None:
             return
+        tag_references.unfollow(self.database, self._dropped)
         self.group_store.restore_group(self.database, self._group, self._index)
         for code, value in self._assignments:
             self.tag_store.add(self.database, code, self.name, value)
@@ -2093,7 +2114,8 @@ class DeleteTagGroupCommand(Command):
 
 class RemoveTagValueCommand(Command):
     """Remove one value from a tag group of a model including the cascade (untags every process and
-    input of the model carrying it). Undo restores the value at its position AND every assignment."""
+    input of the model carrying it). The reports whose chapters cite the value are named, as after a
+    merge (MergeTagValueCommand). Undo restores the value at its position AND every assignment."""
 
     action = "remove_tag_value"
     audit_attr = "database"
@@ -2124,9 +2146,13 @@ class RemoveTagValueCommand(Command):
             for t in tags
             if t["dimension"] == self.group and t["value"] == self.value
         ]
+        citing = tag_references.value_citations(self.database, self.group, self.value)
         self.group_store.remove_value(self.database, self.group, self.value)
         self.tag_store.remove_dimension_value(self.database, self.group, self.value)
-        return {"removed": True, "untagged": len(self._assignments)}
+        return {
+            "removed": True, "untagged": len(self._assignments),
+            **({"reports_citing": citing, "note": tag_references.citations_note(self.value, citing)} if citing else {}),
+        }
 
     def undo(self) -> None:
         if self._index is None:

@@ -1,4 +1,4 @@
-"""What else in a model names its tag groups and tag values, and how that follows a merge.
+"""What else in a model names its tag groups and tag values, and how that follows a merge or a delete.
 
 A tag group is known by its name alone, and the model's saved choices keep that name: the Results split
 (`tag:<group>`), the Detailed results grouping (the bare name), the short report's breakdowns and the colouring of
@@ -18,6 +18,14 @@ breakdowns, because making two of them one would move every later breakdown's ta
 the target would make a sentence citing both print one figure twice without a word. The pins stay; the reports
 whose chapters cite the value are named before and after the merge, and those chapters show the gap the
 staleness check reports.
+
+**A deleted group** is gone as a dimension, so the model's saved choices let go of it: each goes back to what it is
+when nobody has chosen — the Results split follows the model again, the Detailed results grouping is off, the short
+report drops that breakdown and its system figure takes the accent colour. Left on the gone name, each drew one
+"untagged" block that read as a fault. The reports are left as they are and named before the delete: their
+breakdown is what the written chapters speak about, no default makes that text right, and taking a breakdown out
+would move every later one's table labels (`_collapses`). The chapters show the gap the staleness check reports.
+**A deleted value** is treated like a merged one: the reports whose chapters cite it are named.
 
 Every change is recorded as the value before and after, and undo puts back only what still holds the value it
 wrote — a breakdown chosen again in between is not taken from the user.
@@ -53,20 +61,27 @@ SECTION_PATHS: tuple[tuple[str, ...], ...] = (
 COLOUR_PATHS: tuple[tuple[str, ...], ...] = (("colour_by",),)
 
 
-def _renamed(value: Any, form: str, old: str, new: str) -> Any:
-    """`value` with the group `old` called `new`, in the field's form; `value` itself when it does not name it."""
+def _renamed(value: Any, form: str, old: str, new: str | None) -> Any:
+    """`value` with the group `old` called `new` — taken out when `new` is None, which leaves a single field
+    empty, the "nobody has chosen" of every view field — in the field's form; `value` itself when it does not
+    name it."""
     if form == "bare":
-        return new if value == old else value
+        return (new or "") if value == old else value
     if form == "list":
         if not isinstance(value, list) or f"tag:{old}" not in value:
             return value
         out: list[Any] = []
         for item in value:
-            item = f"tag:{new}" if item == f"tag:{old}" else item
+            if item == f"tag:{old}":
+                if new is None:
+                    continue
+                item = f"tag:{new}"
             if item not in out:  # a breakdown by both groups is one breakdown now
                 out.append(item)
         return out
-    return f"tag:{new}" if value == f"tag:{old}" else value
+    if value != f"tag:{old}":
+        return value
+    return "" if new is None else f"tag:{new}"
 
 
 def _names_group(value: Any, form: str, group: str) -> bool:
@@ -83,8 +98,9 @@ def _holder(obj: Any, path: tuple[str, ...] | list[str]) -> dict | None:
     return obj if isinstance(obj, dict) else None
 
 
-def _follow(obj: Any, path: tuple[str, ...], form: str, old: str, new: str) -> dict | None:
-    """Rename the group in one field; the edit as before/after, or None when the field does not name it."""
+def _follow(obj: Any, path: tuple[str, ...], form: str, old: str, new: str | None) -> dict | None:
+    """Rename the group in one field, or take it out (`new` None); the edit as before/after, or None when the
+    field does not name it."""
     holder = _holder(obj, path)
     if holder is None or path[-1] not in holder:
         return None
@@ -108,6 +124,24 @@ def _restore(obj: Any, edit: dict) -> bool:
 
 def _section(report: dict, section_id: str) -> dict | None:
     return next((s for s in report.get("sections") or [] if s.get("id") == section_id), None)
+
+
+def _view_edits(entry: dict, old: str, new: str | None) -> list[dict]:
+    """Rename the group in every field of the view that names it, or take it out; the edits made."""
+    return [
+        {"store": "view", **edit}
+        for section, field, form, _label in VIEW_FIELDS
+        if (edit := _follow(entry, (section, field), form, old, new)) is not None
+    ]
+
+
+def view_labels(edits: list[dict]) -> list[str]:
+    """The view fields among the edits, as a sentence calls them ("the Results split"), each once — what a
+    merge carried along, or what a delete took the group out of."""
+    labels = {(s, f): label for s, f, _form, label in VIEW_FIELDS}
+    return list(
+        dict.fromkeys(labels[tuple(e["path"])] for e in edits if e.get("store") == "view" and tuple(e["path"]) in labels)
+    )
 
 
 # ---- following a merged group ------------------------------------------------------------------------------
@@ -144,11 +178,7 @@ def follow_group(database: str, old: str, new: str) -> list[dict]:
         return changed
 
     def views(entry: dict) -> bool:
-        mine = [
-            {"store": "view", **edit}
-            for section, field, form, _label in VIEW_FIELDS
-            if (edit := _follow(entry, (section, field), form, old, new)) is not None
-        ]
+        mine = _view_edits(entry, old, new)
         edits.extend(mine)
         return bool(mine)
 
@@ -162,7 +192,7 @@ def follow_group(database: str, old: str, new: str) -> list[dict]:
 
 
 def unfollow(database: str, edits: list[dict]) -> None:
-    """Take `follow_group`'s edits back, each only where its field still holds the value it wrote.
+    """Take `follow_group`'s or `drop_group`'s edits back, each only where its field still holds the value it wrote.
 
     The reports first, for the reason `follow_group` gives: an undo that cannot read them fails before the view
     is touched, and the merge stays whole.
@@ -210,10 +240,7 @@ def _stamp(report: dict) -> None:
 def followed(database: str, edits: list[dict]) -> dict:
     """What a merge carried along, as a result names it: the view fields and the reports by name — and the
     reports that split by both groups and were left as they were, with the sentence that says so."""
-    labels = {(s, f): label for s, f, _form, label in VIEW_FIELDS}
-    views = list(
-        dict.fromkeys(labels[tuple(e["path"])] for e in edits if e.get("store") == "view" and tuple(e["path"]) in labels)
-    )
+    views = view_labels(edits)
     kept_ids = list(dict.fromkeys(e["report"] for e in edits if e.get("store") == "report-kept"))
     report_ids = [r for r in dict.fromkeys(e["report"] for e in edits if e.get("store") == "report") if r not in kept_ids]
     kept = _report_names(database, kept_ids)
@@ -231,19 +258,40 @@ def kept_note(kept: list[dict]) -> str:
     return f"Reports {named} already split by both groups and keep their breakdowns; change them in the reports."
 
 
-# ---- what names a group or cites a value, before a merge ---------------------------------------------------
+# ---- a deleted group ----------------------------------------------------------------------------------------
+
+
+def drop_group(database: str, group: str) -> list[dict]:
+    """Take the deleted group out of the model's saved view choices; the edits made, for `unfollow`.
+
+    Only the view: the reports that name the group are left as they are (module docstring), and
+    `reports_using` names them.
+    """
+    edits: list[dict] = []
+
+    def views(entry: dict) -> bool:
+        mine = _view_edits(entry, group, None)
+        edits.extend(mine)
+        return bool(mine)
+
+    ViewStore().edit(database, views)
+    return edits
+
+
+# ---- what names a group or cites a value, before a merge or a delete ---------------------------------------
 
 
 def group_uses(database: str, group: str, into: str | None = None) -> dict:
     """The saved choices of the model that name `group` — what a merge of it into `into` would carry along, and
-    the reports that split by both and would keep their breakdowns."""
+    the reports that split by both and would keep their breakdowns. Without `into`, what a delete would take
+    the group out of (the view fields) and leave on it (the reports)."""
     entry = ViewStore().get(database)
     views = [
         label
         for section, field, form, label in VIEW_FIELDS
         if (holder := _holder(entry, (section, field))) is not None and _names_group(holder.get(field), form, group)
     ]
-    reports = [r for r in ReportStore().snapshot_database(database) or [] if _breaks_down_by(r, group, chapters_too=True)]
+    reports = _reports_using(database, group)
     if into is not None:
         kept = [{"id": r.get("id"), "name": r.get("name") or ""} for r in reports if _collapses(r, group, into)]
         reports = [r for r in reports if not _collapses(r, group, into)]
@@ -255,9 +303,18 @@ def group_uses(database: str, group: str, into: str | None = None) -> dict:
     }
 
 
+def reports_using(database: str, group: str) -> list[dict]:
+    """The model's reports that split or colour by `group`, by id and name."""
+    return [{"id": r.get("id"), "name": r.get("name") or ""} for r in _reports_using(database, group)]
+
+
+def _reports_using(database: str, group: str) -> list[dict]:
+    return [r for r in ReportStore().snapshot_database(database) or [] if _breaks_down_by(r, group, chapters_too=True)]
+
+
 def value_citations(database: str, group: str, value: str) -> list[dict]:
     """The model's reports whose written chapters cite `value` of `group` as a breakdown member, with how many
-    chapters each — what a merge of the value would leave showing a gap.
+    chapters each — what a merge or a delete of the value would leave showing a gap.
 
     A report counts when it breaks down by the group (its own breakdown or a chapter's) and a chapter's text or
     figure caption cites a breakdown row pinned to the value. A pin the text no longer cites does not count: it
@@ -274,7 +331,7 @@ def value_citations(database: str, group: str, value: str) -> list[dict]:
 
 
 def citations_note(value: str, citing: list[dict]) -> str:
-    """One sentence for a value merge's result: which reports now show a gap where they cited the value."""
+    """One sentence for a value merge's or delete's result: which reports now show a gap where they cited it."""
     def one(r: dict) -> str:
         n = int(r.get("chapters") or 0)
         return f"“{r.get('name') or r.get('id')}” ({n} chapter{'s' if n != 1 else ''})"
