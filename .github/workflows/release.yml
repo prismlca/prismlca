@@ -204,24 +204,39 @@ jobs:
         run: |
           npm ci
           npx electron-vite build
+      # Every program file of the package gets a signature (sign-windows.mjs says which and why). Certum allows
+      # 5,000 signatures a month, so a file whose code is unchanged keeps the signature it got in the previous
+      # release: its signed files are fetched and checked here, before the sign-in. A run that would sign more than
+      # its limit stops here or before its first signature; the repository variable WINDOWS_SIGN_LIMIT
+      # ("vX.Y.Z=<count>") allows more for that one tag, and `node scripts/release/sign-budget.mjs estimate vX.Y.Z`
+      # says before tagging whether a release needs it.
+      - name: Signed files of the previous release
+        working-directory: frontend
+        env:
+          PRISM_SIGN_PREVIOUS: ${{ runner.temp }}/previous
+          WINDOWS_SIGN_LIMIT: ${{ vars.WINDOWS_SIGN_LIMIT }}
+        run: node scripts/release/sign-windows.mjs previous "$PRISM_SIGN_PREVIOUS"
       # Everything that needs no key is built before this point. The signing session opens here and closes right
       # after the installer; while it is open, electron-builder and its dependencies run with it, which is why
-      # they come pinned from the lockfile. The hook signs only our own four executables.
+      # they come pinned from the lockfile.
       - name: Sign in to SimplySign now
         working-directory: frontend
         run: node scripts/release/sign-windows.mjs wait
       - name: NSIS installer, signed
         working-directory: frontend
+        env:
+          PRISM_SIGN_PREVIOUS: ${{ runner.temp }}/previous
+          WINDOWS_SIGN_LIMIT: ${{ vars.WINDOWS_SIGN_LIMIT }}
         run: npx electron-builder --win nsis --publish never
       - name: Close the signing session
         if: always()
         run: powershell.exe -NoProfile -Command "Get-Process *SimplySign* -ErrorAction SilentlyContinue | Stop-Process -Force"
+      # No program file may ship unsigned: Smart App Control blocks unsigned code that Microsoft does not know.
       - name: Check the package as shipped
         working-directory: frontend
         run: |
           node scripts/release/ci.mjs check-artifacts win release/win-unpacked
-          node scripts/release/sign-windows.mjs check release/win-unpacked/PrismLCA.exe \
-            release/win-unpacked/resources/backend/prism-lca-backend.exe release/PrismLCA-Setup-*.exe
+          node scripts/release/sign-windows.mjs check release/win-unpacked release/PrismLCA-Setup-*.exe
       - name: The packaged app starts on an empty machine
         working-directory: frontend
         run: |

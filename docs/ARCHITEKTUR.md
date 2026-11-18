@@ -298,7 +298,10 @@ Format of each ADR: **Context · Decision · Alternatives · Consequences**.
   on a click**; the download starts after confirmation; installation on "Restart and install" or on
   the next normal quit. The request carries the program version and the user's IP address, no
   device ID (electron-updater's installation ID is neutralised). Windows signing uses **Certum Open
-  Source Code Signing** on a self-hosted release runner (Windows VM). **One** versioned artefact; the
+  Source Code Signing** on a self-hosted release runner (Windows VM). Every program file in the Windows
+  package carries a valid signature — its maker's, or ours where it had none — because Smart App Control
+  blocks unsigned code Microsoft does not know; to stay within Certum's 5,000 signatures a month, a file
+  whose code is unchanged keeps the signature it got in the previous release. **One** versioned artefact; the
   backend version is checked against the shell's at startup. The procedure is in the workflow and in
   `frontend/scripts/release/`.
 - **Alternatives**: conda-pack, a uv venv (packaging); SignPath Foundation (forbids proprietary
