@@ -6,11 +6,16 @@
  * a goal of "potential environmental impacts" did not fit a single indicator, and the assistant narrowed
  * the study's goal to match — without asking the user.
  *
- * What counts is what a call's RESULT scored: an indicator that failed inside a batch, or a background job
- * that has not delivered yet, is not coverage, and the dossier states the list as a fact. The call's
- * arguments stand in only where its result can no longer be read — a transcript from an earlier turn
- * whose result was compacted away (seedScored). Models are filed under their folded name, the way the
- * backend resolves `bottle glass` to `Bottle Glass`, so a call and the review that reads it agree.
+ * What counts is what a call's RESULT scored: an indicator that failed inside a batch, a call that was
+ * refused, or a background job that has not delivered yet, is not coverage, and the dossier states the list
+ * as a fact. The arguments only say which model a call was about, never that it scored anything: a call
+ * whose result cannot be read records nothing. So the record travels to the next turn as itself, with the
+ * transcript (`scored`), like the record of opened datasets (inspectedAcrossTurns.ts) — rebuilt from the
+ * carried calls, it lost every indicator whose result compaction had replaced, and when it fell back to
+ * the arguments instead, a refused calculation came back as a scored one. Models are filed under their
+ * folded name, the way the backend resolves `bottle glass` to `Bottle Glass`, so a call and the review
+ * that reads it agree. A model renamed takes its indicators along: in the run (renameScored), and between
+ * turns because the transcript stores the chat's own model without its name.
  */
 import { foldDbName } from '../../modelScope'
 
@@ -73,20 +78,9 @@ function methodsIn(node: unknown, out: Map<string, string>, depth = 0): void {
   }
 }
 
-/** The indicators a call names in its arguments — only for a call whose result cannot be read. */
-function methodsAsked(args: Record<string, unknown>): Map<string, string> {
-  const out = new Map<string, string>()
-  for (const m of [args.method, ...(Array.isArray(args.methods) ? args.methods : [])])
-    if (isTuple(m)) out.set(scoredKey(m), m.join(' | '))
-  const family = typeof args.method_family === 'string' ? args.method_family.trim() : ''
-  if (family) out.set(`family:${family}`, `every standard indicator of the method family "${family}"`)
-  return out
-}
-
 /**
  * Note the indicators one call scored, under every model it scored them for. A no-op for other tools.
- * `result` is the call's answer; one that failed records nothing, one that is not JSON (compacted away)
- * falls back to the arguments.
+ * `result` is the call's answer; one that failed records nothing, and so does one that is not JSON.
  */
 export function noteScored(
   record: ScoredRecord | undefined,
@@ -98,12 +92,11 @@ export function noteScored(
   if (!record || !args || typeof args !== 'object' || !Object.hasOwn(SCORING_TOOLS, tool)) return
   const subjects = SCORING_TOOLS[tool](args, activeDb).filter(Boolean)
   if (!subjects.length) return
-  let found: Map<string, string>
+  const found = new Map<string, string>()
   try {
-    found = new Map()
     methodsIn(JSON.parse(result), found)
   } catch {
-    found = methodsAsked(args)
+    return
   }
   if (!found.size) return
   for (const db of new Set(subjects.map(foldDbName))) {
@@ -113,6 +106,44 @@ export function noteScored(
   }
 }
 
+/** A model renamed in the run: what was scored for it now belongs to its new name. */
+export function renameScored(record: ScoredRecord | undefined, was: string, now: string): void {
+  const from = foldDbName(was)
+  const to = foldDbName(now)
+  const moved = record?.get(from)
+  if (!record || !moved || from === to) return
+  record.delete(from)
+  const forTo = record.get(to) ?? new Map<string, string>()
+  for (const [k, v] of moved) forTo.set(k, v)
+  record.set(to, forTo)
+}
+
+/** One scored indicator, as the transcript stores it; without `database` it is the chat's own model's. */
+export type ScoredEntry = { database?: string; method: string[] }
+
+/**
+ * The record as the transcript stores it: one entry per model and indicator, in the order first seen. The
+ * chat's own model goes without its name, so a rename between turns (chats follow their model) keeps it.
+ */
+export function scoredForTranscript(
+  record: ScoredRecord | undefined,
+  activeDb: string | null
+): ScoredEntry[] {
+  const own = activeDb ? foldDbName(activeDb) : null
+  const out: ScoredEntry[] = []
+  for (const [database, forDb] of record ?? [])
+    for (const key of forDb.keys()) {
+      let method: unknown
+      try {
+        method = JSON.parse(key)
+      } catch {
+        continue // not a method tuple's key: nothing to store
+      }
+      if (isTuple(method)) out.push(database === own ? { method } : { database, method })
+    }
+  return out
+}
+
 type CarriedMessage = {
   role: string
   content?: unknown
@@ -120,13 +151,12 @@ type CarriedMessage = {
   tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>
 }
 
-/** Seed the record from a carried transcript: each scoring call with the result it got back. */
-export function seedScored(
-  record: ScoredRecord | undefined,
+/** The indicators a carried transcript's results show as scored, for a transcript stored without the record. */
+function scoredInResults(
+  record: ScoredRecord,
   messages: readonly CarriedMessage[],
   activeDb: string | null
 ): void {
-  if (!record) return
   const results = new Map<string, string>()
   for (const m of messages)
     if (m.role === 'tool' && m.tool_call_id && typeof m.content === 'string')
@@ -142,6 +172,27 @@ export function seedScored(
         // Unparseable arguments: one call fewer in the record.
       }
     }
+  }
+}
+
+/**
+ * Seed the run's record from the transcript it carries on: the stored record when the transcript has one
+ * (an entry without a model is the chat's own, under the name it has now), otherwise the indicators its
+ * results still show — only those, since what the next turn starts from is kept from then on. No
+ * transcript, nothing seeded.
+ */
+export function seedScored(
+  record: ScoredRecord | undefined,
+  carried: { messages: readonly CarriedMessage[]; scored?: unknown } | null,
+  activeDb: string | null
+): void {
+  if (!record || !carried) return
+  if (!Array.isArray(carried.scored)) return scoredInResults(record, carried.messages, activeDb)
+  for (const e of carried.scored) {
+    const { database = activeDb, method } = (e ?? {}) as { database?: unknown; method?: unknown }
+    if (typeof database !== 'string' || !database || !isTuple(method)) continue
+    const db = foldDbName(database)
+    record.set(db, (record.get(db) ?? new Map<string, string>()).set(scoredKey(method), method.join(' | ')))
   }
 }
 

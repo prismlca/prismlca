@@ -46,6 +46,22 @@ describe('createToolSession', () => {
     expect(scoredFor(s.ctx.scored, 'Shampoo').size).toBe(1)
   })
 
+  it('carries the run’s records over a rename of the open model', async () => {
+    const gwp = ['IPCC 2021', 'climate change', 'GWP100']
+    const { s } = session({
+      apiRaw: async (_m, path) => ({
+        status: 200,
+        body: path.endsWith('/rename') ? { name: 'Hair Wash' } : { results: [{ method: gwp, score: 1 }] }
+      })
+    })
+    await s.run('calculate', { code: 'fu', method: gwp })
+    s.ctx.inspected!.add('Shampoo\u0000fu')
+    await s.run('manage_model', { action: 'rename', database: 'Shampoo', name: 'Hair Wash' })
+    expect(s.ctx.activeDb).toBe('Hair Wash')
+    expect(scoredFor(s.ctx.scored, 'Hair Wash').size).toBe(1)
+    expect([...s.ctx.inspected!]).toEqual(['Hair Wash\u0000fu'])
+  })
+
   it('sends the session headers with every backend call', async () => {
     const { s, calls } = session()
     const oc = await s.run('history', { action: 'undo' })
@@ -251,9 +267,26 @@ describe('createToolSession', () => {
   })
 
   it('keeps a moved workspace a failure: the MCP session ends on it', async () => {
-    const moved = { error: { code: 'project_changed', message: 'The active workspace changed: …' } }
+    const moved = {
+      error: { code: 'project_changed', message: 'The active workspace changed: …', situational: true }
+    }
     const oc = await session({ apiRaw: fakeApi(moved, 409).api }).s.run('history', { action: 'undo' })
     expect(!oc.ok && oc.error).toMatch(/The active workspace changed/)
+  })
+
+  it('counts what the backend marks as the situation a failure, by the mark and not by the code', async () => {
+    const missing = (situational?: boolean): unknown => ({
+      error: { code: 'not_indexed', message: "Database 'My processes' is not indexed yet.", situational }
+    })
+    const search = { database: 'My processes', query: 'steel' }
+    const marked = await session({ apiRaw: fakeApi(missing(true), 409).api }).s.run(
+      'search_background',
+      search
+    )
+    expect(!marked.ok && marked.error).toMatch(/not indexed yet/)
+    // The same code unmarked is read as a refusal: the list of situations lives at the raise site.
+    const unmarked = await session({ apiRaw: fakeApi(missing(), 409).api }).s.run('search_background', search)
+    expect(unmarked.ok).toBe(true)
   })
 
   it('counts arguments the schema turns down as a refusal, with the unknown-field hint', async () => {

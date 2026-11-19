@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatPlan, PlanStep } from '../../shared/plan'
 import type { ChatMessage } from './providers/types'
 import { PLAN_REMINDER_EVERY, planReminder, planReminderDue, sincePlanUpdate } from './planReminder'
+import { compactMessages } from './contextBudget'
 
 const plan = (steps: PlanStep[], revision = 1): ChatPlan => ({
   title: 'Wheelbarrow LCA',
@@ -61,49 +62,55 @@ class Talk {
 describe('sincePlanUpdate', () => {
   it('counts back to the last accepted plan call, across rounds', () => {
     const t = new Talk().round(3).round('ok').round(4).round(2, 5)
-    expect(sincePlanUpdate(t.messages, onStep2)).toEqual({ calls: 11, sinceReminder: 11 })
+    expect(sincePlanUpdate(t.messages)).toEqual({ calls: 11, sinceReminder: 11 })
   })
 
   it('resets at the accepted call itself, not at a refused one after it in the same round', () => {
     const t = new Talk().round(10).round('ok', 24, 'no', 1)
-    expect(sincePlanUpdate(t.messages, onStep2).calls).toBe(25)
+    expect(sincePlanUpdate(t.messages).calls).toBe(25)
   })
 
   it('counts everything when no plan call was ever accepted', () => {
     const t = new Talk().round(5).round('no').round(7)
-    expect(sincePlanUpdate(t.messages, onStep2).calls).toBe(12)
+    expect(sincePlanUpdate(t.messages).calls).toBe(12)
   })
 
-  it('reads a stubbed result by the list the call sent: the accepted one stops the walk, a refused one does not', () => {
+  it('keeps the answer that accepted the plan in force through compaction, so the walk stops there', () => {
     const t = new Talk().round(10).round('ok').round(5).round('no').round(6).round('no').round(3)
-    // Compaction keeps the newest plan result and stubs the others, the accepted one and the first refusal.
-    const planResults = t.messages.filter(
-      (m) => m.role === 'tool' && (m.content === ACCEPTED || m.content === REFUSED)
-    )
-    for (const m of planResults.slice(0, -1)) m.content = STUB
-    expect(sincePlanUpdate(t.messages, onStep2).calls).toBe(14)
+    compactMessages(t.messages, 1)
+    const answers = t.messages.filter((m) => m.role === 'tool').map((m) => m.content)
+    expect(answers.filter((c) => c === ACCEPTED)).toHaveLength(1)
+    expect(answers.filter((c) => c === REFUSED)).toHaveLength(1) // the newest plan result, the other went
+    expect(sincePlanUpdate(t.messages).calls).toBe(14)
   })
 
-  it('does not take a stubbed refusal for the update when only its note differs from the list in force', () => {
+  it('lets compaction take the answers of older updates', () => {
+    const t = new Talk().round('ok').round(3).round('ok').round(4).round(2)
+    compactMessages(t.messages, 1)
+    const answers = t.messages.filter((m) => m.role === 'tool').map((m) => m.content)
+    expect(answers.filter((c) => c === ACCEPTED)).toHaveLength(1)
+    expect(sincePlanUpdate(t.messages).calls).toBe(6)
+  })
+
+  it('never takes a stubbed answer for the update, not even one whose call sent the very list in force', () => {
     const t = new Talk().round('ok').round(8)
-    // The same steps and statuses, refused for a note over the limit; then another refusal; then compaction.
-    const tooLong = STEPS.map((s, i) => (i === 0 ? { ...s, note: 'x'.repeat(301) } : s))
+    // The same steps, refused for a title that is not text; then another refusal; then compaction stubbed it.
     t.messages.push(
       {
         role: 'assistant',
         content: '',
         tool_calls: [
           {
-            id: 'long',
+            id: 'same',
             type: 'function',
-            function: { name: 'plan', arguments: JSON.stringify({ steps: tooLong }) }
+            function: { name: 'plan', arguments: JSON.stringify({ title: 7, steps: STEPS }) }
           }
         ]
       },
-      { role: 'tool', tool_call_id: 'long', content: STUB }
+      { role: 'tool', tool_call_id: 'same', content: STUB }
     )
     t.round(6).round('no').round(3)
-    expect(sincePlanUpdate(t.messages, onStep2).calls).toBe(17)
+    expect(sincePlanUpdate(t.messages).calls).toBe(17)
   })
 
   it('takes a call a stop cut off as not run', () => {
@@ -126,7 +133,7 @@ describe('sincePlanUpdate', () => {
         content: JSON.stringify({ error: 'not executed — the run stopped.' })
       }
     )
-    expect(sincePlanUpdate(t.messages, onStep2).calls).toBe(4)
+    expect(sincePlanUpdate(t.messages).calls).toBe(4)
   })
 })
 

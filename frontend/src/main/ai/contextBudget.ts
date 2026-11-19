@@ -8,6 +8,7 @@
 import { stubForPartText } from './attachments'
 import { aiLog } from './aiLog'
 import { lastUserIndex, replayDroppable, type ChatMessage } from './providers/types'
+import { acceptedPlanAnswer } from './tools/groups/plan'
 
 /** Fallback budget in characters (~4 chars/token, so ≈100k tokens) for models whose context window
  * we do not know for certain — deliberately conservative, since guessing too high brings back the
@@ -192,9 +193,12 @@ export function compactMessages(
   const isProtected = (m: ChatMessage): boolean =>
     m.role === 'tool' && PROTECTED_TOOLS.has(toolNames.get(m.tool_call_id ?? '') ?? '')
   // The newest `plan` result is the model's own checklist — a few hundred characters that say what
-  // is done and what is not. It is never stubbed, in either sweep; OLDER plan results are superseded
-  // lists and go with everything else.
+  // is done and what is not (a refusal repeats the list in force). It is never stubbed, in either sweep,
+  // and neither is the answer that accepted the plan in force when refusals came after it: the plan
+  // reminder counts the calls since that update, and a stub cannot tell an update from a refusal
+  // (planReminder.ts). OLDER plan results are superseded lists and go with everything else.
   const latestPlan = latestPlanResult(messages, toolNames)
+  const planInForce = latestPlanResult(messages, toolNames, acceptedPlanAnswer)
 
   const turnStart = lastUserIndex(messages)
   const sweep = (sacrificeProtected: boolean): number => {
@@ -202,7 +206,7 @@ export function compactMessages(
     for (let i = 0; i < cut; i++) {
       const m = messages[i]
       if (m.role === 'tool' && typeof m.content === 'string' && m.content !== OMITTED_TOOL) {
-        if (m === latestPlan) continue
+        if (m === latestPlan || m === planInForce) continue
         if (!sacrificeProtected && isProtected(m)) continue
         // Kept for the summariser, so the gist survives the truncation.
         const id = m.tool_call_id ?? ''
@@ -236,14 +240,15 @@ export function compactMessages(
   return forced
 }
 
-/** The most recent `plan` tool result in a transcript, or null. */
+/** The most recent `plan` tool result in a transcript — of those `which` accepts, when given — or null. */
 export function latestPlanResult(
   messages: ChatMessage[],
-  toolNames: Map<string, string>
+  toolNames: Map<string, string>,
+  which: (content: ChatMessage['content']) => boolean = () => true
 ): ChatMessage | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m.role === 'tool' && toolNames.get(m.tool_call_id ?? '') === 'plan') return m
+    if (m.role === 'tool' && toolNames.get(m.tool_call_id ?? '') === 'plan' && which(m.content)) return m
   }
   return null
 }

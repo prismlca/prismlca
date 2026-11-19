@@ -13,17 +13,27 @@
 
 /** Error thrown for a backend 4xx/5xx; `.code` carries the backend PrismError code
  *  (e.g. 'calc_superseded'), `.status` the HTTP status, `.details` the structured facts some errors
- *  add for a UI to word its own dialog from (the message is complete without them). */
+ *  add for a UI to word its own dialog from (the message is complete without them), `.situational`
+ *  that the request was fine and the app's situation answered it (busy, not indexed yet, another
+ *  workspace, overtaken) — the backend marks those itself. */
 export class ApiError extends Error {
   code?: string
   status: number
   details?: Record<string, unknown>
-  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
+  situational: boolean
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    details?: Record<string, unknown>,
+    situational = false
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.details = details
+    this.situational = situational
   }
 }
 
@@ -66,9 +76,16 @@ export function apiError(status: number, body: unknown): ApiError | null {
   if (status < 400) return null
   const err = (
     body as {
-      error?: { message?: string; hint?: string; code?: string; details?: Record<string, unknown> }
+      error?: {
+        message?: string
+        hint?: string
+        code?: string
+        details?: Record<string, unknown>
+        situational?: unknown
+      }
     }
   )?.error
   const msg = err?.message ?? validationDetail(body) ?? (typeof body === 'string' ? body : `HTTP ${status}`)
-  return new ApiError(err?.hint ? `${msg} — ${err.hint}` : msg, status, err?.code, err?.details)
+  const text = err?.hint ? `${msg} — ${err.hint}` : msg
+  return new ApiError(text, status, err?.code, err?.details, err?.situational === true)
 }

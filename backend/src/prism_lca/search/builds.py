@@ -129,7 +129,8 @@ class IndexBuilds:
             if self._busy:
                 if not wait:
                     raise PrismError("An index build is already running.", code="index_busy",
-                                     status_code=409, hint="Poll GET /api/v1/search/status.")
+                                     status_code=409, hint="Poll GET /api/v1/search/status.",
+                                     situational=True)
                 if job not in self._queue:
                     self._queue.append(job)
                     logger.info("index job for %s queued behind the running build", db_name)
@@ -232,6 +233,7 @@ class IndexBuilds:
                 f"The workspace changed from '{job.workspace}' while the index was being built; "
                 "nothing was saved.",
                 code="index_project_changed",
+                situational=True,
             )
 
     def _destination(self, job: _Job, db_name: str) -> tuple[Path, str]:

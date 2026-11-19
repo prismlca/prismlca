@@ -192,6 +192,7 @@ def get_in_current_project(job_id: str) -> CalcJob | None:
         raise PrismError(
             f'Calculation job "{job_id}" belongs to workspace "{job.project}", not to the active one.',
             code="job_other_project",
+            situational=True,
             status_code=409,
             hint="Switch back to that workspace to read it, or start a new job here.",
         )

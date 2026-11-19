@@ -300,6 +300,7 @@ class SearchService:
                 f"Search index for '{db_name}' was built with embedding backend "
                 f"'{index.provider}', but '{provider.name}' is configured.",
                 code="embedding_mismatch",
+                situational=True,
                 status_code=409,
                 hint="Switch the backend back, or rebuild the index (POST /api/v1/search/index).",
             )
@@ -309,6 +310,7 @@ class SearchService:
                 f"Search index for '{db_name}' was built with embedding model '{index.model}', "
                 f"but '{wanted}' is configured. Their vectors are not comparable.",
                 code="embedding_mismatch",
+                situational=True,
                 status_code=409,
                 hint="Switch the model back, or rebuild the index (POST /api/v1/search/index).",
             )
@@ -329,6 +331,7 @@ class SearchService:
                 "The selected databases were indexed with different embedding models, so their "
                 f"similarities cannot be compared: {named}.",
                 code="embedding_mismatch",
+                situational=True,
                 status_code=409,
                 hint="Rebuild the indexes with one model (POST /api/v1/search/index), or search "
                      "the databases one at a time.",
@@ -342,6 +345,7 @@ class SearchService:
                 raise PrismError(
                     f"Database '{db_name}' is not indexed yet.",
                     code="not_indexed",
+                    situational=True,
                     status_code=409,
                     hint="Build the search index first: POST /api/v1/search/index.",
                 )
@@ -835,6 +839,7 @@ class SearchService:
             raise PrismError(
                 "None of the selected databases has a search index yet.",
                 code="not_indexed",
+                situational=True,
                 status_code=409,
                 hint="Build one in the search panel (Index).",
             )
@@ -909,6 +914,7 @@ class SearchService:
                 raise PrismError(
                     f"Search index for '{name}' was built with a different embedding backend.",
                     code="embedding_mismatch",
+                    situational=True,
                     status_code=409,
                     hint="Rebuild the index (POST /api/v1/search/index) after changing the backend.",
                 )

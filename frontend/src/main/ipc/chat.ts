@@ -233,6 +233,7 @@ export function registerChatIpc(
                 history_after?: unknown
                 messages?: unknown
                 inspected?: unknown
+                scored?: unknown
               }
               if (!Array.isArray(t.history_after) || !Array.isArray(t.messages)) return null
               return {
@@ -242,6 +243,9 @@ export function registerChatIpc(
                 // Absent in a file written before the record was kept: the agent then falls back.
                 ...(Array.isArray(t.inspected)
                   ? { inspected: t.inspected as NonNullable<StoredTranscript['inspected']> }
+                  : {}),
+                ...(Array.isArray(t.scored)
+                  ? { scored: t.scored as NonNullable<StoredTranscript['scored']> }
                   : {})
               }
             },
@@ -250,7 +254,8 @@ export function registerChatIpc(
                 turn_id: t.turnId,
                 history_after: t.historyAfter,
                 messages: t.messages,
-                inspected: t.inspected
+                inspected: t.inspected,
+                scored: t.scored
               })
               if (r.status === 0 || r.status >= 400) throw new Error(`HTTP ${r.status}`)
             }

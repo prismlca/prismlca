@@ -94,6 +94,8 @@ class TranscriptRequest(BaseModel):
     #: The datasets the chat has opened so far, ``[{database, code}]``. Optional: a request without it
     #: stores a file without it, which main reads as "kept before the record was stored".
     inspected: list[Any] | None = None
+    #: The indicators the chat has scored so far, ``[{database, method}]``. Optional the same way.
+    scored: list[Any] | None = None
 
 
 def _chat_not_found() -> PrismError:
@@ -157,7 +159,7 @@ def put_run(database: str, chat_id: str, body: dict = Body(...)) -> dict:
 def put_transcript(database: str, chat_id: str, body: TranscriptRequest) -> dict:
     try:
         size = _chats.save_transcript(database, chat_id, body.turn_id, body.history_after, body.messages,
-                                      body.inspected)
+                                      body.inspected, body.scored)
     except KeyError as e:
         raise _chat_not_found() from e
     except chat_transcripts.TranscriptTooLarge as e:

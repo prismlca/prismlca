@@ -220,6 +220,19 @@ def test_the_record_of_opened_datasets_travels_with_the_transcript(client, token
     assert "inspected" not in client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()
 
 
+def test_the_record_of_scored_indicators_travels_with_the_transcript(client, token, project):
+    db = "fg-transcript-scored"
+    cid = _chat(client, token, db)
+    scored = [{"database": "barrow", "method": ["IPCC 2021", "climate change", "GWP100"]}]
+    r = client.put(f"{API}/{db}/{cid}/transcript", json={**_transcript(), "scored": scored}, headers=token)
+    assert r.status_code == 200, r.text
+    assert client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()["scored"] == scored
+
+    # Without it the file has none, which main tells apart from an empty one.
+    client.put(f"{API}/{db}/{cid}/transcript", json=_transcript(), headers=token)
+    assert "scored" not in client.get(f"{API}/{db}/{cid}/transcript", headers=token).json()
+
+
 def test_a_transcript_over_6_mb_is_refused_and_the_old_one_stays(client, token, project):
     db = "fg-transcript-big"
     cid = _chat(client, token, db)

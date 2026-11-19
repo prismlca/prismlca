@@ -74,6 +74,7 @@ def project_changed_error(expected: str, current: str | None) -> PrismError:
         f'The active workspace changed: this session was opened on "{expected}", the app now has {now}. '
         "Reconnect to continue in the current workspace.",
         code="project_changed",
+        situational=True,
         status_code=409,
     )
 
@@ -3393,6 +3394,7 @@ class CommandBus:
         raise PrismError(
             f"Cannot {verb} while {label} is applied to {models}.",
             code="param_window_open",
+            situational=True,
             status_code=409,
             hint=(
                 f"That calculation has written its parameter values into the model and puts the "

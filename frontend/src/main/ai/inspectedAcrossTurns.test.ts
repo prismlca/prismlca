@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { StoredTranscript } from './agent'
 import type { ChatMessage } from './providers/types'
 import { chat } from './test/fakeStream'
-import { inspectedForTranscript, seedInspected } from './inspectedAcrossTurns'
+import { inspectedForTranscript, renameInspected, seedInspected } from './inspectedAcrossTurns'
 import { inspectedKey } from './tools/advice/hotspots'
 
 vi.mock('./client', async () => (await import('./test/fakeStream')).clientModuleMock())
@@ -30,32 +30,61 @@ const dataset = (database: string, code: string): Record<string, string> => ({
 describe('the record as the transcript stores it', () => {
   it('goes out as database and code and comes back as the same keys', () => {
     const record = new Set([inspectedKey('ei', 'steel-row'), inspectedKey('BAFU', 'pp')])
-    const stored = inspectedForTranscript(record)
+    const stored = inspectedForTranscript(record, null)
     expect(stored).toEqual([
       { database: 'ei', code: 'steel-row' },
       { database: 'BAFU', code: 'pp' }
     ])
     const seeded = new Set<string>()
-    seedInspected(seeded, { messages: [], inspected: JSON.parse(JSON.stringify(stored)) })
+    seedInspected(seeded, { messages: [], inspected: JSON.parse(JSON.stringify(stored)) }, null)
     expect(seeded).toEqual(record)
   })
 
   it('takes the stored record over the transcript, and skips what is not a dataset', () => {
     const seeded = new Set<string>()
-    seedInspected(seeded, {
-      // Read in the transcript, but the stored record is what counts.
-      messages: [
-        call('a', 'get_process_details', { code: 'x' }),
-        answer('a', { activity: dataset('ei', 'x') })
-      ],
-      inspected: [{ database: 'ei', code: 'steel-row' }, { database: 'ei' }, null, 'ei\u0000x']
-    })
+    seedInspected(
+      seeded,
+      {
+        // Read in the transcript, but the stored record is what counts.
+        messages: [
+          call('a', 'get_process_details', { code: 'x' }),
+          answer('a', { activity: dataset('ei', 'x') })
+        ],
+        inspected: [{ database: 'ei', code: 'steel-row' }, { database: 'ei' }, null, 'ei\u0000x']
+      },
+      'M'
+    )
     expect([...seeded]).toEqual([inspectedKey('ei', 'steel-row')])
+  })
+
+  it('stores the chat model’s own datasets without its name, so they follow a rename between turns', () => {
+    const record = new Set([inspectedKey('Barrow', 'frame'), inspectedKey('ei', 'steel-row')])
+    const stored = inspectedForTranscript(record, 'Barrow')
+    expect(stored).toEqual([{ code: 'frame' }, { database: 'ei', code: 'steel-row' }])
+    const seeded = new Set<string>()
+    seedInspected(seeded, { messages: [], inspected: stored }, 'Wheelbarrow')
+    expect([...seeded]).toEqual([inspectedKey('Wheelbarrow', 'frame'), inspectedKey('ei', 'steel-row')])
+  })
+
+  it('files the datasets of a model renamed in the run under its new name', () => {
+    const record = new Set([inspectedKey('Barrow', 'frame'), inspectedKey('ei', 'steel-row')])
+    renameInspected(record, 'Barrow', 'Wheelbarrow')
+    expect([...record]).toEqual([inspectedKey('ei', 'steel-row'), inspectedKey('Wheelbarrow', 'frame')])
+  })
+
+  it('keeps two models apart whose names differ only in case or punctuation', () => {
+    const record = new Set([inspectedKey('Bottle Glass', 'fu'), inspectedKey('Bottle-Glass', 'fu')])
+    expect(inspectedForTranscript(record, 'Bottle Glass')).toEqual([
+      { code: 'fu' },
+      { database: 'Bottle-Glass', code: 'fu' }
+    ])
+    renameInspected(record, 'Bottle-Glass', 'Jar Glass')
+    expect([...record]).toEqual([inspectedKey('Bottle Glass', 'fu'), inspectedKey('Jar Glass', 'fu')])
   })
 
   it('seeds nothing when no transcript is carried', () => {
     const seeded = new Set<string>()
-    seedInspected(seeded, null)
+    seedInspected(seeded, null, 'M')
     expect(seeded.size).toBe(0)
   })
 })
@@ -63,7 +92,7 @@ describe('the record as the transcript stores it', () => {
 describe('a transcript kept before the record was stored', () => {
   const seed = (messages: ChatMessage[]): string[] => {
     const seeded = new Set<string>()
-    seedInspected(seeded, { messages })
+    seedInspected(seeded, { messages }, 'M')
     return [...seeded]
   }
 

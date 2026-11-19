@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { noteScored, scoredFor, seedScored, type ScoredRecord } from './scored'
+import {
+  noteScored,
+  renameScored,
+  scoredFor,
+  scoredForTranscript,
+  seedScored,
+  type ScoredRecord
+} from './scored'
 
 const GWP = ['IPCC 2021', 'climate change', 'GWP100']
 const ACID = ['EF v3.1', 'acidification', 'accumulated exceedance (AE)']
@@ -96,12 +103,11 @@ describe('noteScored', () => {
     expect(scoredFor(r, 'Barrow').size).toBe(2) // GWP did not take; 'fu' and 's1' are no indicators
   })
 
-  it('falls back to the arguments only when the result cannot be read', () => {
+  it('records nothing for a result it cannot read: the arguments never stand in for a score', () => {
     const r: ScoredRecord = new Map()
     noteScored(r, 'calculate', { code: 'fu', method_family: 'EF v3.1' }, 'Barrow', '[result dropped]')
-    expect([...scoredFor(r, 'Barrow').values()]).toEqual([
-      'every standard indicator of the method family "EF v3.1"'
-    ])
+    noteScored(r, 'calculate', { code: 'fu', method: GWP }, 'Barrow', 'Scores below.')
+    expect(r.size).toBe(0)
   })
 
   it('ignores other tools and a run without a model', () => {
@@ -113,29 +119,104 @@ describe('noteScored', () => {
   })
 })
 
+/** A carried transcript: a refused calculation whose answer compaction replaced, then a scored one. */
+const STUB = '[earlier tool result omitted to fit the context]'
+const carried = [
+  { role: 'user', content: 'go' },
+  {
+    role: 'assistant',
+    tool_calls: [
+      // `amount` as a string: the schema check refused it, nothing was computed.
+      {
+        id: 'r',
+        function: { name: 'calculate', arguments: json({ code: 'fu', amount: '1', method: ACID }) }
+      },
+      { id: 'a', function: { name: 'calculate', arguments: json({ code: 'fu', method: GWP }) } }
+    ]
+  },
+  { role: 'tool', tool_call_id: 'r', content: STUB },
+  { role: 'tool', tool_call_id: 'a', content: scores(GWP) }
+]
+
 describe('seedScored', () => {
+  it('takes the stored record when the transcript has one, and never the calls whose answers are gone', () => {
+    const r: ScoredRecord = new Map()
+    seedScored(r, { messages: carried, scored: [{ database: 'Barrow', method: WATER }] }, 'Barrow')
+    // The stored record alone: neither the refused call nor the readable one is read again.
+    expect([...scoredFor(r, 'Barrow').values()]).toEqual(['EF v3.1 | water use | UDP'])
+  })
+
+  it('stores what it seeds from: the record comes back as it was kept', () => {
+    const kept: ScoredRecord = new Map()
+    noteScored(kept, 'calculate', { code: 'fu', methods: [GWP, ACID] }, 'Bottle Glass', scores(GWP, ACID))
+    noteScored(kept, 'compare', { subjects: [{ database: 'Other', code: 'x' }] }, null, scores(WATER))
+    const stored = JSON.parse(JSON.stringify(scoredForTranscript(kept, null)))
+    const r: ScoredRecord = new Map()
+    seedScored(r, { messages: [], scored: stored }, 'Barrow')
+    expect(r).toEqual(kept)
+    expect(scoredFor(r, 'bottle glass').size).toBe(2)
+  })
+
+  it('keeps the chat model’s own indicators through a rename, in the run and between turns', () => {
+    const r: ScoredRecord = new Map()
+    noteScored(r, 'calculate', { code: 'fu', method: GWP }, 'Barrow', scores(GWP))
+    noteScored(r, 'calculate', { database: 'ecoinvent', code: 'x', method: ACID }, 'Barrow', scores(ACID))
+    // Stored without the model's name; the next turn files it under the name the chat's model has then.
+    const stored = scoredForTranscript(r, 'Barrow')
+    expect(stored).toEqual([{ method: GWP }, { database: 'ecoinvent', method: ACID }])
+    const next: ScoredRecord = new Map()
+    seedScored(next, { messages: [], scored: stored }, 'Wheelbarrow')
+    expect([...scoredFor(next, 'Wheelbarrow').keys()]).toEqual([JSON.stringify(GWP)])
+    expect(scoredFor(next, 'ecoinvent').size).toBe(1)
+    // Renamed by the assistant in the run: the record moves with it.
+    renameScored(r, 'barrow', 'Wheelbarrow')
+    expect(scoredFor(r, 'Barrow').size).toBe(0)
+    expect(scoredFor(r, 'Wheelbarrow').size).toBe(1)
+  })
+
+  it('skips stored entries that are not a model and a method tuple', () => {
+    const r: ScoredRecord = new Map()
+    const scored = [{ database: '', method: GWP }, { database: 'Barrow', method: [] }, null, 'x']
+    seedScored(r, { messages: carried, scored }, 'Barrow')
+    expect(r.size).toBe(0)
+  })
+
+  it('without a stored record, reads only the answers still in the transcript', () => {
+    const r: ScoredRecord = new Map()
+    seedScored(r, { messages: carried }, 'Barrow')
+    expect([...scoredFor(r, 'Barrow').values()]).toEqual(['IPCC 2021 | climate change | GWP100'])
+  })
+
   it('pairs each scoring call of a carried transcript with its result', () => {
     const r: ScoredRecord = new Map()
     seedScored(
       r,
-      [
-        { role: 'user', content: 'go' },
-        {
-          role: 'assistant',
-          tool_calls: [
-            { id: 'a', function: { name: 'calculate', arguments: json({ code: 'fu', method: GWP }) } },
-            { id: 'b', function: { name: 'calculate', arguments: json({ code: 'fu', method: ACID }) } },
-            { id: 'c', function: { name: 'calculate', arguments: '{"code": ' } },
-            { id: 'd', function: { name: 'calculate', arguments: json({ code: 'fu', method: WATER }) } }
-          ]
-        },
-        { role: 'tool', tool_call_id: 'a', content: scores(GWP) },
-        { role: 'tool', tool_call_id: 'b', content: json({ error: 'unknown method' }) },
-        { role: 'tool', tool_call_id: 'c', content: scores(ACID) }
-        // 'd' never got a result: the run was stopped before it ran.
-      ],
+      {
+        messages: [
+          { role: 'user', content: 'go' },
+          {
+            role: 'assistant',
+            tool_calls: [
+              { id: 'a', function: { name: 'calculate', arguments: json({ code: 'fu', method: GWP }) } },
+              { id: 'b', function: { name: 'calculate', arguments: json({ code: 'fu', method: ACID }) } },
+              { id: 'c', function: { name: 'calculate', arguments: '{"code": ' } },
+              { id: 'd', function: { name: 'calculate', arguments: json({ code: 'fu', method: WATER }) } }
+            ]
+          },
+          { role: 'tool', tool_call_id: 'a', content: scores(GWP) },
+          { role: 'tool', tool_call_id: 'b', content: json({ error: 'unknown method' }) },
+          { role: 'tool', tool_call_id: 'c', content: scores(ACID) }
+          // 'd' never got a result: the run was stopped before it ran.
+        ]
+      },
       'Barrow'
     )
     expect([...scoredFor(r, 'Barrow').values()]).toEqual(['IPCC 2021 | climate change | GWP100'])
+  })
+
+  it('seeds nothing without a carried transcript', () => {
+    const r: ScoredRecord = new Map()
+    seedScored(r, null, 'Barrow')
+    expect(r.size).toBe(0)
   })
 })

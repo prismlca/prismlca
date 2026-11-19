@@ -398,6 +398,7 @@ def _refuse_while_committing(session: Session) -> None:
         raise PrismError(
             "This import is being written right now — the change would reach only part of it.",
             code="import_committing",
+            situational=True,
             status_code=409,
             hint="Wait for the import to finish.",
         )
@@ -1084,6 +1085,7 @@ def _commit(session: Session, frozen: _Frozen, label: str, unmatched: Unmatched)
             f"This import was read in project '{session.project}', but '{bd.projects.current}' is "
             "active now — its matches belong to the other workspace's databases.",
             code="import_project_changed",
+            situational=True,
             status_code=409,
             hint="Switch back to that workspace to write it, or start the import again here.",
         )

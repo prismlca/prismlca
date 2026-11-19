@@ -39,6 +39,7 @@ const apiRaw: ApiRaw = async (method, path, _body, headers) => {
       body: {
         error: {
           code: 'project_changed',
+          situational: true,
           message: `The active workspace changed: this session was opened on "${named}", the app now has "${currentProject}". Reconnect to continue in the current workspace.`
         }
       }

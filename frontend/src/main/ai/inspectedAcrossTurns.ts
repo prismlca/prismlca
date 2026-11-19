@@ -15,26 +15,46 @@
  * one turn the record is taken from the reads whose answers are still in it, and only from those —
  * what the next turn starts from is kept from then on, so a read that failed, was stopped or can no
  * longer be checked must not enter it as opened.
+ *
+ * A dataset of the model itself is filed under the model's name, and a model can be renamed: in the run
+ * the record follows the rename (renameInspected), and the transcript stores the chat's own model's
+ * datasets without its name, so a rename between turns (chats follow their model) keeps them too.
+ * Names are compared exactly, as the backend stores them: `Bottle Glass` and `Bottle-Glass` can be two
+ * models of one workspace, and a dataset read in one is not read in the other.
  */
 import type { ChatMessage } from './providers/types'
 import { datasetOfKey, inspectedKey } from './tools/advice/hotspots'
 
-/** One opened dataset, as the transcript stores it. */
-export type InspectedDataset = { database: string; code: string }
+/** One opened dataset, as the transcript stores it; without `database` it is one of the chat's own model. */
+export type InspectedDataset = { database?: string; code: string }
 
 /** The record as the transcript stores it: one entry per dataset, in the order first read. */
-export function inspectedForTranscript(record: ReadonlySet<string> | undefined): InspectedDataset[] {
+export function inspectedForTranscript(
+  record: ReadonlySet<string> | undefined,
+  activeDb: string | null
+): InspectedDataset[] {
   const out: InspectedDataset[] = []
   for (const key of record ?? []) {
     const ds = datasetOfKey(key)
-    if (ds) out.push(ds)
+    if (ds) out.push(ds.database === activeDb ? { code: ds.code } : ds)
   }
   return out
 }
 
-/** Add one dataset to the record when both halves are names. */
-function addDataset(record: Set<string>, ds: unknown): void {
-  const database: unknown = (ds as { database?: unknown } | null)?.database
+/** A model renamed in the run: the datasets opened in it are filed under its new name. */
+export function renameInspected(record: Set<string> | undefined, was: string, now: string): void {
+  if (!record || !now || was === now) return
+  for (const key of [...record]) {
+    const ds = datasetOfKey(key)
+    if (!ds || ds.database !== was) continue
+    record.delete(key)
+    record.add(inspectedKey(now, ds.code))
+  }
+}
+
+/** Add one dataset to the record when both halves are names; one without a database is the chat's model's. */
+function addDataset(record: Set<string>, ds: unknown, activeDb: string | null = null): void {
+  const database: unknown = (ds as { database?: unknown } | null)?.database ?? activeDb
   const code: unknown = (ds as { code?: unknown } | null)?.code
   if (typeof database === 'string' && database && typeof code === 'string' && code)
     record.add(inspectedKey(database, code))
@@ -68,14 +88,16 @@ function readsInResults(record: Set<string>, messages: readonly ChatMessage[]): 
 
 /**
  * Seed the run's record from the transcript it carries on: the stored record when the transcript has
- * one, otherwise the reads its answers still show (see the module comment). No transcript, nothing
+ * one (an entry without a database is one of the chat's model, under the name it has now), otherwise
+ * the reads its answers still show (see the module comment). No transcript, nothing
  * seeded — the turn is rebuilt from prose and the model has not seen those datasets in this context.
  */
 export function seedInspected(
   record: Set<string> | undefined,
-  carried: { messages: readonly ChatMessage[]; inspected?: unknown } | null
+  carried: { messages: readonly ChatMessage[]; inspected?: unknown } | null,
+  activeDb: string | null
 ): void {
   if (!record || !carried) return
-  if (Array.isArray(carried.inspected)) for (const ds of carried.inspected) addDataset(record, ds)
+  if (Array.isArray(carried.inspected)) for (const ds of carried.inspected) addDataset(record, ds, activeDb)
   else readsInResults(record, carried.messages)
 }

@@ -294,6 +294,7 @@ def _workspace_backgrounds() -> list[str]:
         raise PrismError(
             "This workspace has no background database to search.",
             code="no_background",
+            situational=True,
             status_code=409,
             hint="Import ecoinvent or BAFU:20XY first (Overview → Background), or name a database.",
         )

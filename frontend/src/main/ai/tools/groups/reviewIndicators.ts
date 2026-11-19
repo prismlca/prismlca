@@ -8,7 +8,7 @@
  */
 import { scoredKey } from '../advice/scored'
 
-/** Above this the list is cut; a whole method family is one entry, so only a hand-picked list gets here. */
+/** Above this the list is cut; one whole method family stays below it. */
 const MAX_LISTED = 40
 
 const isTuple = (m: unknown): m is string[] =>

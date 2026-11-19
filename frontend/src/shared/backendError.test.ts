@@ -18,6 +18,13 @@ describe('apiError', () => {
     expect(e?.details).toEqual({ consumers })
   })
 
+  it('reads the mark that the situation answered the request, and only a true one', () => {
+    const busy = { code: 'index_busy', message: 'An index build is already running.' }
+    expect(apiError(409, { error: { ...busy, situational: true } })?.situational).toBe(true)
+    expect(apiError(409, { error: { ...busy, situational: 'yes' } })?.situational).toBe(false)
+    expect(apiError(409, { error: busy })?.situational).toBe(false)
+  })
+
   it('has no details when the backend sends none, and no error for a healthy status', () => {
     expect(apiError(404, { error: { code: 'not_found', message: 'gone' } })?.details).toBeUndefined()
     expect(apiError(200, {})).toBeNull()

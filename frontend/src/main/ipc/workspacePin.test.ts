@@ -63,7 +63,8 @@ const apiRequest: ApiRaw = async (method, path, _body, headers) => {
   const project = named === undefined ? undefined : decodeURIComponent(named)
   const status = project !== undefined && project !== active ? 409 : 200
   seen.push({ method, path, project, status })
-  if (status === 409) return { status, body: { error: { code: 'project_changed', message: 'switched' } } }
+  if (status === 409)
+    return { status, body: { error: { code: 'project_changed', message: 'switched', situational: true } } }
   if (path === '/api/v1/system/info')
     return { status, body: { current_project: active === null ? null : { name: active } } }
   return { status, body: {} }
