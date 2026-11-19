@@ -11,7 +11,16 @@ import { describe, expect, it } from 'vitest'
 
 import * as hooks from './sign-windows.mjs'
 import { publishTargetFrom } from './previous-release.mjs'
-import { batches, checkVerdict, inPackage, planPackage, signatureState, signerName, subjectFrom } from './sign-windows.mjs'
+import {
+  batches,
+  checkVerdict,
+  inPackage,
+  planPackage,
+  readFacts,
+  signatureState,
+  signerName,
+  subjectFrom
+} from './sign-windows.mjs'
 
 const R = 'C:\\actions-runner\\_work\\prismlca\\prismlca\\frontend\\release'
 const OURS = 'CN=Open Source Developer Jane Doe, O=Open Source Developer, L=Town, C=DE'
@@ -139,6 +148,43 @@ describe('the final check', () => {
     expect(signerName(MS)).toBe('Microsoft Corporation')
     expect(signerName('CN="Open Source Developer, Jane Doe", O=Open Source Developer, C=DE')).toBe('Open Source Developer, Jane Doe')
     expect(signerName('')).toBe('(none)')
+  })
+})
+
+describe('the inspection as PowerShell answers it', () => {
+  const fact = { status: 'Valid', type: 'Authenticode', subject: OURS, problem: null }
+
+  it('takes a path written as a string', () => {
+    expect(readFacts(JSON.stringify([{ file: `${R}\\a.dll`, ...fact }]))).toEqual([{ file: `${R}\\a.dll`, ...fact }])
+    expect(readFacts('[]')).toEqual([])
+  })
+
+  it('takes a path Windows PowerShell wrote as an object, with the properties of the line it was read from', () => {
+    // What ConvertTo-Json of Windows PowerShell 5.1 makes of a string that came out of Get-Content. A release run
+    // stopped on it: path.resolve was handed the object.
+    const decorated = {
+      value: `${R}\\win-unpacked\\PrismLCA.exe`,
+      PSPath: 'C:\\Temp\\prism-sign-1\\files.txt',
+      PSChildName: 'files.txt',
+      PSDrive: { Name: 'C' },
+      ReadCount: 1
+    }
+    expect(readFacts(JSON.stringify([{ file: decorated, ...fact }]))).toEqual([{ file: decorated.value, ...fact }])
+  })
+
+  it('stops with the answer in the message when it names no file or is no list', () => {
+    expect(() => readFacts(JSON.stringify([{ file: { PSPath: 'x' }, ...fact }]))).toThrow(/names no file: .*PSPath/)
+    expect(() => readFacts(JSON.stringify([{ ...fact }]))).toThrow(/names no file/)
+    expect(() => readFacts(JSON.stringify([{ file: '', ...fact }]))).toThrow(/names no file/)
+    expect(() => readFacts(JSON.stringify({ file: 'a.dll', ...fact }))).toThrow(/answered no list/)
+  })
+
+  it('has the script read its list as plain strings', () => {
+    // Get-Content is what decorates a line; the script reads the list through .NET and writes the path as text.
+    const script = readFileSync(join(__dirname, 'sign-windows.ps1'), 'utf-8')
+    expect(script).not.toMatch(/Get-Content\s+-/)
+    expect(script).toContain('[System.IO.File]::ReadAllLines($path, [System.Text.Encoding]::UTF8)')
+    expect(script).toContain('file = "$f"')
   })
 })
 
