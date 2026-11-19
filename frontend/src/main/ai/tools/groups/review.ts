@@ -12,7 +12,7 @@ import { previousReviewOf, previousReviewSection } from './reviewHistory'
 import { modelFingerprint, notRunAgain, reviewFailed, reviewSucceeded } from './reviewFailure'
 import { indicatorsSection, pickedMethods } from './reviewIndicators'
 import { searchesSection } from './reviewSearches'
-import { researchSection } from './reviewResearch'
+import { healthBesideResearch, researchSection } from './reviewResearch'
 import { processesSection } from './reviewProcesses'
 import { paramsSection } from './reviewParams'
 import { numbersFingerprint, rememberJudged, withTextOnlyNote } from './reviewNumbers'
@@ -218,6 +218,7 @@ export const reviewTools: Tool[] = [
       const research = await part('research on record', () =>
         ctx.api('GET', `/api/v1/provenance/research?database=${encodeURIComponent(db)}`)
       )
+      const researched = researchSection(research)
 
       // This chat's own previous review of the model, if it ran one (reviewHistory.ts).
       const previous = ctx.chatId
@@ -242,7 +243,7 @@ export const reviewTools: Tool[] = [
       const dossier = [
         `MODEL: ${db}`,
         `GOAL & SCOPE: ${study && Object.values(study).some((v) => v) ? JSON.stringify(study) : '(empty — nothing recorded)'}`,
-        `HEALTH CHECK: ${health ? capped('health check', health, 8_000) : '(missing)'}`,
+        `HEALTH CHECK: ${health ? capped('health check', healthBesideResearch(health, researched), 8_000) : '(missing)'}`,
         // Larger than the rest on purpose: this is now the only place the reviewer can read a
         // quantity, and it is the part it is asked to challenge.
         processes?.text || `PROCESSES (with exchanges): ${activities ? '(none)' : '(missing)'}`,
@@ -256,7 +257,7 @@ export const reviewTools: Tool[] = [
             'it against the process list before reporting it as missing.'
           : '',
         indicators,
-        researchSection(research),
+        researched,
         // What the provider's web search found inside the assistant's replies (reviewSearches.ts).
         searchesSection(ctx.webLookups?.() ?? []),
         selfDescriptions.length

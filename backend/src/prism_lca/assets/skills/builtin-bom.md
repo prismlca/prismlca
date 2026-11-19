@@ -36,8 +36,7 @@ Call `research_bom` with:
   dataset for "plastic".
 - **Completeness**: adhesives, inks, coatings and fasteners are small but often forgotten; decide
   explicitly whether they fall under the cut-off rule. A researched component you leave out goes
-  into `cutoff_criteria` by name — the health check reports every researched mass that no exchange
-  books.
+  into `cutoff_criteria` by name.
 
 ## 4. Turn it into a model
 Book each mass as a **parameter** (*Parameters & formulas* skill), and let it drive the exchanges.
@@ -53,7 +52,9 @@ contained part comes out with it) — and say in the comment how you derived it.
 For each component: `search_background` for a matching material dataset (proxy-dataset skill if
 nothing fits), add it as an input driven by its parameter, then the manufacturing step(s) that
 consume them; tag each process by its life-cycle phase and each material input as "Raw materials"
-(model-building skill, section 3), and run `check_model_health`.
+(model-building skill, section 3), and run `check_model_health`. It lists every part mass the research
+recorded and compares none of them with the model: go through the list row by row and find each part in
+what you built — a part you cannot find is missing, whatever the rest of the check says.
 
 ## 5. Report honestly
 Tell the user which masses came from sources and which are typical industry values, and cite the

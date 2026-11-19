@@ -28,7 +28,7 @@ from prism_lca import _log
 from prism_lca.engine import prose_numbers as pn
 from prism_lca.engine import units as units_of
 from prism_lca.engine.bootstrap import get_bd
-from prism_lca.engine.health_bom import bom_items_unbooked
+from prism_lca.engine.health_bom import research_on_record
 from prism_lca.engine.health_forming import forming_findings
 from prism_lca.engine.health_params import dead_references, unruled_message, unruled_shares
 from prism_lca.engine.health_phases import _phase_findings
@@ -618,8 +618,8 @@ def _build_context(database: str) -> LintContext:
     # Every comment the model wrote itself on a process or on a figure, for the provenance count.
     # Cheap: this pass is already reading each activity and each exchange.
     comment_texts: list[str] = []
-    # (unit, evaluated amount, formula) of every technosphere exchange, for the bill-of-materials
-    # reconciliation — same cheapness argument.
+    # (unit, evaluated amount, formula) of every technosphere exchange, for the remarks of the
+    # bill-of-materials entry — same cheapness argument.
     exchange_records: list[tuple[str, float, str]] = []
     # Who demands how many kg of which FOREGROUND provider — the other half of the mass-shortfall
     # check (mass_scaled_demand, V290).
@@ -1206,17 +1206,22 @@ def _rule_declared_not_booked(ctx: LintContext) -> list[dict]:
     return out
 
 
-def _rule_bom_unbooked(ctx: LintContext) -> list[dict]:
-    # Researched component masses the model never books. The complement of the research pipeline:
-    # research_bom logs sourced masses, and until now nothing compared them with the model that was
-    # then built (the pavilion's pegs). What counts as booked: engine/health_bom.py.
-    out: list[dict] = []
+def _rule_bom_on_record(ctx: LintContext) -> list[dict]:
+    # The part masses the bill-of-materials research logged, as one entry: research_bom records sourced masses,
+    # and nothing ties them to the exchanges built from them. The entry lists them for whoever holds them
+    # against the model and compares nothing itself — why, and what its one remark says: engine/health_bom.py.
     try:
-        for _component, text in bom_items_unbooked(ctx.database, ctx.exchange_records):
-            out.append(_finding("info", "bom_item_unbooked", text))
+        record = research_on_record(ctx.database, ctx.exchange_records)
     except Exception as exc:  # noqa: BLE001 — an optional signal, never a reason to fail the linter
-        _log.swallowed(exc, "_rule_bom_unbooked")
-    return out
+        _log.swallowed(exc, "_rule_bom_on_record")
+        return []
+    if record is None:
+        return []
+    return [
+        _finding(
+            "info", "bom_research_on_record", record.message, parts=record.parts, remarks=record.remarks
+        )
+    ]
 
 
 def _rule_unused_parameters(ctx: LintContext) -> list[dict]:
@@ -1503,7 +1508,7 @@ MODEL_RULES = [
     _rule_scenario_window,
     _rule_scenario_no_effect,
     _rule_declared_not_booked,
-    _rule_bom_unbooked,
+    _rule_bom_on_record,
     _rule_unused_parameters,
     _rule_unruled_shares,
     _rule_dead_references,

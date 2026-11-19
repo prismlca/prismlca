@@ -3,7 +3,7 @@ import type { ToolCtx } from '../context'
 import type { BomItem, BomLeg } from '../../bomAnswer'
 import { weighBom } from '../../bomBalance'
 import { bomLogEntry } from './bomLogEntry'
-import { researchSection, sourceId } from './reviewResearch'
+import { healthBesideResearch, researchSection, sourceId } from './reviewResearch'
 import { reviewTools } from './review'
 
 const leg = (l: Partial<BomLeg>): BomLeg => ({
@@ -224,7 +224,7 @@ describe('the dossier’s research on record', () => {
       ])
     )
     const text = researchSection(questions)
-    expect(text.length).toBeLessThanOrEqual(14_500)
+    expect(text.length).toBeLessThanOrEqual(14_900)
     for (let q = 0; q < 6; q++) expect(text).toContain(`question ${q}?`)
     // The official finding, logged last by an upgrade pass, is the one shown first.
     const first = text.split('Q (2026-11-15): question 0?\n')[1].split('\n')[0]
@@ -243,7 +243,7 @@ describe('the dossier’s research on record', () => {
       )
     )
     const text = researchSection([t4Entry(), ...many])
-    expect(text.length).toBeLessThanOrEqual(14_500)
+    expect(text.length).toBeLessThanOrEqual(14_900)
     expect(text).toMatch(/- \d+ earlier questions not shown \(asked 2026-11-16 – 2026-11-(1[6-9]|20)\)/)
     expect(text).toContain('question 79:')
     // The bill-of-materials check is never the part that goes.
@@ -254,6 +254,29 @@ describe('the dossier’s research on record', () => {
     expect(researchSection([])).toBe('')
     expect(researchSection(null)).toBe('')
     expect(researchSection({ error: 'x' })).toBe('')
+  })
+
+  it('says the mass of a part whose text the log cut before it', () => {
+    // The log keeps 400 characters of a text; a long material description pushes the mass off its end.
+    const long = `frame (${'steel tube, EN 10219 S235JRH, '.repeat(14)}`.slice(0, 400)
+    const text = researchSection([
+      {
+        question: 'Bill of materials: wheelbarrow',
+        asked: '2026-11-14T18:00:00Z',
+        findings: [
+          { text: long, sources: ['https://maker.example/frame'], component: 'frame', mass_kg: 6 },
+          { text: 'tray (steel sheet): 11 kg', sources: [], component: 'tray', mass_kg: 11 },
+          {
+            text: 'wheel: 2.5 kg — contains axle, listed separately, so not a mass to book whole',
+            sources: []
+          }
+        ]
+      }
+    ])
+    expect(text).toContain(`${long} …: 6 kg — maker.example/frame`)
+    expect(text).toContain('- tray (steel sheet): 11 kg\n')
+    expect(text).not.toContain('11 kg …')
+    expect(text).toMatch(/so not a mass to book whole$/)
   })
 
   it('tells two pages of one host apart', () => {
@@ -294,5 +317,55 @@ describe('the dossier review_model hands over', () => {
     expect(dossier).toMatch(
       /GAPS IN THIS DOSSIER: .*research on record: could not be collected \(backend gone\)/
     )
+  })
+})
+
+describe('the health check beside the research section', () => {
+  const entry = {
+    severity: 'info',
+    code: 'bom_research_on_record',
+    message: 'The bill-of-materials research has 2 part masses on record …\n- pegs: 0.2 kg\n- roof: 2.2 kg',
+    parts: 2,
+    remarks: [
+      "'pegs' (0.2 kg): parameter 'm_pegs' has this value, and no formula leads from it to a positive input."
+    ]
+  }
+  const other = { severity: 'warning', code: 'unit_mismatch', message: 'kept as it is' }
+  const health = { ok: true, findings: [other, entry] }
+
+  it('cuts the list of part masses to its count and its remarks where the section lists them', () => {
+    const section = researchSection([t4Entry()])
+    expect(section).toContain('Part masses found')
+    const cut = healthBesideResearch(health, section) as { ok: boolean; findings: Record<string, unknown>[] }
+    expect(cut.ok).toBe(true)
+    expect(cut.findings[0]).toBe(other)
+    expect(cut.findings[1]).toEqual({
+      severity: 'info',
+      code: 'bom_research_on_record',
+      parts: 2,
+      message:
+        'The bill-of-materials research has 2 part masses on record, listed under RESEARCH ON RECORD ("Part masses ' +
+        'found"). The health check compares none of them with the model. Its remarks say where a parameter leads, ' +
+        "not that a part is missing: 'pegs' (0.2 kg): parameter 'm_pegs' has this value, and no formula leads " +
+        'from it to a positive input.'
+    })
+    const quiet = healthBesideResearch({ findings: [{ ...entry, parts: 1, remarks: [] }] }, section) as {
+      findings: { message: string }[]
+    }
+    expect(quiet.findings[0].message).toContain('has 1 part mass on record')
+    expect(quiet.findings[0].message).toMatch(/It has no remark on any of them\.$/)
+  })
+
+  it('leaves the health check whole where the dossier has no part masses beside it', () => {
+    expect(healthBesideResearch(health, '')).toBe(health)
+    const web = researchSection([{ question: 'Zinc coating?', findings: [{ text: '0.14 kg', sources: [] }] }])
+    expect(web).not.toBe('')
+    expect(healthBesideResearch(health, web)).toBe(health)
+    expect(healthBesideResearch(null, researchSection([t4Entry()]))).toBeNull()
+    // A section that counts part masses it had no room for does not replace the health check's list.
+    const cut =
+      'RESEARCH ON RECORD …\nPart masses found (asked 2026-11-14):\n  (+7 earlier part masses: 7 industry)'
+    expect(healthBesideResearch(health, cut)).toBe(health)
+    expect(healthBesideResearch({ error: 'x' }, researchSection([t4Entry()]))).toEqual({ error: 'x' })
   })
 })

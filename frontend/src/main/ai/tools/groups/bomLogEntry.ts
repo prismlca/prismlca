@@ -44,9 +44,9 @@ function partFindings(result: Partial<BomResult>): Item[] {
         ...(typeof i.cited_by_search === 'boolean' ? { cited_by_search: i.cited_by_search } : {})
       }
       // An entry whose figure contains other listed entries is kept as what was found, but not as a mass the
-      // model has to book: booking it whole beside them counts them twice. The contained entries stay booking
-      // duties, so the health check still names them when nothing books them. Without the structured fields,
-      // and with a text that does not end on the mass, the check does not read the container as a component.
+      // model has to book: booking it whole beside them counts them twice. The contained entries stay part
+      // masses, so the health check lists them. Without the structured fields, and with a text that does not
+      // end on the mass, the check does not read the container as a part.
       if (Array.isArray(i.contains_listed) && i.contains_listed.length)
         return {
           text:
@@ -57,14 +57,14 @@ function partFindings(result: Partial<BomResult>): Item[] {
       return {
         text: `${label}: ${i.mass_kg} kg`,
         ...shared,
-        // Structured on purpose: the health check reconciles these masses against what the model actually
-        // books (bom_item_unbooked), and the report can weigh a figure by its source class — neither works on
-        // prose alone. The mass is the whole set's.
+        // Structured on purpose: the health check lists these masses for whoever holds them against the model
+        // (bom_research_on_record) and looks for a parameter that holds one, and the report can weigh a figure
+        // by its source class — neither works on prose alone. The mass is the whole set's.
         component: String(i.component ?? ''),
         ...(typeof i.mass_kg === 'number' ? { mass_kg: i.mass_kg } : {}),
         ...(Array.isArray(i.mass_range_kg) ? { mass_range_kg: i.mass_range_kg } : {}),
         // The other figures found for this part: the model may book one of them when the user's product is that
-        // variant, and the health check then counts the part as booked instead of naming it as missing.
+        // variant, and the health check names them on the part's row.
         ...(i.alternatives?.length ? { alternatives_kg: i.alternatives.map((a) => a.mass_kg) } : {})
       }
     })
@@ -73,7 +73,7 @@ function partFindings(result: Partial<BomResult>): Item[] {
 /**
  * The other figures the research found for a part, each with its own page: what a reviewer holds a booked figure
  * against when it is not the counted one. Text only — no structured component or mass, and a text that does not end
- * on the mass — so the health check never reads one as a part the model still has to book.
+ * on the mass — so the health check never lists one as a part mass of its own.
  */
 function alternativeFindings(result: Partial<BomResult>): Item[] {
   return (result.items ?? [])
