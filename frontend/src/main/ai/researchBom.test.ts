@@ -325,7 +325,7 @@ describe('researchBom', () => {
       expect(r.recipe?.missing_ingredients).toEqual(['Aqua'])
     })
 
-    it('hands the leg an INCI list to write its names from, and holds the answer against its order', async () => {
+    it('hands the leg an INCI list to write its names from, and covers the answer against it', async () => {
       chat.rounds = [answer(soap)]
       const r = await researchBom({
         product: 'liquid soap',
@@ -334,9 +334,11 @@ describe('researchBom', () => {
       expect(asked()[0]).toMatch(
         /THIS product's INCI list, as printed: Aqua, Glycerin, Sodium Laureth Sulfate\. Give one its line only where your one formulation names it, and write its name as printed here in "inci"/
       )
-      // Nothing in the question asks the leg to fit its recipe to the order.
+      // Nothing in the question asks the leg to fit its recipe to the list's order, and nothing compares them.
       expect(asked()[0]).not.toMatch(/order/i)
-      expect(r.recipe?.inci_order).toBeDefined()
+      expect(r.recipe).not.toHaveProperty('inci_order')
+      // The leg wrote neither printed name in "inci": "water" and "SLES 70 %" cover nothing.
+      expect(r.recipe?.missing_ingredients).toEqual(['Aqua', 'Sodium Laureth Sulfate'])
     })
 
     it('hands the leg the names of a "may contain" part without the marker before each', async () => {
@@ -357,7 +359,7 @@ describe('researchBom', () => {
       )
     })
 
-    it('holds the answer against a label list the leg found, unless its page is a link that leads nowhere', async () => {
+    it('covers the answer against a list the leg found, also when its page is a link that leads nowhere', async () => {
       const withList = (source_url: string) => ({
         ...soap,
         lines: [
@@ -365,26 +367,20 @@ describe('researchBom', () => {
           { name: 'Glycerin', amount: 2, unit: '%' },
           { name: 'Sodium Laureth Sulfate', amount: 8, unit: '%' }
         ],
-        declared_ingredients: {
-          names: ['Aqua', 'Glycerin', 'Sodium Laureth Sulfate'],
-          kind: 'inci',
-          product: 'some soap',
-          source_url
-        }
+        declared_ingredients: { names: ['Aqua', 'Glycerin', 'Sodium Laureth Sulfate', 'Parfum'], source_url }
       })
       chat.rounds = [answer(withList('https://shop.example/soap'))]
       const live = await researchBom({ product: 'liquid soap', recipe: {} })
-      expect(live.recipe?.inci_order).toMatchObject({
-        list: 'found',
-        source_url: 'https://shop.example/soap'
-      })
-      expect(live.recipe?.inci_order?.contradictions).toHaveLength(1)
-      // A provider's link the search never resolved is dropped as a source — and so it carries no comparison.
+      expect(live.recipe?.missing_ingredients).toEqual(['Parfum'])
+      expect(live.recipe?.declared_source).toBe('https://shop.example/soap')
+      // A provider's link the search never resolved is dropped as a source; what the list names is still covered.
       chat.rounds = [answer(withList('https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9'))]
       const dead = await researchBom({ product: 'liquid soap', recipe: {} })
-      expect(dead.recipe?.inci_order).toBeUndefined()
+      expect(dead.recipe?.missing_ingredients).toEqual(['Parfum'])
       expect(dead.recipe?.declared_source).toBeUndefined()
-      expect(dead.summary).not.toMatch(/INCI list/)
+      // The shares are not held against the list's order: glycerin at 2 % before the surfactant at 8 % is no finding.
+      expect(live.recipe).not.toHaveProperty('inci_order')
+      expect(live.summary).not.toMatch(/contradict|order of/)
     })
 
     it('asks no recipe leg when the call names none', async () => {
