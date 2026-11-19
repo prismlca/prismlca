@@ -3,9 +3,9 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
-## 0.9.13 — 2026-11-19
+## 0.9.14 — 2026-11-19
 
-Changes since v0.9.12: https://github.com/prismlca/prismlca/compare/v0.9.12...v0.9.13
+Changes since v0.9.12: https://github.com/prismlca/prismlca/compare/v0.9.12...v0.9.14
 
 ### New
 
