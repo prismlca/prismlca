@@ -576,7 +576,7 @@ def test_the_field_label_is_translated_like_every_other_report_string():
         assert t("field.limitations", lang) != "field.limitations", lang
 
 
-# --- A claimed internal review: the health check asks, the report prints nothing ---------------------
+# --- A claimed internal review: the report prints nothing about it --------------------------------
 
 
 def test_a_claimed_internal_review_changes_nothing_in_the_limitations():
@@ -590,30 +590,11 @@ def test_a_claimed_internal_review_changes_nothing_in_the_limitations():
         "Revue interne par l'équipe ACV du client.",
         # People, with a tool.
         "An AI-assisted review by our consultants was completed in May.",
-        # The assistant's reviewer, which never returned a result: the health check's case, not the report's.
+        # The assistant's reviewer, which never returned a result: it is told so when it writes the field.
         "Eine interne KI-gestützte Zweitmeinung (Review) wurde während des Aufbaus eingeholt.",
     ):
         blocks = rc.limitations_blocks({"study": {"critical_review": text}, "review": {}}, "en", "Limitations")
         assert blocks == silent, text
-
-
-def test_findings_for_the_author_stay_out_of_what_a_report_carries():
-    """The completeness table, the finding count a chapter may quote and the writers' briefs all read the
-    same health result, so the author-only finding is dropped there and the summary is counted again."""
-    finding = {"severity": "warning", "code": "inventory_gap", "message": "a gap"}
-    health = {
-        "activities": 3,
-        "ok": True,
-        "summary": {"error": 0, "warning": 2, "info": 0},
-        "findings": [finding, {"severity": "warning", "code": "review_claimed_not_run", "message": "for the assistant"}],
-    }
-    out = rc.health_for_report(health)
-    assert out["findings"] == [finding]
-    assert out["summary"] == {"error": 0, "warning": 1, "info": 0} and out["ok"] is True
-    assert out["activities"] == 3
-    assert rc.checks_summary({}, out)["completeness"]["findings"] == 1
-    assert len(health["findings"]) == 2, "the linter's own result is left as it was"
-    assert rc.health_for_report(None) is None
 
 
 # --- M1-M5: the acceptance criteria of a prose review, as a test ---------------------

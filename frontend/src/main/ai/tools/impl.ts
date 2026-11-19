@@ -11,6 +11,7 @@ import { unopenedHotspots } from './advice/opened'
 import { renameScored } from './advice/scored'
 import { renameInspected } from '../inspectedAcrossTurns'
 import { META_HOW_TO_READ, foregroundInputs, readableMeta } from './contributionReply'
+import { reviewLogFact } from './groups/reviewLogFact'
 
 /** The model whose tag groups a group action changes: the one the call names, else the session's. */
 const tagModel = (a: { database?: unknown }, ctx: ToolCtx): string | null =>
@@ -82,7 +83,18 @@ export const IMPL: Record<string, Tool['run']> = {
     }
     // `ai_model`: the study records which LLM wrote its words (V128) — the backend stamps it only
     // when this call actually sets content.
-    return S(await ctx.api('POST', '/api/v1/study', { ...fields, database: db, ai_model: ctx.model, ...AI }))
+    const saved = await ctx.api('POST', '/api/v1/study', {
+      ...fields,
+      database: db,
+      ai_model: ctx.model,
+      ...AI
+    })
+    // The fields a review claim goes into get the review log's answer beside the write (reviewLogFact.ts).
+    const reviewLog =
+      'critical_review' in fields || 'limitations' in fields
+        ? await reviewLogFact(ctx, db, 'critical_review' in fields)
+        : undefined
+    return S(reviewLog && saved && typeof saved === 'object' ? { ...saved, review_log: reviewLog } : saved)
   },
   list_geographies: async (a, ctx) => {
     // Codes from the database, names as the region picker shows them (shared/geographyNames.ts — the
