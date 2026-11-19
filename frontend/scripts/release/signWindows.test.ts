@@ -13,6 +13,7 @@ import * as hooks from './sign-windows.mjs'
 import { publishTargetFrom } from './previous-release.mjs'
 import {
   batches,
+  catalogOnly,
   checkVerdict,
   inPackage,
   planPackage,
@@ -103,6 +104,28 @@ describe('the plan for the unpacked app', () => {
       sign: ['PrismLCA.exe'],
       broken: []
     })
+  })
+
+  it('stops at an unsigned file Windows knows from a catalog, before it is signed', () => {
+    // After signing, this machine would still answer with the catalog, and the check that the new signature is
+    // ours could not pass — with the signature already spent. An unsigned file Windows does not know is signed.
+    const unsigned = { status: 'NotSigned', type: 'None', subject: '', problem: null }
+    const fromCatalog = { status: 'Valid', type: 'Catalog', subject: 'CN=Microsoft Windows, O=Microsoft Corporation, C=US', problem: null }
+    const plan = planPackage(
+      [file('resources/backend/_internal/systempart.dll'), file('resources/backend/_internal/_ssl.pyd')],
+      new Map([
+        ['resources/backend/_internal/systempart.dll', fromCatalog],
+        ['resources/backend/_internal/_ssl.pyd', unsigned]
+      ]),
+      new Map()
+    )
+    expect(plan.sign).toEqual(['resources/backend/_internal/_ssl.pyd'])
+    expect(plan.broken).toHaveLength(1)
+    expect(plan.broken[0]).toMatch(/^resources\/backend\/_internal\/systempart\.dll: Windows knows it from a catalog/)
+    // A file with a signature of its own is judged by that one, whatever a catalog says besides.
+    expect(catalogOnly(fromCatalog, true)).toBe(false)
+    expect(catalogOnly(fromCatalog, false)).toBe(true)
+    expect(catalogOnly(undefined, false)).toBe(false)
   })
 
   it('stops at a broken signature and at a file that cannot take one', () => {

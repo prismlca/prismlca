@@ -52,6 +52,12 @@ function Get-SignatureType($sig) {
   if ($sig.PSObject.Properties['SignatureType']) { "$($sig.SignatureType)" } else { '' }
 }
 
+# The certificate of the signature embedded in a file, or $null when the file carries none.
+function Get-EmbeddedSigner([string]$file) {
+  try { [System.Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($file) }
+  catch { $null }
+}
+
 # Why a file falls short of our standard, or $null when it meets it.
 function Get-SignatureProblem([string]$file, [string]$signtool) {
   if (-not (Test-Path -LiteralPath $file)) { return "Not found: $file" }
@@ -107,10 +113,25 @@ $files = Read-List $List
 if ($Inspect) {
   $facts = foreach ($f in $files) {
     $sig = Get-AuthenticodeSignature -LiteralPath $f
+    $status = "$($sig.Status)"
+    $type = Get-SignatureType $sig
     $signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+    if ($type -eq 'Catalog') {
+      # A file that is also a part of Windows (Electron ships d3dcompiler_47.dll and dxil.dll) is answered for
+      # with the catalog this machine knows it from, and nothing is said of the signature inside the file. That
+      # one is what ships, so it is asked for on its own: signtool verify without a catalog option reads the
+      # embedded signature alone. A file with no embedded signature keeps the catalog answer.
+      $embedded = Get-EmbeddedSigner $f
+      if ($embedded) {
+        $null = & $signtool verify /pa $f | Out-String
+        $status = if ($LASTEXITCODE -eq 0) { 'Valid' } else { "NotValid (signtool verify, exit $LASTEXITCODE)" }
+        $type = 'Authenticode'
+        $signer = $embedded.Subject
+      }
+    }
     # Ours is held to our standard; another maker's signature only has to be valid.
     $problem = if ($signer -ceq $Subject) { Get-SignatureProblem $f $signtool } else { $null }
-    [pscustomobject]@{ file = "$f"; status = "$($sig.Status)"; type = (Get-SignatureType $sig); subject = "$signer"; problem = $problem }
+    [pscustomobject]@{ file = "$f"; status = $status; type = "$type"; subject = "$signer"; problem = $problem }
   }
   $json = ConvertTo-Json -InputObject @($facts) -Depth 3 -Compress
   [System.IO.File]::WriteAllText($Out, $json, (New-Object System.Text.UTF8Encoding $false))

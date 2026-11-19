@@ -161,7 +161,21 @@ jobs:
       # The short checks first and the backend suite (most of the hour) last, so a finding in the app's
       # start, window or quit is there in minutes. Each check runs even when the one before it failed, so
       # one run shows everything Windows does differently.
+      #
+      # First the reading half of the release's signing, on the previous release's files: what Windows says
+      # about each program file's signature needs no key, and a release run must not be the first place
+      # that script meets a real Windows.
+      - name: The release's signature inspection reads the previous release
+        working-directory: frontend
+        run: node scripts/release/sign-windows.mjs inspect-previous "$RUNNER_TEMP/previous"
+      # And the signing half with a throwaway certificate: signtool sign, the timestamp and the check
+      # afterwards, as the release makes them. Only the release key's own provider is missing here.
+      - name: The release's signing script signs and checks with a test certificate
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: frontend\scripts\release\sign-windows-selftest.ps1 -From "$env:RUNNER_TEMP\previous\files"
       - name: Frontend tests
+        if: ${{ !cancelled() }}
         working-directory: frontend
         run: npx vitest run
       - name: The app starts and its window answers
