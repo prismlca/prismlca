@@ -144,3 +144,30 @@ def test_duplicate_keeps_formula_and_uncertainty(client, token, project):
     copy = bd.get_node(database=db, code=copy_code)
     tech = [e for e in copy.exchanges() if e.get("type") == "technosphere"]
     assert len(tech) == 1 and tech[0].get("uncertainty type") is not None
+
+
+def test_duplicate_model_carries_the_research_log(client, token, project):
+    """The copied parameters hold the researched masses; their sources live in the research log. A copy without
+    it lost the health check's list of part masses, the reviewer's research section and the report's sources."""
+    from prism_lca.engine.research_log import ResearchLogStore
+
+    db = _fg(client, token)
+    _create(client, token, db, "A")
+    entry = {
+        "question": "Mass of the wheel of a 150 l wheelbarrow",
+        "findings": [{"text": "Tyre with tube: 1.65 kg.", "sources": ["https://example.org/tyre"]}],
+    }
+    store = ResearchLogStore()
+    store.record(db, [entry])
+
+    new = "copy-" + uuid.uuid4().hex[:6]
+    r = client.post("/api/v1/databases/foreground/duplicate", json={"source": db, "name": new}, headers=token)
+    assert r.status_code == 200, r.text
+    assert store.list(new) == store.list(db)
+    assert store.list(new)[0]["findings"][0]["text"] == "Tyre with tube: 1.65 kg."
+
+    # A model without research gets no empty entry.
+    bare = _fg(client, token)
+    other = "copy-" + uuid.uuid4().hex[:6]
+    client.post("/api/v1/databases/foreground/duplicate", json={"source": bare, "name": other}, headers=token)
+    assert other not in store._load()
