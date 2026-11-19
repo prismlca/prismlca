@@ -3,6 +3,58 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.13 — 2026-11-19
+
+Changes since v0.9.12: https://github.com/prismlca/prismlca/compare/v0.9.12...v0.9.13
+
+### New
+
+- **Windows: every program file is signed.** The installer, the app and the files of the calculation backend carry
+  our signature, so Windows Smart App Control lets the backend start.
+- **Bill-of-materials research checks more, and says what it could not check.** It looks for the product's own weight
+  and checks the parts against it, counts a set of five shelves as five, keeps packaging apart, and names every part
+  without a mass and every request that failed. A mixture — a soap, a paint, a concrete — is researched as one recipe
+  from one named source, and the result says whether it adds up. When the sources show several versions of the
+  product, the result names them, and other figures found for a part are kept beside it instead of being counted.
+- **The review sees the research.** The reviewer gets what the research found and what it could not settle, every
+  process with its tags and parameters, every indicator that was scored and the web searches of the chat. It is asked
+  to name a researched part the model books nowhere, and the assistant learns which findings it left unanswered.
+- **Health check.** Missing forming steps are found per process, by the background database's own classification.
+  One input taken twice with the same amount, and a part reached twice below the reference process, are named. The
+  part masses the research recorded are listed with their sources, so they can be held against the model.
+- **Web searches show their sources.** An answer that searched the web through your provider lists the pages it
+  cites, and one line below opens what it searched for. The assistant keeps that record in later turns.
+- **Research has its own lookup limit, and shows its cost.** A research request runs at most eight web lookups
+  (*Settings → AI → Limits*). The run bar shows what a run's research has cost, and the summary names that share.
+- **Scenarios renamed in place, small effects explained.** The assistant can rename a scenario or rewrite its
+  description without deleting it. When a comparison moves the result by less than 1 %, the note names the exchange
+  the scenario reaches and that exchange's share of the result.
+- **Tag groups belong to their model.** Each model keeps its own tag groups and tags; the Tags window marks tags no
+  process carries and can take over another model's groups. Merging or deleting a group takes the saved breakdowns
+  along and names the reports that use it.
+- **Window and chat.** PrismLCA starts maximised, and a narrow window folds the sidebar to its icon strip. The run bar
+  shows the whole run's time beside the current step's, a question card with one question sends with *Answer*, and
+  after a run that calculated, the Model page holds the run's process and method.
+- **External agents.** The MCP bridge works on Windows and says why it ended; an external agent gets the study's
+  language named in its orientation.
+
+### Fixes
+
+- Workspaces on Windows: a workspace with a model in it can be deleted, a workspace you leave is no longer held open,
+  and a deletion that cannot finish leaves the workspace as it was.
+- Results: the model's own emissions count every process of the model; a single subject gets no heatmap, radar or
+  Normalized view; a credit keeps its minus sign on screen.
+- Assistant: a refused or partly failed call is counted as such and says what to send again; an exchange comment is
+  no longer removed when none is sent; an exchange named by its id is not added a second time; a dataset opened in an
+  earlier turn stays opened; a follow-up question after a run is read from the prompt cache under Anthropic.
+- A parameter name with an umlaut is read as one name in formulas. A duplicated model keeps its research log. The
+  model list on the Overview waits for its folders instead of showing every model as Unsorted.
+- Search: a folded dataset is shown in the study's region, and "euro6" finds "EURO 6".
+- Reports cite the critical review as ISO 14044 without a clause that does not exist, and a review the study text
+  mentions is no longer judged against the assistant's review log.
+- Dark theme: alert tints, warning colours and the recording microphone follow the theme.
+- Electron 44.11.5.
+
 ## 0.9.12 — 2026-11-13
 
 ### New
