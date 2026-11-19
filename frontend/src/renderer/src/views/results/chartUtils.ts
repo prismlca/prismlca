@@ -33,6 +33,20 @@ export function catAxisLabel(
 }
 
 /**
+ * Room above a bar chart's plot area, in pixels.
+ *
+ * Two things are drawn in that strip: the label over the tallest bar, and the `×1eN` name a value axis
+ * carries when its numbers are rescaled. `containLabel` reserves neither, so without the room both land
+ * above the canvas and are lost — an axis for a score of 2.75e-7 then read plainly 0 to 3. The name sits
+ * ECharts' default `nameGap` (15 px) above the plot and needs its 10 px line on top of that, so it gets a
+ * little more than a value label. The strip grows with the type in the enlarge overlay.
+ */
+export function barGridTop(labelAbove: boolean, axisExp: number, scale = 1): number {
+  const room = axisExp !== 0 ? 28 : labelAbove ? 24 : 10
+  return Math.round(room * scale)
+}
+
+/**
  * How much larger the type is in the enlarge overlay.
  *
  * A chart drawn at 1400×800 with the 10px labels of a 300px panel is a big picture with unreadable writing —

@@ -6,7 +6,7 @@ import { axisScale, clampNoise } from '../../lib/numberFormat'
 import { cssVar } from '../../lib/cssVar'
 import { followBox, useEChart, type ChartRegistry } from '../../lib/charts/useEChart'
 import { stackTooltipHtml, tipValue, tooltipBeside } from '../../lib/charts/tooltip'
-import { catAxisLabel, lighten, stackColor, trimCommonPrefix } from './chartUtils'
+import { barGridTop, catAxisLabel, lighten, stackColor, trimCommonPrefix } from './chartUtils'
 import type { CompareResponse, Matrix, Picked } from './types'
 
 /** One small-multiple bar chart: subjects on x (each in its own colour), one indicator's scores.
@@ -49,7 +49,7 @@ export function IndicatorChart({
         // *below* them — which is where the empty strip under every bar chart came from: a two-line
         // category label got its own ~30px plus 54px of nothing. 8px is breathing room under the labels; the
         // plot grows into the rest, so the chart fills the box it always had instead of the box shrinking.
-        grid: { left: 8, right: 12, top: showLabel ? 24 : 10, bottom: 8, containLabel: true },
+        grid: { left: 8, right: 12, top: barGridTop(showLabel, exp, scale), bottom: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
           ...tooltipBeside(el),
@@ -199,9 +199,14 @@ export function StackedIndicatorChart({
       const noise = Math.max(...all.map((v) => Math.abs(v)), 0) * 1e-9
       const { exp, factor } = axisScale(all)
       return {
-        // Same as above: `containLabel` reserves the axis labels, not the total/% label above the tallest
-        // stack — that one needs the extra top margin, or it is cut off at the chart's edge.
-        grid: { left: 8, right: 12, top: topLabels.some(Boolean) ? 24 : 10, bottom: 8, containLabel: true },
+        // The total/% label above the tallest stack and the axis's ×1eN name both need the top strip.
+        grid: {
+          left: 8,
+          right: 12,
+          top: barGridTop(topLabels.some(Boolean), exp, scale),
+          bottom: 8,
+          containLabel: true
+        },
         tooltip: {
           trigger: 'axis',
           ...tooltipBeside(el),
