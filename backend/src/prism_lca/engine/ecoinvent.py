@@ -98,6 +98,7 @@ def assert_no_import_running(action: str) -> None:
             f'A background import into workspace "{_status.project}" is running; {action} now would '
             "send the rest of it into another workspace.",
             code="import_running",
+            situational=True,
             status_code=409,
             hint="Wait until it has finished — Overview → Background shows its progress.",
         )
@@ -727,6 +728,7 @@ def _assert_idle() -> None:
         raise PrismError(
             "A background import is already running.",
             code="import_busy",
+            situational=True,
             status_code=409,
             hint="Wait for it to finish (poll GET /api/v1/setup/status).",
         )

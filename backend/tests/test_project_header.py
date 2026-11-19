@@ -24,6 +24,8 @@ def test_request_for_another_project_is_refused(client: TestClient, token: dict[
     assert stale.status_code == 409
     body = stale.json()
     assert body["error"]["code"] == "project_changed"
+    # The workspace moved, the request was fine: a client counts it as a failure, never as a refusal.
+    assert body["error"]["situational"] is True
     assert project in body["error"]["message"]
     assert (project + "-b") in body["error"]["message"]
     assert _get(client, token, project + "-b").status_code == 200

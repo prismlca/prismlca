@@ -8,6 +8,8 @@ import { formulaKept } from './formulaKept'
 import { ruleFor } from './paramRule'
 import { NEEDS_A_LOOK, NEEDS_A_LOOK_FLOOR, NEEDS_A_LOOK_TOP_N } from './advice/hotspots'
 import { unopenedHotspots } from './advice/opened'
+import { renameScored } from './advice/scored'
+import { renameInspected } from '../inspectedAcrossTurns'
 import { META_HOW_TO_READ, foregroundInputs, readableMeta } from './contributionReply'
 
 /** The model whose tag groups a group action changes: the one the call names, else the session's. */
@@ -327,6 +329,13 @@ export const IMPL: Record<string, Tool['run']> = {
     // The name the backend gave it (it trims), not the one asked for: the chat's model fence names it.
     const renamed = String(answer?.name ?? a?.name ?? '')
     if (renamed && was && String(a?.database ?? was) === was) ctx.activeDb = renamed
+    // The run's records file the model under its name; they follow the rename like the session does.
+    // `database` is the exact name: the route renames that one and no other.
+    const from = String(a?.database ?? was ?? '')
+    if (renamed && from) {
+      renameScored(ctx.scored, from, renamed)
+      renameInspected(ctx.inspected, from, renamed)
+    }
     return S(ctx.activeDb === renamed && was !== renamed ? { ...answer, active_model_now: renamed } : answer)
   },
   add_exchange: async (a, ctx) =>

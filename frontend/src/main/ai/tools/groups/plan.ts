@@ -24,6 +24,14 @@ import {
   validatePlanUpdate
 } from '../../../../shared/plan'
 
+/** How the tool's answer to an accepted call begins; a refused call answers `{"error": …}`. */
+const UPDATED = 'Plan updated'
+const WITHDRAWN = 'Plan withdrawn.'
+
+/** Whether a `plan` result answers an accepted call — read by compaction and by the plan reminder. */
+export const acceptedPlanAnswer = (result: unknown): boolean =>
+  typeof result === 'string' && (result.startsWith(UPDATED) || result.startsWith(WITHDRAWN))
+
 export const planTools: Tool[] = [
   {
     spec: {
@@ -77,7 +85,7 @@ export const planTools: Tool[] = [
       }
       if (v.cleared) {
         await ctx.plan.update(null, v.input.explanation)
-        return 'Plan withdrawn.'
+        return WITHDRAWN
       }
       const next = {
         title: v.input.title || prev?.title || derivePlanTitle(v.input.steps, ctx.chatTitle),
@@ -89,7 +97,7 @@ export const planTools: Tool[] = [
       const { completed, total } = planProgress(next)
       const current = next.steps.find((s) => s.status === 'in_progress')
       const head =
-        `Plan updated · ${completed}/${total}` +
+        `${UPDATED} · ${completed}/${total}` +
         (current ? ` · in progress: ${current.step}` : ' · all steps closed')
       return `${head}\n${formatPlanForModel(next)}`
     }

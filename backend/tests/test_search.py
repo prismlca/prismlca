@@ -160,6 +160,17 @@ def test_search_requires_index(client, token, project):
     )
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "not_indexed"
+    # Not a "no" to the request: the index is missing, so a client counts it as a failure to run.
+    assert r.json()["error"]["situational"] is True
+
+
+def test_a_refusal_of_the_request_carries_no_situational_mark():
+    from prism_lca.errors import PrismError
+
+    refused = PrismError("No such method.", code="method_not_found", hint="See list_methods.").envelope()
+    assert refused == {"error": {"code": "method_not_found", "message": "No such method.", "hint": "See list_methods."}}
+    busy = PrismError("Building.", code="index_busy", status_code=409, situational=True).envelope()
+    assert busy["error"]["situational"] is True
 
 
 def test_invalid_activity_type_rejected(client, token, project):
@@ -219,6 +230,7 @@ def test_provider_mismatch_rejected(client, token, project):
     )
     assert r.status_code == 409
     assert r.json()["error"]["code"] == "embedding_mismatch"
+    assert r.json()["error"]["situational"] is True
 
 
 def test_geo_chain_not_eurocentric():

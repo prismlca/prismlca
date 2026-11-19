@@ -252,7 +252,8 @@ def contribution_matrix(request: Request, body: ContributionMatrixRequest) -> di
                 should_cancel=_canceller("contribution-matrix", mine, key),
             )
     except lca.CalcCancelled as e:
-        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409) from e
+        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409,
+                         situational=True) from e
 
 
 @router.post("/contribution", summary="Contribution tree (compact meta+lookups+tree)")
@@ -271,7 +272,8 @@ def contribution(request: Request, body: ContributionRequest) -> dict:
             out["meta"]["scenario"] = body.scenario
         return out
     except lca.CalcCancelled as e:
-        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409) from e
+        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409,
+                         situational=True) from e
 
 
 @router.post("/elementary-flows", summary="Top characterised elementary flows")
@@ -375,7 +377,8 @@ def compare(request: Request, body: CompareRequest) -> dict:
             out["family"] = note
         return out
     except lca.CalcCancelled as e:
-        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409) from e
+        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409,
+                         situational=True) from e
 
 
 class CompareStackedRequest(BaseModel):
@@ -397,7 +400,8 @@ def compare_stacked(request: Request, body: CompareStackedRequest) -> dict:
             should_cancel=_canceller("stacked", mine, key), store=ScenarioStore(),
         )
     except lca.CalcCancelled as e:
-        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409) from e
+        raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409,
+                         situational=True) from e
 
 
 class CancelRequest(BaseModel):

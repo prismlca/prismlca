@@ -22,6 +22,7 @@ class PrismError(Exception):
         hint: str | None = None,
         status_code: int = 400,
         details: dict | None = None,
+        situational: bool = False,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -31,6 +32,19 @@ class PrismError(Exception):
         # Structured facts for the UI to word its own dialog from. The message and hint stay complete
         # without them: the assistant's tools read those two and never this.
         self.details = details
+        # The request was fine; the app's situation answered it — busy, not built yet, switched to another
+        # workspace, overtaken by a newer request. A client tells this apart from a "no" to the request
+        # itself: the assistant's loop counts it as a call that failed to run, never as one it refused.
+        self.situational = situational
+
+    def envelope(self) -> dict:
+        """The response body every client reads: ``{"error": {code, message, hint, …}}``."""
+        error: dict = {"code": self.code, "message": self.message, "hint": self.hint}
+        if self.details is not None:
+            error["details"] = self.details
+        if self.situational:
+            error["situational"] = True
+        return {"error": error}
 
 
 def scenario_calc_error(name: str, exc: Exception) -> PrismError:

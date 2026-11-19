@@ -7,8 +7,9 @@ entries), and a restart or an eviction made the next turn answer "from memory": 
 file is keyed by the chat alone and a model rename needs nothing here.
 
 The content is opaque to the backend (``turn_id``, ``history_after``, ``messages`` — the model's
-messages with every open call already closed by main — and ``inspected``, the datasets the chat has
-opened so far, which the next turn starts from). What this module does own is the size:
+messages with every open call already closed by main — and ``inspected`` and ``scored``, the datasets
+the chat has opened and the indicators it has scored so far, which the next turn starts from). What this
+module does own is the size:
 
 - one file may not exceed ``MAX_FILE_BYTES``; a bigger one is refused, never cut — JSON cut at a
   character position is not a shorter transcript, it is a broken one. Main budgets below this and
@@ -59,11 +60,11 @@ def _path(chat_id: str) -> Path | None:
 
 
 def save(chat_id: str, turn_id: str, history_after: list, messages: list,
-         inspected: list | None = None) -> int:
+         inspected: list | None = None, scored: list | None = None) -> int:
     """Write one chat's transcript atomically and return its size in bytes.
 
-    ``inspected`` is stored only when given: a file without it tells main that the record was not kept,
-    which is not the same as an empty one.
+    ``inspected`` and ``scored`` are stored only when given: a file without one tells main that the
+    record was not kept, which is not the same as an empty one.
 
     Raises ``TranscriptTooLarge`` over ``MAX_FILE_BYTES`` (the old file stays), ``ValueError`` for an
     id that cannot be a file name.
@@ -74,6 +75,8 @@ def save(chat_id: str, turn_id: str, history_after: list, messages: list,
     doc: dict[str, Any] = {"turn_id": turn_id, "history_after": history_after, "messages": messages}
     if inspected is not None:
         doc["inspected"] = inspected
+    if scored is not None:
+        doc["scored"] = scored
     doc["saved"] = now_iso()
     # Compact on purpose: unlike ai_chats.json nobody reads this by hand, and indentation would eat
     # a noticeable share of the budget on a deep message tree.

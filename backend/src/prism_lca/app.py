@@ -26,6 +26,7 @@ from prism_lca.engine.commands import (
     CURRENT_TURN,
     TURN_ID_RE,
     CommandBus,
+    project_changed_error,
 )
 from prism_lca.engine.model_scope import CURRENT_MODEL_SCOPE
 from prism_lca.search.service import SearchService
@@ -161,16 +162,13 @@ def _current_project_name(scope) -> str | None:  # noqa: ANN001
 
 
 async def _project_changed_response(send, expected: str, current: str | None):  # noqa: ANN001
-    now = f'"{current}"' if current else "no workspace"
-    message = (
-        f'The active workspace changed: this session was opened on "{expected}", the app now has {now}. '
-        "Reconnect to continue in the current workspace."
-    )
-    body = json.dumps({"error": {"code": "project_changed", "message": message}}).encode("utf-8")
+    # The command bus's own error, so both answers to a stale workspace read alike (situational included).
+    error = project_changed_error(expected, current)
+    body = json.dumps(error.envelope()).encode("utf-8")
     await send(
         {
             "type": "http.response.start",
-            "status": 409,
+            "status": error.status_code,
             "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
         }
     )

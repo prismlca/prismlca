@@ -158,33 +158,24 @@ export interface RunOpts {
 class ArgumentsRefused extends Error {}
 
 /**
- * Backend codes that report the session's surroundings, not a verdict on the call: the app moved to
- * another workspace (the MCP session ends on it, sessions.ts), a calculation was overtaken by a newer
- * one. They stay failures.
- */
-const NOT_A_REFUSAL = new Set([
-  'project_changed',
-  'import_project_changed',
-  'index_project_changed',
-  'job_other_project',
-  'calc_superseded'
-])
-
-/**
  * Whether a thrown error is a refusal of the call rather than a failure to run it.
  *
  * The backend refuses with a 4xx and its own error code (`group_dimension_exists`, `param_not_found`,
  * `outside_model_scope` …) — the same kind of "no" a tool says by RETURNING `{"error": …}`. Thrown, it
  * used to count as a failure: an `edit_tags create_group` turned down for a twin group read as "failed"
  * in the trace while the same refusal returned by another tool read as "rejected". A 5xx, a network
- * error, a 401 and a 4xx without a code (FastAPI's own 422) stay failures. So does everything a tool
- * throws itself — only the schema check is counted as a refusal: like the broken-JSON refusal above
- * it, it is a guardrail turning down arguments before anything runs, and the message names the fix.
+ * error, a 401 and a 4xx without a code (FastAPI's own 422) stay failures, and so does a 4xx the backend
+ * marks `situational`: the call was fine and the app's situation answered it — an index not built yet or
+ * busy, an import running, the app moved to another workspace (the MCP session ends on that, sessions.ts),
+ * a calculation overtaken by a newer one. The mark sits where the error is raised, so a new one of its
+ * kind is classed there, not in a list here. Everything a tool throws itself stays a failure too — only
+ * the schema check is counted as a refusal: like the broken-JSON refusal above it, it is a guardrail
+ * turning down arguments before anything runs, and the message names the fix.
  */
 export function isRefusal(e: unknown): boolean {
   if (e instanceof ArgumentsRefused) return true
   if (!(e instanceof ApiError)) return false
-  return e.status >= 400 && e.status < 500 && e.status !== 401 && !!e.code && !NOT_A_REFUSAL.has(e.code)
+  return e.status >= 400 && e.status < 500 && e.status !== 401 && !!e.code && !e.situational
 }
 
 /**

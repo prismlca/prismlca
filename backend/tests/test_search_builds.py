@@ -86,7 +86,7 @@ def test_an_import_during_a_build_is_indexed_after_it(client: TestClient, token,
     # A person pressing Index is still told to wait…
     with pytest.raises(PrismError) as busy:
         search.builds.build("bafu")
-    assert busy.value.code == "index_busy"
+    assert busy.value.code == "index_busy" and busy.value.situational
     # …an import lines its build up instead. No biosphere index yet, so nothing is queued for the flows.
     index_after(search)("bafu", {"biosphere_added": ["co2"]})
     st = client.get("/api/v1/search/status", headers=token).json()
