@@ -1,5 +1,5 @@
-"""Health checks on the study record — its goal & scope fields and what its prose claims — as opposed to the
-inventory checks of ``health``, which turns these into findings.
+"""Health checks on the study record — its goal & scope fields — as opposed to the inventory checks of ``health``,
+which turns these into findings.
 
 The assistant never opens the report's scope panel or its limitations chapter: it has no report tools and no
 reason to go there. The health check is the one report it runs by itself, so what the report will say about
@@ -39,37 +39,4 @@ def unrecorded_scope_note(database: str) -> str | None:
         "them, and the report's goal-and-scope chapter is written from these fields — an empty one "
         "becomes \"not defined\" in the document. Set them with `model_info` action=\"set\"; ask the "
         f"user where the answer is theirs to give rather than inventing one.{review}"
-    )
-
-
-def claimed_review_note(database: str) -> str | None:
-    """Study text that claims an internal review of the model while the model's review log holds none — or None.
-
-    This is the one place such a claim is challenged: the report prints nothing about it and leaves this
-    finding out of its completeness table (`report_checks.AUTHOR_ONLY_FINDINGS`), because only whoever edits
-    the model can tell a review by people from the assistant's. In the run that prompted it, both attempts
-    of the review had timed out, the tool had said that nothing was judged, and the assistant still wrote
-    "eine interne KI-gestützte Zweitmeinung (Review) wurde während des Aufbaus eingeholt" into
-    `critical_review` — encouraged, if anything, by this very check asking for the empty field to be filled.
-    """
-    from prism_lca.engine.review_claims import claimed_review_fields
-    from prism_lca.engine.review_log import ReviewLogStore
-    from prism_lca.engine.study import StudyMetaStore
-
-    if ReviewLogStore().list(database):
-        return None
-    fields = claimed_review_fields(StudyMetaStore().get(database))
-    if not fields:
-        return None
-    where = " and ".join(f"`{f}`" for f in fields)
-    # Both readings of the sentence are spelled out: "internal review" may mean people, whom the log never
-    # holds, and told only to rewrite, a test model replaced a user's own note about such a review.
-    return (
-        f"The study text ({where}) says an internal or AI review of the model was carried out, but the "
-        "model's review log — where every review by the assistant's AI reviewer (review_model) is kept — "
-        "holds none. If the sentence means that reviewer, it claims a check that never happened, and a reader "
-        "takes it as one the numbers passed: rewrite it to say only what was actually done; where there was no "
-        "critical review by independent experts (ISO 14044), `critical_review` says: "
-        f'"{NO_CRITICAL_REVIEW}" If it means a review by people, leave it as it is: the log knows only the AI '
-        "reviewer's reviews."
     )

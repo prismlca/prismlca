@@ -258,18 +258,14 @@ def test_nothing_a_model_produced_reaches_the_short_report(project, monkeypatch)
 
 
 def test_a_claimed_internal_review_is_printed_nowhere(project):
-    """Study text naming an internal review the log lacks: the health check warns whoever edits the model,
-    who alone knows whether people did it. The document prints neither a limitation about it nor the warning,
-    which is written for the assistant, in its completeness table."""
-    from prism_lca.engine import health
+    """Study text naming an internal review the log lacks — only whoever edits the model knows whether people
+    did it. The document judges nothing about it: no limitation saying it never ran, no completeness row."""
     from prism_lca.engine.study import StudyMetaStore
 
     _seed(get_bd())
     StudyMetaStore().update("sh", {"critical_review": "Internal review by Dr. A of our LCA department, June 2026."})
-    assert any(f["code"] == "review_claimed_not_run" for f in health.lint_database("sh")["findings"])
 
-    _report, inputs, sources, _info = report_short.document(_settings())
-    assert inputs["health"] and all(f["code"] != "review_claimed_not_run" for f in inputs["health"]["findings"])
+    _report, _inputs, sources, _info = report_short.document(_settings())
     printed = str(sources["main.typ"]) + str(sources["tables.json"])
     assert "never run" not in printed and "review log" not in printed
 

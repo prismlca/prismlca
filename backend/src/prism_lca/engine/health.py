@@ -34,7 +34,7 @@ from prism_lca.engine.health_params import dead_references, unruled_message, unr
 from prism_lca.engine.health_phases import _phase_findings
 from prism_lca.engine.health_provenance import carries_a_figure, unsourced_figures
 from prism_lca.engine.health_structure import two_ways_in, unreached
-from prism_lca.engine.health_study import claimed_review_note, unrecorded_scope_note
+from prism_lca.engine.health_study import unrecorded_scope_note
 from prism_lca.engine.health_supply import same_product_twice
 from prism_lca.engine.model import _db_or_404
 from prism_lca.engine.reached_twice import flows_of
@@ -1117,12 +1117,6 @@ def _rule_unrecorded_scope(ctx: LintContext) -> list[dict]:
     return [_finding("info", "unrecorded_scope", note)] if note else []
 
 
-def _rule_claimed_review(ctx: LintContext) -> list[dict]:
-    # Study prose against the review log: a review claimed that never returned a result.
-    note = claimed_review_note(ctx.database)
-    return [_finding("warning", "review_claimed_not_run", note)] if note else []
-
-
 def _rule_missing_forming(ctx: LintContext) -> list[dict]:
     # Material in primary forms, per process, against the forming steps linked beside it.
     return [
@@ -1504,7 +1498,6 @@ def _eol_group_finding(shares: dict[str, float], material: str) -> dict | None:
 #: Model-wide rules, in the order their findings are emitted after the per-activity pass.
 MODEL_RULES = [
     _rule_unrecorded_scope,
-    _rule_claimed_review,
     _rule_missing_forming,
     _rule_unsourced_figures,
     _rule_scenario_window,
@@ -1565,7 +1558,6 @@ def lint_database(database: str) -> dict:
             "typed constants that equal a parameter's value (a quantity a scenario cannot move)",
             "life-cycle phase coverage",
             "data provenance (how many figures cite a source)",
-            "study text claiming an internal review the model's review log does not have",
             "shaping (per process: metal and plastic in primary forms against the forming steps linked "
             "beside it, by the background's CPC classification; datasets without one are not assessed)",
             "transport legs (the distance a tonne-kilometre exchange implies per unit of product)",

@@ -31,25 +31,6 @@ from prism_lca.engine.study import AUTHOR_TEXT_FIELDS
 #: style notes and would bury the ones that matter.
 _BLOCKING = ("error", "warning")
 
-#: Health findings for whoever edits the model, never for a report's reader. `review_claimed_not_run`
-#: reads the study's prose for a claimed internal review and tells the assistant what to do about it —
-#: "if it means a review by people, leave it as it is" — which, printed in a client's completeness table,
-#: is an instruction to nobody about something that is not the inventory's completeness at all.
-AUTHOR_ONLY_FINDINGS = frozenset({"review_claimed_not_run"})
-
-
-def health_for_report(health: dict | None) -> dict | None:
-    """The linter's result as a report carries it: without the findings meant only for the model's author.
-
-    Dropped where the report's inputs are built, not where the table is drawn, so the table, the finding
-    count a chapter may quote (`checks_summary`), the writers' briefs and an exported bundle agree.
-    """
-    if not health:
-        return health
-    findings = [f for f in health.get("findings") or [] if f.get("code") not in AUTHOR_ONLY_FINDINGS]
-    summary = {sev: sum(1 for f in findings if f.get("severity") == sev) for sev in ("error", "warning", "info")}
-    return {**health, "findings": findings, "summary": summary, "ok": summary["error"] == 0}
-
 
 def _completeness(data: dict[str, Any], health: dict | None, lang: str) -> list[dict]:
     """ISO 14044 §4.5.2 — is the data complete enough for the conclusions drawn?
@@ -636,8 +617,8 @@ def limitations_blocks(data: dict[str, Any], lang: str, title: str) -> list[dict
     # sentence means: "internal review by our LCA team" is a critical review under ISO 14044 §6.2, and
     # "an AI-assisted review by our consultants" is people's work too, while the review log knows only
     # the assistant's reviewer — so a misreading printed here would tell a client that the author's
-    # review never happened. The health check asks instead, while someone who knows can still change
-    # the sentence (review_claims.py).
+    # review never happened. Instead, whoever writes these fields through `model_info` is told what the
+    # review log holds (frontend `tools/groups/reviewLogFact.ts`); the judging stays with the writer.
 
     # The internal review's OUTCOME is limitations material and is printed below. Its *bookkeeping* is
     # not, and used to be: "An internal model review was carried out on <date>. Of its findings, 3

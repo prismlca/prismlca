@@ -35,7 +35,7 @@ CEILINGS: dict[str, int] = {
     "prism_lca/engine/report_prompts.py": 1836,
     # 1575 — the provenance count moved to health_provenance, the same-product rules to health_supply,
     # the bill-of-materials reconciliation to health_bom.
-    "prism_lca/engine/health.py": 1600,
+    "prism_lca/engine/health.py": 1592,
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601
     "prism_lca/engine/model.py": 1452,  # 1427 — markets and their suppliers moved to market_suppliers.py
@@ -56,7 +56,7 @@ CEILINGS: dict[str, int] = {
     "prism_lca/api/v1/report.py": 1116,  # 1091
     # 1059, after the README of an exported report bundle moved to report_bundle_readme.py. The review
     # refresh on a snapshot hit (`_current_review`) stays: it belongs beside `analysis_snapshot`.
-    "prism_lca/engine/report_pipeline.py": 1084,
+    "prism_lca/engine/report_pipeline.py": 1083,
     "prism_lca/engine/report_bindings.py": 1075,  # 1050
     "prism_lca/engine/dataimport/readers.py": 1035,  # 1010, after the archive limits moved to archive_limits
 }
