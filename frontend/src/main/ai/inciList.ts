@@ -13,15 +13,72 @@
  */
 const MAY_CONTAIN = /[[(]?\s*(?:\+\s*\/\s*[-–−]|±|\bmay\s+contain\b)\s*[)\]]?\s*:?\s*/giu
 
+/** A bracket in a text: where it opens, and where it closes — nowhere when the text never closes it. */
+interface Bracket {
+  open: number
+  close?: number
+}
+
+/** The brackets of a text, round or square, each closed by the first closing one not another's. */
+function bracketsOf(text: string): Bracket[] {
+  const all: Bracket[] = []
+  const open: Bracket[] = []
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '(' || text[i] === '[') {
+      const b: Bracket = { open: i }
+      all.push(b)
+      open.push(b)
+    } else if ((text[i] === ')' || text[i] === ']') && open.length) open.pop()!.close = i
+  }
+  return all
+}
+
+/** The bracket around a "may contain" part, its marker before the first name: "[+/- Mica, …]", "(May contain: …)". */
+const framesMay = (inside: string): boolean => inside.split(/,(?!\d)/)[0].search(MAY_CONTAIN) >= 0
+
 /**
- * The list as printed, one name per entry. A list sent as one string is split at its commas — but not inside a name
- * like "1,2-Hexanediol", where a digit follows the comma.
+ * A text split at its commas — never before a digit ("1,2-Hexanediol") nor inside a bracket the text closes, which
+ * holds what one entry is made of or another name of it ("Chocolate (Sugar, Cocoa Mass)", "Iron Oxides (CI 77491, CI
+ * 77492)"). The bracket around a "may contain" part is no entry's: its names are entries of their own. A bracket the
+ * text never closes holds nothing together.
+ */
+function splitAtCommas(text: string): string[] {
+  const held = bracketsOf(text).filter(
+    (b): b is Required<Bracket> => b.close !== undefined && !framesMay(text.slice(b.open + 1, b.close))
+  )
+  const out: string[] = []
+  let from = 0
+  for (const { index } of text.matchAll(/,(?!\d)/g)) {
+    if (held.some((b) => b.open < index && index < b.close)) continue
+    out.push(text.slice(from, index))
+    from = index + 1
+  }
+  out.push(text.slice(from))
+  return out.map((e) => e.trim()).filter(Boolean)
+}
+
+/**
+ * The list as printed, one name per entry. The list is read as one text, whether sent as one string or already split
+ * by the caller, and split at its commas (`splitAtCommas`): a compound split inside its bracket is one entry again.
  */
 export function inciEntries(list: readonly string[] | undefined): string[] {
-  return (list ?? [])
-    .flatMap((e) => String(e).split(/,(?!\d)/))
-    .map((e) => e.trim())
-    .filter(Boolean)
+  return splitAtCommas((list ?? []).map(String).join(', '))
+}
+
+/**
+ * The bracket that ends a printed name — before the punctuation a list may close with ("Titanium Dioxide (CI 77891).",
+ * an asterisk for organic) — with the name before it and the names inside it, at their commas. Open when the text was
+ * cut inside it ("Chocolate (Sugar"). None for a bracket inside a name ("Butyrospermum Parkii (Shea) Butter") or with
+ * no name before it.
+ */
+export function endBracket(printed: string): { head: string; inside: string[]; closed: boolean } | undefined {
+  const t = printed.replace(/[^\p{L}\p{N}()[\]]+$/u, '')
+  const brackets = bracketsOf(t)
+  const b = brackets.find((x) => x.close === undefined) ?? brackets.find((x) => x.close === t.length - 1)
+  if (!b) return undefined
+  const head = t.slice(0, b.open).trim()
+  if (!/[\p{L}\p{N}]$/u.test(head)) return undefined
+  return { head, inside: splitAtCommas(t.slice(b.open + 1, b.close)), closed: b.close !== undefined }
 }
 
 /** An entry of the list as the coverage reads it. */
@@ -31,12 +88,16 @@ export interface ListName {
   may: boolean
 }
 
-/** A name of a "may contain" part without the bracket around the part: "CI 77499]" is "CI 77499". */
+/**
+ * A name of a "may contain" part without the bracket around the part: "CI 77499]" is "CI 77499", "Iron Oxides (CI
+ * 77491, CI 77492))" is "Iron Oxides (CI 77491, CI 77492)".
+ */
 const unbracket = (s: string): string => {
   let t = s.trim().replace(/[.;]+$/, '')
+  const count = (c: string): number => t.split(c).length - 1
   for (const [open, close] of ['[]', '()']) {
-    if (t.startsWith(open) && !t.includes(close)) t = t.slice(1).trim()
-    if (t.endsWith(close) && !t.includes(open)) t = t.slice(0, -1).trim()
+    if (t.startsWith(open) && count(open) > count(close)) t = t.slice(1).trim()
+    if (t.endsWith(close) && count(close) > count(open)) t = t.slice(0, -1).trim()
   }
   return t
 }
