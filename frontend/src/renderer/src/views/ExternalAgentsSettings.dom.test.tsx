@@ -51,7 +51,10 @@ describe('ExternalAgentsSettings', () => {
     expect(screen.getAllByRole('button', { name: 'Copy all' }).length).toBeGreaterThan(0)
     expect(configureClient).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Write to Claude Code’s configuration' }))
-    expect(configureClient).toHaveBeenCalledWith('claude-code')
+    expect(configureClient).toHaveBeenCalledWith('claude-code', {
+      path: clients[0].configPath,
+      proposed: clients[0].proposed
+    })
     expect(await screen.findByText(/Written to \/home\/u\/\.claude\.json \(backup:/)).toBeInTheDocument()
     // The connection test reports what the bridge answered.
     await user.click(screen.getByRole('button', { name: 'Test connection' }))

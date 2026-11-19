@@ -65,7 +65,8 @@ const api = {
     disconnect: (sessionId: string) => ipcRenderer.invoke('mcp:disconnect', sessionId),
     setApproval: (sessionId: string, mode: string) => ipcRenderer.invoke('mcp:setApproval', sessionId, mode),
     clients: () => ipcRenderer.invoke('mcp:clients'),
-    configureClient: (id: string) => ipcRenderer.invoke('mcp:configureClient', id),
+    configureClient: (id: string, seen: { path: string; proposed: string }) =>
+      ipcRenderer.invoke('mcp:configureClient', id, seen),
     testConnection: () => ipcRenderer.invoke('mcp:testConnection'),
     /** Subscribe to server/session events. Returns an unsubscribe fn. */
     onEvent: (cb: (ev: unknown) => void) => {
