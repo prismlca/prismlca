@@ -62,14 +62,10 @@ MAX_VERSIONS_SEEN = 3
 #: Requested parts / open parts / version groups per check — research_bom asks for at most eight.
 MAX_CHECK_ROWS = 12
 #: A recipe's check: what it is of, which formulation, whether it closed — and the ingredients known from the
-#: product that it lacks, the trade forms split into their constituents, and where its shares contradict the
-#: order of an INCI list (one sentence each) together with which list: the one the caller passed, or a label list
-#: the research found (with the product it belongs to and its page).
+#: product that it lacks, and the trade forms split into their constituents.
 RECIPE_KINDS = {"product", "frame", "unknown"}
-INCI_LIST_ORIGINS = {"passed", "found"}
 MASS_SOURCES = {"given", "researched"}
 MAX_RECIPE_NAMES = 12
-INCI_ORDER_CHARS = 300
 
 
 def _cut(value: object, limit: int) -> str:
@@ -148,8 +144,7 @@ def _number(value: object) -> float | None:
 def _clean_recipe(raw: object) -> dict | None:
     """A researched recipe's own check: whether its lines closed against the total its source states
     (``closes`` true, false or null with its ``note``), the gap in percent and kilograms (negative = over),
-    whether its ranges could reach the total, the mass it was scaled to, what it lacks, and where it contradicts
-    the order of an INCI list and which one."""
+    whether its ranges could reach the total, the mass it was scaled to, and what it lacks."""
     if not isinstance(raw, dict):
         return None
     of = _cut(raw.get("of"), 160)
@@ -173,19 +168,11 @@ def _clean_recipe(raw: object) -> dict | None:
         kept["mass_kg"] = mass
         if raw.get("mass_source") in MASS_SOURCES:
             kept["mass_source"] = raw["mass_source"]
-    for key, limit in (("missing_ingredients", 120), ("split", 120), ("inci_order", INCI_ORDER_CHARS)):
+    for key in ("missing_ingredients", "split"):
         listed = raw.get(key) if isinstance(raw.get(key), list) else []
-        names = [_cut(n, limit) for n in listed if str(n or "").strip()]
+        names = [_cut(n, 120) for n in listed if str(n or "").strip()]
         if names:
             kept[key] = names[:MAX_RECIPE_NAMES]
-    listed = raw.get("inci_list")
-    if "inci_order" in kept and isinstance(listed, dict) and listed.get("from") in INCI_LIST_ORIGINS:
-        origin = {"from": listed["from"]}
-        for key, limit in (("product", 160), ("source", 300)):
-            value = _cut(listed.get(key), limit)
-            if value:
-                origin[key] = value
-        kept["inci_list"] = origin
     return kept
 
 

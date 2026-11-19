@@ -235,7 +235,7 @@ describe('the research log entry of a call with a recipe', () => {
     })
   })
 
-  it('logs where the recipe contradicts the order of an INCI list, one sentence each, and which list', async () => {
+  it('logs what the recipe lacks of a passed INCI list, and nothing about the order of that list', async () => {
     const reversed = weighRecipe(
       parseRecipeAnswer({
         formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
@@ -245,41 +245,14 @@ describe('the research log entry of a call with a recipe', () => {
           { name: 'Cocamidopropyl Betaine', amount: 8, unit: '%' }
         ]
       }),
-      { of: 'liquid soap', request: { inci_list: ['Aqua', 'Glycerin', 'Cocamidopropyl Betaine'] } }
+      { of: 'liquid soap', request: { inci_list: ['Aqua', 'Glycerin', 'Cocamidopropyl Betaine', 'Parfum'] } }
     )
     const { posts } = await run({ product: 'soap', ...weighBom([], { recipe: reversed }) })
-    expect(posts[0].body.entries[0].bom_check.recipe.inci_order).toEqual([
-      'Glycerin (no. 2) is listed before Cocamidopropyl Betaine (no. 3), but the recipe gives 2 % against 8 %'
-    ])
-    expect(posts[0].body.entries[0].bom_check.recipe.inci_list).toEqual({ from: 'passed' })
-    // A list the research found keeps its product and page in a field of its own, beside the sentences.
-    const found = weighRecipe(
-      parseRecipeAnswer({
-        formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },
-        lines: [
-          { name: 'Aqua', amount: 90, unit: '%' },
-          { name: 'Glycerin', amount: 2, unit: '%' },
-          { name: 'Cocamidopropyl Betaine', amount: 8, unit: '%' }
-        ],
-        declared_ingredients: {
-          names: ['Aqua', 'Glycerin', 'Cocamidopropyl Betaine'],
-          kind: 'inci',
-          product: 'Balea liquid soap',
-          source_url: 'https://dm.example/p'
-        }
-      }),
-      { of: 'liquid soap', request: {} }
-    )
-    const { posts: foundPosts } = await run({ product: 'soap', ...weighBom([], { recipe: found }) })
-    expect(foundPosts[0].body.entries[0].bom_check.recipe.inci_list).toEqual({
-      from: 'found',
-      product: 'Balea liquid soap',
-      source: 'https://dm.example/p'
-    })
-    // In the order, nothing is logged: an empty list would only be dropped on the way.
-    const { posts: inOrder } = await run({ product: 'soap', ...weighBom([], { recipe: soap }) })
-    expect(inOrder[0].body.entries[0].bom_check.recipe).not.toHaveProperty('inci_order')
-    expect(inOrder[0].body.entries[0].bom_check.recipe).not.toHaveProperty('inci_list')
+    const logged = posts[0].body.entries[0].bom_check
+    expect(logged.recipe.missing_ingredients).toEqual(['Parfum'])
+    expect(logged.recipe).not.toHaveProperty('inci_order')
+    expect(logged.recipe).not.toHaveProperty('inci_list')
+    expect(logged.summary).not.toMatch(/contradict/)
   })
 
   it('logs shares without a mass as text the health check does not read', async () => {

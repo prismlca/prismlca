@@ -10,7 +10,7 @@
  * researcher that sees the whole recipe can keep.
  */
 import { clipNote } from './researchNote'
-import { inciEntries, listNames } from './inciOrder'
+import { inciEntries, listNames } from './inciList'
 import type { VersionSeen } from './bomAnswer'
 
 export const RECIPE_SYSTEM = `You research the RECIPE (formulation) of a mixture for life-cycle assessment — a soap, a
@@ -23,7 +23,7 @@ detergent, a paint, a food, a rubber compound, a concrete. Answer with ONE JSON 
                            "constituents": [{"name": string, "inci": string, "pct": number}]},
             "other_recipe": string, "source_url": string, "source_class": string, "confidence": string,
             "note": string}],
- "declared_ingredients": {"names": [string], "kind": "inci" | "other", "product": string, "source_url": string},
+ "declared_ingredients": {"names": [string], "source_url": string},
  "contents_mass": [{"mass_kg": number, "volume_l": number, "density_kg_per_l": number, "version": string,
                     "source_url": string, "note": string}],
  "versions_seen": [{"version": string, "differs_by": string, "sold_by": string, "source_url": string}]}
@@ -69,10 +69,7 @@ The product:
   it, when it has one.
 - "declared_ingredients": the ingredient list printed on THIS product (the INCI list on the label, the composition
   section of its safety data sheet) — every name, in the printed order (a "+/-" or "may contain" part too, with its
-  marker), with its page and "product": the product the list belongs to, named as that page names it. "kind":
-  "inci" ONLY for a cosmetic's ingredient list as its label prints it (also where a retailer or the maker reproduces
-  the label's list); "other" for any other list — the composition section of a safety data sheet (even one that uses
-  INCI names), a food's or a detergent's ingredient list. Leave it out when none is found.
+  marker), with its page. Leave it out when none is found.
 - "contents_mass": the mass of the mixture in THIS product as sources state it — a net fill mass, or a fill volume
   with a stated density; one entry per figure found, never computed by you, and never the fill of the product
   whose frame formulation you give.
@@ -97,8 +94,8 @@ export interface RecipeRequest {
   mass_kg?: number
   /** Ingredients known from the product (what the user said, a printed list that is not an INCI list). */
   ingredients?: string[]
-  /** THIS product's INCI list as printed, in its printed order: covered like `ingredients`, and the recipe's
-   *  shares are held against its order (inciOrder.ts). It takes the place of any list the leg finds. */
+  /** THIS product's INCI list as printed, a "may contain" part with its marker: covered like `ingredients`. It
+   *  takes the place of any list the leg finds. */
   inci_list?: string[]
 }
 
@@ -156,20 +153,11 @@ export interface ContentsMass {
   note?: string
 }
 
-/** The ingredient list the leg found printed on the product, in its printed order. */
-export interface DeclaredList {
-  names: string[]
-  /** `inci`: a cosmetic's label list, ordered by mass above 1 % — the one kind held against the recipe's shares. */
-  kind?: 'inci' | 'other'
-  /** The product the list belongs to, as its page names it. */
-  product?: string
-  source_url?: string
-}
-
 export interface RecipeLeg {
   formulation?: Formulation
   lines: RecipeLine[]
-  declared?: DeclaredList
+  /** The ingredient list the leg found printed on the product, in its printed order. */
+  declared?: { names: string[]; source_url?: string }
   contents_masses: ContentsMass[]
   versions_seen: VersionSeen[]
   /** What the reading found unreadable, in words — a contents mass whose figures contradict each other. */
@@ -179,8 +167,8 @@ export interface RecipeLeg {
 /** The question the recipe leg gets: what to research, what is known, and whose business the rest is. */
 export function recipeQuestion(brief: string, of: string, request: RecipeRequest, others: string[]): string {
   const known = (request.ingredients ?? []).map((i) => i.trim()).filter(Boolean)
-  // The names as the comparison reads them, a "may contain" part behind one marker: the leg copies a name into
-  // "inci", and "+/- MAY CONTAIN: CI 77891" would place nothing.
+  // The names as the coverage reads them, a "may contain" part behind one marker: the leg copies a name into
+  // "inci", and "+/- MAY CONTAIN: CI 77891" would cover nothing.
   const inci = listNames(inciEntries(request.inci_list))
   const may = inci.filter((n) => n.may).map((n) => n.name)
   const printed =
@@ -195,7 +183,7 @@ export function recipeQuestion(brief: string, of: string, request: RecipeRequest
       ? `\nIngredients known from the product (its printed list): ${known.join(', ')}. Give one its line only where ` +
         'your one formulation names it; one it lacks is reported from this list — never fill it in from elsewhere.'
       : '') +
-    // The name as printed is what places a line in the list: "glycerol" finds no "Glycerin".
+    // The name as printed is what covers an entry of the list: "glycerol" finds no "Glycerin".
     (inci.length
       ? `\nTHIS product's INCI list, as printed: ${printed}. Give one its line only where your one ` +
         'formulation names it, and write its name as printed here in "inci" (a trade form\'s constituents too); one ' +
@@ -398,8 +386,6 @@ export function parseRecipeAnswer(parsed: unknown): RecipeLeg {
   )
     .map(text)
     .filter(Boolean)
-  const declaredKind = word(declaredRaw.kind, ['inci', 'other']) as DeclaredList['kind'] | undefined
-  const declaredProduct = text(declaredRaw.product)
   const problems: string[] = []
   // An answer that names a formulation but yields no line says which keys it carried, so the trace shows its shape.
   if (!lines.length && Object.keys(obj).length)
@@ -412,8 +398,6 @@ export function parseRecipeAnswer(parsed: unknown): RecipeLeg {
       ? {
           declared: {
             names: declaredNames,
-            ...(declaredKind ? { kind: declaredKind } : {}),
-            ...(declaredProduct ? { product: declaredProduct } : {}),
             ...(sourceOf(declaredRaw) ? { source_url: sourceOf(declaredRaw) } : {})
           }
         }
