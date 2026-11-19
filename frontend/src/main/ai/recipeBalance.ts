@@ -118,23 +118,71 @@ const host = (url?: string): string | undefined => {
 const sameName = (a: string, b: string): boolean => !!norm(a) && norm(a) === norm(b)
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
-/** The names a known ingredient may be written under: "Aqua/Water/Eau", "Parfum (Fragrance)". */
-const alternatives = (k: string): string[] => k.split(/[/()]/).map(norm).filter(Boolean)
+/**
+ * The ingredients INCI names in two nomenclatures — "Aqua", "Parfum" and "Aroma" in the EU for what is elsewhere
+ * "Water", "Fragrance" and "Flavor", "Eau" on a French label: one ingredient under any of its names.
+ */
+const BOTH_NOMENCLATURES: ReadonlyArray<ReadonlySet<string>> = [
+  new Set(['aqua', 'water', 'eau']),
+  new Set(['parfum', 'fragrance']),
+  new Set(['aroma', 'flavor', 'flavour'])
+]
+/**
+ * A bracket that ends a name, before the punctuation the list may close with ("Titanium Dioxide (CI 77891).", an
+ * asterisk for organic): closed, or left open where the list was split at the commas inside it ("Chocolate (sugar,
+ * cocoa mass)" is read as "Chocolate (sugar" and "cocoa mass)").
+ */
+const LAST_BRACKET = /^(.*[\p{L}\p{N}])\s*[([]([^()[\]]*)([)\]])?[^\p{L}\p{N}()[\]]*$/u
+
+/** One printed name as the coverage reads it: what it is called as a whole, and every name it stands for. */
+interface PrintedName {
+  whole: string[]
+  all: string[]
+}
+
+/**
+ * The names one printed name stands for, spelling aside. A name is read whole: a slash or a bracket inside it is part
+ * of it — "Dimethicone/Vinyl Dimethicone Crosspolymer" is not "Dimethicone", "Butyrospermum Parkii (Shea) Butter" is
+ * not "Shea". Two exceptions name one ingredient twice: the names of both nomenclatures together ("Aqua/Water/Eau",
+ * "Parfum (Fragrance)"), and a closed bracket that ends the name, which may hold a second name for it ("Titanium
+ * Dioxide (CI 77891)"). A bracket left open began a list of what the entry is made of: the name before it stands for
+ * the entry, the sugar of a chocolate does not.
+ */
+function namesOf(printed: string): PrintedName {
+  const name = norm(printed)
+  if (!name) return { whole: [], all: [] }
+  const parts = printed
+    .split(/[/()[\]]/)
+    .map(norm)
+    .filter(Boolean)
+  const both = BOTH_NOMENCLATURES.findIndex((names) => parts.every((p) => names.has(p)))
+  // norm() leaves no "#", so this key is no printed name.
+  if (both >= 0) return { whole: [name, `#${both}`], all: [name, `#${both}`] }
+  const last = LAST_BRACKET.exec(printed)
+  const further = last ? [last[1], ...(last[3] ? [last[2]] : [])].flatMap((p) => namesOf(p).all) : []
+  return { whole: [name], all: [name, ...further] }
+}
 
 /** Known ingredients the recipe does not name — by its lines, their INCI names and their trade forms' constituents. */
 function missingIngredients(known: string[], lines: RecipeLine[]): string[] {
-  const names = lines
+  const read = lines
     .flatMap((l) => [
       l.name,
       l.inci ?? '',
       l.trade_form?.name ?? '',
       ...(l.trade_form?.constituents ?? []).flatMap((c) => [c.name, c.inci ?? ''])
     ])
-    .map(norm)
-    .filter(Boolean)
-  // Exact names only: "Betaine" is not "Cocamidopropyl Betaine", nor "Alcohol" "Benzyl Alcohol". A name the recipe
-  // spells otherwise is reported missing — the leg is asked to write the printed name in "inci".
-  const covered = (k: string): boolean => alternatives(k).some((a) => names.includes(a))
+    .map(namesOf)
+  const wholes = new Set(read.flatMap((n) => n.whole))
+  const all = new Set(read.flatMap((n) => n.all))
+  // Whole names only: "Betaine" is not "Cocamidopropyl Betaine", nor "Alcohol" "Benzyl Alcohol". A name the recipe
+  // spells otherwise is reported missing — the leg is asked to write the printed name in "inci". Two names are one
+  // when one of them, read whole, is a name of the other: "Titanium Dioxide (CI 77891)" is "CI 77891", but "CI 77491
+  // (Iron Oxides)" is not "CI 77492 (Iron Oxides)", nor "Shea Butter (organic)" "Cocoa Butter (organic)".
+  const covered = (k: string): boolean => {
+    const n = namesOf(k)
+    return n.all.some((x) => wholes.has(x)) || n.whole.some((x) => all.has(x))
+  }
   return known.filter((k) => !covered(k))
 }
 

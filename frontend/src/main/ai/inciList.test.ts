@@ -126,6 +126,88 @@ describe('the printed ingredient list a recipe is covered against', () => {
 })
 
 /**
+ * An INCI name may carry a slash or a bracket of its own ("Caprylic/Capric Triglyceride", "Butyrospermum Parkii
+ * (Shea) Butter"), so a printed name is read whole. It names one ingredient twice only in the names of both
+ * nomenclatures ("Aqua (Water)", "Parfum/Fragrance") and in a bracket that ends it ("Titanium Dioxide (CI 77891)").
+ */
+describe('the names that cover an entry of the list', () => {
+  /** What the recipe's lines — names, with an INCI name where given — leave missing of a list. */
+  const missing = (
+    lines: Array<string | { name: string; inci: string }>,
+    list: string[],
+    as: 'inci_list' | 'ingredients' = 'inci_list'
+  ) =>
+    weigh(
+      {
+        formulation: { name: 'x', kind: 'frame', source_url: PCC },
+        lines: lines.map((l) => ({ ...(typeof l === 'string' ? { name: l } : l), amount: 1, unit: '%' }))
+      },
+      { [as]: list }
+    ).block.missing_ingredients ?? []
+  const SLASHED = [
+    'Dimethicone/Vinyl Dimethicone Crosspolymer',
+    'Acrylates/C10-30 Alkyl Acrylate Crosspolymer',
+    'Caprylic/Capric Triglyceride',
+    'Butyrospermum Parkii (Shea) Butter'
+  ]
+
+  it('covers no name by a part of it: the recipe lacks a crosspolymer though it has dimethicone', () => {
+    expect(missing(['Dimethicone', 'Acrylates', 'Capric Triglyceride', 'Shea'], SLASHED)).toEqual(SLASHED)
+    // The other way round neither: a crosspolymer in the recipe is no dimethicone.
+    expect(missing(['Dimethicone/Vinyl Dimethicone Crosspolymer'], ['Dimethicone'])).toEqual(['Dimethicone'])
+  })
+
+  it('covers a name with a slash or a bracket inside it by the whole name, spelling aside', () => {
+    const lines = [
+      { name: 'Silicone elastomer blend', inci: 'DIMETHICONE / VINYL DIMETHICONE CROSSPOLYMER' },
+      'Carbomer 980',
+      { name: 'MCT oil', inci: 'Caprylic/capric triglyceride' },
+      { name: 'Shea butter', inci: 'Butyrospermum Parkii (Shea) Butter' }
+    ]
+    expect(missing(lines, SLASHED)).toEqual(['Acrylates/C10-30 Alkyl Acrylate Crosspolymer'])
+  })
+
+  it('covers water, perfume and flavour under the name of either nomenclature', () => {
+    const both = [
+      'Aqua (Water)',
+      'Parfum (Fragrance)',
+      'Aroma/Flavor',
+      'Aqua/Water/Eau',
+      'Fragrance (Parfum)'
+    ]
+    expect(missing(['water', 'Parfum', 'Flavor'], both)).toEqual([])
+    expect(missing(['Aqua', 'Fragrance', 'Aroma'], both)).toEqual([])
+    // One name on either side is enough: INCI's "Aqua" is the recipe's water.
+    expect(missing(['Water (Aqua)', 'fragrance', 'flavour'], ['Aqua', 'Parfum', 'Aroma'])).toEqual([])
+    // A name that only contains one of them is another ingredient.
+    expect(missing(['Rose water', 'Fragrance oil'], ['Aqua', 'Parfum'])).toEqual(['Aqua', 'Parfum'])
+    expect(missing(['Water'], ['Rosa Damascena Flower Water'])).toEqual(['Rosa Damascena Flower Water'])
+  })
+
+  it('reads a closed bracket that ends a name as its second name, an open one as the start of its parts', () => {
+    const list = ['Titanium Dioxide (CI 77891)', 'CI 77491 (Iron Oxides)', 'Tocopherol (Vitamin E)']
+    expect(missing(['Titanium dioxide', 'Iron oxides', 'Vitamin E'], list)).toEqual([])
+    expect(missing(['CI 77891', 'CI 77491', 'Tocopherol'], list)).toEqual([])
+    // The recipe's own names are read alike: its yellow iron oxides are the label's iron oxides.
+    expect(missing(['Iron oxides (yellow)'], ['Iron Oxides'])).toEqual([])
+    // Two names that share only their brackets are two ingredients.
+    expect(missing(['CI 77492 (Iron Oxides)'], ['CI 77491 (Iron Oxides)'])).toEqual([
+      'CI 77491 (Iron Oxides)'
+    ])
+    expect(missing(['Cocoa Butter (organic)'], ['Shea Butter (organic)'])).toEqual(['Shea Butter (organic)'])
+    // The full stop that ends a list, or an asterisk for organic, does not hide the bracket.
+    expect(missing(['Aqua', 'Titanium dioxide'], ['Aqua, Titanium Dioxide (CI 77891).'])).toEqual([])
+    expect(missing(['Glycerin', 'Tocopherol'], ['Glycerin, Tocopherol (Vitamin E)*'])).toEqual([])
+    // A compound ingredient split at the commas in its bracket: "Chocolate (Sugar" and "Cocoa Mass)". The chocolate
+    // is the name before the bracket; the sugar the recipe adds to the dough is no chocolate.
+    const cookie = (lines: string[]) =>
+      missing(lines, ['Wheat Flour, Chocolate (Sugar, Cocoa Mass), Butter, Sugar'], 'ingredients')
+    expect(cookie(['Wheat flour', 'Butter', 'Sugar'])).toEqual(['Chocolate (Sugar', 'Cocoa Mass)'])
+    expect(cookie(['Wheat flour', 'Butter', 'Sugar', 'Chocolate', 'Cocoa mass'])).toEqual([])
+  })
+})
+
+/**
  * A product sold in several shades may list every colourant of the range behind "+/-" or "may contain"
  * (Regulation (EC) No 1223/2009, Art. 19(1)(g)): a shade has some of them, so a recipe lacks none of them.
  */
