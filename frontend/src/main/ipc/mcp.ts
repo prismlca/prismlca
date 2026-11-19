@@ -4,8 +4,16 @@
  * (main/mcp/server.ts) knows none of that and is tested without Electron.
  */
 import { app, ipcMain } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { dirname } from 'node:path'
 import { homedir } from 'node:os'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -24,6 +32,7 @@ import {
   tomlHasEntry,
   type ClientId
 } from '../mcp/clientConfig'
+import { clientConfigPath, type PathProbe } from '../mcp/clientConfigPath'
 import { getSettings, setSettings } from '../settings'
 import { computeDistances, distancesAvailable } from '../distance/service'
 import { TurnBudget } from '../distance/types'
@@ -49,28 +58,24 @@ export interface McpControl {
 
 const APPROVAL_MODES: ReadonlySet<string> = new Set<McpApprovalMode>(['every-write', 'irreversible', 'never'])
 
-/** Where each client keeps the file our entry goes into, on this platform. */
-function clientConfigPath(id: ClientId): string {
-  const home = homedir()
-  switch (id) {
-    case 'claude-code':
-      return join(home, '.claude.json')
-    case 'codex':
-      return join(home, '.codex', 'config.toml')
-    case 'claude-desktop':
-      if (process.platform === 'win32')
-        return join(
-          process.env.APPDATA ?? join(home, 'AppData', 'Roaming'),
-          'Claude',
-          'claude_desktop_config.json'
-        )
-      if (process.platform === 'darwin')
-        return join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json')
-      return join(
-        process.env.XDG_CONFIG_HOME ?? join(home, '.config'),
-        'Claude',
-        'claude_desktop_config.json'
-      )
+/** What the search for a client's file may look at: this machine's folders, read only. */
+const pathProbe: PathProbe = {
+  platform: process.platform,
+  home: homedir(),
+  env: process.env,
+  list: (dir) => {
+    try {
+      return readdirSync(dir)
+    } catch {
+      return []
+    }
+  },
+  mtime: (path) => {
+    try {
+      return statSync(path).mtimeMs
+    } catch {
+      return null
+    }
   }
 }
 
@@ -86,7 +91,7 @@ function readIfExists(path: string): string | null {
 function clientConfigs(): McpClientConfig[] {
   const cmd = bridgeLaunchCommand()
   return CLIENTS.map((spec): McpClientConfig => {
-    const configPath = clientConfigPath(spec.id)
+    const configPath = clientConfigPath(spec.id, pathProbe)
     const current = readIfExists(configPath)
     const base = {
       id: spec.id,
@@ -129,11 +134,21 @@ function clientConfigs(): McpClientConfig[] {
   })
 }
 
-/** Write our entry — after the user saw `proposed` and clicked. The current file is kept beside it. */
-function configureClient(id: ClientId): McpConfigureResult {
+/**
+ * Write our entry — after the user saw `proposed` and clicked. The current file is kept beside it.
+ * `seen` is what they confirmed. Which file it is and what it holds are read again here, and both can
+ * have changed while the preview was open (the client moved its data, or rewrote its file): then
+ * nothing is written, and the next preview shows the new state.
+ */
+function configureClient(id: ClientId, seen: { path?: unknown; proposed?: unknown }): McpConfigureResult {
   const cfg = clientConfigs().find((c) => c.id === id)
   if (!cfg) return { ok: false, error: 'Unknown client.' }
   if (!cfg.proposed) return { ok: false, error: cfg.proposedError ?? 'Nothing to write.' }
+  if (cfg.configPath !== seen?.path || cfg.proposed !== seen?.proposed)
+    return {
+      ok: false,
+      error: 'The configuration file has changed since this preview was shown. Check the preview again.'
+    }
   try {
     mkdirSync(dirname(cfg.configPath), { recursive: true })
     let backup: string | null = null
@@ -257,9 +272,9 @@ export function registerMcpIpc(deps: AiIpcDeps, bridge: UiBridge): McpControl {
     APPROVAL_MODES.has(mode) ? host.setApproval(String(sessionId), mode as McpApprovalMode) : false
   )
   ipcMain.handle('mcp:clients', () => clientConfigs())
-  ipcMain.handle('mcp:configureClient', (_e, id: string) =>
+  ipcMain.handle('mcp:configureClient', (_e, id: string, seen: { path?: unknown; proposed?: unknown }) =>
     CLIENTS.some((c) => c.id === id)
-      ? configureClient(id as ClientId)
+      ? configureClient(id as ClientId, seen)
       : { ok: false, error: 'Unknown client.' }
   )
   ipcMain.handle('mcp:testConnection', () => testConnection())

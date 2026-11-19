@@ -41,9 +41,14 @@ export const onMcpEvent = (cb: (ev: McpEvent) => void): (() => void) =>
 /** The three clients: how each would be configured, and whether it already is. */
 export const mcpClients = (): Promise<McpClientConfig[]> =>
   window.prism.mcp.clients() as Promise<McpClientConfig[]>
-/** Write our entry into one client's configuration — only after the user saw the change and clicked. */
-export const mcpConfigureClient = (id: McpClientId): Promise<McpConfigureResult> =>
-  window.prism.mcp.configureClient(id) as Promise<McpConfigureResult>
+/**
+ * Write our entry into one client's configuration — only after the user saw the change and clicked.
+ * `seen` is the preview they confirmed: the file and its new content. Anything else is not written.
+ */
+export const mcpConfigureClient = (
+  id: McpClientId,
+  seen: { path: string; proposed: string }
+): Promise<McpConfigureResult> => window.prism.mcp.configureClient(id, seen) as Promise<McpConfigureResult>
 /** Spawn our own bridge the way a client would and run initialize + tools/list through it. */
 export const mcpTestConnection = (): Promise<McpTestResult> =>
   window.prism.mcp.testConnection() as Promise<McpTestResult>

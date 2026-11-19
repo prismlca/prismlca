@@ -56,23 +56,23 @@ function CodeBlock({
   )
 }
 
-function ClientRow({ c, onConfigured }: { c: McpClientConfig; onConfigured: () => void }): JSX.Element {
+function ClientRow({ c, onChanged }: { c: McpClientConfig; onChanged: () => void }): JSX.Element {
   const [open, setOpen] = useState<'snippet' | 'preview' | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const write = (): void => {
+    if (!c.proposed) return
     setBusy(true)
-    void mcpConfigureClient(c.id)
+    void mcpConfigureClient(c.id, { path: c.configPath, proposed: c.proposed })
       .then((r) => {
         setNote(
           r.ok
             ? `Written to ${r.path}${r.backup ? ` (backup: ${r.backup})` : ''}. Restart ${c.label} to pick it up.`
             : `Not written: ${r.error}`
         )
-        if (r.ok) {
-          setOpen(null)
-          onConfigured()
-        }
+        if (r.ok) setOpen(null)
+        // After a refusal too: the preview then shows the file as it is now.
+        onChanged()
       })
       .catch((e: unknown) => setNote(`Not written: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => setBusy(false))
@@ -244,7 +244,7 @@ export default function ExternalAgentsSettings(): JSX.Element {
             after you have seen the change.
           </p>
           {clients.map((c) => (
-            <ClientRow key={c.id} c={c} onConfigured={reloadClients} />
+            <ClientRow key={c.id} c={c} onChanged={reloadClients} />
           ))}
         </div>
       ) : null}
