@@ -316,13 +316,16 @@ describe('researchBom', () => {
 
     it('asks a timed-out recipe leg again for one table, not for a mass', async () => {
       chat.rounds = [{ throws: new Error('connection reset') }, answer(soap)]
-      const r = await researchBom({ product: 'liquid soap', recipe: { ingredients: ['Aqua', 'Glycerin'] } })
+      const r = await researchBom({
+        product: 'liquid soap',
+        recipe: { ingredients: ['Aqua', 'Glycerin', 'Parfum'] }
+      })
       expect(asked()[0]).toMatch(
-        /Ingredients known from the product \(its printed list\): Aqua, Glycerin\. Give one its line only/
+        /Ingredients known from the product \(its printed list\): Aqua, Glycerin, Parfum\. Give one its line only/
       )
       expect(asked()[1]).toMatch(/BE BRIEF: one formulation table/)
       expect(asked()[1]).not.toMatch(/the mass in kg and one source URL/)
-      expect(r.recipe?.missing_ingredients).toEqual(['Aqua'])
+      expect(r.recipe?.missing_ingredients).toEqual(['Parfum'])
     })
 
     it('hands the leg an INCI list to write its names from, and covers the answer against it', async () => {
@@ -337,8 +340,9 @@ describe('researchBom', () => {
       // Nothing in the question asks the leg to fit its recipe to the list's order, and nothing compares them.
       expect(asked()[0]).not.toMatch(/order/i)
       expect(r.recipe).not.toHaveProperty('inci_order')
-      // The leg wrote neither printed name in "inci": "water" and "SLES 70 %" cover nothing.
-      expect(r.recipe?.missing_ingredients).toEqual(['Aqua', 'Sodium Laureth Sulfate'])
+      // The leg wrote neither printed name in "inci": "water" is INCI's "Aqua" by its other name, "SLES 70 %" covers
+      // nothing.
+      expect(r.recipe?.missing_ingredients).toEqual(['Sodium Laureth Sulfate'])
     })
 
     it('hands the leg the names of a "may contain" part without the marker before each', async () => {
