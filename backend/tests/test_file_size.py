@@ -34,7 +34,7 @@ CEILINGS: dict[str, int] = {
     # the figure rules to report_numbers and their reading of numbers and units to prose_numbers.
     "prism_lca/engine/report_prompts.py": 1836,
     # 1575 — the provenance count moved to health_provenance, the same-product rules to health_supply,
-    # the bill-of-materials reconciliation to health_bom.
+    # the bill-of-materials entry to health_bom.
     "prism_lca/engine/health.py": 1592,
     "prism_lca/engine/report_claims.py": 1759,  # 1734
     "prism_lca/engine/report_render.py": 1626,  # 1601

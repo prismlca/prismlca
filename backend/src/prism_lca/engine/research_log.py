@@ -88,7 +88,7 @@ def clean_bom_check(raw: object) -> dict | None:
     (every whole-product mass found, with its scope, version and source) and ``versions`` (whether
     the figures rest on different versions, which entries sit on which, a few other versions seen).
     None of it is a finding: the health check never reads it, so a whole-product mass here can never
-    be reported as a part nobody booked.
+    be listed as a part mass.
     """
     if not isinstance(raw, dict):
         return None
@@ -216,8 +216,8 @@ def clean_entry(item: object) -> dict | None:
     and — for bill-of-materials research — the structured figure itself (``component``, ``mass_kg``,
     ``mass_range_kg`` when the sources gave a span rather than one number, ``alternatives_kg`` when they gave
     other figures for the same part) with its derivation
-    (``note``) and the product version it belongs to (``version``), which is what lets the health check reconcile researched masses against what the
-    model actually books. The entry may carry the ``context`` the research was given and, for a
+    (``note``) and the product version it belongs to (``version``), which is what lets the health check list the
+    researched masses for whoever holds them against the model. The entry may carry the ``context`` the research was given and, for a
     bill-of-materials call, its ``bom_check`` — with a valid check an entry without findings is kept:
     a call that found no mass at all still says what it could not settle. All optional, all
     validated, none invented here.
@@ -268,8 +268,9 @@ def clean_entry(item: object) -> dict | None:
             and 0 < float(rng[0]) < float(rng[1])
         ):
             finding["mass_range_kg"] = [float(rng[0]), float(rng[1])]
-        # Other figures the research found for the same part (another variant, another source): never summed, but a
-        # booking of one of them books the part, so the health check reads them. Only beside a figure of its own.
+        # Other figures the research found for the same part (another variant, another source): never summed, but
+        # the model may rightly book one of them, so the health check names them on the part's row. Only beside
+        # a figure of its own.
         alternatives = raw.get("alternatives_kg")
         if "mass_kg" in finding and isinstance(alternatives, (list, tuple)):
             kept = [
@@ -308,8 +309,8 @@ def _add_alternatives(stored: dict, repeat: dict) -> bool:
 
     A repeat is the same text — the same part at the same counted figure — and is not stored again. What it
     found beside that figure is new all the same: a second research of the label that also met the direct print
-    has to make a booking of the print count for the label, and the health check reads the other figures from
-    the stored finding, never from the prose that documents them.
+    has to put the print's figure beside the label's, and the health check reads the other figures from the
+    stored finding, never from the prose that documents them.
     """
     if "mass_kg" not in stored or not repeat.get("alternatives_kg"):
         return False

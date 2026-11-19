@@ -14,10 +14,10 @@
 
 /**
  * The section stays below this; the process list it is read beside is the larger part of the dossier. About
- * 12,500 characters of research and 1,900 of reading note: measured on nine test runs, that keeps every log whole
+ * 12,500 characters of research and 2,300 of reading note: measured on nine test runs, that keeps every log whole
  * but the three largest, and those at five findings per question.
  */
-const SECTION_CHARS = 14_500
+const SECTION_CHARS = 14_900
 /** Findings per web question, step by step, before questions themselves are folded together. */
 const PER_QUESTION = [Infinity, 8, 5, 3, 0]
 /** Part masses per product when even the folded questions do not make room. */
@@ -34,6 +34,8 @@ interface Finding {
   source_class?: string
   confidence?: string
   confidence_note?: string
+  component?: string
+  mass_kg?: number
   mass_range_kg?: [number, number]
   note?: string
   version?: string
@@ -90,13 +92,16 @@ const HEAD =
   'with their version and scope, and say whether the model gives a reason for its pick; a figure that ' +
   'belongs to another version of the product than the one the goal & scope names; a ' +
   'part the check left open that the model fills with an unsourced estimate or with what remains of the ' +
-  'total. Compare like with like — per piece or per set, per product or per kg of an intermediate, the same ' +
-  'unit — and quote the researched figure and the exchange amount side by side. A comment that explains a ' +
-  'deviation is evidence, not the end of the question: judge whether the reason carries the size of the ' +
-  'gap. A low-confidence or media/community finding is a lead, not a fact. Nothing follows from absence: ' +
-  'research missing here may have been done in a way this log does not keep, a point the research did not ' +
-  'cover is no evidence against the model, and a part the research could not settle may be settled by a ' +
-  'figure the user gave or a source the model names.'
+  'total; a part mass found that the model books nowhere — not on its own, not inside another part, not ' +
+  'split over several inputs or in another unit — and that the cut-off decisions do not name: say which ' +
+  'exchanges you looked at. Where the health check remarks that a parameter holds a part’s mass and leads ' +
+  'to no input, that is a lead to follow, not a finding by itself. Compare like with like — per piece or ' +
+  'per set, per product or per kg of an intermediate, the same unit — and quote the researched figure and ' +
+  'the exchange amount side by side. A comment that explains a deviation is evidence, not the end of the ' +
+  'question: judge whether the reason carries the size of the gap. A low-confidence or media/community ' +
+  'finding is a lead, not a fact. Nothing follows from absence: research missing here may have been done in ' +
+  'a way this log does not keep, a point the research did not cover is no evidence against the model, and a ' +
+  'part the research could not settle may be settled by a figure the user gave or a source the model names.'
 
 const day = (asked?: string): string => (asked ? asked.slice(0, 10) : 'undated')
 const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim()
@@ -117,11 +122,18 @@ export function sourceId(url: string): string {
   }
 }
 
+/** How a part's text ends when it still carries its mass ("… (5 pieces): 7.65 kg"). */
+const ENDS_ON_MASS = /:\s*[0-9.eE+-]+\s*kg\s*$/
+
 function findingLine(f: Finding): string {
   const judged = [f.source_class, f.confidence].filter(Boolean).join('/')
   const ids = [...new Set((f.sources ?? []).map(sourceId))].join(', ')
+  // The log keeps 400 characters of a text, and a part's mass stands at its end: a long material description
+  // pushes it off. The stored figure says it then — a part without its mass is no row to hold a model against.
+  const cutMass =
+    f.component && typeof f.mass_kg === 'number' && !ENDS_ON_MASS.test(f.text) ? ` …: ${f.mass_kg} kg` : ''
   return [
-    `- ${oneLine(f.text)}`,
+    `- ${oneLine(f.text)}${cutMass}`,
     f.mass_range_kg ? ` (range ${f.mass_range_kg[0]}–${f.mass_range_kg[1]} kg)` : '',
     f.version ? ` (version: ${oneLine(f.version)})` : '',
     judged ? ` [${judged}]` : '',
@@ -378,4 +390,44 @@ export function researchSection(log: unknown): string {
     size += line.length + 1
   }
   return `${kept.join('\n')}\n[${lines.length - kept.length} more lines not shown]`
+}
+
+/** The health check's entry on the bill-of-materials research (`engine/health_bom.py`). */
+const ON_RECORD = 'bom_research_on_record'
+/** What a section that lists part masses contains (`productBlock`). */
+const PARTS_LISTED = 'Part masses found'
+/** What it says where it could not list all of them. */
+const PARTS_LEFT_OUT = 'earlier part masses:'
+
+/**
+ * The health check as the dossier prints it. Where the research section lists the part masses, the health check's
+ * own list of them is cut to what only it knows: how many are on record, that it compared none of them with the
+ * model, and its remarks on parameters that hold a part's mass and lead to no input. Twice in one dossier, the rows
+ * would take room the health check is cut for, and the section's rows are the fuller ones — each with its
+ * version, its derivation and the check it came from.
+ */
+export function healthBesideResearch(health: unknown, section: string): unknown {
+  // A section that had to leave part masses out (`productBlock` counts them) is no place to send the reader.
+  if (!section.includes(PARTS_LISTED) || section.includes(PARTS_LEFT_OUT)) return health
+  if (!health || typeof health !== 'object') return health
+  const findings = (health as { findings?: unknown }).findings
+  if (!Array.isArray(findings)) return health
+  return {
+    ...health,
+    findings: findings.map((f: { code?: string; parts?: number; remarks?: unknown }) => {
+      if (f?.code !== ON_RECORD) return f
+      const remarks = Array.isArray(f.remarks) ? f.remarks.filter((r) => typeof r === 'string') : []
+      const { remarks: _listed, ...rest } = f
+      return {
+        ...rest,
+        message:
+          `The bill-of-materials research has ${f.parts === 1 ? '1 part mass' : `${f.parts ?? 'several'} part masses`} ` +
+          `on record, listed under RESEARCH ON RECORD ("${PARTS_LISTED}"). The health check compares none of ` +
+          'them with the model. ' +
+          (remarks.length
+            ? `Its remarks say where a parameter leads, not that a part is missing: ${remarks.join(' ')}`
+            : 'It has no remark on any of them.')
+      }
+    })
+  }
 }
