@@ -71,8 +71,16 @@ export function signatureState(fact, embedded) {
 }
 
 /**
+ * An unsigned file that Windows knows from one of its catalogs. Signing it works, but this machine would go on
+ * answering with the catalog and not with the new signature, so the checks after signing could not pass — and by
+ * then the signature is spent. Such a file stops the run before anything is signed.
+ */
+export const catalogOnly = (fact, embedded) => !embedded && fact?.type === 'Catalog'
+const CATALOG_ONLY = 'Windows knows it from a catalog and it has no signature of its own; signing it could not be checked here'
+
+/**
  * The plan for the unpacked app. `files`: { rel, embedded, signable, digest } per program file (digest: pe.mjs
- * codeDigest of an unsigned file); `facts`: rel → what Windows says about each embedded signature; `copies`:
+ * codeDigest of an unsigned file); `facts`: rel → what Windows says about each file's signature; `copies`:
  * digest → path of a previous release's file carrying the same code under our valid signature.
  */
 export function planPackage(files, facts, copies) {
@@ -82,6 +90,7 @@ export function planPackage(files, facts, copies) {
     if (state === 'valid') plan.keep.push(f.rel)
     else if (state === 'broken') plan.broken.push(`${f.rel}: ${describe(facts.get(f.rel))}`)
     else if (!f.signable) plan.broken.push(`${f.rel}: its header has no room for a signature`)
+    else if (catalogOnly(facts.get(f.rel), f.embedded)) plan.broken.push(`${f.rel}: ${CATALOG_ONLY}`)
     else if (copies.has(f.digest)) plan.reuse.push({ rel: f.rel, from: copies.get(f.digest) })
     else plan.sign.push(f.rel)
   }
@@ -216,9 +225,10 @@ export async function afterSign(context) {
   if (note) console.log(`  • ${note}`)
   const previous = readPrevious(process.env.PRISM_SIGN_PREVIOUS)
   const found = programFiles(context.appOutDir)
-  const embedded = found.filter((f) => f.layout.certSize)
   const byFile = new Map(found.map((f) => [f.abs, f.rel]))
-  const facts = new Map(inspect(embedded.map((f) => f.abs)).map((x) => [byFile.get(resolve(x.file)) ?? x.file, x]))
+  // Every file is asked about, not only those with a signature: what Windows says of an unsigned one decides
+  // whether signing it can be checked afterwards (catalogOnly).
+  const facts = new Map(inspect(found.map((f) => f.abs)).map((x) => [byFile.get(resolve(x.file)) ?? x.file, x]))
   const files = found.map((f) => ({
     rel: f.rel,
     embedded: Boolean(f.layout.certSize),
@@ -252,6 +262,34 @@ function readPrevious(dir) {
   return { version: manifest.version, root: join(dir, 'files'), copies: new Map(Object.entries(manifest.copies)) }
 }
 
+/** An empty `dir`/files to unpack into. Not part of the reading: when it fails, nothing of an earlier run may stay. */
+function clearPrevious(dir) {
+  rmSync(dir, { recursive: true, force: true })
+  mkdirSync(join(dir, 'files'), { recursive: true })
+}
+
+/**
+ * The previous release as this machine sees it: its program files unpacked into the cleared `dir`/files, and what
+ * Windows says about each one's signature. Needs no key. Throws when the installer cannot be fetched, is not ours
+ * or cannot be unpacked or inspected.
+ */
+async function readPreviousRelease(dir, ours, target) {
+  const installer = join(dir, 'installer.exe')
+  const archive = join(dir, 'app.7z')
+  const version = await downloadPreviousInstaller(target, installer)
+  // The installer is checked before anything in it is unpacked: it must be ours, valid and to our standard.
+  const [fact] = inspect([installer])
+  if (signatureState(fact, Boolean(readPeLayout(installer)?.certSize)) !== 'valid' || fact.subject !== ours)
+    throw new Error(`the ${version} installer is not signed by us: ${describe(fact)}`)
+  await carveAppArchive(installer, archive)
+  rmSync(installer)
+  await unpackProgramFiles(archive, join(dir, 'files'))
+  rmSync(archive)
+  const pe = programFiles(join(dir, 'files'))
+  const facts = new Map(inspect(pe.map((f) => f.abs)).map((x) => [resolve(x.file), x]))
+  return { version, pe, facts }
+}
+
 /**
  * Before the sign-in: unpacks the previous release's program files into `dir` and keeps a list of those that carry
  * our signature, valid and to our standard, by code digest. Stops before the sign-in when the run would clearly
@@ -263,25 +301,11 @@ async function previous(dir) {
   if (note) console.log(note)
   const ours = subject()
   const target = publishTargetFrom(config())
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(join(dir, 'files'), { recursive: true })
-  let version
-  let pe
-  let facts
+  // Outside the fallback below: a directory that cannot be cleared may still hold an earlier run's list of copies.
+  clearPrevious(dir)
+  let read
   try {
-    const installer = join(dir, 'installer.exe')
-    const archive = join(dir, 'app.7z')
-    version = await downloadPreviousInstaller(target, installer)
-    // The installer is checked before anything in it is unpacked: it must be ours, valid and to our standard.
-    const [fact] = inspect([installer])
-    if (signatureState(fact, Boolean(readPeLayout(installer)?.certSize)) !== 'valid' || fact.subject !== ours)
-      throw new Error(`the ${version} installer is not signed by us: ${describe(fact)}`)
-    await carveAppArchive(installer, archive)
-    rmSync(installer)
-    await unpackProgramFiles(archive, join(dir, 'files'))
-    rmSync(archive)
-    pe = programFiles(join(dir, 'files'))
-    facts = new Map(inspect(pe.map((f) => f.abs)).map((x) => [resolve(x.file), x]))
+    read = await readPreviousRelease(dir, ours, target)
   } catch (err) {
     const why = `No signed files from the previous release: ${err.message}`
     if (!override) {
@@ -294,28 +318,14 @@ async function previous(dir) {
     console.log(`::warning::${why}. WINDOWS_SIGN_LIMIT allows ${limit} new signatures for ${tag}.`)
     return
   }
-  const copies = {}
-  const broken = []
-  let foreign = 0
-  for (const f of pe) {
-    const fact = facts.get(f.abs)
-    const state = signatureState(fact, Boolean(f.layout.certSize))
-    if (state === 'broken' && fact?.subject !== ours) broken.push(`${f.rel}: ${describe(fact)}`)
-    if (state !== 'valid') continue
-    if (fact.subject !== ours) foreign++
-    else {
-      const digest = codeDigest(readFileSync(f.abs))
-      if (digest) copies[digest] = f.rel
-    }
-  }
+  const { version, pe, facts } = read
+  const { copies, broken, kept, foreign, unsigned } = tally(pe, facts, ours)
   writeFileSync(join(dir, MANIFEST), JSON.stringify({ version, copies }, null, 1))
-  const kept = Object.keys(copies).length
-  const unsigned = pe.length - kept - foreign
   console.log(`${version}: ${pe.length} program files, ${kept} signed by us, ${foreign} by others, ${unsigned} without a usable signature`)
   // A maker's signature this machine does not accept (a missing root certificate, a revoked signer) would stop the
   // build at the same file after the sign-in; the files rarely change between releases, so say it now.
   if (broken.length) {
-    console.error(`✗ signatures of other makers that this machine does not accept:\n  ${broken.join('\n  ')}`)
+    console.error(`✗ files this machine cannot sign or check:\n  ${broken.join('\n  ')}`)
     process.exit(1)
   }
   // What the previous release shipped unsigned needs a signature now even if nothing changed: stop before the sign-in.
@@ -323,6 +333,46 @@ async function previous(dir) {
     console.error(`✗ ${overLimit(unsigned, limit, tag, target)}`)
     process.exit(1)
   }
+}
+
+/**
+ * The reading half of signing, for a machine without the key (the Windows job of the tests): fetches the previous
+ * release, unpacks it and asks Windows about every program file, exactly as the release does before the sign-in.
+ * It spends nothing and counts against no limit; it fails when the reading itself fails or when a maker's signature
+ * is not accepted — the two things a release run would otherwise meet first on the release machine.
+ */
+async function inspectPrevious(dir) {
+  const ours = subject()
+  clearPrevious(dir)
+  const { version, pe, facts } = await readPreviousRelease(dir, ours, publishTargetFrom(config()))
+  const { broken, kept, foreign, unsigned } = tally(pe, facts, ours)
+  console.log(`${version}: ${pe.length} program files, ${kept} signed by us, ${foreign} by others, ${unsigned} without a usable signature`)
+  if (broken.length) {
+    console.error(`✗ files this machine cannot sign or check:\n  ${broken.join('\n  ')}`)
+    process.exit(1)
+  }
+  console.log('✓ every program file of the previous release could be read, and no signature on them is refused')
+}
+
+/** What the previous release's files are worth to this one: ours by code digest, and what cannot be kept. */
+function tally(pe, facts, ours) {
+  const copies = {}
+  const broken = []
+  let foreign = 0
+  for (const f of pe) {
+    const fact = facts.get(f.abs)
+    const state = signatureState(fact, Boolean(f.layout.certSize))
+    if (state === 'broken' && fact?.subject !== ours) broken.push(`${f.rel}: ${describe(fact)}`)
+    if (catalogOnly(fact, Boolean(f.layout.certSize))) broken.push(`${f.rel}: ${CATALOG_ONLY}`)
+    if (state !== 'valid') continue
+    if (fact.subject !== ours) foreign++
+    else {
+      const digest = codeDigest(readFileSync(f.abs))
+      if (digest) copies[digest] = f.rel
+    }
+  }
+  const kept = Object.keys(copies).length
+  return { copies, broken, kept, foreign, unsigned: pe.length - kept - foreign }
 }
 
 /** The final check of a built package: every program file below each dir, and each file named. */
@@ -353,9 +403,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const [cmd, ...args] = process.argv.slice(2)
   if (cmd === 'wait') process.exit(powershell(['-Wait']))
   else if (cmd === 'previous' && args.length === 1) await previous(resolve(args[0]))
+  else if (cmd === 'inspect-previous' && args.length === 1) await inspectPrevious(resolve(args[0]))
   else if (cmd === 'check' && args.length) check(args)
   else {
-    console.error('usage: sign-windows.mjs wait | previous <dir> | check <dir|file>…')
+    console.error('usage: sign-windows.mjs wait | previous <dir> | inspect-previous <dir> | check <dir|file>…')
     process.exit(2)
   }
 }

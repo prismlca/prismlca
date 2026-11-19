@@ -160,6 +160,28 @@ describe('GitHub workflows', () => {
     }
   })
 
+  it('test workflow: Windows runs the reading half of the signing before a release does', () => {
+    // What Windows says about a program file's signature needs no key. A release run was twice the first place
+    // that script met a real Windows, and each time a tag was spent on it.
+    const steps = load('ci.yml').wf.jobs!['test-windows'].steps ?? []
+    const at = steps.findIndex((s) => /sign-windows\.mjs inspect-previous /.test(s.run ?? ''))
+    expect(at).toBeGreaterThan(-1)
+    // Early, and never skipped because another check failed: it is over in minutes.
+    expect(at).toBeLessThan(steps.findIndex((s) => /vitest run/.test(s.run ?? '')))
+    expect(steps[at].if).toBeUndefined()
+    // The signing half follows with a throwaway certificate, in Windows PowerShell as on the release machine.
+    const selftest = steps[at + 1] as Step & { shell?: string }
+    expect(selftest.run).toMatch(/sign-windows-selftest\.ps1 -From /)
+    expect(selftest.shell).toBe('powershell')
+  })
+
+  it('the signing self-test trusts its certificate on a hosted runner only, and the release never calls it', () => {
+    const script = readFileSync(join(__dirname, 'sign-windows-selftest.ps1'), 'utf-8')
+    expect(script).toMatch(/\$env:RUNNER_ENVIRONMENT -ne 'github-hosted'\) \{\s*throw /)
+    expect(script.indexOf('RUNNER_ENVIRONMENT')).toBeLessThan(script.indexOf('New-SelfSignedCertificate'))
+    for (const f of files.filter((f) => f.startsWith('release.yml'))) expect(load(f).text).not.toContain('selftest')
+  })
+
   it('release workflow: the previous release is read before the sign-in, and every program file is checked', () => {
     const name = files.find((f) => f.startsWith('release.yml'))!
     const steps = load(name).wf.jobs!.windows.steps ?? []
