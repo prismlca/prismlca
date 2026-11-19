@@ -14,7 +14,7 @@ import type { BomItem, VersionSeen } from './bomAnswer'
 import type { RecipeLeg, RecipeLine, RecipeRequest, RecipeUnit, ContentsMass, Formulation } from './bomRecipe'
 import { urlKey } from './citationBook'
 import { versionsContradict } from './bomVersions'
-import { inciEntries, listNames } from './inciList'
+import { endBracket, inciEntries, listNames } from './inciList'
 
 /** Closed within this share of the denominator: two percentage points on a percent recipe — the sources' rounding. */
 const CLOSE_TOL = 0.02
@@ -128,43 +128,62 @@ const BOTH_NOMENCLATURES: ReadonlyArray<ReadonlySet<string>> = [
   new Set(['aroma', 'flavor', 'flavour'])
 ]
 /**
- * A bracket that ends a name, before the punctuation the list may close with ("Titanium Dioxide (CI 77891).", an
- * asterisk for organic): closed, or left open where the list was split at the commas inside it ("Chocolate (sugar,
- * cocoa mass)" is read as "Chocolate (sugar" and "cocoa mass)").
+ * One printed name as the coverage reads it: what it is called as a whole, every name it stands for, and the names of
+ * its parts where only all of them together stand for it.
  */
-const LAST_BRACKET = /^(.*[\p{L}\p{N}])\s*[([]([^()[\]]*)([)\]])?[^\p{L}\p{N}()[\]]*$/u
-
-/** One printed name as the coverage reads it: what it is called as a whole, and every name it stands for. */
 interface PrintedName {
   whole: string[]
   all: string[]
+  parts?: PrintedName[]
 }
+
+/**
+ * How a list reads a closed bracket that ends one of its names. The INCI list the caller passed: a second name for the
+ * entry ("Titanium Dioxide (CI 77891)"), or the names of its parts, which stand for it only together ("Iron Oxides (CI
+ * 77491, CI 77492)"). The caller's other list: what the entry is made of or contains — "Chocolate (Sugar, Cocoa
+ * Mass)", "Cheese (Milk)" (Regulation (EU) No 1169/2011, Art. 18 and 21). A list of unknown kind — the one the leg
+ * found, a cosmetic's or a food's, and the recipe's own lines: a second name when it holds one name, else what the
+ * entry is made of.
+ */
+type Reading = 'inci' | 'contents' | 'unknown'
 
 /**
  * The names one printed name stands for, spelling aside. A name is read whole: a slash or a bracket inside it is part
  * of it — "Dimethicone/Vinyl Dimethicone Crosspolymer" is not "Dimethicone", "Butyrospermum Parkii (Shea) Butter" is
- * not "Shea". Two exceptions name one ingredient twice: the names of both nomenclatures together ("Aqua/Water/Eau",
- * "Parfum (Fragrance)"), and a closed bracket that ends the name, which may hold a second name for it ("Titanium
- * Dioxide (CI 77891)"). A bracket left open began a list of what the entry is made of: the name before it stands for
- * the entry, the sugar of a chocolate does not.
+ * not "Shea". The names of both nomenclatures together name one ingredient twice ("Aqua/Water/Eau", "Parfum
+ * (Fragrance)"). A closed bracket that ends the name is read as its list reads it (`Reading`); where it holds what the
+ * entry is made of, or the list left it open, the name before it stands for the entry — the sugar of a chocolate does
+ * not, nor the milk of a cheese.
  */
-function namesOf(printed: string): PrintedName {
+function namesOf(printed: string, reading: Reading = 'unknown'): PrintedName {
   const name = norm(printed)
   if (!name) return { whole: [], all: [] }
   const parts = printed
-    .split(/[/()[\]]/)
+    .split(/[/()[\],]/)
     .map(norm)
     .filter(Boolean)
   const both = BOTH_NOMENCLATURES.findIndex((names) => parts.every((p) => names.has(p)))
   // norm() leaves no "#", so this key is no printed name.
   if (both >= 0) return { whole: [name, `#${both}`], all: [name, `#${both}`] }
-  const last = LAST_BRACKET.exec(printed)
-  const further = last ? [last[1], ...(last[3] ? [last[2]] : [])].flatMap((p) => namesOf(p).all) : []
-  return { whole: [name], all: [name, ...further] }
+  const end = endBracket(printed)
+  if (!end) return { whole: [name], all: [name] }
+  const all = [name, ...namesOf(end.head, reading).all]
+  const inside = end.inside.filter((p) => norm(p))
+  if (!end.closed || reading === 'contents' || !inside.length) return { whole: [name], all }
+  if (inside.length === 1) return { whole: [name], all: [...all, ...namesOf(inside[0], reading).all] }
+  return reading === 'inci'
+    ? { whole: [name], all, parts: inside.map((p) => namesOf(p, reading)) }
+    : { whole: [name], all }
+}
+
+/** An ingredient known from the product, read as the list it comes from reads its brackets. */
+interface KnownName {
+  name: string
+  reading: Reading
 }
 
 /** Known ingredients the recipe does not name — by its lines, their INCI names and their trade forms' constituents. */
-function missingIngredients(known: string[], lines: RecipeLine[]): string[] {
+function missingIngredients(known: KnownName[], lines: RecipeLine[]): string[] {
   const read = lines
     .flatMap((l) => [
       l.name,
@@ -172,18 +191,17 @@ function missingIngredients(known: string[], lines: RecipeLine[]): string[] {
       l.trade_form?.name ?? '',
       ...(l.trade_form?.constituents ?? []).flatMap((c) => [c.name, c.inci ?? ''])
     ])
-    .map(namesOf)
+    .map((n) => namesOf(n))
   const wholes = new Set(read.flatMap((n) => n.whole))
   const all = new Set(read.flatMap((n) => n.all))
   // Whole names only: "Betaine" is not "Cocamidopropyl Betaine", nor "Alcohol" "Benzyl Alcohol". A name the recipe
   // spells otherwise is reported missing — the leg is asked to write the printed name in "inci". Two names are one
   // when one of them, read whole, is a name of the other: "Titanium Dioxide (CI 77891)" is "CI 77891", but "CI 77491
-  // (Iron Oxides)" is not "CI 77492 (Iron Oxides)", nor "Shea Butter (organic)" "Cocoa Butter (organic)".
-  const covered = (k: string): boolean => {
-    const n = namesOf(k)
-    return n.all.some((x) => wholes.has(x)) || n.whole.some((x) => all.has(x))
-  }
-  return known.filter((k) => !covered(k))
+  // (Iron Oxides)" is not "CI 77492 (Iron Oxides)", nor "Shea Butter (organic)" "Cocoa Butter (organic)". A name
+  // that stands for its parts together is covered by all of them: "CI 77492" alone leaves the red iron oxide missing.
+  const covered = (n: PrintedName): boolean =>
+    n.all.some((x) => wholes.has(x)) || n.whole.some((x) => all.has(x)) || !!n.parts?.every(covered)
+  return known.filter((k) => !covered(namesOf(k.name, k.reading))).map((k) => k.name)
 }
 
 /** The mixture's mass from the contents masses found: only when every figure agrees and no two versions contradict. */
@@ -506,14 +524,19 @@ export function weighRecipe(
     listNames(list)
       .filter((n) => !n.may)
       .map((n) => n.name)
-  const known = [
-    ...new Set([
-      ...inciEntries(opts.request.ingredients),
-      ...contents(passedInci),
-      ...contents(declared?.names ?? [])
-    ])
-  ]
-  const missing = missingIngredients(known, lines)
+  // A name on two lists is read as the one that says what it is: the INCI list before the other, either before the
+  // list found. It keeps its first place.
+  const known = new Map<string, KnownName>()
+  const rank: Reading[] = ['inci', 'contents', 'unknown']
+  for (const k of [
+    ...inciEntries(opts.request.ingredients).map((name) => ({ name, reading: 'contents' as const })),
+    ...contents(passedInci).map((name) => ({ name, reading: 'inci' as const })),
+    ...contents(inciEntries(declared?.names)).map((name) => ({ name, reading: 'unknown' as const }))
+  ]) {
+    const had = known.get(k.name)
+    if (!had || rank.indexOf(k.reading) < rank.indexOf(had.reading)) known.set(k.name, k)
+  }
+  const missing = missingIngredients([...known.values()], lines)
 
   // No gap where the closure could not be checked: beside lines without an amount it is their share, not a gap.
   const gapPct = gap !== undefined && closes !== null ? r2((gap / (den as number)) * 100) : undefined

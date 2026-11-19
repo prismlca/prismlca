@@ -198,12 +198,146 @@ describe('the names that cover an entry of the list', () => {
     // The full stop that ends a list, or an asterisk for organic, does not hide the bracket.
     expect(missing(['Aqua', 'Titanium dioxide'], ['Aqua, Titanium Dioxide (CI 77891).'])).toEqual([])
     expect(missing(['Glycerin', 'Tocopherol'], ['Glycerin, Tocopherol (Vitamin E)*'])).toEqual([])
-    // A compound ingredient split at the commas in its bracket: "Chocolate (Sugar" and "Cocoa Mass)". The chocolate
-    // is the name before the bracket; the sugar the recipe adds to the dough is no chocolate.
+    // A list cut inside a bracket: the chocolate is the name before it; the sugar of the dough is no chocolate.
     const cookie = (lines: string[]) =>
-      missing(lines, ['Wheat Flour, Chocolate (Sugar, Cocoa Mass), Butter, Sugar'], 'ingredients')
-    expect(cookie(['Wheat flour', 'Butter', 'Sugar'])).toEqual(['Chocolate (Sugar', 'Cocoa Mass)'])
+      missing(lines, ['Wheat Flour, Chocolate (Sugar, Cocoa Mass, Butter, Sugar'], 'ingredients')
+    expect(cookie(['Wheat flour', 'Butter', 'Sugar'])).toEqual(['Chocolate (Sugar', 'Cocoa Mass'])
     expect(cookie(['Wheat flour', 'Butter', 'Sugar', 'Chocolate', 'Cocoa mass'])).toEqual([])
+  })
+})
+
+/**
+ * A bracket holds one entry's names together: what a compound is made of ("Chocolate (Sugar, Cocoa Mass)",
+ * Regulation (EU) No 1169/2011, Art. 18), or the colour index numbers of one colourant. Only the bracket around a
+ * "may contain" part holds names of their own.
+ */
+describe('the commas inside a bracket of the list', () => {
+  const missing = (lines: string[], list: string[], as: 'inci_list' | 'ingredients') =>
+    weigh(
+      {
+        formulation: { name: 'x', kind: 'frame', source_url: PCC },
+        lines: lines.map((name) => ({ name, amount: 1, unit: '%' }))
+      },
+      { [as]: list }
+    )
+
+  it('splits a list at no comma inside a bracket it closes, wherever the caller split it', () => {
+    expect(
+      inciEntries(['Wheat Flour, Chocolate (Sugar, Cocoa Mass, Emulsifier (Soy Lecithin)), Butter, Sugar'])
+    ).toEqual(['Wheat Flour', 'Chocolate (Sugar, Cocoa Mass, Emulsifier (Soy Lecithin))', 'Butter', 'Sugar'])
+    expect(inciEntries(['Mica, Iron Oxides (CI 77491, CI 77492), 1,2-Hexanediol.'])).toEqual([
+      'Mica',
+      'Iron Oxides (CI 77491, CI 77492)',
+      '1,2-Hexanediol.'
+    ])
+    // A caller that split the list inside the bracket sent one entry in two pieces.
+    expect(inciEntries(['Wheat Flour', 'Chocolate (Sugar', 'Cocoa Mass)', 'Butter'])).toEqual([
+      'Wheat Flour',
+      'Chocolate (Sugar, Cocoa Mass)',
+      'Butter'
+    ])
+    // A bracket the list never closes holds nothing together.
+    expect(inciEntries(['Flour, Chocolate (Sugar, Cocoa Mass, Butter'])).toEqual([
+      'Flour',
+      'Chocolate (Sugar',
+      'Cocoa Mass',
+      'Butter'
+    ])
+  })
+
+  it('still reads the names of a bracketed "may contain" part one by one', () => {
+    const names = (list: string) =>
+      listNames(inciEntries([list])).map((n) => `${n.name}${n.may ? ' (may)' : ''}`)
+    expect(names('Glycerin, Phenoxyethanol (+/- Mica, CI 77891)')).toEqual([
+      'Glycerin',
+      'Phenoxyethanol',
+      'Mica (may)',
+      'CI 77891 (may)'
+    ])
+    // A heading in the bracket, or before it, is no name.
+    for (const list of [
+      'Glycerin, [Peut contenir/May contain: Mica, CI 77891].',
+      'Glycerin, (May contain: Mica, CI 77891)',
+      'Glycerin, Kann enthalten [+/-: Mica, CI 77891]'
+    ])
+      expect(names(list), list).toEqual(['Glycerin', 'Mica (may)', 'CI 77891 (may)'])
+    // A colourant of several index numbers inside the part is one name.
+    expect(names('Phenoxyethanol [+/- Mica, Iron Oxides (CI 77491, CI 77492)]')).toEqual([
+      'Phenoxyethanol',
+      'Mica (may)',
+      'Iron Oxides (CI 77491, CI 77492) (may)'
+    ])
+  })
+
+  it('reports a compound ingredient whole, and covers it by its name', () => {
+    const list = ['Wheat Flour, Chocolate (Sugar, Cocoa Mass), Butter, Sugar']
+    const r = missing(['Wheat flour', 'Butter', 'Sugar'], list, 'ingredients')
+    expect(r.block.missing_ingredients).toEqual(['Chocolate (Sugar, Cocoa Mass)'])
+    expect(r.sentence).toMatch(/Known from the product but not in it: Chocolate \(Sugar, Cocoa Mass\)\./)
+    // What the chocolate is made of is no ingredient of the cookie of its own.
+    const all = ['Wheat flour', 'Butter', 'Sugar', 'Chocolate']
+    expect(missing(all, list, 'ingredients').block.missing_ingredients).toBeUndefined()
+    expect(
+      missing(['Chocolate'], ['Chocolate (Sugar, Cocoa Mass, Emulsifier (Soy Lecithin))'], 'ingredients')
+        .block.missing_ingredients
+    ).toBeUndefined()
+  })
+
+  it('reads a bracket of any other list than an INCI list as what the entry is made of, never as its name', () => {
+    const left = (lines: string[], list: string[], as: 'inci_list' | 'ingredients') =>
+      missing(lines, list, as).block.missing_ingredients ?? []
+    // The sugar and cocoa mass of the dough are no chocolate, the milk of a sauce no cheese.
+    const food = ['Chocolate (Sugar, Cocoa Mass)', 'Cheese (Milk)', 'Tomatoes (45%)']
+    expect(left(['Sugar', 'Cocoa mass', 'Milk', 'Tomatoes'], food, 'ingredients')).toEqual([
+      'Chocolate (Sugar, Cocoa Mass)',
+      'Cheese (Milk)'
+    ])
+    expect(left(['Chocolate', 'Cheese', 'Tomatoes'], food, 'ingredients')).toEqual([])
+    // An INCI list's bracket of one name is a second name for the entry, as before — also when the caller put the
+    // name on both lists.
+    expect(left(['CI 77891'], ['Titanium Dioxide (CI 77891)'], 'inci_list')).toEqual([])
+    const both = weigh(
+      {
+        formulation: { name: 'x', kind: 'frame', source_url: PCC },
+        lines: [{ name: 'CI 77891', amount: 1, unit: '%' }]
+      },
+      {
+        ingredients: ['Titanium Dioxide (CI 77891)', 'Mica'],
+        inci_list: ['Mica', 'Titanium Dioxide (CI 77891)']
+      }
+    )
+    expect(both.block.missing_ingredients).toEqual(['Mica'])
+  })
+
+  it("reads the list the leg found, a cosmetic's or a food's, as a list of unknown kind", () => {
+    const found = (lines: string[], names: string[]) =>
+      weigh({
+        formulation: { name: 'x', kind: 'frame', source_url: PCC },
+        lines: lines.map((name) => ({ name, amount: 1, unit: '%' })),
+        declared_ingredients: { names, source_url: DM }
+      }).block.missing_ingredients ?? []
+    // A bracket of one name is a second name: the label's titanium dioxide is the recipe's CI 77891.
+    expect(found(['CI 77891'], ['Titanium Dioxide (CI 77891)'])).toEqual([])
+    // Of several names it is what the entry is made of: the dough's sugar and cocoa mass are no chocolate, nor two
+    // index numbers a colourant the label names otherwise.
+    const label = ['Wheat Flour, Chocolate (Sugar, Cocoa Mass), Iron Oxides (CI 77491, CI 77492)']
+    expect(found(['Wheat flour', 'Sugar', 'Cocoa mass', 'CI 77491', 'CI 77492'], label)).toEqual([
+      'Chocolate (Sugar, Cocoa Mass)',
+      'Iron Oxides (CI 77491, CI 77492)'
+    ])
+    expect(found(['Wheat flour', 'Chocolate', 'Iron oxides'], label)).toEqual([])
+  })
+
+  it('covers an INCI name whose bracket holds the names of its parts by all of them, or by its own name', () => {
+    const list = ['Iron Oxides (CI 77491, CI 77492)']
+    const left = (lines: string[]) => missing(lines, list, 'inci_list').block.missing_ingredients ?? []
+    expect(left(['CI 77491', 'CI 77492'])).toEqual([])
+    expect(left(['Iron oxides'])).toEqual([])
+    expect(left(['Iron Oxides (CI 77491, CI 77492)'])).toEqual([])
+    // The yellow alone leaves the red missing.
+    expect(left(['CI 77492'])).toEqual(list)
+    // A part of a part counts like any part: "Iron Oxides (CI 77491)" covers its share.
+    expect(left(['Iron Oxides (CI 77491)', 'CI 77492'])).toEqual([])
   })
 })
 
