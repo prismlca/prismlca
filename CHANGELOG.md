@@ -3,6 +3,17 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.16 — 2026-11-19
+
+Changes since v0.9.15: https://github.com/prismlca/prismlca/compare/v0.9.15...v0.9.16
+
+### Fixes
+
+- **External agents: Configure finds the file each client reads.** On Windows, Claude Desktop keeps its
+  configuration in one of three folders, depending on the installer and the build, and ignores an entry in the
+  others; with a Microsoft Store build, the entry was written and never read. Configure now looks for the folder in
+  use and names it above the preview. Claude Code and Codex follow `CLAUDE_CONFIG_DIR` and `CODEX_HOME` (#109).
+
 ## 0.9.15 — 2026-11-19
 
 Changes since v0.9.12: https://github.com/prismlca/prismlca/compare/v0.9.12...v0.9.15

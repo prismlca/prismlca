@@ -1,7 +1,7 @@
 # PrismLCA third-party notices
 
-PrismLCA version 0.9.15.
-Generated from git commit db38854f by `backend/scripts/third_party_notices.py`.
+PrismLCA version 0.9.16.
+Generated from git commit 131bd072 by `backend/scripts/third_party_notices.py`.
 152 Python runtime packages, 267 npm packages.
 
 This file lists the third-party software, fonts, icons, data and models that ship with PrismLCA or that PrismLCA downloads, together with their licence and notice texts. PrismLCA itself is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only); see the LICENSE file. The file is generated; do not edit it by hand.
