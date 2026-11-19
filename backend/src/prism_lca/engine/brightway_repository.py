@@ -269,7 +269,7 @@ class BrightwayRepository(LcaRepository):
     def duplicate_foreground_database(self, source: str, name: str) -> DatabaseInfo:
         """Copy a whole foreground model into a new writable database. Internal (model-internal)
         links are remapped to the new copies; inputs to background/biosphere are shared. Tags on
-        the source activities and the model's study metadata (goal & scope) are copied too."""
+        the source activities, the model's study metadata (goal & scope) and its research log are copied too."""
         from prism_lca.engine import model as _model
         from prism_lca.engine.study import COMPARED_WITH, StudyMetaStore
         from prism_lca.engine.tags import TagStore
@@ -355,6 +355,14 @@ class BrightwayRepository(LcaRepository):
         gid_map = parameter_groups.copy(source, name)  # {old group id: new group id}
         _params.copy_params(source, name, group_id_map=gid_map)
         ScenarioStore().copy(source, name)
+
+        # The research log is where the copied masses and figures come from: the health check lists its
+        # part masses, the reviewer and the report cite it. Without it the copy's figures had no source.
+        from prism_lca.engine.research_log import ResearchLogStore
+
+        research = ResearchLogStore()
+        if entries := research.snapshot_database(source):
+            research.restore_database(name, entries)
 
         # The copied exchanges carry their `formula` text, but a formula that belongs to no parameter
         # group never recalculates: `recalc_all()` only walks groups that already exist, and a fresh
