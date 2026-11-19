@@ -147,13 +147,33 @@ function withList(files, fn) {
   }
 }
 
+/**
+ * The inspection's answer as it is used here: every fact with its file as the path that was asked about. Windows
+ * PowerShell writes a string that carries note properties as an object ({ value, PSPath, … }) — the path is taken
+ * from there too, and an answer that names no file stops the run with the answer in the message, before a path
+ * function fails on it somewhere else.
+ */
+export function readFacts(json) {
+  const facts = JSON.parse(json)
+  if (!Array.isArray(facts)) throw new Error(`the signature inspection answered no list: ${String(json).slice(0, 200)}`)
+  return facts.map((fact) => {
+    const file = typeof fact?.file === 'string' ? fact.file : fact?.file?.value
+    if (typeof file !== 'string' || !file)
+      throw new Error(`the signature inspection names no file: ${JSON.stringify(fact).slice(0, 300)}`)
+    return { ...fact, file }
+  })
+}
+
 /** What Windows says about each file's signature: { file, status, type, subject, problem }. Needs no key. */
 function inspect(files) {
   if (!files.length) return []
   return withList(files, (list, dir) => {
     const out = join(dir, 'facts.json')
     if (powershell(['-Inspect', '-List', list, '-Out', out]) !== 0) throw new Error('inspecting signatures failed')
-    return JSON.parse(readFileSync(out, 'utf-8'))
+    const facts = readFacts(readFileSync(out, 'utf-8'))
+    if (facts.length !== files.length)
+      throw new Error(`the signature inspection answered for ${facts.length} of ${files.length} files`)
+    return facts
   })
 }
 

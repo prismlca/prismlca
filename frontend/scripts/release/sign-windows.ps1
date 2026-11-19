@@ -41,8 +41,10 @@ function Find-Certificate {
     Sort-Object NotAfter -Descending | Select-Object -First 1
 }
 
+# Read as plain .NET strings, not with Get-Content: its lines carry PowerShell's own note properties (PSPath,
+# ReadCount), and Windows PowerShell's ConvertTo-Json writes such a line as an object instead of a string.
 function Read-List([string]$path) {
-  @(Get-Content -LiteralPath $path -Encoding UTF8 | Where-Object { $_ })
+  @([System.IO.File]::ReadAllLines($path, [System.Text.Encoding]::UTF8) | Where-Object { $_ })
 }
 
 # Older Windows PowerShell has no SignatureType; then the embedded table sign-windows.mjs found has to do.
@@ -108,7 +110,7 @@ if ($Inspect) {
     $signer = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
     # Ours is held to our standard; another maker's signature only has to be valid.
     $problem = if ($signer -ceq $Subject) { Get-SignatureProblem $f $signtool } else { $null }
-    [pscustomobject]@{ file = $f; status = "$($sig.Status)"; type = (Get-SignatureType $sig); subject = $signer; problem = $problem }
+    [pscustomobject]@{ file = "$f"; status = "$($sig.Status)"; type = (Get-SignatureType $sig); subject = "$signer"; problem = $problem }
   }
   $json = ConvertTo-Json -InputObject @($facts) -Depth 3 -Compress
   [System.IO.File]::WriteAllText($Out, $json, (New-Object System.Text.UTF8Encoding $false))
