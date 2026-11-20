@@ -105,8 +105,11 @@ export function describe(): { available: boolean; backend: string; trusted: bool
 }
 
 /** A dev checkout's `.secrets/<provider>-key`, deliberately NOT migrated into the store: it belongs to
- *  the working copy, not to the installed app, and moving it would break the next fresh clone. */
+ *  the working copy, not to the installed app, and moving it would break the next fresh clone. A test or
+ *  driven instance (PRISM_IGNORE_DEV_KEYS) does not read it: those keys are the developer's, and a check
+ *  must not spend on them unasked. */
 function devFile(p: Provider): string | null {
+  if (process.env['PRISM_IGNORE_DEV_KEYS']) return null
   try {
     const v = readFileSync(join(app.getAppPath(), '..', '.secrets', `${p}-key`), 'utf-8').trim()
     return v || null

@@ -120,6 +120,18 @@ describe('the key store', () => {
     expect(secrets.status('openrouter')).toMatchObject({ present: true, source: 'devfile' })
   })
 
+  it('reads no checkout key in a test or driven instance', () => {
+    mkdirSync(join(userData, '..', '.secrets'), { recursive: true })
+    writeFileSync(join(userData, '..', '.secrets', 'openrouter-key'), 'sk-or-v1-fromcheckout0\n')
+    process.env.PRISM_IGNORE_DEV_KEYS = '1'
+    try {
+      expect(secrets.resolve('openrouter')).toEqual({ key: null, source: 'none' })
+    } finally {
+      delete process.env.PRISM_IGNORE_DEV_KEYS
+    }
+    expect(secrets.resolve('openrouter').source).toBe('devfile')
+  })
+
   it('lets a stored key take over from the checkout file, and the environment over both', () => {
     mkdirSync(join(userData, '..', '.secrets'), { recursive: true })
     writeFileSync(join(userData, '..', '.secrets', 'openrouter-key'), 'sk-or-v1-fromcheckout0')
