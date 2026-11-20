@@ -472,6 +472,14 @@ describe('the composer', () => {
     expect(screen.getByTitle('Send')).toBeDisabled()
     expect(screen.getByLabelText('Record a voice message')).toBeDisabled()
 
+    // The placeholder names the provider whose key is missing, not always OpenRouter.
+    const { setAS } = await import('./lib/appSettings')
+    act(() => setAS({ provider: 'anthropic' }))
+    expect(
+      await screen.findByPlaceholderText('No Anthropic API key configured — add one under Settings → AI.')
+    ).toBeDisabled()
+    act(() => setAS({ provider: 'openrouter' }))
+
     hasKey = true
     const { KEY_CHANGED_EVENT } = await import('./lib/ai')
     await act(async () => {
@@ -481,6 +489,33 @@ describe('the composer', () => {
     expect(screen.getByRole('textbox')).toHaveAttribute('placeholder', 'Ask or instruct the assistant…')
     expect(await plus()).toBeEnabled()
     expect(container.querySelector('.chat-mic')).toBeEnabled()
+  })
+
+  it("a provider switch waits for that provider's key answer before it names a missing key", async () => {
+    const { getAS, setAS } = await import('./lib/appSettings')
+    const keys: Record<string, boolean> = { openrouter: false, anthropic: true }
+    let release: (() => void) | null = null
+    const hasKey = vi.fn(async () => {
+      const p = String(getAS().provider ?? 'openrouter')
+      if (p === 'anthropic') await new Promise<void>((r) => (release = r))
+      return keys[p]
+    })
+    mount({ overrides: { ai: { hasKey } } })
+    expect(
+      await screen.findByPlaceholderText('No OpenRouter API key configured — add one under Settings → AI.')
+    ).toBeDisabled()
+
+    act(() => setAS({ provider: 'anthropic' }))
+    // OpenRouter's "no key" no longer counts, and Anthropic's answer is still out: nothing claims that
+    // Anthropic's key is missing.
+    await waitFor(() => expect(release).not.toBeNull())
+    expect(screen.queryByPlaceholderText(/API key configured/)).toBeNull()
+    // …and nothing can be sent until it arrives (Anthropic has no microphone to check).
+    expect(screen.getByRole('textbox')).toBeDisabled()
+    expect(screen.getByTitle('Send')).toBeDisabled()
+    await act(async () => release?.())
+    await waitFor(() => expect(screen.getByRole('textbox')).toBeEnabled())
+    act(() => setAS({ provider: 'openrouter' }))
   })
 
   it('web search: the menu and the send both follow the app setting', async () => {

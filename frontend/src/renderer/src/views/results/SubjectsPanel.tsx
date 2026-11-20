@@ -119,8 +119,8 @@ export function SubjectsPanel({
         <>
           <div className="subj-subhead">Scenarios</div>
           <p className="hint-sm" style={{ margin: '0 0 4px' }}>
-            Each one is applied to the model activit
-            {Object.values(subjSel).filter(Boolean).length === 1 ? 'y' : 'ies'} selected above.
+            Each one is applied to the model process
+            {Object.values(subjSel).filter(Boolean).length === 1 ? '' : 'es'} selected above.
           </p>
           <div className="subjpick">
             <label className="subjrow" title="The model as it stands, with no parameter overrides">
