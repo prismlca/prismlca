@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
+import { installCommitCounter, reactRegistered } from './idle'
 import { endAll, leftovers, listed, processTree, type ProcessInfo } from './processes'
 
 export const FRONTEND = resolve(__dirname, '..')
@@ -94,6 +95,9 @@ export async function launch(install: Install): Promise<RunningApp> {
     },
     timeout: 120_000
   })
+  // The counter React reports its commits to (idle.ts). Registered before the main window exists, which opens
+  // only once the backend answers — some seconds of margin, not a guarantee; see the check below.
+  await app.context().addInitScript(installCommitCounter)
   const output: string[] = []
   const proc = app.process()
   proc.stdout?.on('data', (b: Buffer) => output.push(b.toString()))
@@ -109,6 +113,14 @@ export async function launch(install: Install): Promise<RunningApp> {
   })
   page.on('pageerror', (e) => rendererErrors.push(`uncaught: ${e.message}`))
   await page.waitForLoadState('domcontentloaded')
+  // The renderer's bundle has run by now, so React has registered with the counter — unless the window loaded
+  // before the counter was in place. Then one reload, with the counter there from the start.
+  if (!(await reactRegistered(page))) {
+    console.warn(
+      'launch(): the window loaded before the React commit counter was in place; reloading it once'
+    )
+    await page.reload()
+  }
   return { app, page, output, rendererErrors, stopped: false }
 }
 

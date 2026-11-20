@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { FIXTURES, freshInstall, launch, quit, removeInstall, type Install, type RunningApp } from './app'
+import { expectRest } from './idle'
 import { answerNextFolderDialog, finishWelcomeTour } from './steps'
 
 // One installation for the whole path, as a person has it: the first test imports the background data,
@@ -46,8 +47,10 @@ test('BAFU background data imports through the setup sheet', async () => {
   await expect(result).toBeVisible({ timeout: 240_000 })
   await expect(result).toContainText('Imported')
   await expect(result).toContainText('2 datasets')
+  await expectRest(page, 'the import')
   await page.getByRole('button', { name: 'Start', exact: true }).click()
   await expect(page.getByText('Bring your background data')).toBeHidden()
+  await expectRest(page, 'closing the setup sheet')
   expect(running.rendererErrors).toEqual([])
 })
 
@@ -61,6 +64,8 @@ test('a model is built, calculated, changed, undone and still there after a rest
   await page.getByLabel('Name', { exact: true }).fill('bottle')
   await page.getByRole('button', { name: 'Create', exact: true }).click()
   await expect(processBox(page, 'bottle')).toBeVisible()
+  // The canvas is open with a selected process: where the Workbench once rendered without pause.
+  await expectRest(page, 'a new process on the canvas')
 
   // The new process is selected and open in the inspector: it emits 2 kg of fossil CO2 to air.
   await page.getByRole('tab', { name: /Outputs/ }).click()
@@ -80,6 +85,7 @@ test('a model is built, calculated, changed, undone and still there after a rest
   // One kg CO2-eq per kg of fossil CO2 in CML's GWP100: the score is the amount.
   await chooseMethod(page, GWP100)
   await calculateExpecting(page, 2)
+  await expectRest(page, 'a calculation on the canvas')
 
   // Enter commits the amount; the Undo button's tooltip names the step once the backend has stored it.
   await co2Amount(page).fill('4')
@@ -102,15 +108,92 @@ test('a model is built, calculated, changed, undone and still there after a rest
   page = running.page
   await expect(page.getByText('Bring your background data')).toBeHidden()
   await page.locator('.navitem', { hasText: 'Model' }).click()
+  // The reopened canvas is drawn from the cached view first and then from the backend's answer; a click
+  // on the box between the two was seen to lose its selection. So the click waits until the canvas rests.
+  await expect(processBox(page, 'bottle')).toBeVisible()
+  await expectRest(page, 'the model reopening after the restart')
   await processBox(page, 'bottle').click()
   await chooseMethod(page, GWP100)
   await calculateExpecting(page, 2)
+  await expectRest(page, 'a calculation after the restart')
   expect(running.rendererErrors).toEqual([])
+})
+
+test('Results: the model is computed for a picked indicator, and taken apart in its decomposition tree', async () => {
+  const { page } = running!
+  await page.locator('.navitem', { hasText: 'Results' }).click()
+  // A tab's view stays mounted once seen, beside the others; only the one on show is visible.
+  const overview = page.locator('.results-view').filter({ visible: true })
+  // A model opens on its reference process; its indicators are picked here.
+  await expect(overview.locator('.results-rail')).toContainText('bottle')
+  await expectRest(page, 'opening Results')
+  await openGroup(overview, 'Indicators')
+  await overview.getByRole('button', { name: '+ Add indicator' }).click()
+  await overview.locator('select.ind-family').selectOption(GWP100_PATH[0])
+  await overview.getByPlaceholder('Filter indicators…').fill(GWP100_PATH[1])
+  await overview.locator(`.ind-row[title="${GWP100_PATH.slice(1).join(' · ')}"]`).click()
+  await overview.getByRole('button', { name: 'Done' }).click()
+  await overview.getByRole('button', { name: 'Calculate' }).click()
+  // Loaded: the rail reports the finished run, and the table holds the score.
+  await expect(overview.getByText(/^Computed in/)).toBeVisible()
+  await expect(overview.locator('.results-table tbody tr').filter({ hasText: 'bottle' })).toContainText(
+    '2.00'
+  )
+  await expectRest(page, 'a calculation on the Results page')
+
+  await page.getByRole('tab', { name: 'Decomposition tree' }).click()
+  const tree = page.locator('.results-view.dr')
+  await expect(tree).toBeVisible()
+  await openGroup(tree, 'Impact category')
+  // By role: a label wrapped around a select reads the select's options too, so getByLabel would not match.
+  await tree.getByRole('combobox', { name: 'Method family', exact: true }).selectOption(GWP100_PATH[0])
+  await tree
+    .getByRole('combobox', { name: 'Indicator', exact: true })
+    .selectOption({ label: `★ ${GWP100_PATH.slice(1).join(' · ')} [kg CO2-Eq]` })
+  await tree.getByRole('button', { name: 'Calculate' }).click()
+  // Loaded: the run is reported, and the flow list names the one emission with the whole score.
+  await expect(tree.getByText(/^Computed in/)).toBeVisible()
+  await expect(tree.getByText('Carbon dioxide, fossil')).toBeVisible()
+  await expect(tree.getByText('100.0%').first()).toBeVisible()
+  await expectRest(page, 'drawing the decomposition tree')
+  expect(running!.rendererErrors).toEqual([])
+})
+
+test('Report: a short report is typeset, and a new stored report opens with its chapters', async () => {
+  const { page } = running!
+  await page.locator('.navitem', { hasText: 'Report' }).click()
+  await page.getByRole('tab', { name: 'Short reports (w/o AI)' }).click()
+  // The stored reports' rail stays mounted beside it, hidden.
+  const short = page.locator('.report-setup').filter({ visible: true })
+  await expect(short).toContainText('Deterministic and unstored')
+  await expectRest(page, 'opening the short reports')
+  await openGroup(short, 'Indicators')
+  await short.getByRole('button', { name: '+ Add indicator' }).click()
+  await short.getByLabel('Method family').selectOption(GWP100_PATH[0])
+  await short.getByPlaceholder('Filter indicators…').fill(GWP100_PATH[1])
+  await short.locator('.report-method').filter({ hasText: GWP100_PATH[1] }).getByRole('checkbox').check()
+  await short.getByRole('button', { name: 'Done' }).click()
+  await short.getByRole('button', { name: 'Generate' }).click()
+  // Loaded: the first page is on screen and nothing is being typeset any more.
+  await expect(page.getByAltText(/^Page 1 of \d+$/)).toBeVisible({ timeout: 120_000 })
+  await expect(page.locator('.report-working')).toBeHidden()
+  await expectRest(page, 'typesetting a short report')
+
+  await page.getByRole('tab', { name: 'Full reports (AI)' }).click()
+  await page.getByRole('button', { name: 'New report' }).click()
+  // Loaded: the new report's chapters are listed — where the page once stayed on "Loading…" at full CPU.
+  const stored = page.locator('.report-setup').filter({ visible: true })
+  await expect(stored.getByText('Title page', { exact: true })).toBeVisible()
+  await expect(stored.getByText('Loading…')).toBeHidden()
+  await expectRest(page, 'opening a new stored report')
+  // Back where the next test expects the window: the model on its canvas.
+  await page.locator('.navitem', { hasText: 'Model' }).click()
+  expect(running!.rendererErrors).toEqual([])
 })
 
 test('tag groups belong to their model: kept over a restart, unseen by the next model, taken over on request', async () => {
   let { page } = running!
-  // The model from the test before is open on its canvas. It gets a group, a tag, and the tag on its process.
+  // The model the tests before built is open on its canvas. It gets a group, a tag, and the tag on its process.
   await openTags(page)
   const tags = page.locator('.tagman-modal')
   await tags.getByPlaceholder('New group name (e.g. Life-cycle phase)').fill('Component')
@@ -169,6 +252,8 @@ async function openTags(page: Page): Promise<void> {
 }
 
 const GWP100 = '★ CML v4.8 2016 · climate change · global warming potential (GWP100)'
+/** The same indicator as family, category and indicator, for the pickers that list them apart. */
+const GWP100_PATH = ['CML v4.8 2016', 'climate change', 'global warming potential (GWP100)']
 
 function processBox(page: Page, name: string): Locator {
   return page.locator('.react-flow__node').filter({ hasText: name })
@@ -180,6 +265,13 @@ function co2Amount(page: Page): Locator {
     .filter({ hasText: 'Carbon dioxide, fossil' })
     .locator('input')
     .first()
+}
+
+/** Opens one group of a rail's accordion, unless it already is (the open group is remembered). */
+async function openGroup(scope: Locator, title: string): Promise<void> {
+  const head = scope.locator('.acc-ghead').filter({ hasText: title })
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click()
+  await expect(head).toHaveAttribute('aria-expanded', 'true')
 }
 
 async function chooseMethod(page: Page, label: string): Promise<void> {
