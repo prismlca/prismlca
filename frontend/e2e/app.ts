@@ -42,15 +42,16 @@ export function removeInstall(install: Install): void {
   }
 }
 
+/** Settings and keys of the calling environment that must not reach the app. The key names are those
+ *  main/secrets.ts reads (ENV_VAR), Google's under both spellings. */
+const NOT_PASSED_ON =
+  /^(PRISM_|BRIGHTWAY|ELECTRON_RENDERER_URL|OPENROUTER|ANTHROPIC|OPENAI|GOOGLE|GEMINI|ORS_|MAPBOX)/
+
 /** The calling environment without anything that would configure the app or its backend. */
 export function cleanEnv(): Record<string, string> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
-    if (
-      v === undefined ||
-      /^(PRISM_|BRIGHTWAY|ELECTRON_RENDERER_URL|OPENROUTER|ANTHROPIC|OPENAI|GOOGLE)/.test(k)
-    )
-      continue
+    if (v === undefined || NOT_PASSED_ON.test(k)) continue
     env[k] = v
   }
   return env
@@ -82,9 +83,14 @@ export async function launch(install: Install): Promise<RunningApp> {
       // The app keeps its Brightway projects in `brightway` under this; an inherited BRIGHTWAY2_DIR is
       // never followed (backend engine/brightway_dir.py), and cleanEnv() drops it anyway.
       PRISM_DATA_DIR: install.data,
+      // Named outright, so a developer's backend/.env (read by the backend from source) cannot point the
+      // app at another Brightway folder; it is the folder the app would choose by itself.
+      PRISM_BRIGHTWAY_DIR: join(install.data, 'brightway'),
       XDG_CONFIG_HOME: join(install.root, 'config'),
       PRISM_EMBEDDING_BACKEND: 'hashing',
-      PRISM_DOWNLOAD_DIR: install.downloads
+      PRISM_DOWNLOAD_DIR: install.downloads,
+      // The checkout's own provider keys (.secrets/<provider>-key) are the person's, not the test's.
+      PRISM_IGNORE_DEV_KEYS: '1'
     },
     timeout: 120_000
   })
@@ -117,21 +123,31 @@ const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(do
  * Quits the way a person does (the window closes, the app ends its backend) and waits for the process.
  * Fails if the quit does not finish in time, or if anything the app started is still running after it —
  * a backend that outlives the app keeps the data folder locked. Whatever is left over is ended.
+ *
+ * What counts as the app's: its process and what descends from it, and — unless `byPath` is false —
+ * anything whose command line names the install folder. A test owns its throwaway folder outright; a
+ * long-lived driven session (scripts/control-prism) does not, since someone may open its files.
  */
-export async function quit(running: RunningApp, install: Install): Promise<void> {
+export async function quit(
+  running: RunningApp,
+  install: Install,
+  { byPath = true }: { byPath?: boolean } = {}
+): Promise<void> {
   if (running.stopped) return
   running.stopped = true
   const proc = running.app.process()
+  // A string no command line contains: the path rule then matches nothing.
+  const root = byPath ? install.root : '\u0000'
   let snapshot: ProcessInfo[]
   try {
-    snapshot = processTree(proc, install.root)
+    snapshot = processTree(proc, root)
   } catch (e) {
     // Without a snapshot nothing can be checked after a quit; the app is ended through Node's own hold on
     // it, which cannot reach another process.
     proc.kill('SIGKILL')
     throw e
   }
-  const look = leftovers(snapshot, install.root)
+  const look = leftovers(snapshot, root)
   let timer: ReturnType<typeof setTimeout> | undefined
   const outcome = await Promise.race([
     running.app.close().then(() => 'closed' as const),

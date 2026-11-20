@@ -1,0 +1,277 @@
+/**
+ * `doctor`: whether what the session drives can stand as a witness for the checkout. Three questions, each
+ * answered from what the processes report about themselves rather than from what the launch intended:
+ *
+ * - Is the running app the build of the checkout as it is now? (stamp, fingerprints, renderer URL, app path)
+ * - Does the instance belong to this session? (record in this checkout, host answering with its token)
+ * - Do its data and profile live in folders of its own? (the main process's paths and environment; on Linux
+ *   also the backend's environment and the files the app's processes hold open)
+ *
+ * The facts are gathered in two places — the host knows the app (facts.ts), the command line knows the
+ * checkout — and judged in one pure function, so the verdicts can be tested without an app.
+ */
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import type { AppFacts } from './facts'
+import type { SessionRecord } from './session'
+
+export interface DoctorInput {
+  frontend: string
+  record: SessionRecord
+  app: AppFacts | null
+  /** Why the host did not answer, when it did not. */
+  hostError?: string
+  current: { src: string; out: string | null; backend: string }
+  stamp: { src: string; out: string } | null
+  realDirs: string[]
+  /** Files under the real dirs modified since the launch. */
+  realChanged: string[]
+  /** The checkout's provider key files (`.secrets/*-key`). */
+  devKeyFiles: string[]
+  /** The names a developer's backend/.env sets. */
+  backendEnvKeys: string[]
+}
+
+export type Status = 'ok' | 'FAIL' | 'note'
+export interface Check {
+  status: Status
+  text: string
+}
+
+/** Whether `path` is `dir` or lies inside it. */
+export function inside(path: string, dir: string): boolean {
+  const r = relative(resolve(dir), resolve(path))
+  return r === '' || (!r.startsWith('..') && !isAbsolute(r))
+}
+
+/** The folders a normal start of PrismLCA uses for this user: Electron's profile and the engine's data. */
+export function realDirs(
+  env: NodeJS.ProcessEnv = process.env,
+  platform = process.platform,
+  home = homedir()
+): string[] {
+  // Paths in the platform's own form, also when a test asks for another platform's folders.
+  if (platform === 'win32') {
+    const at = win32.join
+    const roaming = env.APPDATA ?? at(home, 'AppData', 'Roaming')
+    const local = env.LOCALAPPDATA ?? at(home, 'AppData', 'Local')
+    return [at(roaming, 'prism-lca'), at(roaming, 'PrismLCA'), at(local, 'Prism LCA')]
+  }
+  const at = posix.join
+  if (platform === 'darwin') {
+    const support = at(home, 'Library', 'Application Support')
+    return [at(support, 'prism-lca'), at(support, 'PrismLCA'), at(support, 'Prism LCA')]
+  }
+  const config = env.XDG_CONFIG_HOME || at(home, '.config')
+  const data = env.XDG_DATA_HOME || at(home, '.local', 'share')
+  return [at(config, 'prism-lca'), at(config, 'PrismLCA'), at(data, 'Prism LCA')]
+}
+
+/** Files under `dirs` modified after `since` (ms), at most `limit` of them. */
+export function changedSince(dirs: string[], since: number, limit = 20): string[] {
+  const found: string[] = []
+  const visit = (dir: string): void => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (found.length >= limit) return
+      const full = join(dir, e.name)
+      if (e.isDirectory()) visit(full)
+      else {
+        try {
+          if (statSync(full).mtimeMs > since) found.push(full)
+        } catch {
+          /* gone meanwhile */
+        }
+      }
+    }
+  }
+  for (const d of dirs) if (existsSync(d)) visit(d)
+  return found
+}
+
+const short = (h: string | null | undefined): string => (h ? h.slice(0, 10) : 'none')
+
+export function judge(input: DoctorInput): Check[] {
+  const { record, app, frontend } = input
+  const checks: Check[] = []
+  const add = (ok: boolean, good: string, bad: string): void => {
+    checks.push(ok ? { status: 'ok', text: good } : { status: 'FAIL', text: bad })
+  }
+
+  // Ownership
+  add(
+    resolve(record.frontend) === resolve(frontend),
+    `the session "${record.name}" was launched from this checkout`,
+    `the session record names ${record.frontend}, not this checkout — it is not yours to drive`
+  )
+  if (!app) {
+    checks.push({
+      status: 'FAIL',
+      text: `the host does not answer${input.hostError ? ` (${input.hostError})` : ''} — run stop, then launch`
+    })
+    return checks
+  }
+  add(
+    app.alive,
+    "the app is running and its host answers with this session's token",
+    'the app is not running — run stop, then launch'
+  )
+  add(
+    resolve(app.appPath) === resolve(frontend),
+    `the app runs from this checkout (${app.appPath})`,
+    `the app runs from ${app.appPath}, not from this checkout`
+  )
+
+  // Build
+  const { current, stamp } = input
+  add(
+    stamp !== null && current.out !== null && stamp.out === current.out && stamp.src === current.src,
+    `out/ is the build of the sources as they are now (sources ${short(current.src)})`,
+    stamp === null
+      ? 'out/ carries no control-prism stamp, so nobody knows what it was built from — run restart (it builds first)'
+      : current.out !== stamp.out
+        ? 'out/ changed after control-prism built it — run restart (it builds first)'
+        : `the sources changed since the build (built from ${short(stamp.src)}, now ${short(current.src)}) — run restart (it builds first)`
+  )
+  add(
+    record.build.src === current.src && record.build.out === current.out,
+    'the running app was started from that build',
+    'the running app was started from an older build — run restart (it builds first and keeps the data)'
+  )
+  add(
+    record.backendSrc === current.backend,
+    'the backend runs the backend sources as they are now',
+    'the backend sources changed since the app started, and the backend still runs the old ones — run restart'
+  )
+  const outUrl = pathToFileURL(join(frontend, 'out', 'renderer')).href
+  add(
+    app.rendererUrl.startsWith(outUrl) && !app.env.ELECTRON_RENDERER_URL,
+    'the window shows the built renderer from out/',
+    `the window shows ${app.rendererUrl}, not the built renderer in out/`
+  )
+
+  // Isolation
+  const root = record.install.root
+  const own = (label: string, value: string | null): void =>
+    add(
+      value !== null && inside(value, root),
+      `${label} is the session's own (${value})`,
+      value === null
+        ? `${label} is not set — the app would use your real one`
+        : `${label} is ${value}, outside the session's folder ${root}`
+    )
+  own('userData', app.userData)
+  own('PRISM_DATA_DIR', app.env.PRISM_DATA_DIR)
+  own('XDG_CONFIG_HOME', app.env.XDG_CONFIG_HOME)
+  own('PRISM_DOWNLOAD_DIR', app.env.PRISM_DOWNLOAD_DIR)
+  own('PRISM_BRIGHTWAY_DIR', app.env.PRISM_BRIGHTWAY_DIR)
+  add(
+    !app.env.BRIGHTWAY2_DIR,
+    "Brightway's own BRIGHTWAY2_DIR is not passed in",
+    `BRIGHTWAY2_DIR is passed in (${app.env.BRIGHTWAY2_DIR})`
+  )
+  const keyVars = app.keyVars.filter((k) => k.set).map((k) => k.name)
+  add(
+    keyVars.length === 0,
+    'no provider key from your environment reaches the app',
+    `provider keys from your environment reach the app (${keyVars.join(', ')}) — a check could spend on them`
+  )
+  if (input.devKeyFiles.length > 0) {
+    add(
+      !!app.env.PRISM_IGNORE_DEV_KEYS,
+      `the checkout's key files (${input.devKeyFiles.length} in .secrets/) are not read by the app`,
+      `the app reads the checkout's key files in .secrets/ — a check could spend on them`
+    )
+  }
+  for (const real of input.realDirs) {
+    for (const [label, value] of [
+      ['userData', app.userData],
+      ['PRISM_DATA_DIR', app.env.PRISM_DATA_DIR]
+    ] as const) {
+      if (value && (inside(value, real) || inside(real, value))) {
+        checks.push({ status: 'FAIL', text: `${label} (${value}) overlaps your real profile ${real}` })
+      }
+    }
+  }
+  if (app.backends === null) {
+    checks.push({
+      status: 'note',
+      text: "the backend's own environment is only read on Linux; not checked here"
+    })
+  } else if (app.backends.length === 0) {
+    checks.push({ status: 'FAIL', text: "no backend process found among the app's processes" })
+  } else {
+    for (const b of app.backends) {
+      add(
+        b.dataDir !== null && inside(b.dataDir, root),
+        `the backend (pid ${b.pid}) keeps its data in ${b.dataDir}`,
+        `the backend (pid ${b.pid}) has PRISM_DATA_DIR=${b.dataDir}, outside ${root}`
+      )
+      const backendDir = resolve(frontend, '..', 'backend')
+      add(
+        b.cwd !== null && resolve(b.cwd) === backendDir,
+        `the backend runs in this checkout's backend/`,
+        `the backend runs in ${b.cwd}, not in ${backendDir}`
+      )
+      add(
+        b.brightwayDir !== null && inside(b.brightwayDir, root),
+        `the backend keeps its Brightway projects in ${b.brightwayDir}`,
+        `the backend has PRISM_BRIGHTWAY_DIR=${b.brightwayDir}, outside ${root}`
+      )
+      const src = join(backendDir, 'src')
+      const first = (b.pythonPath ?? '').split(/[:;]/).find((p) => p !== '')
+      if (record.backend.via === 'shim') {
+        add(
+          first !== undefined && resolve(first) === src,
+          `the backend imports this worktree's code first (${src})`,
+          `the backend's PYTHONPATH (${b.pythonPath}) does not start with this worktree's backend/src`
+        )
+      } else {
+        add(
+          first === undefined,
+          'no PYTHONPATH reaches the backend',
+          `the backend has PYTHONPATH=${b.pythonPath}, which can put another checkout's code first`
+        )
+        add(
+          b.editableSrc !== null && resolve(b.editableSrc) === src,
+          `the backend's environment installs this checkout's code (${b.editableSrc})`,
+          b.editableSrc === null
+            ? "the backend's environment shows no editable install of this checkout's code"
+            : `the backend's environment installs ${b.editableSrc}, not this checkout's backend/src`
+        )
+      }
+    }
+  }
+  if (app.openInRealDirs !== null) {
+    add(
+      app.openInRealDirs.length === 0,
+      "none of the app's processes holds a file of your real profile open",
+      `the app's processes hold files of your real profile open: ${app.openInRealDirs.slice(0, 5).join(', ')}`
+    )
+  }
+  if (input.backendEnvKeys.length > 0) {
+    checks.push({
+      status: 'note',
+      text:
+        `backend/.env sets ${input.backendEnvKeys.join(', ')}; the instance overrides PRISM_DATA_DIR and ` +
+        'PRISM_BRIGHTWAY_DIR, the rest applies to it'
+    })
+  }
+  if (input.realChanged.length > 0) {
+    checks.push({
+      status: 'note',
+      text:
+        `${input.realChanged.length}${input.realChanged.length >= 20 ? '+' : ''} file(s) in your real profile changed since the ` +
+        `launch (e.g. ${input.realChanged.slice(0, 3).join(', ')}). If your own PrismLCA is running, that is ` +
+        'it; the checks above say whether this instance could have.'
+    })
+  }
+  return checks
+}

@@ -61,6 +61,12 @@ overlapping selectors. CSS is deliberately not formatted by Prettier.
   The handbook is the one published at https://www.prismlca.com/handbook/ (the Handbook button opens it); it is
   maintained with the website, not in this repository. The pull request says which pages changed, or that the
   check found nothing to change. Bug fixes and chores need no check.
+- **Prove interface changes on the running app**: a change to what a person sees or does in the window is
+  driven with `control-prism` before it is handed in (from `frontend/`: `node scripts/control-prism.mjs help`) —
+  `doctor` first, then the user's path with its observable effect, `console` at the end.
+  `frontend/features/README.md` says what counts as proof and how elements are named. The feature map in
+  `frontend/features/` changes in the same commit as the interface it describes (`featureMap.test.ts` checks
+  the names it uses), and a control a check needs gets an `aria-label`, never a test id.
 - **Chat and MCP share tools and prompt**: one catalogue, opt-out in `frontend/src/main/mcp/catalog.ts`
   (`MCP_EXCLUDED_TOOLS`), a parity test against the manifest. Whoever changes a tool, a prompt rule or an
   effect declaration (`tools/effects.ts`) decides in the same commit what the MCP server gets of it, and

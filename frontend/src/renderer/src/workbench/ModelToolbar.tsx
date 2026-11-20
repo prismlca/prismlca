@@ -63,7 +63,12 @@ export default function ModelToolbar(p: ModelToolbarProps): JSX.Element {
   const modelPicker = (
     <span className="crumb">
       Model ·{' '}
-      <select value={p.activeDb ?? ''} disabled={p.busy} onChange={(e) => p.onPickModel(e.target.value)}>
+      <select
+        aria-label="Active model"
+        value={p.activeDb ?? ''}
+        disabled={p.busy}
+        onChange={(e) => p.onPickModel(e.target.value)}
+      >
         {/* The library is not in here. It is writable, but it is not a study: opening it as one
             offered a Report tab for a dataset store. A library dataset is edited where you find
             it — the pencil on a search result. */}
@@ -204,6 +209,8 @@ export default function ModelToolbar(p: ModelToolbarProps): JSX.Element {
           {p.view === 'model' ? (
             <select
               className="search-sel"
+              // The title carries the chosen method's full name; the name stays the same whatever is chosen.
+              aria-label="LCIA method"
               value={p.chosen}
               onChange={(e) => p.onChoose(e.target.value)}
               disabled={!p.methods.length}

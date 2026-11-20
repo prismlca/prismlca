@@ -176,6 +176,9 @@ export default function ChatComposer({
         <textarea
           ref={taRef}
           className="chat-input"
+          // A name of its own: the placeholder changes with the state (no key, busy, a question waiting), and
+          // a field named by its placeholder is renamed with it.
+          aria-label="Message to the assistant"
           rows={1}
           value={prefs.input}
           disabled={disabled}
@@ -288,7 +291,7 @@ export default function ChatComposer({
                 ➤
               </button>
             ) : null}
-            <button className="chat-send stop" onClick={onStop} title="Stop">
+            <button className="chat-send stop" onClick={onStop} title="Stop" aria-label="Stop">
               ■
             </button>
           </>
@@ -298,6 +301,7 @@ export default function ChatComposer({
             onClick={() => onSend()}
             disabled={disabled || (!prefs.input.trim() && attach.attachments.length === 0)}
             title="Send"
+            aria-label="Send"
           >
             ➤
           </button>
