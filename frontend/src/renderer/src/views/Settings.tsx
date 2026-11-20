@@ -437,7 +437,7 @@ export default function Settings({
             {cat === 'ai-models' || cat === 'ai-limits' || cat === 'ai-chat' || cat === 'ai-tools' ? (
               <button
                 className="btn sm"
-                title="Everything on the Models, Limits, Chat and Tools pages back to its default: models and their thinking level, limits, approval, privacy, web search, voice input, Eurostat and the tool switches. Provider, keys, models you added yourself, chats, skills and the cost history are untouched."
+                title="Everything on the Models, Limits, Chat and Tools pages back to its default: models and their thinking level, limits, approval, privacy, the OpenRouter allowlist, web search, voice input, Eurostat and the tool switches. Provider, keys, models you added yourself, chats, skills and the cost history are untouched."
                 onClick={() => {
                   for (const k of AI_LEGACY_KEYS) localStorage.removeItem(k)
                   // The settings live in main now, so reset means writing the defaults there — and

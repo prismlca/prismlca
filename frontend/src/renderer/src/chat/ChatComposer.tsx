@@ -66,7 +66,8 @@ export default function ChatComposer({
   // by choosing "attach", by Escape, or by clicking anywhere outside — toggles keep it open so both
   // can be flipped in one visit.
   const [plusOpen, setPlusOpen] = useState(false)
-  const [hasKey, setHasKey] = useState<boolean | null>(null) // null = still checking
+  // Whether a key is stored, and for which provider that answer was given (null = still checking).
+  const [keyCheck, setKeyCheck] = useState<{ provider: unknown; has: boolean } | null>(null)
   const taRef = useRef<HTMLTextAreaElement | null>(null)
 
   // Settings → AI Chat can disable voice input app-wide; the mic then disappears — and so it does under a
@@ -81,15 +82,27 @@ export default function ChatComposer({
   // same provider left the chat locked on the stale answer until a provider switch.
   const activeProvider = appSettings.provider
   useEffect(() => {
+    let alive = true
+    const asked = activeProvider
     const check = (): void => {
       void aiHasKey()
-        .then(setHasKey)
-        .catch(() => setHasKey(false))
+        .then((has) => {
+          if (alive) setKeyCheck({ provider: asked, has })
+        })
+        .catch(() => {
+          if (alive) setKeyCheck({ provider: asked, has: false })
+        })
     }
     check()
     window.addEventListener(KEY_CHANGED_EVENT, check)
-    return () => window.removeEventListener(KEY_CHANGED_EVENT, check)
+    return () => {
+      alive = false
+      window.removeEventListener(KEY_CHANGED_EVENT, check)
+    }
   }, [activeProvider])
+  // An answer counts only for the provider it was given for: right after a switch, the old provider's
+  // "no key" would lock the chat under the new provider's name until the new answer arrives.
+  const hasKey = keyCheck && keyCheck.provider === activeProvider ? keyCheck.has : null
 
   // Grow the input upward to fit all lines (the chat is bottom-anchored, so the transcript above
   // shifts up as the input gets taller). Caps out and scrolls internally past the max.
@@ -103,9 +116,12 @@ export default function ChatComposer({
   }, [prefs.input])
 
   const noKey = hasKey === false
-  const disabled = !activeDb || noKey
+  // Locked until the active provider's answer says a key is there: while it is still out (at start, and
+  // right after a provider switch) a send or a recording would go to a provider that may have no key.
+  const disabled = !activeDb || hasKey !== true
+  // The key that is missing is the active provider's — `hasKey` holds only an answer given for that one.
   const placeholder = noKey
-    ? 'No OpenRouter API key configured — add one under Settings → AI.'
+    ? `No ${PROVIDER_CAPS[asAiProvider(activeProvider)].name} API key configured — add one under Settings → AI.`
     : !activeDb
       ? 'Open a model to chat'
       : voice === 'rec'
@@ -252,7 +268,8 @@ export default function ChatComposer({
         {voiceAllowed ? (
           <button
             className={`chat-attach-btn chat-mic${voice === 'rec' ? ' rec' : ''}`}
-            disabled={disabled || voice === 'busy'}
+            // A running recording can always be stopped, even if the chat locked meanwhile.
+            disabled={(disabled && voice !== 'rec') || voice === 'busy'}
             aria-label={voice === 'rec' ? 'Stop recording' : 'Record a voice message'}
             title={
               voice === 'rec'
