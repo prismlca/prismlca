@@ -9,8 +9,8 @@ ground pegs, two namesakes were silenced by one booking, and timber booked by th
 missing.
 
 What it gives instead is one info entry per model (``bom_research_on_record``): every recorded part mass with
-the product it was researched for and its source — the evidence a modeller or a reviewer holds against the
-model — and the plain statement that the check compared nothing. No row is ever left out because a number in
+the product it was researched for and its source, or the mark that it has none — the evidence a modeller or a
+reviewer holds against the model — and the plain statement that the check compared nothing. No row is ever left out because a number in
 the model resembles it.
 
 One observation rides on a row: a mass parameter that holds the row's value and from which no formula leads to
@@ -159,6 +159,12 @@ def _row_line(row: _Row) -> str:
             f" (alternatives found: {', '.join(f'{v:g} kg' for v in others)})" if others else "",
             f" [{judged}]" if judged else "",
             f" — {', '.join(sources)}" if sources else "",
+            # Counted by the research with no page behind it: a row like the others, but none to check it against.
+            " — NO SOURCE: the research counted this mass without a page behind it" if f.get("unsourced") else "",
+            # A mass merged from several contributions (one substance of a recipe) of which only some have a page.
+            f" — NO SOURCE for {f['unsourced_kg']:g} kg of it"
+            if isinstance(f.get("unsourced_kg"), (int, float)) and not f.get("unsourced")
+            else "",
         ]
     )
 

@@ -56,6 +56,9 @@ export interface BomItem {
    *  annotation); false when the leg wrote a URL the engine never cited — from memory, or a page it
    *  opened directly. Absent when the provider annotates nothing. */
   cited_by_search?: boolean
+  /** Set once the sources are settled (bomSources.ts): no page is left behind the figure — the leg named none,
+   *  or its link leads to no page. The figure stays in the sums; this says nothing backs it. */
+  unsourced?: boolean
 }
 
 /** Another figure for the same part, on the entry's basis: the mass of all the pieces the entry stands for. */

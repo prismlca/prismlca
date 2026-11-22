@@ -137,6 +137,18 @@ def test_a_row_carries_what_the_log_knows_of_the_figure():
     ]
 
 
+def test_a_row_counted_without_a_source_says_so():
+    record = _run([_bom("rack", _part("frame", 9, sources=["https://e.org/frame"]),
+                        _part("shelves", 4, sources=[], unsourced=True))], [], [])
+    assert _rows(record) == [
+        "- frame: 9 kg — e.org/frame",
+        "- shelves: 4 kg — NO SOURCE: the research counted this mass without a page behind it",
+    ]
+    merged = _run([_bom("soap", _part("water", 0.4595, sources=["https://s.example/sles"], unsourced_kg=0.35))],
+                  [], [])
+    assert _rows(merged) == ["- water: 0.4595 kg — s.example/sles — NO SOURCE for 0.35 kg of it"]
+
+
 def test_the_pegs_case_is_a_remark_on_its_row():
     """The parameter holds the researched mass and reaches the shipping weight and a switched-off end-of-life
     amount, and no production input. The 0.2 kg of paint beside it is nobody's answer any more."""

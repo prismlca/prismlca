@@ -2,7 +2,8 @@
  * The bill-of-materials researcher behind `research_bom`: one isolated web-research leg per named component
  * (or one that enumerates them), one for the recipe of a mixture when the caller asks for it, a bounded retry and
  * follow-up pass, and the sources settled against what the search engine actually cited. Reading a leg's answer
- * lives in bomAnswer.ts and bomRecipe.ts, judging the list in bomBalance.ts and recipeBalance.ts.
+ * lives in bomAnswer.ts and bomRecipe.ts, judging the list in bomBalance.ts and recipeBalance.ts, settling its
+ * sources in bomSources.ts.
  */
 import { parseBomAnswer, type BomLeg } from './bomAnswer'
 import { weighBom, type BomWeighing, type LegOutcome } from './bomBalance'
@@ -14,9 +15,9 @@ import {
   type RecipeLeg,
   type RecipeRequest
 } from './bomRecipe'
+import { settleSources } from './bomSources'
 import { weighRecipe } from './recipeBalance'
 import { CitationBook, type Evidence } from './citationBook'
-import { settleLinks } from './researchNote'
 import {
   RETRY_BUDGET_MS,
   extractJson,
@@ -112,6 +113,11 @@ export interface BomResult extends BomWeighing {
   evidence: Evidence[]
   /** The host allow list the legs ran under, when the caller set one. */
   domains?: string[]
+  /** Whether every figure in `items` names a page it came from; absent when there is no figure. Kept apart from
+   *  `balance_ok`: a sum can close on a figure nobody can cite. */
+  all_sourced?: boolean
+  /** The figures in `items` without a usable source (none named, or a link that leads to no page), by name. */
+  unsourced?: string[]
   sources: string[]
 }
 
@@ -423,81 +429,25 @@ export async function researchBom(opts: {
     itemCap: Math.max(cap * 3, 12),
     ...(recipe ? { recipe } : {})
   })
-  const { items } = weighed
-  // A leg may quote the provider's link to a page instead of the page (Google): stored as the page —
-  // and a link that leads to no page is no source at all, so the figure stays and loses it.
-  let deadLinks = 0
-  const settle = (url: string | undefined): string | undefined => {
-    if (!url) return undefined
-    const page = book.page(url) ?? undefined
-    if (!page) deadLinks++
-    return page
-  }
-  for (const i of items) {
-    i.source_url = settle(i.source_url)
-    for (const a of i.alternatives ?? []) if (a.source_url) a.source_url = settle(a.source_url)
-  }
-  for (const t of weighed.totals_found ?? []) if (t.source_url) t.source_url = settle(t.source_url)
-  const mix = weighed.recipe
-  if (mix) {
-    if (mix.formulation?.source_url) mix.formulation.source_url = settle(mix.formulation.source_url)
-    for (const l of mix.lines) if (l.source_url) l.source_url = settle(l.source_url)
-    for (const c of mix.contents_found ?? []) if (c.source_url) c.source_url = settle(c.source_url)
-    if (mix.declared_source) mix.declared_source = settle(mix.declared_source)
-  }
-  // The addresses an unresolved component's note names get the same treatment: the page, not the
-  // provider's link to it, and no link that leads nowhere.
-  const unresolved = weighed.unresolved.map((u) => {
-    const s = settleLinks(u, (url) => book.page(url))
-    const url = u.source_url ? book.page(u.source_url) : null
-    const { source_url: _dropped, ...rest } = s
-    const alternatives = u.alternatives?.map((a) => {
-      const page = a.source_url ? book.page(a.source_url) : null
-      const { source_url: _gone, ...figure } = a
-      return page ? { ...figure, source_url: page } : figure
-    })
-    return {
-      ...rest,
-      ...(url ? { source_url: url } : {}),
-      ...(alternatives ? { alternatives } : {})
-    }
-  })
-  const sources = [
-    ...new Set(
-      [
-        ...items.map((i) => i.source_url),
-        ...items.flatMap((i) => (i.alternatives ?? []).map((a) => a.source_url)),
-        ...(weighed.totals_found ?? []).map((t) => t.source_url),
-        mix?.formulation?.source_url,
-        mix?.declared_source
-      ].filter((u): u is string => !!u)
-    )
-  ]
-  // The engine's record against the model's: an item whose URL the search never returned is marked,
-  // not dropped — the leg may have opened the page directly or written it from memory, and the
-  // parent should know which figures rest on a citation the engine can vouch for.
-  if (book.size) for (const i of items) if (i.source_url) i.cited_by_search = book.has(i.source_url)
-  const evidence = book.evidenceFor(sources)
-  const uncited = book.size ? items.filter((i) => i.source_url && !i.cited_by_search).length : 0
-  const uncitedNote = uncited
-    ? `${uncited} item${uncited === 1 ? "'s" : "s'"} source_url was NOT among the pages the search engine returned (cited_by_search: false) — the leg opened it directly or wrote it from memory; verify before relying on it.`
-    : ''
-  const deadNote = deadLinks
-    ? `${deadLinks} figure${deadLinks === 1 ? '' : 's'} named a search-result link that leads to no page — kept without a source_url; verify before relying on it.`
-    : ''
+  // The weighing never reads an address, so the sources are settled after it: a figure left without a page is
+  // kept in the sums and named (bomSources.ts).
+  const sourced = settleSources(weighed, book)
   const emptyNote =
-    items.length === 0 && !unresolved.length && !mix?.lines.length
+    weighed.items.length === 0 && !sourced.unresolved.length && !weighed.recipe?.lines.length
       ? 'The research returned no usable figures — ask the user for the composition, or try a more specific product description.'
       : ''
   return {
     product: opts.product,
     ...weighed,
-    unresolved,
+    summary: [weighed.summary, sourced.sentence].filter(Boolean).join(' '),
+    unresolved: sourced.unresolved,
+    ...(sourced.all_sourced !== undefined ? { all_sourced: sourced.all_sourced } : {}),
+    ...(sourced.unsourced ? { unsourced: sourced.unsourced } : {}),
     ...(follow_up ? { follow_up } : {}),
     ...(notResearched.length ? { not_researched: notResearched } : {}),
-    sources,
-    evidence,
+    sources: sourced.sources,
+    evidence: sourced.evidence,
     ...(domains.length ? { domains } : {}),
-    note: [emptyNote, weighed.note, uncitedNote, deadNote].filter(Boolean).join(' ') || undefined
+    note: [emptyNote, weighed.note, ...sourced.notes].filter(Boolean).join(' ') || undefined
   }
 }

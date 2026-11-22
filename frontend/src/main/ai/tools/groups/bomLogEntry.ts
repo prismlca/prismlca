@@ -1,7 +1,7 @@
 /**
- * The entry a research_bom call leaves in the model's research log: the parts it found with a source — each
- * with how its figure was derived —, the ingredients of a researched recipe once per substance, the other figures
- * found for a part (documented, not to be booked), and the check
+ * The entry a research_bom call leaves in the model's research log: the parts it found — each with how its figure
+ * was derived, and marked when no page backs it —, the ingredients of a researched recipe once per substance, the
+ * other figures found for a part (documented, not to be booked), and the check
  * itself: what was summed, which requested components came back without a mass, the whole-product masses found,
  * the versions the figures rest on and whether the recipe closed.
  *
@@ -18,21 +18,26 @@ const VERSIONS_SEEN = 3
 
 type Item = Record<string, unknown>
 
-/** The part masses the log keeps: entries with a source, in the words the health check reads. */
+/**
+ * The part masses the log keeps, in the words the health check reads: every entry the sums count, also one without a
+ * source, which is marked so. Left out, such a part counted in the research's sum and stood nowhere the health
+ * check, the review dossier or the report read from — the balance could close while a part was on no record.
+ */
 function partFindings(result: Partial<BomResult>): Item[] {
   // The engine's excerpt behind a cited page, when it supplied one — the table row a mass came from, kept with
   // the figure so a reader can check it without re-opening the page.
   const excerptOf = (url: unknown): string | undefined =>
     (result.evidence ?? []).find((e) => e.url === url && e.excerpt)?.excerpt
   return (result.items ?? [])
-    .filter((i) => i.source_url && i.group !== 'recipe')
+    .filter((i) => i.group !== 'recipe')
     .map((i) => {
       const label =
         `${i.component}${i.material ? ` (${i.material})` : ''}` +
         (typeof i.count === 'number' && i.count > 1 ? ` (${i.count} pieces)` : '')
       const shared = {
-        sources: [String(i.source_url)],
-        ...(excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
+        sources: i.source_url ? [String(i.source_url)] : [],
+        ...(!i.source_url ? { unsourced: true } : {}),
+        ...(i.source_url && excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
         ...(i.source_class ? { source_class: String(i.source_class) } : {}),
         ...(i.confidence ? { confidence: String(i.confidence) } : {}),
         // How the leg got the figure ("0.9 × 0.4 × 0.005 m × 850 kg/m³"): "[industry/medium]" does not say
@@ -113,6 +118,14 @@ function recipeFindings(result: Partial<BomResult>): Item[] {
       const mass = Number(parts.reduce((s, i) => s + i.mass_kg, 0).toFixed(6))
       const share = Number(parts.reduce((s, i) => s + (i.share_pct ?? 0), 0).toFixed(2))
       const sources = [...new Set(parts.map((i) => i.source_url).filter((u): u is string => !!u))]
+      // Water dosed from a frame recipe without a page beside water of a solution with its datasheet: the merged
+      // mass has a source, but not all of it does — the share without one is said in kilograms.
+      const bareKg = Number(
+        parts
+          .filter((i) => !i.source_url)
+          .reduce((s, i) => s + i.mass_kg, 0)
+          .toFixed(6)
+      )
       const from = parts.map((i) =>
         i.from_trade_form ? `${i.mass_kg} kg from ${i.from_trade_form}` : `${i.mass_kg} kg as dosed`
       )
@@ -120,6 +133,7 @@ function recipeFindings(result: Partial<BomResult>): Item[] {
       return {
         text: `${first.component} (${share} %): ${mass} kg`,
         sources: sources.slice(0, MIX_SOURCES),
+        ...(!sources.length ? { unsourced: true } : bareKg > 0 ? { unsourced_kg: bareKg } : {}),
         ...(first.source_class ? { source_class: first.source_class } : {}),
         ...(first.confidence ? { confidence: first.confidence } : {}),
         note: `${of}${parts.length > 1 ? `; ${from.join(' + ')}` : ''}`,
@@ -148,6 +162,9 @@ function bomCheck(result: Partial<BomResult>): Item {
       reason: u.reason,
       ...(u.note ? { note: u.note } : {})
     })),
+    // The figures counted without a page behind them, by name: a part's own row says it too, but the rows of a long
+    // log are cut in the review dossier before the check is.
+    ...(result.unsourced?.length ? { unsourced: result.unsourced } : {}),
     totals: (result.totals_found ?? []).slice(0, TOTALS).map((t) => ({
       mass_kg: t.mass_kg,
       basis: t.basis,
