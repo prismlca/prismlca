@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type DatabaseInfo } from '../../lib/api'
 import { errMsg } from '../../lib/errors'
 import EscapeCloser from '../../components/EscapeCloser'
+import DialogBox from '../../components/DialogBox'
 import type { ModelSubject } from './types'
 
 /** A model's reference process as `/model/reference` ranks it — the first candidate, which this page,
@@ -65,7 +66,7 @@ function ModelPickDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet search-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet search-modal" label="Add another model">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Add another model</h3>
@@ -120,7 +121,7 @@ function ModelPickDialog({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

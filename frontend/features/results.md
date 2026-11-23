@@ -23,16 +23,16 @@ subject and one indicator, broken down), and "Sensitivity analysis" (tornado and
 
 ## How to get there
 
-The "Results" row in the navigation, once a model is open (without one it is greyed out). The page opens
-on the "Results" tab with the open model's reference process as the subject. Each tab keeps its settings
-per model.
+The "Results" row in the navigation (`"role=navigation:Pages >> role=button:Results"`), once a model is
+open (without one it is disabled). The page opens on the "Results" tab with the open model's reference
+process as the subject. Each tab keeps its settings per model.
 
 ## Driving it with control-prism
 
 Compare the seeded `bottle` model (see model.md) on one indicator:
 
 ```sh
-node scripts/control-prism.mjs click "css=.navitem >> has-text=Results"
+node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Results"
 node scripts/control-prism.mjs wait visible "role=tab:Results"
 node scripts/control-prism.mjs click "role=button:/^Indicators/"
 node scripts/control-prism.mjs click "role=button:+ Add indicator"

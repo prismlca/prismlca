@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import notice from '../assets/privacy-notice.md?raw'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 
 /**
  * The privacy notice, read inside the app.
@@ -39,12 +40,7 @@ export default function PrivacyNotice({ onClose }: { onClose: () => void }): JSX
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div
-        className="modal sheet privacy-sheet"
-        role="dialog"
-        aria-label="Privacy notice"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <DialogBox className="modal sheet privacy-sheet" label="Privacy notice">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>{title}</h3>
@@ -57,7 +53,7 @@ export default function PrivacyNotice({ onClose }: { onClose: () => void }): JSX
         <div className="privacy-md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
         </div>
-      </div>
+      </DialogBox>
     </div>,
     document.body
   )

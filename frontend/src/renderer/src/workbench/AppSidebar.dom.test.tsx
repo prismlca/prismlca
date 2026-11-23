@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import AppSidebar, { STUDY_NAV } from './AppSidebar'
 
 /**
@@ -90,5 +91,46 @@ describe('AppSidebar', () => {
     expect(onNavigate.mock.calls).toEqual([['lcia'], ['overview']])
     expect(screen.getByText('Model').closest('.navitem')?.getAttribute('title')).toBe('Create a model first')
     expect(screen.getByText('No model yet')).toBeTruthy()
+  })
+
+  it('the rows are buttons in the page navigation, which Tab reaches and Enter opens', async () => {
+    const user = userEvent.setup()
+    const onNavigate = vi.fn()
+    render(<AppSidebar {...props} onNavigate={onNavigate} collapsed={false} onToggleCollapsed={vi.fn()} />)
+    const nav = screen.getByRole('navigation', { name: 'Pages' })
+    const rows = within(nav).getAllByRole('button')
+    expect(rows.map((r) => r.textContent?.replace('›', '').trim())).toEqual(STUDY_NAV.map((it) => it.label))
+    // The page you are on is said in words too, not only by the green pill.
+    expect(within(nav).getByRole('button', { current: 'page' })).toHaveAccessibleName('Model')
+    await user.tab() // the fold button comes first
+    await user.tab()
+    expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveFocus()
+    await user.tab()
+    await user.tab()
+    await user.keyboard('{Enter}')
+    expect(onNavigate).toHaveBeenLastCalledWith('parameters')
+    await user.keyboard(' ')
+    expect(onNavigate).toHaveBeenCalledTimes(2)
+  })
+
+  it('folded, a row is still named by its page', () => {
+    render(<AppSidebar {...props} collapsed onToggleCollapsed={vi.fn()} />)
+    const nav = screen.getByRole('navigation', { name: 'Pages' })
+    for (const it of STUDY_NAV) expect(within(nav).getByRole('button', { name: it.label })).toBeTruthy()
+  })
+
+  it('without a model, the pages that need one are disabled and Tab passes them by', async () => {
+    const user = userEvent.setup()
+    render(
+      <AppSidebar {...props} view="overview" activeDb={null} collapsed={false} onToggleCollapsed={vi.fn()} />
+    )
+    const nav = screen.getByRole('navigation', { name: 'Pages' })
+    expect(within(nav).getByRole('button', { name: 'Results' })).toBeDisabled()
+    expect(within(nav).getByRole('button', { name: 'LCIA' })).toBeEnabled()
+    await user.tab()
+    await user.tab()
+    expect(within(nav).getByRole('button', { name: 'Overview' })).toHaveFocus()
+    await user.tab()
+    expect(within(nav).getByRole('button', { name: 'LCIA' })).toHaveFocus()
   })
 })

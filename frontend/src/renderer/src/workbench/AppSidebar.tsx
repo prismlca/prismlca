@@ -72,7 +72,7 @@ export default function AppSidebar({
   // seven backgrounds blinking on and off. Measured rather than computed so it survives a
   // font or zoom change; the very first placement skips the animation so nothing glides in
   // from the top on startup.
-  const navListRef = useRef<HTMLDivElement | null>(null)
+  const navListRef = useRef<HTMLElement | null>(null)
   const navPillPlaced = useRef(false)
   const [navPill, setNavPill] = useState<{ top: number; height: number; animate: boolean } | null>(null)
   const placeNavPill = useCallback((glide = true) => {
@@ -89,7 +89,7 @@ export default function AppSidebar({
   // renders — so the list is measured from a callback ref (fires the moment it attaches) on top of
   // the per-page effect. Dropping back to the gate resets the flag, so the return trip is silent too.
   const navListMount = useCallback(
-    (el: HTMLDivElement | null) => {
+    (el: HTMLElement | null) => {
       navListRef.current = el
       if (el) placeNavPill()
       else navPillPlaced.current = false
@@ -129,7 +129,10 @@ export default function AppSidebar({
         )}
       </div>
       <div className="eyebrow">Navigation</div>
-      <div className="navlist" ref={navListMount} data-tour="rail">
+      {/* Real buttons in a navigation landmark: the rows were divs with a click handler, which Tab never
+          reached and a screen reader did not present as controls. A page that cannot be opened yet is a
+          disabled button, so Tab skips it; its title still says why. */}
+      <nav className="navlist" ref={navListMount} data-tour="rail" aria-label="Pages">
         <span
           className="nav-pill"
           aria-hidden
@@ -146,10 +149,13 @@ export default function AppSidebar({
         {STUDY_NAV.map((it) => {
           const open = it.view && (activeDb || it.view === 'overview' || it.view === 'lcia') ? it.view : null
           return (
-            <div
+            <button
+              type="button"
               key={it.label}
               className={`navitem${open ? '' : ' disabled'}${it.view === view ? ' on' : ''}`}
               title={collapsed ? it.label : open || !it.view ? undefined : 'Create a model first'}
+              disabled={!open}
+              aria-current={it.view === view ? 'page' : undefined}
               onClick={() => {
                 if (open) onNavigate(open)
               }}
@@ -164,10 +170,10 @@ export default function AppSidebar({
               <span className="navitem-mark" aria-hidden="true">
                 ›
               </span>
-            </div>
+            </button>
           )
         })}
-      </div>
+      </nav>
       {/* Folded, everything under the navigation becomes one button back to the full rail; the
           project card is not rendered at all, so its dropdown cannot be reached by Tab from a strip
           that has no room to show it. At the foot of that button, where the project card stood, sits

@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-23",
+    "title": "Navigation and dialogs by keyboard",
+    "details": "Tab now reaches the pages in the navigation on the left, and Enter or Space opens one; pages that need a model are skipped until one is open. Every dialog takes the keyboard focus when it opens, is announced to screen readers by its title, and gives the focus back to where you were when it closes."
+  },
+  {
     "date": "2026-11-18",
     "title": "Recipes in bill-of-materials research",
     "details": "The assistant's bill-of-materials research now researches a mixture — a soap, a paint, a concrete — as one recipe from one named source, beside the container and packaging. The result says whether the recipe adds up to the total its source states, which ingredients from the label it lacks, and whether it is the product's own recipe or a frame formulation; a recipe that does not add up keeps the mass balance unchecked."

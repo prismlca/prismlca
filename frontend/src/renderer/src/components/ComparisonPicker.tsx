@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 import { ChevronIcon, FolderIcon, LinkIcon } from './icons'
 import { getFolders, reloadFolders, subscribeFolders } from '../lib/modelFolders'
 import { linkModels, unlinkModels, useComparedWith } from '../lib/comparison'
@@ -78,7 +79,7 @@ export default function ComparisonPicker(props: { database: string; onClose: () 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div className="modal sheet cmp-sheet" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet cmp-sheet" label="Comparison models">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>
@@ -172,7 +173,7 @@ export default function ComparisonPicker(props: { database: string; onClose: () 
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

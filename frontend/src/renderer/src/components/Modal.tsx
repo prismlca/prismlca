@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import UnitCombo from './UnitCombo'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 
 export interface Field {
   key: string
@@ -55,9 +56,9 @@ export default function Modal(props: {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <EscapeCloser onClose={() => props.onClose()} />
-      <div
+      <DialogBox
         className="modal"
-        onClick={(e) => e.stopPropagation()}
+        label={props.title}
         onKeyDown={(e) => {
           // A name typed and Enter pressed used to do nothing — the hand had to go to the mouse (V333).
           // Only from a text input: a textarea keeps Enter for a new line, a select for opening.
@@ -155,7 +156,7 @@ export default function Modal(props: {
             {props.submitLabel}
           </button>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

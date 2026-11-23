@@ -6,6 +6,7 @@ import UnitCombo from '../components/UnitCombo'
 import { errMsg } from '../lib/errors'
 import { parseAmount } from '../lib/numberFormat'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 
 /**
  * Add an input/output flow to a foreground process. You pick from the EXISTING elementary
@@ -180,7 +181,7 @@ export default function FlowPicker({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet flowpick-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet flowpick-modal" label={title}>
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>{title}</h3>
@@ -355,7 +356,7 @@ export default function FlowPicker({
             </div>
           </div>
         )}
-      </div>
+      </DialogBox>
     </div>
   )
 }

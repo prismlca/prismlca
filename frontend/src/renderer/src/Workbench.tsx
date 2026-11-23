@@ -1680,7 +1680,11 @@ export default function Workbench(): JSX.Element {
       {modalNode}
 
       {editDataset ? (
-        <Overlay onClose={() => setEditDataset(null)} className="modal sheet library-edit">
+        <Overlay
+          onClose={() => setEditDataset(null)}
+          className="modal sheet library-edit"
+          label="Edit dataset"
+        >
           {/* The X at the top, next to the title, the way every other sheet in the app closes; the head
               stays put and only the editor below it scrolls, so the X is never a long scroll away. */}
           <div className="sheet-head">

@@ -10,6 +10,7 @@ import { holdForDeparture, renameCachedView, SAVE_NOW_EVENT } from '../lib/model
 import { renameModelKeys } from '../lib/persist'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 import RenameStatus from './RenameStatus'
 import { ALL_FIELDS, SECTIONS } from './modelInfoFields'
 
@@ -398,7 +399,7 @@ export default function ModelInfo(props: {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && void close()}>
       <EscapeCloser onClose={() => void close()} />
-      <div className="modal sheet model-info" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet model-info" label="Model info">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>
@@ -695,7 +696,7 @@ export default function ModelInfo(props: {
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
       {picking ? <ComparisonPicker database={props.database} onClose={() => setPicking(false)} /> : null}
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 
 /**
  * Add one of THIS model's own processes to the comparison.
@@ -26,7 +27,7 @@ export default function ActivityPickDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet search-modal subjpick-sheet" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet search-modal subjpick-sheet" label="Add processes from this model">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Add processes from this model</h3>
@@ -73,7 +74,7 @@ export default function ActivityPickDialog({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

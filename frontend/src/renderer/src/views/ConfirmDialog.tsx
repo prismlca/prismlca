@@ -1,4 +1,5 @@
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 /** In-app confirmation window (replaces window.confirm), styled like the other modals. */
 export interface ConfirmSpec {
   title: string
@@ -32,7 +33,7 @@ export default function ConfirmDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && dismiss()}>
       <EscapeCloser onClose={dismiss} />
-      <div className="modal confirm-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal confirm-modal" label={spec.title}>
         <h3>{spec.title}</h3>
         <p className="confirm-msg">{spec.message}</p>
         <div className="modal-actions">
@@ -63,7 +64,7 @@ export default function ConfirmDialog({
             {spec.confirmLabel ?? (spec.notice ? 'OK' : 'Confirm')}
           </button>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

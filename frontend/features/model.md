@@ -41,9 +41,11 @@ node scripts/control-prism.mjs launch --seed
 node scripts/control-prism.mjs doctor
 node scripts/control-prism.mjs click "title=Create another model, or duplicate an existing one >> nth=0"
 node scripts/control-prism.mjs type "label=Model name (e.g. pet-bottle-2025)" bottle --enter
-node scripts/control-prism.mjs wait hidden "css=.modal-backdrop"
+node scripts/control-prism.mjs wait hidden "role=dialog:New model"
 node scripts/control-prism.mjs click "title=Add a new process to the model"
+node scripts/control-prism.mjs select "role=dialog:New process >> role=combobox:/^Unit/" kilogram
 node scripts/control-prism.mjs type "label=Name" bottle --enter
+node scripts/control-prism.mjs wait hidden "role=dialog:New process"
 node scripts/control-prism.mjs wait visible "css=.react-flow__node >> has-text=bottle"
 node scripts/control-prism.mjs click "role=tab:/Outputs/"
 node scripts/control-prism.mjs click "role=button:+ Add output flow"
@@ -51,7 +53,7 @@ node scripts/control-prism.mjs type "css=.flowpick-search" "carbon dioxide, foss
 node scripts/control-prism.mjs click "role=button:Carbon dioxide, fossil air kilogram"
 node scripts/control-prism.mjs type "role=textbox:Amount" 2
 node scripts/control-prism.mjs click "role=button:Add"
-node scripts/control-prism.mjs wait hidden "css=.flowpick-modal"
+node scripts/control-prism.mjs wait hidden "role=dialog:Add output flow"
 node scripts/control-prism.mjs select "LCIA method" "★ CML v4.8 2016 · climate change · global warming potential (GWP100)"
 node scripts/control-prism.mjs click "role=button:/^(Calculate|Compute LCIA)$/"
 node scripts/control-prism.mjs wait text "css=.result-bar b >> nth=0" "/^2(\.0+)? kg/"
@@ -70,7 +72,7 @@ Survive a restart — the model comes back, the selection and the undo history d
 ```sh
 node scripts/control-prism.mjs restart
 node scripts/control-prism.mjs wait app-ready
-node scripts/control-prism.mjs click "css=.navitem >> has-text=Model"
+node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Model"
 node scripts/control-prism.mjs select "Active model" bottle
 node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
 ```
@@ -84,9 +86,9 @@ node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
   amount field `"css=.flow-list .flow >> has-text=Carbon dioxide >> css=input >> nth=0"`, and
   `"role=button:Comment on this flow"`. The Name and Description fields have no accessible name yet:
   `"css=.efield:has(label:text-is('Name')) input"`.
-- Flow picker: `"css=.flowpick-modal"`, its search field `"css=.flowpick-search"`, each flow a button
-  named "<name> <compartment> <unit>", the amount `"role=textbox:Amount"`, `"role=button:Add"`, and
-  `"Close"`.
+- Flow picker: `"role=dialog:Add output flow"` (or "Add input flow"), its search field
+  `"css=.flowpick-search"`, each flow a button named "<name> <compartment> <unit>", the amount
+  `"role=textbox:Amount"`, `"role=button:Add"`, and `"Close"`.
 - Search panel: `"placeholder=e.g. electricity"`, `"role=button:Search"`, a database's checkbox by its
   name, and on each hit `"role=button:Select"` (scope it to the hit: several are on screen).
 
@@ -101,6 +103,10 @@ node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
 - **A result after an edit is stale** until calculated again: the bar gets the class `stale` and says
   "Outdated — recalculate". Calculate once and wait for the value; a check that accepts the stale value
   proves nothing.
+- **New process proposes the unit "unit",** and the unit field accepts only units the workspace's datasets
+  use. The BAFU fixture has no "unit": once its unit list has loaded, Create refuses with "Unknown unit"
+  and the dialog stays open. Pick one from the list (`role=combobox:/^Unit/` — its name carries the error
+  text while there is one).
 - The Inputs tab is open after every selection change; switch to Outputs before adding an output.
 - Selecting another box rebuilds the inspector: text typed but not committed is lost.
 - The method chooser lists hundreds of methods; `select` takes the exact label or a `/regex/` that

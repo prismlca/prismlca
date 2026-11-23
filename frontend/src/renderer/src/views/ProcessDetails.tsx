@@ -11,6 +11,7 @@ import FieldLink from './FieldLink'
 import SourceChip from '../components/SourceChip'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 
 const enc = encodeURIComponent
 
@@ -212,7 +213,7 @@ export default function ProcessDetails({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet pdet-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet pdet-modal" label={a?.name ?? 'Process'}>
         {/* The standard sheet head: the kind of dataset as eyebrow, the name as title, source, product,
             region and unit as the subtitle line — and the ✕ every other window has. */}
         <div className="sheet-head">
@@ -519,7 +520,7 @@ export default function ProcessDetails({
             onChanged={() => {}}
           />
         ) : null}
-      </div>
+      </DialogBox>
     </div>
   )
 }

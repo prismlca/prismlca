@@ -17,15 +17,15 @@ export default function ReadDiffDialog({
   onPutBack: () => void
   onMarkRead: () => void
 }): JSX.Element {
+  const title =
+    diff.kind === 'previous'
+      ? `What changed in “${chapterLabel(diff.section)}”`
+      : `Since you approved “${chapterLabel(diff.section)}”`
   return (
-    <Overlay onClose={onClose} className="modal sheet rsec-patch">
+    <Overlay onClose={onClose} className="modal sheet rsec-patch" label={title}>
       <div className="sheet-head">
         <div className="sheet-head-grow">
-          <h3>
-            {diff.kind === 'previous'
-              ? `What changed in “${chapterLabel(diff.section)}”`
-              : `Since you approved “${chapterLabel(diff.section)}”`}
-          </h3>
+          <h3>{title}</h3>
         </div>
         <button className="sheet-x" aria-label="Close" onClick={onClose}>
           ✕

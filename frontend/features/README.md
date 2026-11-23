@@ -76,9 +76,9 @@ A target names one element. In order of preference:
 | `css=` | a CSS selector — the fallback | `"css=.result-bar b"` |
 
 `~=` instead of `=` matches part of the value, `/…/` is a regular expression, and ` >> ` narrows the
-scope: `"css=.flowpick-modal >> role=button:Add"`. After a target, `has-text=…`, `visible` and `nth=0`
-filter its matches. A target that matches several elements fails and says so — narrow it rather than
-taking the first by habit.
+scope: `"role=dialog:Add output flow >> role=button:Add"`. After a target, `has-text=…`, `visible` and
+`nth=0` filter its matches. A target that matches several elements fails and says so — narrow it rather
+than taking the first by habit.
 
 `snapshot` prints the accessibility tree of the window (or of `--target`): every role and name in it can
 be written as `role=<role>:<name>`. Option lists are folded to the chosen option; `--options` shows them.
@@ -117,10 +117,15 @@ wizard. A change there gets its page in the same pull request.
 
 - A first start shows the welcome tour (a dialog named "Welcome to PrismLCA", ten cards, Next … Finish)
   and then the setup sheet "Bring your background data"; nothing else is reachable before an import.
-- The navigation rows on the left are not buttons: `"css=.navitem >> has-text=Results"`. Without an open
-  model only Overview and LCIA work; the others are greyed out and do nothing.
-- The app's own modals (new model, new process, flow picker, settings) have no dialog role: scope with
-  `"css=.modal-backdrop"`. Enter in a modal's text field submits it; Escape closes it.
+- The navigation rows on the left are buttons in a navigation named "Pages":
+  `"role=navigation:Pages >> role=button:Results"`. Scope them that way, because the toolbar has a "Model"
+  button of its own. Tab reaches them and Enter opens the page. Without an open model only Overview and
+  LCIA work; the others are disabled.
+- Every modal is a dialog named by its title: `"role=dialog:New process"`, `"role=dialog:Settings"`, the
+  flow picker as `"role=dialog:Add output flow"`. Scope a target inside one with it
+  (`"role=dialog:Settings >> role=button:Language"`) and wait for it to go with `wait hidden "role=dialog:…"`.
+  Opening a dialog moves the focus into it; closing it gives the focus back to what opened it. Enter in a
+  modal's text field submits it; Escape closes it.
 - The window opens maximised. At narrow widths the toolbar hides its words, so name buttons by their
   label or title, not by the word on them.
 - Undo and Redo hold the steps of the running app only: after a restart both are disabled.

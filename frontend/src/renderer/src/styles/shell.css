@@ -59,10 +59,14 @@
 .nav-pill { position: absolute; left: 0; right: 0; top: 0; border-radius: var(--r-sm);
   background: var(--green-soft); pointer-events: none;
   transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1), height 260ms cubic-bezier(0.4, 0, 0.2, 1); }
-.navitem { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--r-sm); color: var(--muted); font-weight: 400; cursor: default;
+.navitem { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--r-sm); font: inherit; color: var(--muted); font-weight: 400; cursor: default;
   /* A floor, so a folded row (glyph only, 16px) is exactly as tall as an open one (label, 20px) and
      the list does not jump under the sliding pill while the rail folds. */
-  min-height: 20px; }
+  min-height: 20px;
+  /* The rows are buttons, without a button's own face (and `font: inherit` above, before the weight), so
+     they look as they always did. The welcome tour's preview draws the same class on plain divs, where
+     none of this changes anything. */
+  appearance: none; margin: 0; border: none; background: none; width: 100%; text-align: left; }
 /* One SVG glyph per page; it inherits the row's colour, so hover/active tint it along. */
 .navitem .ic { display: grid; place-items: center; width: 16px; height: 16px; flex: none; color: inherit; transition: color 140ms ease; }
 .navitem .ic svg { width: 16px; height: 16px; stroke-width: 1.7; }
@@ -173,3 +177,6 @@
 .side-expand-zone:hover .side-expand { color: var(--green-ink); background: var(--green-soft); border-color: var(--green); }
 .side-expand-zone:focus-visible .side-expand { outline: 2px solid var(--green); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .side-expand { transition: none; } }
+/* Tab reaches the navigation rows: the ring sits inside the row, where the sliding pill is, so it is not
+   cut off at the rail's edge and reads as the same shape. */
+.navitem:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }

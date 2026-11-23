@@ -32,6 +32,7 @@ import {
 } from '../lib/distance'
 import { patchTransport, useTransport } from './TransportSettings'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import { kmText, resultView } from '../lib/distanceResult'
 
 const MODES: Array<{ key: TransportMode; label: string; Icon: () => JSX.Element }> = [
@@ -398,12 +399,7 @@ export default function DistancesSheet({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div
-        className="modal sheet dist-sheet"
-        role="dialog"
-        aria-label="Distances"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <DialogBox className="modal sheet dist-sheet" label="Distances">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Distances</h3>
@@ -621,7 +617,7 @@ export default function DistancesSheet({
             one way.
           </p>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

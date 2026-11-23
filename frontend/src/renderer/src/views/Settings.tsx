@@ -33,6 +33,7 @@ import {
   DEFAULT_ZERO_DATA_RETENTION
 } from '../../../shared/aiDefaults'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import { AiProviderPanel } from './settings/AiProviderPanel'
 import { AiModelsPanel } from './settings/AiModelsPanel'
 import { AiLimitsPanel } from './settings/AiLimitsPanel'
@@ -248,7 +249,7 @@ export default function Settings({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div className="modal sheet settings-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet settings-modal" label="Settings">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Settings</h3>
@@ -483,7 +484,7 @@ export default function Settings({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

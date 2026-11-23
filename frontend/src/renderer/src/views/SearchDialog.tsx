@@ -17,6 +17,7 @@ import SearchFilters from '../components/SearchFilters'
 import GeoCombo from './GeoCombo'
 import { SearchIcon } from '../components/icons'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import SearchedAs from '../components/SearchedAs'
 
 /**
@@ -88,7 +89,7 @@ export default function SearchDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet search-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet search-modal" label={title}>
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>{title}</h3>
@@ -248,7 +249,7 @@ export default function SearchDialog({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

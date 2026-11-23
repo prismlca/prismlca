@@ -506,7 +506,11 @@ export default function ImportWizard({
   const STEPS = ['Pick a file', 'Review the matches', 'Done'] as const
 
   return (
-    <Overlay onClose={onClose} className={`modal sheet import-wizard${reviewing ? '' : ' compact'}`}>
+    <Overlay
+      onClose={onClose}
+      className={`modal sheet import-wizard${reviewing ? '' : ' compact'}`}
+      label="Import from other software"
+    >
       <div className="sheet-head">
         <div className="sheet-head-grow">
           <h3>Import from other software</h3>

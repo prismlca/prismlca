@@ -5,6 +5,7 @@ import { LockIcon } from '../components/icons'
 import { errMsg } from '../lib/errors'
 import { parseAmount } from '../lib/numberFormat'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import { IdleRoundedInput } from '../components/IdleRoundedInput'
 import UnitCombo from '../components/UnitCombo'
 
@@ -195,7 +196,7 @@ export default function FlowProperties({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet props-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet props-modal" label="Flow properties">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Flow properties</h3>
@@ -304,7 +305,7 @@ export default function FlowProperties({
 
           {error && data ? <p className="settings-hint bad">{error}</p> : null}
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

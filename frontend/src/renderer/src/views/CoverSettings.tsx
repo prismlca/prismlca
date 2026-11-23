@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import { NumberInput } from '../components/NumberInput'
 
 /** Who carries out the studies in this project, and how the title page shows it.
@@ -258,7 +259,7 @@ export function CoverOverlay({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet cover-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet cover-modal" label="Title page">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Title page</h3>
@@ -375,7 +376,7 @@ export function CoverOverlay({
           <IdentityFields onError={setError} />
           {error ? <p className="cover-error">{error}</p> : null}
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }
