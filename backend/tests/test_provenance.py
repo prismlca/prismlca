@@ -184,6 +184,68 @@ def test_a_repeated_part_hands_the_stored_one_the_other_figures_it_found(project
     assert len(store.list("alt")) == 2
 
 
+def test_a_part_counted_without_a_source_is_kept_marked_and_named_in_its_check(project):
+    entry = clean_entry({
+        "question": "Bill of materials: rack",
+        "findings": [
+            {"text": "shelves (HDF): 4 kg", "sources": [], "unsourced": True, "component": "shelves", "mass_kg": 4},
+            # A finding that keeps a page is not unsourced, whatever the flag says; only a real true counts.
+            {"text": "frame: 9 kg", "sources": ["https://e.org/f"], "unsourced": True},
+            {"text": "feet: 0.4 kg", "sources": [], "unsourced": "yes"},
+        ],
+        "bom_check": {"summary": "checked", "unsourced": ["shelves", "", 7, "x" * 300]},
+    })
+    shelves, frame, feet = entry["findings"]
+    assert shelves == {"text": "shelves (HDF): 4 kg", "sources": [], "unsourced": True, "component": "shelves",
+                       "mass_kg": 4.0}
+    assert "unsourced" not in frame and "unsourced" not in feet
+    assert entry["bom_check"]["unsourced"] == ["shelves", "x" * 119 + "…"]
+
+
+def test_the_share_of_a_merged_mass_without_a_page_is_kept_only_where_it_means_that(project):
+    def water(**more) -> dict:
+        return clean_entry({"question": "Bill of materials: soap", "findings": [
+            {"text": "water (91.9 %): 0.4595 kg", "component": "water", "mass_kg": 0.4595, **more}]})["findings"][0]
+
+    assert water(sources=["https://s.example/sles"], unsourced_kg=0.35)["unsourced_kg"] == 0.35
+    # Without a source the whole mass is unsourced; at or above the mass, or not a number, it says something else.
+    for bad in ({"sources": [], "unsourced_kg": 0.35}, {"sources": ["https://s"], "unsourced_kg": 0.4595},
+                {"sources": ["https://s"], "unsourced_kg": True}, {"sources": ["https://s"], "unsourced_kg": -1}):
+        assert "unsourced_kg" not in water(**bad)
+
+
+def test_a_repeated_part_with_a_page_hands_it_to_the_one_stored_without(project):
+    """Logged unsourced, researched again to the same figure with a page: the repeat is not stored again, so its
+    page goes to the stored finding — or the health check would call the part unsourced for as long as it is on
+    record. A repeat without a page takes nothing from a stored part that has one."""
+    store = ResearchLogStore()
+    bare = {"text": "shelves (HDF): 4 kg", "sources": [], "unsourced": True, "component": "shelves", "mass_kg": 4,
+            "alternatives_kg": [4.4]}
+    call = {"question": "Bill of materials: rack", "findings": [bare], "bom_check": {"summary": "first"}}
+    store.record("src", [call])
+    sourced = {"text": "shelves (HDF): 4 kg", "sources": ["https://e.org/s"], "component": "shelves", "mass_kg": 4,
+               "source_class": "industry", "note": "manufacturer sheet", "alternatives_kg": [3.8]}
+    store.record("src", [{**call, "findings": [sourced], "bom_check": {"summary": "second"}}])
+    first, second = store.list("src")
+    held = first["findings"][0]
+    assert held["sources"] == ["https://e.org/s"] and "unsourced" not in held
+    assert held["source_class"] == "industry" and held["note"] == "manufacturer sheet"
+    # What the stored finding found beside its figure stays beside the repeat's.
+    assert held["alternatives_kg"] == [3.8, 4.4]
+    assert second["findings"] == []
+    store.record("src", [{**call, "findings": [bare], "bom_check": {"summary": "third"}}])
+    assert store.list("src")[0]["findings"][0]["sources"] == ["https://e.org/s"]
+    assert "unsourced" not in store.list("src")[0]["findings"][0]
+    # A substance of which only some kilograms had a page takes a repeat whose pages back all of it.
+    partial = {"text": "water (91.9 %): 0.4595 kg", "sources": ["https://s/sles"], "unsourced_kg": 0.35,
+               "component": "water", "mass_kg": 0.4595}
+    soap = {"question": "Bill of materials: soap", "findings": [partial], "bom_check": {"summary": "first"}}
+    store.record("src", [soap])
+    store.record("src", [{**soap, "findings": [{**partial, "unsourced_kg": None, "sources": ["https://s/mp01"]}]}])
+    held = next(e for e in store.list("src") if e["question"] == "Bill of materials: soap")["findings"][0]
+    assert held["sources"] == ["https://s/mp01"] and "unsourced_kg" not in held
+
+
 def test_a_bom_check_keeps_the_recipe_and_whether_it_closed(project):
     check = clean_bom_check({
         "summary": "The recipe of liquid soap does NOT close",

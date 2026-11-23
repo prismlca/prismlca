@@ -90,6 +90,24 @@ describe('researchBom', () => {
     expect(r.summary).toMatch(/open: feet \(research failed\)/)
   })
 
+  it('keeps a part without a source in the sum and says apart from the balance that nothing backs it', async () => {
+    chat.rounds = [
+      answer({
+        items: [{ component: 'frame', material: 'steel', mass_kg: 9, source_url: 'https://e.org/f' }]
+      }),
+      answer({ items: [{ component: 'shelves', material: 'HDF', mass_kg: 4 }] })
+    ]
+    const r = await researchBom({ product: 'rack', components: ['frame', 'shelves'], totalMassKg: 13 })
+    expect(r.sum_kg).toBe(13)
+    expect(r.balance_ok).toBe(true)
+    expect(r.all_sourced).toBe(false)
+    expect(r.unsourced).toEqual(['shelves'])
+    expect(r.items.find((i) => i.component === 'shelves')).toMatchObject({ mass_kg: 4, unsourced: true })
+    expect(r.summary).toMatch(
+      /the parts add up \(.*\)\. Not every figure has a source: "shelves" has no usable source — kept in the sums all the same/
+    )
+  })
+
   it('tells every leg what the others research, and fences the total off from the parts', async () => {
     chat.fallbackText = '{"items": []}'
     await researchBom({ product: 'rack', components: ['frame', 'shelves', 'feet'], totalMassKg: 13 })

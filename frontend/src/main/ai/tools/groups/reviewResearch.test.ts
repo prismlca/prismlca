@@ -279,6 +279,41 @@ describe('the dossier’s research on record', () => {
     expect(text).toMatch(/so not a mass to book whole$/)
   })
 
+  it('marks a part counted without a source on its row and in its check', () => {
+    const entry = bomLogEntry(
+      { product: 'rack' },
+      {
+        ...weighBom([
+          { request: 'frame', leg: leg({ items: [item('frame', 9, { source_url: 'https://e.org/f' })] }) },
+          { request: 'shelves', leg: leg({ items: [item('shelves', 4)] }) }
+        ]),
+        unsourced: ['shelves']
+      }
+    )
+    const text = researchSection([{ ...entry, asked: '2026-11-15T20:00:00Z' }])
+    expect(text).toContain('  Counted with NO SOURCE: shelves\n')
+    expect(text).toMatch(/^- shelves: 4 kg — NO SOURCE$/m)
+    expect(text).toMatch(/- frame: 9 kg — e\.org\/f\n/)
+    const merged = researchSection([
+      {
+        question: 'Bill of materials: soap',
+        asked: '2026-11-15T20:00:00Z',
+        findings: [
+          {
+            text: 'water (91.9 %): 0.4595 kg',
+            sources: ['https://s.example/sles'],
+            unsourced_kg: 0.35,
+            component: 'water',
+            mass_kg: 0.4595
+          }
+        ]
+      }
+    ])
+    expect(merged).toMatch(
+      /^- water \(91\.9 %\): 0\.4595 kg — s\.example\/sles — NO SOURCE for 0\.35 kg of it$/m
+    )
+  })
+
   it('tells two pages of one host apart', () => {
     expect(sourceId('https://www.praxis.nl/meubels/stellingkast/10119671')).toBe('praxis.nl/10119671')
     expect(sourceId('https://example.org/')).toBe('example.org')

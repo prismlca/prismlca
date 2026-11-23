@@ -40,11 +40,14 @@ interface Finding {
   note?: string
   version?: string
   cited_by_search?: boolean
+  unsourced?: boolean
+  unsourced_kg?: number
 }
 interface BomCheck {
   summary?: string
   requests?: Array<{ component: string; status: string }>
   unresolved?: Array<{ component: string; reason: string; note?: string }>
+  unsourced?: string[]
   totals?: Array<{ mass_kg: number; basis: string; version?: string; source?: string }>
   versions?: {
     conflict?: boolean
@@ -85,8 +88,9 @@ const HEAD =
   'research, Eurostat and distance look-ups — kept per model across chats, oldest first, each with the date ' +
   'it was asked; you cannot open the pages). Each finding carries the research’s own judgement [source ' +
   'class/confidence]; "source not returned by the search engine" marks a source the search did not bring ' +
-  'back. A bill-of-materials check says what was summed, which parts came back without a mass, every ' +
-  'whole-product mass found and which version of the product each figure belongs to. Use it to check the ' +
+  'back, and "NO SOURCE" a part mass the research counted with no page behind it. A bill-of-materials ' +
+  'check says what was summed, which parts came back without a mass, every whole-product mass found and ' +
+  'which version of the product each figure belongs to. Use it to check the ' +
   'figures that carry the result against what was found: a booked mass or rate outside every researched ' +
   'value or range; a whole-product mass or value picked from several found — quote the others beside it, ' +
   'with their version and scope, and say whether the model gives a reason for its pick; a figure that ' +
@@ -98,9 +102,9 @@ const HEAD =
   'to no input, that is a lead to follow, not a finding by itself. Compare like with like — per piece or ' +
   'per set, per product or per kg of an intermediate, the same unit — and quote the researched figure and ' +
   'the exchange amount side by side. A comment that explains a deviation is evidence, not the end of the ' +
-  'question: judge whether the reason carries the size of the gap. A low-confidence or media/community ' +
-  'finding is a lead, not a fact. Nothing follows from absence: research missing here may have been done in ' +
-  'a way this log does not keep, a point the research did not cover is no evidence against the model, and a ' +
+  'question: judge whether the reason carries the size of the gap. A low-confidence, media/community or ' +
+  'unsourced finding is a lead, not a fact. Nothing follows from absence: research missing here may have ' +
+  'been done in a way this log does not keep, a point the research did not cover is no evidence against the model, and a ' +
   'part the research could not settle may be settled by a figure the user gave or a source the model names.'
 
 const day = (asked?: string): string => (asked ? asked.slice(0, 10) : 'undated')
@@ -140,7 +144,12 @@ function findingLine(f: Finding): string {
     f.confidence_note ? ` (${oneLine(f.confidence_note)})` : '',
     f.note ? ` Note: ${oneLine(f.note)}` : '',
     ids ? ` — ${ids}` : '',
-    f.cited_by_search === false ? ' (source not returned by the search engine)' : ''
+    f.cited_by_search === false ? ' (source not returned by the search engine)' : '',
+    f.unsourced
+      ? ' — NO SOURCE'
+      : typeof f.unsourced_kg === 'number'
+        ? ` — NO SOURCE for ${f.unsourced_kg} kg of it`
+        : ''
   ].join('')
 }
 
@@ -171,6 +180,7 @@ function checkLines(check: BomCheck): string[] {
         .map((u) => `${u.component} (${u.reason}${u.note ? `: ${oneLine(u.note)}` : ''})`)
         .join('; ')}`
     )
+  if (check.unsourced?.length) lines.push(`  Counted with NO SOURCE: ${check.unsourced.join('; ')}`)
   if (check.totals?.length)
     lines.push(
       `  Whole-product masses found${new Set(check.totals.map((t) => t.mass_kg)).size > 1 ? ' (they differ)' : ''}: ` +

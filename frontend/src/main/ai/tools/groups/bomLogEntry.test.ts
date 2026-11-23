@@ -119,6 +119,31 @@ describe('the research log entry of a bill-of-materials call', () => {
     expect(entry.context).toBeUndefined()
   })
 
+  it('logs a part counted without a source, marked so, and names it in the check', () => {
+    const result = {
+      ...weighBom([
+        { request: 'frame', leg: leg({ items: [item('frame', 9, { source_url: 'https://e.org/f' })] }) },
+        {
+          request: 'shelves',
+          leg: leg({ items: [item('shelves', 4, { material: 'HDF', unsourced: true })] })
+        }
+      ]),
+      unsourced: ['shelves']
+    }
+    const entry = bomLogEntry({ product: 'rack' }, result)!
+    const findings = entry.findings as Array<Record<string, unknown>>
+    expect(findings[0]).toMatchObject({ text: 'frame: 9 kg', sources: ['https://e.org/f'] })
+    expect(findings[0]).not.toHaveProperty('unsourced')
+    expect(findings[1]).toMatchObject({
+      text: 'shelves (HDF): 4 kg',
+      sources: [],
+      unsourced: true,
+      component: 'shelves',
+      mass_kg: 4
+    })
+    expect((entry.bom_check as { unsourced?: string[] }).unsourced).toEqual(['shelves'])
+  })
+
   it('writes nothing for an answer that is no check, and the result still comes back', async () => {
     expect(bomLogEntry({ product: 'rack' }, { error: 'no provider' } as any)).toBeNull()
     expect(bomLogEntry({ product: 'rack' }, null)).toBeNull()
@@ -233,6 +258,41 @@ describe('the research log entry of a call with a recipe', () => {
       gap_pct: 0,
       split: ['SLES 27 % solution']
     })
+  })
+
+  it('says how much of a substance has no page when only some of its contributions have one', () => {
+    // The frame recipe without a page doses 0.35 kg of water; the solution's datasheet backs 0.1095 kg more.
+    const unpaged = weighRecipe(
+      parseRecipeAnswer({
+        formulation: { name: 'MP-01', kind: 'frame' },
+        lines: [
+          { name: 'water', unit: '%', rest_to_total: true },
+          {
+            name: 'SLES 27 % solution',
+            amount: 30,
+            unit: '%',
+            trade_form: {
+              source_url: 'https://supplier.example/sles27.pdf',
+              constituents: [
+                { name: 'sodium laureth sulfate', pct: 27 },
+                { name: 'water', pct: 73 }
+              ]
+            }
+          }
+        ]
+      }),
+      { of: 'liquid soap', request: { mass_kg: 0.5 } }
+    )
+    const entry = bomLogEntry({ product: 'soap refill' }, weighBom([], { recipe: unpaged }))!
+    const [water, sles] = entry.findings as Array<Record<string, unknown>>
+    expect(water).toMatchObject({
+      text: 'water (91.9 %): 0.4595 kg',
+      sources: ['https://supplier.example/sles27.pdf'],
+      unsourced_kg: 0.35
+    })
+    expect(water).not.toHaveProperty('unsourced')
+    expect(sles).not.toHaveProperty('unsourced_kg')
+    expect(sles).not.toHaveProperty('unsourced')
   })
 
   it('logs what the recipe lacks of a passed INCI list, and nothing about the order of that list', async () => {

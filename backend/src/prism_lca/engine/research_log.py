@@ -84,7 +84,8 @@ def clean_bom_check(raw: object) -> dict | None:
     """Normalise what a bill-of-materials call reported about its own result, or ``None``.
 
     ``summary`` (the one sentence: what was summed, against which total, what is open), ``requests``
-    (each requested component's status), ``unresolved`` (each open part with its reason), ``totals``
+    (each requested component's status), ``unresolved`` (each open part with its reason), ``unsourced``
+    (the figures it counted with no page behind them, by name), ``totals``
     (every whole-product mass found, with its scope, version and source) and ``versions`` (whether
     the figures rest on different versions, which entries sit on which, a few other versions seen).
     None of it is a finding: the health check never reads it, so a whole-product mass here can never
@@ -113,6 +114,9 @@ def clean_bom_check(raw: object) -> dict | None:
         open_parts.append(part)
     if open_parts:
         check["unresolved"] = open_parts[:MAX_CHECK_ROWS]
+    unsourced = [_cut(n, 120) for n in (raw.get("unsourced") or []) if isinstance(n, str) and n.strip()]
+    if unsourced:
+        check["unsourced"] = unsourced[:MAX_CHECK_ROWS]
     totals = []
     for t in raw.get("totals") or []:
         mass = _mass(t.get("mass_kg")) if isinstance(t, dict) else None
@@ -215,12 +219,13 @@ def clean_entry(item: object) -> dict | None:
     ``confidence_note``), whether its source came back from the search engine (``cited_by_search``)
     and — for bill-of-materials research — the structured figure itself (``component``, ``mass_kg``,
     ``mass_range_kg`` when the sources gave a span rather than one number, ``alternatives_kg`` when they gave
-    other figures for the same part) with its derivation
-    (``note``) and the product version it belongs to (``version``), which is what lets the health check list the
-    researched masses for whoever holds them against the model. The entry may carry the ``context`` the research was given and, for a
-    bill-of-materials call, its ``bom_check`` — with a valid check an entry without findings is kept:
-    a call that found no mass at all still says what it could not settle. All optional, all
-    validated, none invented here.
+    other figures for the same part) with its derivation (``note``), the product version it belongs to
+    (``version``) and whether no page backs it (``unsourced``, or ``unsourced_kg`` for the share of a merged
+    mass), which is what lets the health check list the
+    researched masses for whoever holds them against the model. The entry may carry the ``context`` the
+    research was given and, for a bill-of-materials call, its ``bom_check`` — with a valid check an entry
+    without findings is kept: a call that found no mass at all still says what it could not settle. All
+    optional, all validated, none invented here.
     """
     if not isinstance(item, dict):
         return None
@@ -289,6 +294,21 @@ def clean_entry(item: object) -> dict | None:
             finding["version"] = version
         if isinstance(raw.get("cited_by_search"), bool):
             finding["cited_by_search"] = raw["cited_by_search"]
+        # A bill-of-materials figure the research counted with no page behind it. Only where no source is kept:
+        # a finding that has one is not unsourced, whatever the flag says.
+        if raw.get("unsourced") is True and not sources:
+            finding["unsourced"] = True
+        # Of a mass merged from several contributions (one substance of a recipe), the kilograms no page backs —
+        # only beside a source and below the whole mass, or it would say something else than it means.
+        unbacked = raw.get("unsourced_kg")
+        if (
+            sources
+            and "mass_kg" in finding
+            and isinstance(unbacked, (int, float))
+            and not isinstance(unbacked, bool)
+            and 0 < unbacked < finding["mass_kg"]
+        ):
+            finding["unsourced_kg"] = float(unbacked)
         findings.append(finding)
         if len(findings) >= MAX_FINDINGS:
             break
@@ -320,6 +340,30 @@ def _add_alternatives(stored: dict, repeat: dict) -> bool:
     if not new or room <= 0:
         return False
     stored["alternatives_kg"] = have + new[:room]
+    return True
+
+
+def _unbacked_kg(finding: dict) -> float:
+    """How much of a finding's mass no page backs: all of it when it is unsourced, else its ``unsourced_kg``."""
+    if finding.get("unsourced"):
+        return float(finding.get("mass_kg") or math.inf)
+    return float(finding.get("unsourced_kg") or 0.0)
+
+
+def _add_sources(stored: dict, repeat: dict) -> bool:
+    """Give a stored part the pages a repeat of it found when they back more of its mass; True when it took them.
+
+    Without it, a part logged unsourced and researched again to the same figure with a page would stay marked
+    unsourced for as long as the research is on record — the repeat is not stored again. The repeat's judgement
+    and derivation belong to its page and come with it; what the stored finding found beside its figure stays.
+    """
+    if not repeat.get("sources") or _unbacked_kg(repeat) >= _unbacked_kg(stored):
+        return False
+    alternatives = stored.get("alternatives_kg")
+    stored.clear()
+    stored.update(repeat)
+    if alternatives:
+        _add_alternatives(stored, {"alternatives_kg": alternatives})
     return True
 
 
@@ -358,7 +402,8 @@ class ResearchLogStore(JsonFileStore):
         An entry with a bill-of-materials check is appended every time, with only its new findings:
         the check is that call's own result, and a repeat that found the same masses may still have
         settled a part or met another version. A repeated part that brings other figures for it the
-        stored one lacks hands them to the stored one (``_add_alternatives``).
+        stored one lacks hands them to the stored one (``_add_alternatives``), and one that brings a page
+        for a part stored without any hands that over too (``_add_sources``).
         """
         with self._lock:
             data = self._load()
@@ -380,7 +425,9 @@ class ResearchLogStore(JsonFileStore):
                 fresh = [f for f in entry["findings"] if (entry["question"], f["text"]) not in known]
                 for f in entry["findings"]:
                     if f not in fresh:
-                        widened |= _add_alternatives(known[(entry["question"], f["text"])], f)
+                        held = known[(entry["question"], f["text"])]
+                        widened |= _add_sources(held, f)
+                        widened |= _add_alternatives(held, f)
                 if not fresh and "bom_check" not in entry:
                     continue
                 repeated.append((entry, [f for f in entry["findings"] if f not in fresh]))
