@@ -6,6 +6,9 @@
  * - Does the instance belong to this session? (record in this checkout, host answering with its token)
  * - Do its data and profile live in folders of its own? (the main process's paths and environment; on Linux
  *   also the backend's environment and the files the app's processes hold open)
+ * - What does it hold? A copy of the person's data says where from and when, the search embeds the way
+ *   its index was built, and stored provider keys are there only when launch was asked for them — and
+ *   then readable.
  *
  * The facts are gathered in two places — the host knows the app (facts.ts), the command line knows the
  * checkout — and judged in one pure function, so the verdicts can be tested without an app.
@@ -190,6 +193,8 @@ export function judge(input: DoctorInput): Check[] {
       `the app reads the checkout's key files in .secrets/ — a check could spend on them`
     )
   }
+  checks.push(...judgeKeys(record, app))
+  checks.push(...judgeData(record, app))
   for (const real of input.realDirs) {
     for (const [label, value] of [
       ['userData', app.userData],
@@ -225,6 +230,14 @@ export function judge(input: DoctorInput): Check[] {
         `the backend keeps its Brightway projects in ${b.brightwayDir}`,
         `the backend has PRISM_BRIGHTWAY_DIR=${b.brightwayDir}, outside ${root}`
       )
+      if (!record.keys) {
+        add(
+          b.keySettings.length === 0,
+          'the backend has no provider key (nor one from backend/.env)',
+          `the backend has provider keys (${b.keySettings.join(', ')}) though launch was not asked for them — ` +
+            'its search could spend on them'
+        )
+      }
       const src = join(backendDir, 'src')
       const first = (b.pythonPath ?? '').split(/[:;]/).find((p) => p !== '')
       if (record.backend.via === 'shim') {
@@ -260,8 +273,8 @@ export function judge(input: DoctorInput): Check[] {
     checks.push({
       status: 'note',
       text:
-        `backend/.env sets ${input.backendEnvKeys.join(', ')}; the instance overrides PRISM_DATA_DIR and ` +
-        'PRISM_BRIGHTWAY_DIR, the rest applies to it'
+        `backend/.env sets ${input.backendEnvKeys.join(', ')}; the instance overrides PRISM_DATA_DIR, ` +
+        'PRISM_BRIGHTWAY_DIR and the provider keys, the rest applies to it'
     })
   }
   if (input.realChanged.length > 0) {
@@ -274,4 +287,83 @@ export function judge(input: DoctorInput): Check[] {
     })
   }
   return checks
+}
+
+/** The person's stored keys: absent unless launch was asked for them, and readable when it was. */
+export function judgeKeys(record: SessionRecord, app: AppFacts): Check[] {
+  const stored = app.storedKeys.map((k) => k.provider)
+  // Older session records have no `keys`: they were launched without.
+  if (!record.keys) {
+    return stored.length === 0
+      ? [{ status: 'ok', text: "no provider key is stored in the session's profile" }]
+      : [
+          {
+            status: 'FAIL',
+            text:
+              `the session's profile holds stored keys (${stored.join(', ')}) though launch was not asked ` +
+              'for them — typed in during the session, or copied by mistake; a check could spend on them'
+          }
+        ]
+  }
+  if (stored.length === 0) {
+    return [
+      {
+        status: 'note',
+        text: 'launch was asked for your stored keys, but there were none — a chat will ask for a key'
+      }
+    ]
+  }
+  const unreadable = app.storedKeys.filter((k) => !k.readable).map((k) => k.provider)
+  if (unreadable.length > 0) {
+    return [
+      {
+        status: 'FAIL',
+        text:
+          `the app cannot decrypt your stored key(s) for ${unreadable.join(', ')} — its key store` +
+          `${app.keyStore ? ` (${app.keyStore})` : ''} is not the one that encrypted them, so chats with them fail`
+      }
+    ]
+  }
+  return [
+    {
+      status: 'note',
+      text:
+        `your stored keys for ${stored.join(', ')} are in this session and readable: a chat, a report or a ` +
+        'research call bills your provider accounts'
+    }
+  ]
+}
+
+/** Where the data came from, and whether the search embeds the way the data was indexed. */
+export function judgeData(record: SessionRecord, app: AppFacts): Check[] {
+  const model = app.env.PRISM_EMBEDDING_BACKEND
+  if (record.mode === 'copy') {
+    const copy = record.copy
+    return [
+      {
+        status: copy ? 'ok' : 'FAIL',
+        text: copy
+          ? `the data is a copy of yours (${copy.from.data}, profile ${copy.from.profile}) taken at ` +
+            `${copy.at}; nothing changed while it was copied`
+          : 'the session says it runs on a copy, but its record does not say of what'
+      },
+      model !== 'hashing'
+        ? {
+            status: 'ok',
+            text: `the search embeds with the app's own model${model ? ` (${model})` : ''}, as the copied index was built`
+          }
+        : {
+            status: 'FAIL',
+            text: "the search embeds with hashing, but the copied index was built with the app's model — its results would be noise"
+          }
+    ]
+  }
+  return [
+    model === 'hashing'
+      ? { status: 'ok', text: 'the search embeds offline (hashing): no model is loaded or downloaded' }
+      : {
+          status: 'FAIL',
+          text: `the search embeds with ${model ?? "the app's default model"}, which an empty install would download first`
+        }
+  ]
 }

@@ -3,7 +3,8 @@
  * the Python backend it spawns from source, and nothing of the person running the tests — every
  * directory the app writes to is a fresh one under the system's temp folder, and no PRISM_* setting or
  * provider key of the calling environment reaches the app. The search index embeds with the offline
- * `hashing` backend, so no model is needed and nothing is downloaded.
+ * `hashing` backend, so no model is needed and nothing is downloaded (`searchModel: 'app'` keeps the app's
+ * own model, for data that was indexed with it).
  */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,7 +25,11 @@ export interface Install {
 }
 
 export function freshInstall(): Install {
-  const root = mkdtempSync(join(tmpdir(), 'prism-e2e-'))
+  return installIn(mkdtempSync(join(tmpdir(), 'prism-e2e-')))
+}
+
+/** The folders of one simulated installation under `root`. */
+export function installIn(root: string): Install {
   return {
     root,
     data: join(root, 'data'),
@@ -69,11 +74,33 @@ export interface RunningApp {
   stopped: boolean
 }
 
+export interface LaunchOptions {
+  /**
+   * How the search index embeds text. `hashing` (the default) is offline and needs no model — right for
+   * an install that starts empty. `app` leaves the choice to the backend, as an installed app does: data
+   * copied from a real installation was indexed with the app's search model, and hashing vectors would
+   * be compared against it.
+   */
+  searchModel?: 'hashing' | 'app'
+  /**
+   * Where safeStorage keeps the key that encrypts stored provider keys. `test` (the default) is what
+   * Playwright sets for every app it starts: a fixed password on Linux, a mock keychain on macOS — never
+   * the person's keyring. `system` takes Playwright's switches out again (systemKeyStore.cjs), so the app
+   * can read keys a person's app stored; only for an instance that was given those keys on request.
+   */
+  keyStore?: 'test' | 'system'
+}
+
 /** Starts the app on `install` and returns once its main window (not the splash) has loaded. */
-export async function launch(install: Install): Promise<RunningApp> {
+export async function launch(
+  install: Install,
+  { searchModel = 'hashing', keyStore = 'test' }: LaunchOptions = {}
+): Promise<RunningApp> {
   const app = await _electron.launch({
     cwd: FRONTEND,
     args: [
+      // Node options go before the app's folder; Playwright's loader is required ahead of these.
+      ...(keyStore === 'system' ? ['-r', join(FRONTEND, 'e2e', 'systemKeyStore.cjs')] : []),
       FRONTEND,
       `--user-data-dir=${install.userData}`,
       // GitHub's Linux runners have no setuid sandbox helper; the release's start test does the same.
@@ -88,10 +115,15 @@ export async function launch(install: Install): Promise<RunningApp> {
       // app at another Brightway folder; it is the folder the app would choose by itself.
       PRISM_BRIGHTWAY_DIR: join(install.data, 'brightway'),
       XDG_CONFIG_HOME: join(install.root, 'config'),
-      PRISM_EMBEDDING_BACKEND: 'hashing',
+      ...(searchModel === 'hashing' ? { PRISM_EMBEDDING_BACKEND: 'hashing' } : {}),
       PRISM_DOWNLOAD_DIR: install.downloads,
       // The checkout's own provider keys (.secrets/<provider>-key) are the person's, not the test's.
-      PRISM_IGNORE_DEV_KEYS: '1'
+      PRISM_IGNORE_DEV_KEYS: '1',
+      // Nor are the keys a developer's backend/.env may give the backend for API embeddings: an empty
+      // variable outranks the file. Keys stored in the app's profile still reach the backend — the main
+      // process passes them on when it starts it.
+      PRISM_OPENROUTER_API_KEY: '',
+      PRISM_OPENAI_API_KEY: ''
     },
     timeout: 120_000
   })

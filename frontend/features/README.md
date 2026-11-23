@@ -15,9 +15,20 @@ node scripts/control-prism.mjs help
 - `launch --seed` starts a fresh instance in folders of its own and imports the BAFU test fixture through
   the setup sheet (about a minute). Plain `launch` stops at the welcome tour and the empty setup sheet,
   which is what a first start looks like. `launch` builds `out/` first when the sources changed.
+- `launch --copy` starts on a copy of your own PrismLCA instead: your data folder (workspaces, models,
+  chats, search index) and your profile (settings, model list), in folders of the session's own. On
+  btrfs, XFS and APFS the copy shares blocks with your files and takes seconds; elsewhere launch stops
+  and says so, and `--full-copy` copies in full. Your PrismLCA may stay open: launch lists every file
+  before and after copying and keeps the copy only if nothing changed in between — otherwise it copies
+  again, and after four tries it names the files your app kept writing. The search uses the app's own
+  model, as your index was built with it — over 2 GB more memory than a fresh instance.
+- `--keys` (with or without `--copy`) copies your stored provider keys into the session, and nothing
+  else of your keys: environment variables and the checkout's `.secrets/` stay out. Without it the
+  instance has no key at all. The keys leave the session at `stop`, also with `--keep`.
 - `doctor` before every proof. It fails when the running app is not the build of the checkout as it is
   now (or its backend still runs older Python sources), when the instance belongs to another checkout,
-  when any of its folders lies outside its own, or when a provider key of yours reaches it. A
+  when any of its folders lies outside its own, when a provider key of yours reaches it unasked, or when
+  keys it was given cannot be decrypted. It says where a copy came from and when it was taken. A
   screenshot of a stale build proves nothing.
 - `restart` quits the app as a person does and starts it again on the same data — rebuilding first when
   the sources changed. Use it after an edit, and to prove that something survives a restart.
@@ -47,7 +58,8 @@ Several sessions in one checkout take `--session <name>`. A session is invisible
 - **Native dialogs are manual:** file and folder pickers, OAuth windows, save dialogs. They are not faked
   for a proof. Downloads need no dialog: they land in the session's download folder (`wait download`).
 - **Nothing that costs money** — no chat message, no report writing, no research call — unless the
-  person running the check asked for it. A fresh instance has no provider key and cannot store one.
+  person running the check asked for it. Only a session launched with `--keys` can spend at all, and
+  `doctor` names the providers it would bill.
 
 ## Naming elements: the selector convention
 

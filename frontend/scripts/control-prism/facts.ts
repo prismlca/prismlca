@@ -2,13 +2,15 @@
  * What the running app says about itself, gathered in the host, which holds it: where the main process
  * runs from and keeps its profile, which settings reached it, and — on Linux, from /proc — the backend's
  * own environment, its working folder, the code its environment installs, and the files the app's
- * processes hold open. Provider keys are reported as present or absent, never by value.
+ * processes hold open. Provider keys are reported as present or absent (and stored ones as readable or
+ * not), never by value.
  */
 import { readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { RunningApp } from '../../e2e/app'
 import type { ProcessInfo } from '../../e2e/processes'
 import { inside } from './doctor'
+import { readableKeys } from './keys'
 
 export interface BackendFacts {
   pid: number
@@ -18,6 +20,8 @@ export interface BackendFacts {
   pythonPath: string | null
   /** Where the environment's editable install points (its .pth), when there is one. */
   editableSrc: string | null
+  /** The backend's provider key settings that hold a value (names only). */
+  keySettings: string[]
 }
 
 export interface AppFacts {
@@ -32,6 +36,10 @@ export interface AppFacts {
   /** Linux only: read from /proc. */
   backends: BackendFacts[] | null
   openInRealDirs: string[] | null
+  /** Linux only: the store safeStorage chose (kwallet6, gnome_libsecret, basic_text …). */
+  keyStore: string | null
+  /** The providers with a stored key in the app's profile, and whether the app can decrypt each. */
+  storedKeys: { provider: string; readable: boolean }[]
 }
 
 export const ENV_KEYS = [
@@ -55,6 +63,9 @@ export const KEY_VARS = [
   'ORS_API_KEY',
   'MAPBOX_API_KEY'
 ]
+
+/** The backend's provider key settings (backend config.py), which main/index.ts fills from the store. */
+export const BACKEND_KEY_SETTINGS = ['PRISM_OPENROUTER_API_KEY', 'PRISM_OPENAI_API_KEY']
 
 function procEnv(pid: number): Record<string, string> {
   const env: Record<string, string> = {}
@@ -101,7 +112,8 @@ function backendFacts(p: ProcessInfo): BackendFacts | null {
       dataDir: env.PRISM_DATA_DIR ?? null,
       brightwayDir: env.PRISM_BRIGHTWAY_DIR ?? null,
       pythonPath: env.PYTHONPATH ?? null,
-      editableSrc: editableSrc(python)
+      editableSrc: editableSrc(python),
+      keySettings: BACKEND_KEY_SETTINGS.filter((k) => !!env[k]?.trim())
     }
   } catch {
     return null
@@ -135,11 +147,16 @@ export async function gatherAppFacts(
   const proc = running.app.process()
   const alive = proc.exitCode === null && proc.signalCode === null
   const main = await running.app.evaluate(
-    ({ app }, { keys, keyVars }) => ({
+    ({ app, safeStorage }, { keys, keyVars }) => ({
       appPath: app.getAppPath(),
       userData: app.getPath('userData'),
       env: Object.fromEntries(keys.map((k) => [k, process.env[k] ?? null])),
-      keyVars: keyVars.map((name) => ({ name, set: !!process.env[name] }))
+      keyVars: keyVars.map((name) => ({ name, set: !!process.env[name] })),
+      keyStore:
+        process.platform === 'linux'
+          ? ((safeStorage as { getSelectedStorageBackend?: () => string }).getSelectedStorageBackend?.() ??
+            null)
+          : null
     }),
     { keys: ENV_KEYS, keyVars: KEY_VARS }
   )
@@ -153,5 +170,6 @@ export async function gatherAppFacts(
       .filter((b): b is BackendFacts => b !== null)
     openInRealDirs = processes.flatMap((p) => openFilesIn(p, real))
   }
-  return { alive, ...main, rendererUrl: running.page.url(), processes, backends, openInRealDirs }
+  const storedKeys = await readableKeys(running, main.userData)
+  return { alive, ...main, rendererUrl: running.page.url(), processes, backends, openInRealDirs, storedKeys }
 }

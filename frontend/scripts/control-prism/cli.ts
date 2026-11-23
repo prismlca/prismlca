@@ -25,13 +25,17 @@ const HELP = `control-prism — drive the built app like a person, for proof tha
 Run from frontend/:  node scripts/control-prism.mjs <command> [--session <name>]
 
 session
-  launch [--fresh] [--seed] [--no-build] [--idle <min>]
+  launch [--fresh] [--seed] [--copy [--full-copy]] [--keys] [--no-build] [--idle <min>]
                      build out/ if it is not the current source, start a fresh isolated instance;
-                     --seed imports the BAFU test fixture through the setup sheet (preparation only)
+                     --seed imports the BAFU test fixture through the setup sheet (preparation only);
+                     --copy starts on a copy of your own data and profile instead (blocks shared with
+                     yours where the disk can; --full-copy copies in full where it cannot);
+                     --keys copies your stored provider keys in: chats then bill your accounts
   doctor             is the running app a valid witness? run it before every proof; exit 1 if not
   status             the session's record
   restart [--no-build]   quit and start again on the same data (rebuilds out/ first if the sources changed)
-  stop [--keep]      quit the app, end what it started, remove its folders (--keep keeps them)
+  stop [--keep]      quit the app, end what it started, remove its folders (--keep keeps them,
+                     without stored keys)
   build              build out/ and stamp it (launch does this when needed)
 
 driving                              (<target>: see "targets" below)
