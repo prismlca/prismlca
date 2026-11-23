@@ -399,7 +399,7 @@ export default function ChapterList({
                   unticked, and read when the writer starts, so a run already under way keeps its brief. */}
               {LITERATURE_KINDS.has(s.kind) ? (
                 <div className="rsec-lit">
-                  <label title="Before it writes, the writer may search the web through your AI provider (billed per search). What it finds is listed with its sources in the References.">
+                  <label title="Before it writes, the writer searches the web through your AI provider (billed per search), even when web search is off for the chat. What it finds is listed with its sources in the References.">
                     <input
                       type="checkbox"
                       checked={s.literature_search !== false}

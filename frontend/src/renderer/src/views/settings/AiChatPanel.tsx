@@ -94,7 +94,7 @@ export function AiChatPanel(): JSX.Element {
       <p className="settings-hint">
         On = the chat shows a web-search toggle in the “+” menu, on for every new chat — switch it off there
         for one conversation. The search runs on the provider’s side, so it sees the query the assistant
-        writes from your workspace. Off = the toggle disappears entirely and the assistant, its research
+        writes from your workspace. Off = the toggle disappears entirely and the chat assistant, its research
         helpers included, can never reach the web.
         {!caps.searchBesideTools ? (
           <>
@@ -102,7 +102,9 @@ export function AiChatPanel(): JSX.Element {
             Under {caps.name} the assistant reaches the web through its research helpers only: the API offers
             its search alongside PrismLCA’s own tools only as a preview so far.
           </>
-        ) : null}
+        ) : null}{' '}
+        This switch covers the chat only: a report chapter whose “Search the literature” box is ticked always
+        searches the web when it is written, however this switch is set.
       </p>
       {webEnabled ? (
         <>
