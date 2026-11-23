@@ -11,9 +11,9 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, openSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { FRONTEND, freshInstall, installIn, removeInstall, type Install } from '../../e2e/app'
+import { planBackend } from '../../e2e/backend'
 import { endAll, leftovers, listed, listProcesses, type ProcessInfo } from '../../e2e/processes'
 import type { Parsed } from './args'
-import { planBackend, withPathFirst } from './backend'
 import { backendFingerprint, build, buildState } from './build'
 import { Exit, out, send } from './client'
 import {
@@ -192,7 +192,8 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
     try {
       rmSync(logs, { recursive: true, force: true })
       mkdirSync(logs, { recursive: true })
-      plan = planBackend(FRONTEND, join(install.root, 'bin'))
+      // launch() in the host applies the same plan; asked here to report it and to record it for doctor.
+      plan = planBackend(FRONTEND)
       record = {
         name,
         frontend: FRONTEND,
@@ -220,18 +221,13 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
       throw e
     }
     if (plan.warning) out(`warning: ${plan.warning}`)
-    // The app inherits the host's environment (minus what the end-to-end harness strips). An import path
-    // set in the caller's shell would let the backend load another checkout's code: only the shim sets one.
-    const env = { ...process.env }
-    delete env.PYTHONPATH
-    if (plan.pathDir) env.PATH = withPathFirst(plan.pathDir, process.env.PATH)
+    // The host inherits this environment unchanged; launch() strips what must not reach the app.
     const logFd = openSync(join(logs, 'host.out'), 'a')
     const child = spawn(process.execPath, [bundle, '__host', name], {
       cwd: FRONTEND,
       detached: true,
       windowsHide: true,
-      stdio: ['ignore', logFd, logFd],
-      env
+      stdio: ['ignore', logFd, logFd]
     })
     child.unref()
     const host = listProcesses().find((p) => p.pid === child.pid) ?? null

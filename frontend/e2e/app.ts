@@ -4,12 +4,14 @@
  * directory the app writes to is a fresh one under the system's temp folder, and no PRISM_* setting or
  * provider key of the calling environment reaches the app. The search index embeds with the offline
  * `hashing` backend, so no model is needed and nothing is downloaded (`searchModel: 'app'` keeps the app's
- * own model, for data that was indexed with it).
+ * own model, for data that was indexed with it). In a worktree without a Python environment of its own, the
+ * backend borrows the main checkout's instead of having uv build one (backend.ts).
  */
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron, type ElectronApplication, type Page } from '@playwright/test'
+import { backendEnv, planBackend, type BackendPlan } from './backend'
 import { installCommitCounter, reactRegistered } from './idle'
 import { endAll, leftovers, listed, processTree, type ProcessInfo } from './processes'
 
@@ -49,9 +51,10 @@ export function removeInstall(install: Install): void {
 }
 
 /** Settings and keys of the calling environment that must not reach the app. The key names are those
- *  main/secrets.ts reads (ENV_VAR), Google's under both spellings. */
+ *  main/secrets.ts reads (ENV_VAR), Google's under both spellings. An import path would let the backend load
+ *  another checkout's code; only the worktree shim sets one (backend.ts). */
 const NOT_PASSED_ON =
-  /^(PRISM_|BRIGHTWAY|ELECTRON_RENDERER_URL|OPENROUTER|ANTHROPIC|OPENAI|GOOGLE|GEMINI|ORS_|MAPBOX)/
+  /^(PRISM_|BRIGHTWAY|ELECTRON_RENDERER_URL|OPENROUTER|ANTHROPIC|OPENAI|GOOGLE|GEMINI|ORS_|MAPBOX|PYTHONPATH$)/
 
 /** The calling environment without anything that would configure the app or its backend. */
 export function cleanEnv(): Record<string, string> {
@@ -61,6 +64,18 @@ export function cleanEnv(): Record<string, string> {
     env[k] = v
   }
   return env
+}
+
+let plan: BackendPlan | undefined
+
+/** How this checkout's backend runs, decided at the first launch: it does not change while tests run, and
+ *  a warning about it is said once. */
+function backendPlan(): BackendPlan {
+  if (!plan) {
+    plan = planBackend(FRONTEND)
+    if (plan.warning) console.warn(`launch(): ${plan.warning}`)
+  }
+  return plan
 }
 
 export interface RunningApp {
@@ -108,6 +123,7 @@ export async function launch(
     ],
     env: {
       ...cleanEnv(),
+      ...backendEnv(backendPlan(), join(install.root, 'bin')),
       // The app keeps its Brightway projects in `brightway` under this; an inherited BRIGHTWAY2_DIR is
       // never followed (backend engine/brightway_dir.py), and cleanEnv() drops it anyway.
       PRISM_DATA_DIR: install.data,

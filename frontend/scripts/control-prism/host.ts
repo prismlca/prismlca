@@ -151,8 +151,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
     }
   }
 
-  // The host inherits the caller's environment unchanged (only PATH may lead with the backend shim), so
-  // these are the caller's real folders.
+  // The host inherits the caller's environment unchanged, so these are the caller's real folders.
   const real = realDirs()
   let lastCommand = Date.now()
   let queue: Promise<unknown> = Promise.resolve()

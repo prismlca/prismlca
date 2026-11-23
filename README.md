@@ -113,7 +113,9 @@ database.
 
 The end-to-end tests (`frontend/e2e/`) start the built app as a real Electron process with its backend, in
 throwaway data directories, and import the two invented BAFU datasets in `backend/tests/fixtures/import/bafu-mini`
-— no licensed data, no downloads. On Linux without a display, run them under `xvfb-run -a`. Coverage:
+— no licensed data, no downloads. On Linux without a display, run them under `xvfb-run -a`. On Linux and macOS, in a
+git worktree without a backend environment of its own, their backend borrows the main checkout's instead of having
+uv build one (`frontend/e2e/backend.ts`). Coverage:
 `uv run pytest -n auto --cov` and `npm run test:cov`; CI publishes both reports on each run's summary page.
 
 ### Background data for development
