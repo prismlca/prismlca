@@ -8,15 +8,26 @@
  * runs on the session's folders — a `tail` on a log, a database viewer — is not the session's.
  */
 import { spawn } from 'node:child_process'
-import { mkdirSync, openSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, openSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { FRONTEND, freshInstall, removeInstall } from '../../e2e/app'
+import { FRONTEND, freshInstall, installIn, removeInstall, type Install } from '../../e2e/app'
 import { endAll, leftovers, listed, listProcesses, type ProcessInfo } from '../../e2e/processes'
 import type { Parsed } from './args'
 import { planBackend, withPathFirst } from './backend'
 import { backendFingerprint, build, buildState } from './build'
 import { Exit, out, send } from './client'
+import {
+  chooseProfile,
+  CloneUnsupported,
+  CopyError,
+  copiesDir,
+  size,
+  personFolders,
+  takeCopy,
+  type CopyReport
+} from './copy'
 import { hostAlive } from './host'
+import { copyKeys, forgetKeys } from './keys'
 import {
   controlDir,
   lockSession,
@@ -36,7 +47,9 @@ function sessionProcesses(record: SessionRecord): ProcessInfo[] {
   return leftovers(known, NO_PATH_RULE)()
 }
 
-/** Ends what a session left behind, removes its folders unless `keep`, and its record. */
+/** Ends what a session left behind, removes its stored keys, its folders unless `keep`, and its record.
+ *  The keys go first and on their own: removing the folders is best effort, and a key that stayed must
+ *  leave the record in place for another try. */
 export function cleanUpDead(record: SessionRecord, keep: boolean): string[] {
   const lines: string[] = []
   const left = sessionProcesses(record)
@@ -44,12 +57,24 @@ export function cleanUpDead(record: SessionRecord, keep: boolean): string[] {
     endAll(left)
     lines.push(`ended what was still running:${listed(left)}`)
   } else lines.push('nothing of it was still running')
+  let hadKeys: boolean
+  try {
+    hadKeys = forgetKeys(record.install.userData)
+  } catch (e) {
+    throw new Exit(1, `${(e as Error).message} — remove it, then run stop again`)
+  }
   if (!keep) {
     removeInstall(record.install)
     lines.push(`removed ${record.install.root}`)
-  }
+  } else if (hadKeys) lines.push(`kept ${record.install.root}, without the stored keys`)
   removeSession(FRONTEND, record.name, record.token)
   return lines
+}
+
+/** Removes folders prepared for a session that never got its record (keys first, see cleanUpDead). */
+function discard(install: Install): void {
+  forgetKeys(install.userData)
+  removeInstall(install)
 }
 
 /** The fingerprints of a build of the sources as they are now — building first unless --no-build forbids it. */
@@ -76,7 +101,73 @@ function locked<T>(name: string, run: () => Promise<T>): Promise<T> {
   return run().finally(release)
 }
 
+interface Prepared {
+  install: Install
+  mode: SessionRecord['mode']
+  copy?: CopyReport
+  keys: string[] | null
+}
+
+/** The session's folders: fresh ones, or a copy of the person's data and profile — with their stored keys
+ *  only when asked. */
+async function prepareInstall(name: string, flags: Parsed['flags']): Promise<Prepared> {
+  const wantsKeys = !!flags.keys
+  const person = personFolders()
+  const profile = chooseProfile(person.profiles)
+  if ((flags.copy || wantsKeys) && profile === null) {
+    throw new Exit(1, `found no PrismLCA profile to copy from (looked in ${person.profiles.join(', ')})`)
+  }
+  const withKeys = (install: Install): string[] | null => {
+    if (!wantsKeys) return null
+    const keys = copyKeys(profile!, install.userData)
+    out(keys.length > 0 ? `with your stored keys: ${keys.join(', ')}` : `${profile} has no stored keys`)
+    return keys
+  }
+  if (!flags.copy) {
+    const install = freshInstall()
+    try {
+      return { install, mode: 'fresh', keys: withKeys(install) }
+    } catch (e) {
+      discard(install)
+      throw e
+    }
+  }
+  const base = copiesDir()
+  mkdirSync(base, { recursive: true })
+  const install = installIn(mkdtempSync(join(base, `${name}-`)))
+  out(`copying your data (${person.data}) and profile (${profile}) to ${install.root} …`)
+  const started = Date.now()
+  try {
+    const copy = await takeCopy(
+      { data: person.data, profile: profile!, install, full: !!flags['full-copy'] },
+      out
+    )
+    out(
+      `copied ${copy.files} files (${size(copy.bytes)}${copy.shared ? ', blocks shared with yours' : ''}) ` +
+        `in ${((Date.now() - started) / 1000).toFixed(1)} s${copy.attempts > 1 ? ` on try ${copy.attempts}` : ''}`
+    )
+    return { install, mode: 'copy', copy, keys: withKeys(install) }
+  } catch (e) {
+    discard(install)
+    if (e instanceof CloneUnsupported) {
+      throw new Exit(
+        1,
+        `${e.message}. A full copy takes as much space as your data (${person.data}) and a while; ` +
+          'pass --full-copy to make one.'
+      )
+    }
+    if (e instanceof CopyError) throw new Exit(1, e.message)
+    throw e
+  }
+}
+
 export function launch(name: string, bundle: string, flags: Parsed['flags']): Promise<void> {
+  if (flags.copy && (flags.seed || flags.fresh))
+    return Promise.reject(
+      new Exit(2, `--${flags.seed ? 'seed' : 'fresh'} means an empty install; a --copy has your data already`)
+    )
+  if (flags['full-copy'] && !flags.copy)
+    return Promise.reject(new Exit(2, '--full-copy says how to --copy; it needs --copy'))
   return locked(name, async () => {
     const existing = readSession(FRONTEND, name)
     if (existing) {
@@ -94,31 +185,41 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
     if (!Number.isFinite(idleMinutes) || idleMinutes < 1)
       throw new Exit(2, '--idle takes minutes (at least 1)')
 
-    const install = freshInstall()
+    const { install, mode, copy, keys } = await prepareInstall(name, flags)
     const logs = join(controlDir(FRONTEND), 'logs', name)
-    rmSync(logs, { recursive: true, force: true })
-    mkdirSync(logs, { recursive: true })
-    const plan = planBackend(FRONTEND, join(install.root, 'bin'))
-    if (plan.warning) out(`warning: ${plan.warning}`)
-    const record: SessionRecord = {
-      name,
-      frontend: FRONTEND,
-      token: newToken(),
-      status: 'starting',
-      host: null,
-      hostRecorded: false,
-      install,
-      mode: 'fresh',
-      seeded: !!flags.seed,
-      build: stamp,
-      backendSrc: backendFingerprint(FRONTEND),
-      backend: { via: plan.via, detail: plan.detail },
-      logs,
-      launchedAt: new Date().toISOString(),
-      processes: [],
-      idleMinutes
+    let plan: ReturnType<typeof planBackend>
+    let record: SessionRecord
+    try {
+      rmSync(logs, { recursive: true, force: true })
+      mkdirSync(logs, { recursive: true })
+      plan = planBackend(FRONTEND, join(install.root, 'bin'))
+      record = {
+        name,
+        frontend: FRONTEND,
+        token: newToken(),
+        status: 'starting',
+        host: null,
+        hostRecorded: false,
+        install,
+        mode,
+        ...(copy ? { copy } : {}),
+        seeded: !!flags.seed,
+        keys,
+        build: stamp,
+        backendSrc: backendFingerprint(FRONTEND),
+        backend: { via: plan.via, detail: plan.detail },
+        logs,
+        launchedAt: new Date().toISOString(),
+        processes: [],
+        idleMinutes
+      }
+      writeSession(record)
+    } catch (e) {
+      // Until the record is written nothing knows these folders: a copy, and keys in it, must not stay.
+      discard(install)
+      throw e
     }
-    writeSession(record)
+    if (plan.warning) out(`warning: ${plan.warning}`)
     // The app inherits the host's environment (minus what the end-to-end harness strips). An import path
     // set in the caller's shell would let the backend load another checkout's code: only the shim sets one.
     const env = { ...process.env }
@@ -138,7 +239,8 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
     updateSession(FRONTEND, name, record.token, { host, hostRecorded: true })
 
     out(
-      `launching session "${name}" in ${install.root}${flags.seed ? ' (with seed — about a minute)' : ''} …`
+      `launching session "${name}" in ${install.root}${flags.seed ? ' (with seed — about a minute)' : ''}` +
+        `${mode === 'copy' ? ' (your data: the backend loads it and its search model — up to a minute)' : ''} …`
     )
     const limit = Date.now() + (flags.seed ? 600_000 : 300_000)
     for (;;) {

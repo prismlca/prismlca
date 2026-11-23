@@ -20,6 +20,7 @@ import {
 import { join } from 'node:path'
 import { listProcesses, type ProcessInfo } from '../../e2e/processes'
 import type { Install } from '../../e2e/app'
+import type { CopyReport } from './copy'
 
 export interface SessionRecord {
   name: string
@@ -34,8 +35,13 @@ export interface SessionRecord {
   /** Set by the launching command once it has recorded `host`; the host writes nothing before. */
   hostRecorded: boolean
   install: Install
-  mode: 'fresh'
+  /** 'fresh': empty folders of its own; 'copy': a copy of the person's data and profile (copy.ts). */
+  mode: 'fresh' | 'copy'
+  /** What the copy was taken from, when, and how big it is (mode 'copy'). */
+  copy?: CopyReport
   seeded: boolean
+  /** The providers whose stored keys launch copied in (`--keys`); null when it was not asked to. */
+  keys: string[] | null
   /** The build the app was started from (fingerprints from build.json at launch or the last restart). */
   build: { src: string; out: string }
   /** The backend sources the app was started from; the backend runs them as they were at that moment. */

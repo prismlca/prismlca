@@ -28,6 +28,7 @@ function record(over: Partial<SessionRecord> = {}): SessionRecord {
     },
     mode: 'fresh',
     seeded: false,
+    keys: null,
     build: { src: 'S1', out: 'O1' },
     backendSrc: 'B1',
     logs: `${FE}/.cache/control-prism/logs/default`,
@@ -47,6 +48,7 @@ function backend(over: Partial<BackendFacts> = {}): BackendFacts {
     brightwayDir: `${ROOT}/data/brightway`,
     pythonPath: '/w/backend/src',
     editableSrc: '/main/backend/src',
+    keySettings: [],
     ...over
   }
 }
@@ -74,6 +76,8 @@ function app(over: Partial<AppFacts> = {}): AppFacts {
     processes: [],
     backends: [backend()],
     openInRealDirs: [],
+    keyStore: 'basic_text',
+    storedKeys: [],
     ...over
   }
 }
@@ -209,6 +213,59 @@ describe('judge', () => {
     expect(
       checks.some((c) => c.status === 'note' && /backend\/\.env sets PRISM_BRIGHTWAY_DIR/.test(c.text))
     ).toBe(true)
+  })
+
+  it('refuses stored keys nobody asked for, and keys the app cannot read; notes the ones it can', () => {
+    const keys = [
+      { provider: 'openai', readable: true },
+      { provider: 'openrouter', readable: true }
+    ]
+    expect(failures(input({ app: app({ storedKeys: keys }) }))).toEqual([
+      expect.stringMatching(/holds stored keys \(openai, openrouter\) though launch was not asked/)
+    ])
+    const asked = record({ keys: ['openai', 'openrouter'] })
+    const notes = judge(input({ record: asked, app: app({ storedKeys: keys }) })).filter(
+      (c) => c.status === 'note'
+    )
+    expect(notes.map((c) => c.text)).toEqual([
+      expect.stringMatching(/openai, openrouter .* bills your provider/)
+    ])
+    const unreadable = [keys[0], { provider: 'openrouter', readable: false }]
+    expect(failures(input({ record: asked, app: app({ storedKeys: unreadable }) }))).toEqual([
+      expect.stringMatching(/cannot decrypt your stored key\(s\) for openrouter/)
+    ])
+    const none = judge(input({ record: record({ keys: [] }) })).filter((c) => c.status === 'note')
+    expect(none.map((c) => c.text)).toEqual([expect.stringMatching(/there were none/)])
+  })
+
+  it('refuses provider keys in the backend nobody asked for, as backend/.env can set them', () => {
+    const keyed = app({ backends: [backend({ keySettings: ['PRISM_OPENAI_API_KEY'] })] })
+    expect(failures(input({ app: keyed }))).toEqual([
+      expect.stringMatching(/backend has provider keys \(PRISM_OPENAI_API_KEY\) though launch was not asked/)
+    ])
+    const asked = record({ keys: ['openai'] })
+    const readable = [{ provider: 'openai', readable: true }]
+    expect(failures(input({ record: asked, app: { ...keyed, storedKeys: readable } }))).toEqual([])
+  })
+
+  it("wants the app's own search model on a copy and offline hashing on an empty install", () => {
+    const copy = {
+      from: { data: '/home/u/.local/share/Prism LCA', profile: '/home/u/.config/prism-lca' },
+      at: '2026-11-21T18:00:00.000Z',
+      files: 3,
+      bytes: 10,
+      attempts: 1,
+      shared: true
+    }
+    const appModel = app({ env: { ...app().env, PRISM_EMBEDDING_BACKEND: null } })
+    expect(failures(input({ record: record({ mode: 'copy', copy }), app: appModel }))).toEqual([])
+    expect(failures(input({ record: record({ mode: 'copy', copy }) }))).toEqual([
+      expect.stringMatching(/embeds with hashing, but the copied index/)
+    ])
+    expect(failures(input({ record: record({ mode: 'copy' }), app: appModel }))).toEqual([
+      expect.stringMatching(/does not say of what/)
+    ])
+    expect(failures(input({ app: appModel }))).toEqual([expect.stringMatching(/would download first/)])
   })
 
   it('says outside Linux that the backend environment was not read', () => {

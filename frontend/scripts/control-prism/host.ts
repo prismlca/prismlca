@@ -27,6 +27,7 @@ import {
 } from './actions'
 import { realDirs } from './doctor'
 import { gatherAppFacts } from './facts'
+import { forgetKeys } from './keys'
 import { seed } from './seed'
 import { NO_PATH_RULE, readSession, updateSession, type SessionRecord } from './session'
 import { runWait, withDeadline } from './waits'
@@ -83,7 +84,12 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   /** Starts the app on the session's folders and wires its output, console and end into the host. */
   const start = async (): Promise<RunningApp> => {
-    const app = await launch(record.install)
+    // A copy was indexed with the app's own search model; an empty install embeds offline. Keys copied in
+    // on request were encrypted with the system's key store, so only then does the app use it.
+    const app = await launch(record.install, {
+      searchModel: record.mode === 'copy' ? 'app' : 'hashing',
+      keyStore: record.keys ? 'system' : 'test'
+    })
     const proc = app.app.process()
     proc.stdout?.on('data', (b: Buffer) => appLog.write(b))
     proc.stderr?.on('data', (b: Buffer) => appLog.write(b))
@@ -143,7 +149,10 @@ export async function runHost(frontend: string, name: string): Promise<void> {
     } catch (e) {
       lines.push(`the app needed help to end: ${(e as Error).message}`)
     }
-    if (keep) lines.push(`kept ${record.install.root}`)
+    // The person's stored keys go first and on their own (removing the folders is best effort); when they
+    // cannot, the stop fails, and the command line's cleanup tries again with the record still in place.
+    const hadKeys = forgetKeys(record.install.userData)
+    if (keep) lines.push(`kept ${record.install.root}${hadKeys ? ', without the stored keys' : ''}`)
     else {
       removeInstall(record.install)
       lines.push(`removed ${record.install.root}`)
@@ -289,7 +298,14 @@ export async function runHost(frontend: string, name: string): Promise<void> {
   setInterval(() => {
     if (ending || Date.now() - lastCommand < idleMs) return
     say(`no command for ${record.idleMinutes} min; quitting the app`)
-    void stop(false).then(() => process.exit(0))
+    void stop(false).then(
+      () => process.exit(0),
+      (e: Error) => {
+        // The record stays as it is: the next command finds the host gone and cleans up again.
+        say(`the idle stop did not finish: ${e.message}`)
+        process.exit(1)
+      }
+    )
   }, 30_000).unref()
 }
 
