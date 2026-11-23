@@ -21,6 +21,7 @@ import { useSortState } from '../lib/useSortState'
 import { deliverBase64, deliverDataUrl, XLSX_MIME } from '../lib/download'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import ModelPickDialog from './results/ModelPickDialog'
 import { Heatmap, HeatScale } from './results/Heatmap'
 import type { Matrix, MethodInfo, Picked, StackedRow } from './results/types'
@@ -1033,7 +1034,7 @@ export default function Results({
               onMouseDown={(e) => e.target === e.currentTarget && setZoomed(null)}
             >
               <EscapeCloser onClose={() => setZoomed(null)} />
-              <div className="chart-zoom-box">
+              <DialogBox className="chart-zoom-box" label={zoomed.title}>
                 <div className="chart-zoom-head">
                   <span>{zoomed.title}</span>
                   {zoomed.id === 'heatmap' ? <HeatScale /> : null}
@@ -1051,7 +1052,7 @@ export default function Results({
                         return p ? indicatorChart(p, true) : null
                       })()}
                 </div>
-              </div>
+              </DialogBox>
             </div>
           ) : null}
 

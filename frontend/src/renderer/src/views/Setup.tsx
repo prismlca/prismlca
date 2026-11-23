@@ -5,6 +5,7 @@ import ImportProgress, { type ImportStatus } from '../components/ImportProgress'
 import { fmtInt } from '../lib/format'
 import { SetupHelp, SetupStep } from './SetupParts'
 import { ReleaseStep, useEcoinventRelease } from './ReleaseStep'
+import DialogBox from '../components/DialogBox'
 
 /** The registry entry the backend keeps per imported background (subset the result panel shows). */
 interface ImportedEntry {
@@ -138,7 +139,7 @@ export default function Setup({
   const bafu = source === 'bafu'
 
   return (
-    <div className="modal sheet setup-sheet" onClick={(e) => e.stopPropagation()}>
+    <DialogBox className="modal sheet setup-sheet" label={bafu ? 'Import BAFU:20XY' : 'Import ecoinvent'}>
       <div className="sheet-head">
         <div className="sheet-head-grow">
           <h3>{bafu ? 'Import BAFU:20XY' : 'Import ecoinvent'}</h3>
@@ -292,6 +293,6 @@ export default function Setup({
           )}
         </div>
       </div>
-    </div>
+    </DialogBox>
   )
 }

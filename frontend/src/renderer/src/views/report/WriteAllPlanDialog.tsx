@@ -36,17 +36,16 @@ export default function WriteAllPlanDialog({
   onReset: () => void
   onRun: () => void
 }): JSX.Element {
+  const title = plan.items.some((i) => i.action === 'write')
+    ? 'Write the report'
+    : plan.items.some((i) => i.action === 'update')
+      ? 'Update the report'
+      : 'Rewrite the report'
   return (
-    <Overlay onClose={onClose} className="modal sheet rsec-plan">
+    <Overlay onClose={onClose} className="modal sheet rsec-plan" label={title}>
       <div className="sheet-head">
         <div className="sheet-head-grow">
-          <h3>
-            {plan.items.some((i) => i.action === 'write')
-              ? 'Write the report'
-              : plan.items.some((i) => i.action === 'update')
-                ? 'Update the report'
-                : 'Rewrite the report'}
-          </h3>
+          <h3>{title}</h3>
           {/* Which models are about to work is a fact of this run, said before Run is pressed. */}
           <p>
             Writes with <code>{writerModel()}</code>; a second model (your Review model) reads every chapter

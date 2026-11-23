@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import { addUserModel, orCatalogue, type OrCatalogueRow } from '../lib/ai'
 import { fmtInt } from '../lib/format'
 
@@ -96,7 +97,7 @@ export default function AddModelDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div className="modal addmodel-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal addmodel-modal" label="Add a model">
         <h3>Add a model</h3>
         <p className="props-sub">
           Everything OpenRouter serves. What you pick is added to your own list and marked as yours — PrismLCA
@@ -183,7 +184,7 @@ export default function AddModelDialog({
             Close
           </button>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

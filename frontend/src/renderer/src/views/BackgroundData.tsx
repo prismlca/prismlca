@@ -4,6 +4,7 @@ import { errMsg } from '../lib/errors'
 import ImportProgress, { type ImportStatus } from '../components/ImportProgress'
 import { fmtInt } from '../lib/format'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 
 type BackgroundSource = 'ecoinvent' | 'bafu'
 
@@ -283,7 +284,7 @@ export default function BackgroundData({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet bg-sheet" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet bg-sheet" label="Background data">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Background data</h3>
@@ -661,7 +662,7 @@ export default function BackgroundData({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

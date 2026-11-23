@@ -18,6 +18,7 @@ import { assignFolder, getFolders, reloadFolders, subscribeFolders } from '../li
 import { bytesFromBase64, deliverBase64, deliverBytes, onDelivery, XLSX_MIME } from '../lib/download'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 
 /** The app's window furniture, as markup rather than as a component — there is no generic Sheet, and
  *  inventing one for two dialogs would mean touching ModelInfo and Settings to keep it honest. */
@@ -31,7 +32,7 @@ function Sheet(props: {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <EscapeCloser onClose={() => props.onClose()} />
-      <div className="modal sheet bundle-sheet" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet bundle-sheet" label={props.title}>
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>{props.title}</h3>
@@ -45,7 +46,7 @@ function Sheet(props: {
         <div className="sheet-foot">
           <div className="acts">{props.footer}</div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

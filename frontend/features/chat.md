@@ -30,7 +30,7 @@ disabled and says so.
 What a fresh instance offers — the dock without a key — and the model picker, which needs none:
 
 ```sh
-node scripts/control-prism.mjs click "css=.navitem >> has-text=Model"
+node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Model"
 node scripts/control-prism.mjs wait disabled "Message to the assistant"
 node scripts/control-prism.mjs wait attr "Message to the assistant" placeholder "/No OpenRouter API key/"
 node scripts/control-prism.mjs wait disabled "Send"

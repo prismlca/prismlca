@@ -11,6 +11,7 @@ import { mutationRunner } from '../lib/mutation'
 import { errMsg } from '../lib/errors'
 import { parseAmount } from '../lib/numberFormat'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import FormulaInput from '../components/FormulaInput'
 import { lintFormula, type ParamName } from '../lib/formula'
 
@@ -580,7 +581,10 @@ export default function Scenarios({
       {draft ? (
         <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closeEditor()}>
           <EscapeCloser onClose={closeEditor} />
-          <div className="modal sheet scenario-modal" onClick={(e) => e.stopPropagation()}>
+          <DialogBox
+            className="modal sheet scenario-modal"
+            label={draft.mode === 'edit' ? 'Edit scenario' : 'New scenario'}
+          >
             <div className="sheet-head">
               <div className="sheet-head-grow">
                 <h3>{draft.mode === 'edit' ? 'Edit scenario' : 'New scenario'}</h3>
@@ -729,7 +733,7 @@ export default function Scenarios({
                 )}
               </div>
             </div>
-          </div>
+          </DialogBox>
         </div>
       ) : null}
 

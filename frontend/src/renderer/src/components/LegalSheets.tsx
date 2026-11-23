@@ -12,6 +12,7 @@ import {
 } from '../../../shared/licence'
 import { GITHUB_URL, openLink } from '../lib/links'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 
 /**
  * The licence and the third-party notices, read inside the app.
@@ -45,12 +46,7 @@ function Sheet({
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div
-        className="modal sheet legal-sheet"
-        role="dialog"
-        aria-label={label}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <DialogBox className="modal sheet legal-sheet" label={label}>
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>{title}</h3>
@@ -62,7 +58,7 @@ function Sheet({
         </div>
         <div className="legal-body">{children}</div>
         <div className="sheet-foot">{foot}</div>
-      </div>
+      </DialogBox>
     </div>,
     document.body
   )

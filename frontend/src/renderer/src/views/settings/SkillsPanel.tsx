@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createSkill, deleteSkill, listSkills, updateSkill, type Skill } from '../../lib/ai'
 import { safeMarkdownUrl } from '../../lib/markdownUrl'
+import DialogBox from '../../components/DialogBox'
 
 /** Read-only skill viewer: the full Markdown instructions, rendered. Works for built-ins too.
  *
@@ -27,7 +28,7 @@ function SkillViewer({ skill, onClose }: { skill: Skill; onClose: () => void }):
 
   return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal skill-view" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal skill-view" label={skill.name}>
         <h3>
           {skill.name}
           {skill.builtin ? <span className="ai-skill-badge">built-in</span> : null}
@@ -44,7 +45,7 @@ function SkillViewer({ skill, onClose }: { skill: Skill; onClose: () => void }):
             Close
           </button>
         </div>
-      </div>
+      </DialogBox>
     </div>,
     document.body
   )

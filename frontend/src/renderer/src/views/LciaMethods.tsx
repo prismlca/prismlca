@@ -7,6 +7,7 @@ import { AddIcon, CopyIcon, PencilIcon, TrashIcon } from '../components/icons'
 import { mutationRunner } from '../lib/mutation'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
+import DialogBox from '../components/DialogBox'
 import LciaFactorEditor from './LciaFactorEditor'
 import type { MethodDetail, Ref } from './lciaFactors'
 
@@ -439,7 +440,7 @@ function DuplicateDialog({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={() => onClose()} />
-      <div className="modal sheet lcia-dup" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet lcia-dup" label="Duplicate indicators">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Duplicate indicators</h3>
@@ -525,7 +526,7 @@ function DuplicateDialog({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

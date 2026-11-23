@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ConfirmSpec } from '../views/ConfirmDialog'
 import type { TagGroup } from '../lib/server/routes'
 import EscapeCloser from './EscapeCloser'
+import DialogBox from './DialogBox'
 import TagAdoptRow from './TagAdoptRow'
 
 /**
@@ -75,7 +76,7 @@ export default function TagManager({
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <EscapeCloser onClose={onClose} />
-      <div className="modal sheet tagman-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet tagman-modal" label="Tags">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Tags</h3>
@@ -275,7 +276,7 @@ export default function TagManager({
           </div>
           <TagAdoptRow models={otherModels} onAdopt={onAdopt} />
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }

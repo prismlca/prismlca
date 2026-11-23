@@ -17,6 +17,7 @@ import type { TypedPlace } from '../../lib/report/staleness'
 import { writeStatus, writeTooltip, type WriteStage } from '../../lib/report/writeStatus'
 import { indicatorLabel } from '../../lib/methods'
 import EscapeCloser from '../../components/EscapeCloser'
+import DialogBox from '../../components/DialogBox'
 import { NumberInput, shownNumber } from '../../components/NumberInput'
 
 /** The inventory table's row count as the field clamps it: 0 (= all rows) to 5000. */
@@ -108,7 +109,7 @@ export default function ChapterEditorSheet({
       {/* The text and the instruction moved out of the chapter list on purpose: a six-line box and an
               eight-line prompt inside a row you also drag made both hard to use and the list hard to read.
               Here they get the room they need, and the list stays a list. */}
-      <div className="modal sheet rsec-modal" onClick={(e) => e.stopPropagation()}>
+      <DialogBox className="modal sheet rsec-modal" label={chapterLabel(open)}>
         {/* Sheet frame (draft popup_edit_chapters): the head with its ✕ and the foot with Write
                 stay put while the long middle scrolls — the exit and the main action never drift away. */}
         <div className="sheet-head">
@@ -624,7 +625,7 @@ export default function ChapterEditorSheet({
             </button>
           </div>
         </div>
-      </div>
+      </DialogBox>
     </div>
   )
 }
