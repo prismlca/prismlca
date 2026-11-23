@@ -1,10 +1,11 @@
 /**
- * Which Python the driven app's backend runs on. An unpackaged app starts it as `uv run prism-lca-backend`
- * in `backend/` next to its `frontend/`. In the main checkout, or in a worktree with an environment of its
- * own, that is right as it is. A worktree without one would have uv create a fresh environment on the first
- * start (minutes, gigabytes), and a worktree whose `.venv` is a link to the main checkout's lets uv re-sync
- * the main environment's editable install onto the worktree — after which every other session's backend
- * runs this worktree's code.
+ * Which Python the backend of an app started from this checkout runs on — for the end-to-end tests and for
+ * control-prism alike, since both start the app through launch() in app.ts. An unpackaged app starts its
+ * backend as `uv run prism-lca-backend` in `backend/` next to its `frontend/`. In the main checkout, or in a
+ * worktree with an environment of its own, that is right as it is. A worktree without one would have uv
+ * create a fresh environment on the first start (minutes, gigabytes), and a worktree whose `.venv` is a
+ * link to the main checkout's lets uv re-sync the main environment's editable install onto the worktree —
+ * after which every other session's backend runs this worktree's code.
  *
  * So in a worktree without its own real `.venv`, a small `uv` placed first on PATH runs the main checkout's
  * installed backend entry point with this worktree's `backend/src` first on PYTHONPATH (ahead of the
@@ -18,8 +19,8 @@ import { delimiter, dirname, join, resolve } from 'node:path'
 export interface BackendPlan {
   via: 'own' | 'shim'
   detail: string
-  /** Directory to put first on PATH (shim only). */
-  pathDir?: string
+  /** What the shim runs (shim only): the main checkout's backend entry point, with `src` first on PYTHONPATH. */
+  shim?: { entry: string; src: string }
   /** Set when the worktree's dependency lock differs from the environment it borrows. */
   warning?: string
 }
@@ -37,7 +38,8 @@ function isRealDir(path: string): boolean {
 export function mainCheckout(frontend: string): string {
   const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
     cwd: frontend,
-    encoding: 'utf8'
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe']
   }).trim()
   return dirname(common)
 }
@@ -46,9 +48,22 @@ function entryPoint(venv: string): string {
   return join(venv, 'bin', 'prism-lca-backend')
 }
 
-export function planBackend(frontend: string, binDir: string): BackendPlan {
+/** Decides how the backend of an app started from `frontend` will run. Writes nothing (see backendEnv). */
+export function planBackend(frontend: string): BackendPlan {
   const backend = resolve(frontend, '..', 'backend')
-  const main = mainCheckout(frontend)
+  // Sources without git (an unpacked archive) have no worktrees and nothing to borrow from. Only the missing
+  // `.git` says so: a worktree where git fails must not fall back to `uv run`, which would build or re-sync
+  // the very environment the shim keeps away from.
+  if (!existsSync(resolve(frontend, '..', '.git'))) {
+    return { via: 'own', detail: `uv run in ${backend} (not a git checkout)` }
+  }
+  let main: string
+  try {
+    main = mainCheckout(frontend)
+  } catch (e) {
+    const why = (e as { stderr?: string }).stderr?.trim() || (e as Error).message
+    throw new Error(`git could not say which checkout ${resolve(frontend, '..')} belongs to: ${why}`)
+  }
   if (resolve(main, 'backend') === backend) {
     return { via: 'own', detail: `uv run in the main checkout (${backend})` }
   }
@@ -72,11 +87,6 @@ export function planBackend(frontend: string, binDir: string): BackendPlan {
         `(${entry} is missing). Create one here with \`uv sync --extra dev\` in backend/.`
     )
   }
-  const src = join(backend, 'src')
-  mkdirSync(binDir, { recursive: true })
-  const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
-  writeFileSync(join(binDir, 'uv'), `#!/bin/sh\nPYTHONPATH=${q(src)} exec ${q(entry)}\n`)
-  chmodSync(join(binDir, 'uv'), 0o755)
   let warning: string | undefined
   try {
     if (
@@ -93,11 +103,19 @@ export function planBackend(frontend: string, binDir: string): BackendPlan {
   return {
     via: 'shim',
     detail: `the main checkout's environment with this worktree's backend/src first on PYTHONPATH`,
-    pathDir: binDir,
+    shim: { entry, src: join(backend, 'src') },
     warning
   }
 }
 
-export function withPathFirst(dir: string, path: string | undefined): string {
-  return path ? `${dir}${delimiter}${path}` : dir
+/** What the app's environment needs for its backend to run as planned: PATH led by the folder the shim is
+ *  written to (`binDir`), or nothing to change. */
+export function backendEnv(plan: BackendPlan, binDir: string): { PATH?: string } {
+  if (!plan.shim) return {}
+  const q = (s: string): string => `'${s.replace(/'/g, `'\\''`)}'`
+  mkdirSync(binDir, { recursive: true })
+  writeFileSync(join(binDir, 'uv'), `#!/bin/sh\nPYTHONPATH=${q(plan.shim.src)} exec ${q(plan.shim.entry)}\n`)
+  chmodSync(join(binDir, 'uv'), 0o755)
+  const path = process.env.PATH
+  return { PATH: path ? `${binDir}${delimiter}${path}` : binDir }
 }
