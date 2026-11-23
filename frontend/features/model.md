@@ -11,10 +11,11 @@ boxes on the canvas.
   description, location, classification (ISIC, CPC) and reference product in the inspector.
 - Inputs and outputs of the selected process: two tabs, "+ Add input flow" / "+ Add output flow" through
   the flow picker, amounts with a formula toggle (fx), a comment per flow, remove.
-- Link a background dataset: search in the left panel, "Select" places it as a locked reference box;
-  "Localize (edit)" in its context menu makes an editable copy.
+- Link a background dataset: search in the left panel, "Select" places it as a locked reference box,
+  and dragging the hit onto the canvas places it where it is dropped; "Localize (edit)" in its context
+  menu makes an editable copy.
 - Link two boxes by dragging from one box's right handle to another's left handle (an "Add exchange"
-  dialog asks for the amount); click an arrow to edit its amount.
+  dialog asks for the amount); click an arrow to edit its amount. Dragging a box moves it.
 - Canvas tools: auto-layout, pan mode, tag highlight, colour brush, groups, expand/collapse upstream.
 - Calculate the selected process with the chosen LCIA method; the result bar above the canvas shows the
   score and turns "Outdated" after any change to the model.
@@ -77,11 +78,37 @@ node scripts/control-prism.mjs select "Active model" bottle
 node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
 ```
 
+Link two boxes by drag — a second process "glass" into "bottle" — and see the link stored:
+
+```sh
+node scripts/control-prism.mjs click "title=Add a new process to the model"
+node scripts/control-prism.mjs type "label=Name" glass --enter
+node scripts/control-prism.mjs wait visible "css=.react-flow__node >> has-text=glass"
+node scripts/control-prism.mjs drag "css=.react-flow__node >> has-text=glass >> css=.react-flow__handle-right" "css=.react-flow__node >> has-text=bottle >> css=.react-flow__handle-left"
+node scripts/control-prism.mjs wait visible "role=dialog:Add exchange"
+node scripts/control-prism.mjs type "role=dialog:Add exchange >> role=spinbutton" 3
+node scripts/control-prism.mjs click "role=dialog:Add exchange >> role=button:Add"
+node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Add input 'glass' \(3 unit\) to 'bottle'/"
+```
+
+Drop a search hit onto the canvas — it lands as a locked reference box with its top-left corner at the
+drop point:
+
+```sh
+node scripts/control-prism.mjs type "placeholder=e.g. electricity" widget
+node scripts/control-prism.mjs click "role=button:Search"
+node scripts/control-prism.mjs wait visible "css=.res >> has-text=Test widget, at plant" --timeout 240000
+node scripts/control-prism.mjs drag "css=.res >> has-text=Test widget, at plant" "css=.react-flow__pane" --to-offset 120,120
+node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Test widget"
+```
+
 - Toolbar: `"Active model"` and `"LCIA method"` are the two choosers; `"Model info"`, `"Export model"`,
   `"Dark mode"` are named buttons; `"role=button:Undo"` and `"role=button:Redo"` carry the step they
   would take back in their title ("Undo: Set amount … (Ctrl+Z)", or "Nothing to undo").
-- Boxes: `"css=.react-flow__node >> has-text=<name>"`; a selected box has the class `sel`, a locked
-  background reference `external`. Inside a box: `"title=Assign tags"`, `"title=Colour-code this process"`.
+- Boxes: `"css=.react-flow__node >> has-text=<name>"`; inside it, `.pnode` carries the class `sel` when
+  the box is selected and `external` when it is a locked background reference. Inside a box:
+  `"title=Assign tags"`, `"title=Colour-code this process"`, and the two link handles
+  `"css=.react-flow__handle-left"` (in) and `"css=.react-flow__handle-right"` (out).
 - Inspector: `"role=tab:/Inputs/"`, `"role=tab:/Outputs/"` (the tab names carry a count), a flow's
   amount field `"css=.flow-list .flow >> has-text=Carbon dioxide >> css=input >> nth=0"`, and
   `"role=button:Comment on this flow"`. The Name and Description fields have no accessible name yet:
@@ -90,7 +117,9 @@ node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
   `"css=.flowpick-search"`, each flow a button named "<name> <compartment> <unit>", the amount
   `"role=textbox:Amount"`, `"role=button:Add"`, and `"Close"`.
 - Search panel: `"placeholder=e.g. electricity"`, `"role=button:Search"`, a database's checkbox by its
-  name, and on each hit `"role=button:Select"` (scope it to the hit: several are on screen).
+  name, each hit `"css=.res >> has-text=<name>"` (what `drag` takes), and on each hit
+  `"role=button:Select"` (scope it to the hit: several are on screen).
+- The empty canvas, as a drop target: `"css=.react-flow__pane"`.
 
 ## Gotchas
 
@@ -111,9 +140,16 @@ node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
 - Selecting another box rebuilds the inspector: text typed but not committed is lost.
 - The method chooser lists hundreds of methods; `select` takes the exact label or a `/regex/` that
   matches exactly one. A changed choice may read back the old value for a moment — wait on its effect.
-- Dragging a search hit onto the canvas and dragging between handles need a real pointer drag, which
-  control-prism does not drive yet: place datasets with the hit's "Select" button. Linking two of your
-  own processes by drag is manual for now.
+- **A drag's answer is not its proof.** It says whether the page followed the pointer itself (a link
+  between handles, moving a box) or an HTML5 drag ran (a search hit), and for the latter whether the
+  drop was taken. The proof is the effect: the "Add exchange" dialog and the Undo title naming the
+  link, the new box on the canvas.
+- A link starts on a box's right handle and ends on another box's left handle.
+- `--to-offset` counts from the pane's top-left corner, and a dropped hit's box puts its own top-left
+  corner there; drop on an empty spot. Dragging a box itself (`drag` from the box onto the pane, grabbed
+  at its centre) puts its centre at the drop point, give or take the 2 px the drag starts with.
+- Search hits are gone once you leave the Model page: search again after coming back.
+- A hit whose region is not picked yet does not drag (its title says "Pick a region first").
 - "Export model" and workspace backups open native save dialogs: manual.
 - Delete and Control+Z do nothing while a modal is open or a field has the focus — press Escape or
   click the canvas first.

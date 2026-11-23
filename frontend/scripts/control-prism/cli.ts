@@ -44,6 +44,10 @@ driving                              (<target>: see "targets" below)
   type <target> <text> [--append] [--enter] [--commit]   --commit leaves the field (blur commits)
   press <keys>… [--target <target>]                      e.g. press Control+z · press Tab Enter
   select <target> <option label>
+  drag <from> <to> [--from-offset <x>,<y>] [--to-offset <x>,<y>] [--steps <n>]
+                     press on <from>, move to <to>, let go: links between handles, a search hit onto the
+                     canvas, a card into a folder. Offsets count from the element's top-left corner
+                     (default: its centre); --steps pointer moves on the way (default 10)
   wait <condition> … [--timeout <ms>]                    see "wait" below
   console [--all] [--since <n>]      the window's errors since launch (or since message n); exit 1 if any
   snapshot [--target <target>] [--options]   the accessibility tree: roles and names, as targets use them
@@ -62,7 +66,7 @@ ${WAIT_HELP.split('\n')
 
 Every session belongs to the checkout that launched it (--session or CONTROL_PRISM_SESSION picks one of
 several; default "default"). Its logs are in .cache/control-prism/logs/<session>/. Native dialogs (file
-pickers, OAuth) are manual: they are not driven.`
+pickers, OAuth) and drags in from other programs are manual: they are not driven.`
 
 function bundlePath(): string {
   // The command line runs as one bundle in .cache/; FRONTEND (e2e/app.ts) is computed from its folder.
@@ -193,6 +197,7 @@ async function main(argv: string[]): Promise<void> {
     case 'type':
     case 'press':
     case 'select':
+    case 'drag':
     case 'wait':
     case 'snapshot':
     case 'read': {

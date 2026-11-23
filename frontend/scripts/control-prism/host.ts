@@ -7,7 +7,8 @@
  * when the app goes away, and quits the app after a stretch without commands, so a forgotten session does
  * not run on.
  */
-import { createWriteStream } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { createWriteStream, readFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { launch, quit, removeInstall, type RunningApp } from '../../e2e/app'
@@ -26,6 +27,7 @@ import {
   type Flags
 } from './actions'
 import { realDirs } from './doctor'
+import { drag, InputBroken } from './drag'
 import { gatherAppFacts } from './facts'
 import { forgetKeys } from './keys'
 import { seed } from './seed'
@@ -39,7 +41,19 @@ export interface Request {
   /** When the caller stops waiting (ms since 1970); a request still queued then is dropped, not run. */
   expires?: number
 }
-export type Reply = { ok: true; text: string } | { ok: false; error: string }
+/** `note` is said beside the answer, on stderr: something about the session rather than the command. */
+export type Reply = ({ ok: true; text: string } | { ok: false; error: string }) & { note?: string }
+
+/** The bundle this process runs, as a fingerprint. The command line rebuilds it whenever a source of
+ *  control-prism changes (tests too, which leave it the same); a host keeps the code it started with until
+ *  the session ends. */
+function codePrint(): string | null {
+  try {
+    return createHash('sha256').update(readFileSync(__filename)).digest('hex')
+  } catch {
+    return null
+  }
+}
 
 interface ConsoleEntry {
   n: number
@@ -48,7 +62,12 @@ interface ConsoleEntry {
   at: string
 }
 
+/** The commands that act on the window as a person does; looking (snapshot, shot, read, wait) is not one. */
+const DRIVING = new Set(['click', 'hover', 'type', 'press', 'select', 'drag'])
+
 export async function runHost(frontend: string, name: string): Promise<void> {
+  // Before anything else: a rebuild while the app starts must not become the code this host counts as its own.
+  const startedCode = codePrint()
   // The launching command records this process's identity right after starting it; until then the record
   // is its to write, so the host waits — a write of its own could be overwritten by that update.
   let record = readSession(frontend, name)
@@ -161,8 +180,13 @@ export async function runHost(frontend: string, name: string): Promise<void> {
     return lines.join('\n')
   }
 
+  /** Set when a drag broke off with the window not answering: it may still finish on its own, so nothing
+   *  is driven on top of it until a restart gives the session a fresh window. */
+  let inputBroken: string | null = null
+
   const handle = async (req: Request): Promise<string> => {
     const page = running.page
+    if (inputBroken && DRIVING.has(req.cmd)) throw new Error(inputBroken)
     switch (req.cmd) {
       case 'click':
         return click(page, req.args, req.flags)
@@ -174,6 +198,17 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         return press(page, req.args, req.flags)
       case 'select':
         return select(page, req.args, req.flags)
+      case 'drag':
+        try {
+          return await drag(page, req.args, req.flags)
+        } catch (e) {
+          if (e instanceof InputBroken) {
+            inputBroken =
+              'a drag broke off earlier with the window not answering, and may have finished on its own since; ' +
+              'this session drives nothing more until restart — look with snapshot or shot, then restart or stop'
+          }
+          throw e
+        }
       case 'wait':
         return runWait(page, record.install.downloads, req.args, req.flags)
       case 'snapshot':
@@ -225,6 +260,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
           'build' | 'backendSrc'
         > | null
         update({ processes: snapshotProcesses(), ...(started ?? {}) })
+        inputBroken = null
         return `the app quit and started again on the same data${quitNote}`
       }
       default:
@@ -234,6 +270,11 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const reply = (status: number, body: Reply): void => {
+      if (startedCode && codePrint() !== startedCode) {
+        body.note =
+          'control-prism itself changed after this session started, and the session still runs its old ' +
+          'code: stop and launch to drive with the new'
+      }
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(body))
     }
@@ -273,11 +314,13 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         async (e: Error) => {
           const raw = ['click', 'hover', 'type', 'select'].includes(parsed.cmd)
             ? parsed.args[0]
-            : parsed.cmd === 'wait'
-              ? parsed.args[1]
-              : typeof parsed.flags.target === 'string'
-                ? parsed.flags.target
-                : undefined
+            : parsed.cmd === 'drag'
+              ? parsed.args.slice(0, 2)
+              : parsed.cmd === 'wait'
+                ? parsed.args[1]
+                : typeof parsed.flags.target === 'string'
+                  ? parsed.flags.target
+                  : undefined
           // The explanation asks the window again; a frozen window must not hold back the answer.
           const error = await withDeadline(
             explainFailure(running.page, raw, e, parsed.cmd === 'wait'),

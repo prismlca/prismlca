@@ -64,4 +64,5 @@ node scripts/control-prism.mjs press Escape
 - A run is going exactly while the Stop button is there. Trace rows fold into one summary button when
   the turn is stored, so counting trace rows after the end finds none.
 - "New chat" stores an empty chat at once; "Delete chat" asks for no confirmation.
-- Attaching files opens a native file dialog: manual.
+- Attaching files opens a native file dialog, and dropping files onto the chat needs a drag in from
+  another program: both manual.
