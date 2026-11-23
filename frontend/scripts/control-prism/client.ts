@@ -43,6 +43,7 @@ export function deadline(cmd: string, flags: Parsed['flags']): number {
     case 'type':
     case 'press':
     case 'select':
+    case 'drag':
     case 'snapshot':
       return (own ?? 10_000) + MARGIN_MS
     case 'restart':
@@ -90,6 +91,7 @@ export async function send(
     )
   }
   const reply = (await res.json()) as Reply
+  if (reply.note) process.stderr.write(`note: ${reply.note}\n`)
   if (!reply.ok) throw new Exit(1, reply.error)
   return reply.text
 }

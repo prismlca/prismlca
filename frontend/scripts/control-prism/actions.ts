@@ -204,36 +204,44 @@ export function plainError(message: string, max = 6): string {
 }
 
 /**
- * A failed action, said in terms of the target: nothing matched (with the way to find the right name),
- * several matched (with the ways to narrow), or the one match never became actionable.
+ * A failed action, said in terms of its targets (a drag has two): each that matches nothing (with the way to
+ * find the right name) or several (with the ways to narrow) — or, when each names one element, that one of
+ * them never became actionable.
  */
 export async function explainFailure(
   page: Page,
-  raw: string | undefined,
+  raw: string | string[] | undefined,
   error: Error,
   waiting = false
 ): Promise<string> {
   const message = plainError(error.message, waiting ? 10 : 6)
-  if (!raw || !/Timeout|strict mode violation/.test(message)) return message
-  let count: number
-  try {
-    count = await toLocator(page, parseTarget(raw)).count()
-  } catch {
-    return message
+  const raws = (Array.isArray(raw) ? raw : [raw]).filter((r): r is string => !!r)
+  if (raws.length === 0 || !/Timeout|strict mode violation/.test(message)) return message
+  const problems: string[] = []
+  for (const r of raws) {
+    let count: number
+    try {
+      count = await toLocator(page, parseTarget(r)).count()
+    } catch {
+      return message
+    }
+    if (count === 0) {
+      const bare = !/^[a-z-]+~?=/.test(r) && !r.includes(' >> ')
+      problems.push(
+        `nothing matches ${r} now.` +
+          (bare ? ' A bare string is an exact aria-label;' : '') +
+          ' snapshot lists the roles and names on screen (use them as role=button:Name).'
+      )
+    } else if (count > 1) {
+      problems.push(
+        `${r} matches ${count} elements; narrow it with " >> " — a container first, or has-text=…, visible, nth=0.`
+      )
+    }
   }
-  if (count === 0) {
-    const bare = !/^[a-z-]+~?=/.test(raw) && !raw.includes(' >> ')
-    return (
-      `nothing matches ${raw} now.` +
-      (bare ? ' A bare string is an exact aria-label;' : '') +
-      ' snapshot lists the roles and names on screen (use them as role=button:Name).\n' +
-      message
-    )
-  }
-  if (count > 1) {
-    return `${raw} matches ${count} elements; narrow it with " >> " — a container first, or has-text=…, visible, nth=0.\n${message}`
-  }
+  if (problems.length > 0) return `${problems.join('\n')}\n${message}`
   // A wait that found its one element and timed out has its answer in Playwright's own lines (expected/received).
   if (waiting) return message
-  return `${raw} is there but did not become actionable (hidden, covered by a dialog, disabled or still moving) — snapshot or shot shows which.\n${message}`
+  const which =
+    raws.length === 1 ? `${raws[0]} is there but` : `each of ${raws.join(' and ')} is there, but one`
+  return `${which} did not become actionable (hidden, covered by a dialog, disabled or still moving) — snapshot or shot shows which.\n${message}`
 }

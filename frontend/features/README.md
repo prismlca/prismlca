@@ -57,6 +57,8 @@ Several sessions in one checkout take `--session <name>`. A session is invisible
   process. A change to setup or import is proven by driving those, with a fixture chosen by hand.
 - **Native dialogs are manual:** file and folder pickers, OAuth windows, save dialogs. They are not faked
   for a proof. Downloads need no dialog: they land in the session's download folder (`wait download`).
+  The same goes for drags in from another program, such as files onto the chat; drags inside the window
+  are driven (see "Drags" below).
 - **Nothing that costs money** — no chat message, no report writing, no research call — unless the
   person running the check asked for it. Only a session launched with `--keys` can spend at all, and
   `doctor` names the providers it would bill.
@@ -88,6 +90,39 @@ reader use. So when a control that a check needs has no name, give it an `aria-l
 stays the same while the control's text, title or placeholder changes with the state — and use it here.
 Class names are the fallback for elements that are not controls (a result bar, a table), and they are
 the first thing to break.
+
+## Drags
+
+`drag <from> <to>` presses on one element, nudges, moves the pointer across in steps (10 unless
+`--steps` says otherwise) and lets go — the way a hand does. It covers both kinds of drag in the app:
+those the page follows with its own pointer handlers (a link between two boxes' handles, moving a box)
+and HTML5 drag-and-drop (a search hit onto the canvas, a model card into a folder, a parameter into a
+group). An HTML5 drag carries the data the page's own dragstart put on it, so the drop handler gets
+what it gets from a person — nothing is dispatched in its place.
+
+- Both ends are named like any target and must be one element each. The press lands at the centre of
+  `<from>` and the drop at the centre of `<to>`; `--from-offset x,y` and `--to-offset x,y` count from an
+  element's top-left corner instead. Where something else lies on top of that point, `drag` refuses
+  before the button goes down and names what is in the way.
+- The answer says which kind of drag ran and, for an HTML5 drag, the kinds of data it carried and
+  whether the drop was taken. That is a hint, not the proof: wait on the effect.
+- A drag that breaks off with the button down is cancelled (Escape, then the button), so nothing is
+  dropped by accident. If the window stops answering in the middle of a drag, it may still finish later:
+  the session then refuses to drive until `restart`.
+- Some elements drag only from part of themselves — a parameter row from its name column
+  (`"css=.prow-item >> has-text=mass >> css=.pc-name"`), not from its value field. Pressed elsewhere,
+  the page cancels the drag, and the answer says so.
+- [model.md](model.md) links two boxes and drops a search hit onto the canvas. The Overview has no page
+  yet; filing a model into a folder there goes like this:
+
+```sh
+node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Overview"
+node scripts/control-prism.mjs click "title=New folder — group the models by what they are for"
+node scripts/control-prism.mjs type "role=textbox:Folder name…" Packaging --enter
+node scripts/control-prism.mjs click "css=.ov-folder.loose >> title=Expand"
+node scripts/control-prism.mjs drag "css=.ov-folder.loose .ov-model >> has-text=bottle" "css=.ov-folder >> has-text=Packaging"
+node scripts/control-prism.mjs wait text "css=.ov-folder >> has-text=Packaging >> css=.ov-folder-count" 1 --exact
+```
 
 ## Keeping the map current
 

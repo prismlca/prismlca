@@ -20,7 +20,16 @@ export const SWITCHES = new Set([
   'options',
   'help'
 ])
-export const VALUED = new Set(['session', 'timeout', 'target', 'since', 'idle'])
+export const VALUED = new Set([
+  'session',
+  'timeout',
+  'target',
+  'since',
+  'idle',
+  'from-offset',
+  'to-offset',
+  'steps'
+])
 
 export interface Parsed {
   cmd: string

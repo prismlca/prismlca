@@ -62,6 +62,7 @@ export function shellWords(line: string): string[] {
 function targetsOf(cmd: string, args: string[], flags: Record<string, string | true>): string[] {
   const found: string[] = []
   if (['click', 'hover', 'type', 'select'].includes(cmd)) found.push(args[0])
+  if (cmd === 'drag') found.push(...args.slice(0, 2))
   const named = ['app-ready', 'chat-running', 'chat-idle', 'download']
   if (cmd === 'wait' && !named.includes(args[0])) found.push(args[1])
   if (typeof flags.target === 'string') found.push(flags.target)
