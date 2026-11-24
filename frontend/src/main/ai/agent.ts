@@ -19,6 +19,7 @@ import {
   assistantToolTurn,
   type ChatMessage,
   type ProviderReplay,
+  type StreamEvent,
   type WebRecord
 } from './providers/types'
 import { PROVIDER_CAPS } from '../../shared/providerCaps'
@@ -1126,16 +1127,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   let answerReplay: ProviderReplay | undefined
 
   /** Account a round's spend, trip the cost circuit breaker, and hand the figures to the round's log line. */
-  const onUsage = (usage: {
-    cost?: number
-    prompt_tokens?: number
-    completion_tokens?: number
-    prompt_tokens_details?: { cached_tokens?: number }
-    cache_discount?: number
-    estimated?: boolean
-    generation_id?: string
-    server_tool_use?: Record<string, number>
-  }): void => {
+  const onUsage = (usage: Extract<StreamEvent, { type: 'usage' }>['usage']): void => {
     // Web lookups the provider ran INSIDE this reply: each re-ran the whole conversation through the
     // model, which is why the round's prompt count and cost are higher (V398). Counted here, named
     // in the round's trace row once its reply is complete (endLookups).
@@ -1147,14 +1139,16 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     // saying nothing at all about 26 calls (V229, measured on the 2026-08-25 Ox Alpha run).
     onCost(model.id, costOf(usage))
     // The provider's count of what it was just sent: the one exact figure the context meter and the
-    // compaction trigger have (projectTokens). An empty usage report leaves the previous reading.
+    // compaction trigger have (projectTokens) — its first pass where lookups made it bill several, whose
+    // sum is several copies of the conversation. An empty usage report leaves the previous reading.
     if (typeof usage.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
-      measured = { promptTokens: usage.prompt_tokens, chars: charsAtRequest }
-      contextTokens = usage.prompt_tokens
+      const sent = usage.context_tokens ?? usage.prompt_tokens
+      measured = { promptTokens: sent, chars: charsAtRequest }
+      contextTokens = sent
       deps.emit({
         chatId: req.chatId,
         type: 'context',
-        tokens: usage.prompt_tokens,
+        tokens: sent,
         window: model.contextTokens,
         budget: budgetTokens
       })

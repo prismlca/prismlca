@@ -1387,6 +1387,31 @@ describe("runAgent — context accounting by the provider's own count", () => {
     expect(res.contextTokens).toBe(50_000)
     expect(d.events.at(-1)).toMatchObject({ type: 'done', contextTokens: 50_000 })
   })
+
+  it('reads a round that searched at the size it was sent, not at the sum of its passes', async () => {
+    // Four passes of 40,000 tokens are billed as 160,000 — over the 131,072 budget, though the
+    // conversation itself is a third of it.
+    const call = (i: number) => ({
+      calls: [{ id: `t${i}`, name: 'get_model_graph', arguments: `{"database":"demo-model","code":"p${i}"}` }]
+    })
+    chat.rounds = [
+      { ...call(1), usage: { prompt_tokens: 20_000 } },
+      { ...call(2), usage: { prompt_tokens: 20_000 } },
+      { ...call(3), usage: { prompt_tokens: 20_000 } },
+      { ...call(4), usage: { prompt_tokens: 160_000, context_tokens: 40_000 } },
+      { ...call(5), usage: { prompt_tokens: 42_000 } },
+      { text: 'done' }
+    ]
+    const d = deps({ apiRaw: async () => ({ status: 200, body: 'y'.repeat(2_000) }) })
+    const res = await runAgent(request({ model: SMALL_WINDOW }), d.deps)
+    expect(res.outcome).toBe('answered')
+    const stubbed = chat.seen
+      .flatMap((c) => c.messages)
+      .some((m) => m.role === 'tool' && m.content === '[earlier tool result omitted to fit the context]')
+    expect(stubbed).toBe(false)
+    const levels = d.events.filter((e) => e.type === 'context') as unknown as Array<{ tokens: number }>
+    expect(levels.map((l) => l.tokens)).toEqual([20_000, 20_000, 20_000, 40_000, 42_000])
+  })
 })
 
 describe('runAgent — the confirmation card before irreversible actions', () => {

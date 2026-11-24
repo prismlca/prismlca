@@ -247,6 +247,10 @@ export type StreamEvent =
          *  — reads only this field and works the same either way. */
         cost?: number
         prompt_tokens?: number
+        /** The size of the prompt as sent, where `prompt_tokens` says more: a reply that ran lookups on
+         *  the provider's side (Anthropic) re-ran its prompt for each, and the report sums the passes.
+         *  The context meter and the compaction trigger read this; cost and the ledger read the sum. */
+        context_tokens?: number
         completion_tokens?: number
         /** Prefix-cache hits (present when the provider caches; see AiModel.explicitCache). */
         prompt_tokens_details?: { cached_tokens?: number }

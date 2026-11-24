@@ -518,7 +518,8 @@ const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v)
  *  sum would book a long search reply at five times its price, so a reply that searched is placed by
  *  its first pass, the one the conversation sets; later passes add only the results. An opened page
  *  makes a pass the same way; it has no fee of its own, its text is priced as input. An estimate, like
- *  every figure here, not checked against an invoice. */
+ *  every figure here, not checked against an invoice. The first pass is also the size of the
+ *  conversation as sent (`context_tokens`): the sum is several copies of it. */
 export function usageEvent(model: string, usage: Record<string, unknown>, firstPrompt?: number): StreamEvent {
   const input = num(usage.input_tokens)
   const written = num(usage.cache_creation_input_tokens)
@@ -533,8 +534,8 @@ export function usageEvent(model: string, usage: Record<string, unknown>, firstP
   const byTtl = isObj(usage.cache_creation) ? usage.cache_creation : null
   const hour = byTtl ? num(byTtl.ephemeral_1h_input_tokens) : 0
   const entry = getModels().find((m) => m.id === model && m.provider === 'anthropic')
-  const tierPrompt = (searches || fetches) && firstPrompt ? firstPrompt : prompt
-  const price = entry ? priceFor(entry, tierPrompt) : undefined
+  const sentPrompt = (searches || fetches) && firstPrompt ? firstPrompt : prompt
+  const price = entry ? priceFor(entry, sentPrompt) : undefined
   const reported = typeof usage.input_tokens === 'number'
   const cost =
     price && reported
@@ -551,6 +552,7 @@ export function usageEvent(model: string, usage: Record<string, unknown>, firstP
     usage: {
       ...(cost != null ? { cost, estimated: true } : {}),
       prompt_tokens: reported ? prompt : undefined,
+      ...(reported && sentPrompt !== prompt ? { context_tokens: sentPrompt } : {}),
       // Thinking is output as far as the bill goes, and Anthropic counts it there already.
       completion_tokens: output,
       prompt_tokens_details: { cached_tokens: read },
