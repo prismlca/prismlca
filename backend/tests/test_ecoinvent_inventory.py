@@ -4,11 +4,14 @@ user may pick.
 A Windows installer once read its datasets in workers that never reached their task: the import showed a
 sliding bar for an hour, offered no way to stop and never finished. The reader now counts, stops on
 request and gives up when nothing finishes for a while; these tests hold it to that without a licensed
-release — the worker task is replaced by a stand-in at module level, which a forked worker can import.
+release. Most tests replace the worker task with a stand-in at module level, which reaches a forked worker
+only; the tests of workers that never answer hang the pool's initializer instead, which a spawned worker
+(Windows, macOS) runs as well.
 """
 
 from __future__ import annotations
 
+import functools
 import multiprocessing
 import threading
 import time
@@ -23,19 +26,10 @@ def _quick(job):
     return {"filename": job[1]}
 
 
-def _slow(job):
-    time.sleep(0.2)
-    return {"filename": job[1]}
-
-
-def _stuck(job):
-    time.sleep(30)
-
-
-#: The stand-ins reach a worker only when it is forked from this process; a spawned one (Windows, macOS)
+#: A patched task reaches a worker only when it is forked from this process; a spawned one (Windows, macOS)
 #: imports the module afresh and runs the real reader on the placeholder files.
 _FORKED = pytest.mark.skipif(
-    multiprocessing.get_start_method() != "fork", reason="monkeypatched stand-ins reach forked workers only"
+    multiprocessing.get_start_method() != "fork", reason="a patched task reaches forked workers only"
 )
 
 
@@ -53,10 +47,20 @@ def _datasets(tmp_path, names=("c.spold", "a.spold", "b.SPOLD", "notes.txt")):
     return folder
 
 
-def _extract(monkeypatch, folder, task, *, use_mp=True, cancelled=None, stall=60.0, seen=None):
+def _workers_never_ready(monkeypatch):
+    """Every worker hangs before it takes a task, as on the Windows installer. The pool hands its
+    initializer to each worker it starts — pickled, for a spawned one — so unlike a patched task this hang
+    runs in forked and spawned workers alike, and the outcome does not depend on how fast they start."""
     from prism_lca.engine import ecoinvent_inventory as inv
 
-    monkeypatch.setattr(inv, "_read_one", task)
+    monkeypatch.setattr(inv, "prepare_worker", functools.partial(time.sleep, 30))
+
+
+def _extract(monkeypatch, folder, task=None, *, use_mp=True, cancelled=None, stall=60.0, seen=None):
+    from prism_lca.engine import ecoinvent_inventory as inv
+
+    if task is not None:
+        monkeypatch.setattr(inv, "_read_one", task)
     seen = [] if seen is None else seen
     reader = inv.reader(lambda done, total: seen.append((done, total)), cancelled or threading.Event(), stall)
     return reader.extract(folder, "db", use_mp=use_mp)
@@ -73,18 +77,20 @@ def test_reads_every_dataset_in_one_order_and_counts(monkeypatch, tmp_path, use_
 def test_a_cancel_stops_the_workers_within_a_second(monkeypatch, tmp_path):
     from prism_lca.engine.ecoinvent_inventory import ImportCancelled
 
+    _workers_never_ready(monkeypatch)
     cancelled = threading.Event()
     folder = _datasets(tmp_path, [f"{i:03}.spold" for i in range(200)])
     threading.Timer(0.5, cancelled.set).start()
     began = time.monotonic()
     with pytest.raises(ImportCancelled):
-        _extract(monkeypatch, folder, _slow, cancelled=cancelled)
+        _extract(monkeypatch, folder, cancelled=cancelled)
     assert time.monotonic() - began < 5
 
 
 def test_workers_that_never_answer_end_in_an_error_not_a_wait(monkeypatch, tmp_path):
+    _workers_never_ready(monkeypatch)
     with pytest.raises(PrismError) as excinfo:
-        _extract(monkeypatch, _datasets(tmp_path), _stuck, stall=1.5)
+        _extract(monkeypatch, _datasets(tmp_path), stall=1.5)
     assert excinfo.value.code == "import_stalled"
     assert "0 of 3 read" in str(excinfo.value)
 
