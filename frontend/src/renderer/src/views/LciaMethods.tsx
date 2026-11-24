@@ -4,10 +4,11 @@ import { invalidate } from '../lib/server/useQuery'
 import Modal from '../components/Modal'
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
 import { AddIcon, CopyIcon, PencilIcon, TrashIcon } from '../components/icons'
-import { mutationRunner } from '../lib/mutation'
+import { mutationRunner, writeFromDialog } from '../lib/mutation'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
 import DialogBox from '../components/DialogBox'
+import { useDialogSubmit } from '../components/useDialogSubmit'
 import LciaFactorEditor from './LciaFactorEditor'
 import type { MethodDetail, Ref } from './lciaFactors'
 import { copyName, indicatorLabel, indicatorLabels } from '../lib/methods'
@@ -57,34 +58,33 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
     void load().catch((e) => setErr(errMsg(e)))
   }, [load])
 
-  const run = mutationRunner({
-    setError: setErr,
-    after: async () => {
-      await load()
-      onMethodsChanged?.()
-    }
-  })
+  const reload = async (): Promise<void> => {
+    await load()
+    onMethodsChanged?.()
+  }
+  const run = mutationRunner({ setError: setErr, after: reload })
 
   const customFamilies = useMemo(() => families.filter((f) => f.custom).map((f) => f.family), [families])
   const ownFamilies = useMemo(() => families.filter((f) => f.custom), [families])
 
-  const submitFamily = (values: Record<string, string>): void => {
-    setDialog(null)
+  // Every dialog here stays open until its write went through: a taken name keeps what was typed.
+  const fromDialog = (write: () => Promise<unknown>): Promise<void> =>
+    writeFromDialog(run, () => setDialog(null), write)
+
+  const submitFamily = (values: Record<string, string>): Promise<void> => {
     const family = (values.family || '').trim()
-    if (!family) return
-    run(async () => {
+    return fromDialog(async () => {
+      if (!family) return
       await api('POST', '/api/v1/lcia/family', { family, description: (values.description || '').trim() })
       invalidate('/api/v1/calc/methods')
     })
   }
 
-  const submitEditFamily = (values: Record<string, string>): void => {
+  const submitEditFamily = (values: Record<string, string>): Promise<void> => {
     const d = dialog
-    setDialog(null)
-    if (d?.kind !== 'editFamily') return
     const name = (values.name || '').trim()
-    if (!name) return
-    run(async () => {
+    return fromDialog(async () => {
+      if (d?.kind !== 'editFamily' || !name) return
       await api('POST', '/api/v1/lcia/family/edit', {
         old: d.family,
         name,
@@ -94,24 +94,21 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
     })
   }
 
-  const submitRenameMethod = (values: Record<string, string>): void => {
+  const submitRenameMethod = (values: Record<string, string>): Promise<void> => {
     const d = dialog
-    setDialog(null)
-    if (d?.kind !== 'renameMethod') return
     const name = (values.name || '').trim()
-    if (!name) return
-    run(async () => {
+    return fromDialog(async () => {
+      if (d?.kind !== 'renameMethod' || !name) return
       const detail = await api<MethodDetail>('POST', '/api/v1/lcia/method/rename', { method: d.method, name })
       setEditing(detail)
     })
   }
 
-  const submitNewMethod = (values: Record<string, string>): void => {
-    setDialog(null)
+  const submitNewMethod = (values: Record<string, string>): Promise<void> => {
     const family = (values.family || '').trim()
     const name = (values.name || '').trim()
-    if (!family || !name) return
-    run(async () => {
+    return fromDialog(async () => {
+      if (!family || !name) return
       const detail = await api<MethodDetail>('POST', '/api/v1/lcia/method', {
         family,
         name,
@@ -122,22 +119,29 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
     })
   }
 
-  // Duplicate one or more source indicators into a (own) family, each with its own name.
-  const runDuplicates = (dupes: DupSpec[]): void => {
-    setDialog(null)
-    if (!dupes.length) return
-    run(async () => {
+  // Duplicate one or more source indicators into a (own) family, each with its own name. A refused
+  // copy keeps the dialog open; the ones made before it are reported through `copied`, so the dialog
+  // drops them and a second try does not make them again, and the list behind it is refreshed for them.
+  const runDuplicates = (dupes: DupSpec[], copied: (d: DupSpec) => void): Promise<void> =>
+    fromDialog(async () => {
       let last: MethodDetail | null = null
-      for (const d of dupes) {
-        last = await api<MethodDetail>('POST', '/api/v1/lcia/duplicate', {
-          src: d.src,
-          family: d.family,
-          name: d.name
-        })
+      let made = 0
+      try {
+        for (const d of dupes) {
+          last = await api<MethodDetail>('POST', '/api/v1/lcia/duplicate', {
+            src: d.src,
+            family: d.family,
+            name: d.name
+          })
+          made += 1
+          copied(d)
+        }
+      } catch (e) {
+        if (made) void reload().catch((err: unknown) => setErr(errMsg(err)))
+        throw e
       }
       if (dupes.length === 1 && last) setEditing(last) // jump into editing a single copy
     })
-  }
 
   const deleteFamily = (f: Family): void =>
     setConfirm({
@@ -339,9 +343,10 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
             {
               key: 'family',
               label: 'Family (your own — existing or new)',
-              value: customFamilies[0] ?? 'My methods'
+              value: customFamilies[0] ?? 'My methods',
+              required: true
             },
-            { key: 'name', label: 'Indicator name', value: '' },
+            { key: 'name', label: 'Indicator name', value: '', required: true },
             { key: 'unit', label: 'Unit (e.g. kg CO2-eq)', value: '' },
             { key: 'description', label: 'Family description (optional)', type: 'textarea', value: '' }
           ]}
@@ -353,7 +358,7 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
           submitLabel="Save"
           onClose={() => setDialog(null)}
           onSubmit={submitRenameMethod}
-          fields={[{ key: 'name', label: 'Indicator name', value: dialog.name }]}
+          fields={[{ key: 'name', label: 'Indicator name', value: dialog.name, required: true }]}
         />
       ) : null}
       {dialog?.kind === 'editFamily' ? (
@@ -363,7 +368,7 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
           onClose={() => setDialog(null)}
           onSubmit={submitEditFamily}
           fields={[
-            { key: 'name', label: 'Family name', value: dialog.family },
+            { key: 'name', label: 'Family name', value: dialog.family, required: true },
             { key: 'description', label: 'Short description', type: 'textarea', value: dialog.description }
           ]}
         />
@@ -375,7 +380,7 @@ export default function LciaMethods({ onMethodsChanged }: { onMethodsChanged?: (
           onClose={() => setDialog(null)}
           onSubmit={submitFamily}
           fields={[
-            { key: 'family', label: 'Family name', value: '' },
+            { key: 'family', label: 'Family name', value: '', required: true },
             { key: 'description', label: 'Short description (optional)', type: 'textarea', value: '' }
           ]}
         />
@@ -396,8 +401,13 @@ function DuplicateDialog({
   families: Family[]
   ownFamilies: string[]
   onClose: () => void
-  onSubmit: (dupes: DupSpec[]) => void
+  onSubmit: (dupes: DupSpec[], copied: (d: DupSpec) => void) => Promise<void>
 }): JSX.Element {
+  const sent = useDialogSubmit()
+  // While the copies are being made the dialog neither submits again, nor closes, nor takes edits.
+  const close = (): void => {
+    if (!sent.busy) onClose()
+  }
   const [srcFamily, setSrcFamily] = useState(families[0]?.family ?? '')
   const [indQuery, setIndQuery] = useState('')
   const [names, setNames] = useState<Record<string, string>>({})
@@ -432,27 +442,37 @@ function DuplicateDialog({
       return { ...prev, [k]: defaultName(m) }
     })
 
+  // A copy made before a refusal leaves the selection, so the dialog shows only what is still to do.
+  const copied = (d: DupSpec): void =>
+    setNames((prev) => {
+      const { [d.src.join(' · ')]: _done, ...rest } = prev
+      return rest
+    })
+
   const submit = (): void => {
     const t = target.trim()
-    if (!t || !selected.length) return
-    onSubmit(
-      selected.map((m) => ({
-        src: m.method,
-        family: t,
-        name: (names[keyOf(m)] || defaultName(m)).trim() || defaultName(m)
-      }))
+    if (!t || !selected.length || sent.busy) return
+    sent.settle(
+      onSubmit(
+        selected.map((m) => ({
+          src: m.method,
+          family: t,
+          name: (names[keyOf(m)] || defaultName(m)).trim() || defaultName(m)
+        })),
+        copied
+      )
     )
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <EscapeCloser onClose={() => onClose()} />
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <EscapeCloser onClose={close} />
       <DialogBox className="modal sheet lcia-dup" label="Duplicate indicators">
         <div className="sheet-head">
           <div className="sheet-head-grow">
             <h3>Duplicate indicators</h3>
           </div>
-          <button className="sheet-x" aria-label="Close" onClick={onClose}>
+          <button className="sheet-x" aria-label="Close" onClick={close} disabled={sent.busy}>
             ✕
           </button>
         </div>
@@ -461,6 +481,7 @@ function DuplicateDialog({
             <span>From family</span>
             <select
               value={srcFamily}
+              disabled={sent.busy}
               onChange={(e) => {
                 setSrcFamily(e.target.value)
                 setNames({})
@@ -489,7 +510,7 @@ function DuplicateDialog({
                   className={`lcia-dup-row${on ? ' on' : ''}`}
                   title={m.method.slice(1).join(' · ')}
                 >
-                  <input type="checkbox" checked={on} onChange={() => toggle(m)} />
+                  <input type="checkbox" checked={on} disabled={sent.busy} onChange={() => toggle(m)} />
                   <span className="lcia-dup-name">{labelOf(m)}</span>
                   <span className="lcia-mrow-unit">{m.unit}</span>
                 </label>
@@ -502,7 +523,12 @@ function DuplicateDialog({
             <>
               <label className="mfield">
                 <span>Into family (your own — existing or new)</span>
-                <input list="lcia-own-families" value={target} onChange={(e) => setTarget(e.target.value)} />
+                <input
+                  list="lcia-own-families"
+                  value={target}
+                  disabled={sent.busy}
+                  onChange={(e) => setTarget(e.target.value)}
+                />
                 <datalist id="lcia-own-families">
                   {ownFamilies.map((f) => (
                     <option key={f} value={f} />
@@ -517,6 +543,7 @@ function DuplicateDialog({
                       <span>Name for “{labelOf(m)}”</span>
                       <input
                         value={names[k]}
+                        disabled={sent.busy}
                         onChange={(e) => setNames((prev) => ({ ...prev, [k]: e.target.value }))}
                       />
                     </label>
@@ -528,11 +555,20 @@ function DuplicateDialog({
         </div>
 
         <div className="sheet-foot">
+          {sent.error ? (
+            <p className="modal-err" role="alert">
+              {sent.error}
+            </p>
+          ) : null}
           <div className="acts">
-            <button className="btn" onClick={onClose}>
+            <button className="btn" onClick={close} disabled={sent.busy}>
               Cancel
             </button>
-            <button className="btn primary" onClick={submit} disabled={!selected.length || !target.trim()}>
+            <button
+              className="btn primary"
+              onClick={submit}
+              disabled={!selected.length || !target.trim() || sent.busy}
+            >
               Duplicate {selected.length || ''}
             </button>
           </div>

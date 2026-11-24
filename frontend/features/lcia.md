@@ -65,7 +65,9 @@ With the recipe in model.md (2 kg of CO2) the copy gives 4 kg CO2-Eq, twice the 
   with `wait visible "role=row:…"`. In a custom method the row's name ends in the factor and
   "Remove flow".
 - New method: `"role=textbox:Indicator name"`, `"role=textbox:Unit (e.g. kg CO2-eq)"`, family field
-  pre-filled with "My methods".
+  pre-filled with "My methods". Create stays disabled while the name or the family is empty. A taken
+  name keeps the dialog open with the reason as `"role=alert"` inside it; the same holds for New family,
+  Edit family, Rename method and Duplicate (where copies already made leave the selection).
 
 ## Gotchas
 
