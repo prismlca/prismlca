@@ -112,17 +112,9 @@ what it gets from a person — nothing is dispatched in its place.
 - Some elements drag only from part of themselves — a parameter row from its name column
   (`"css=.prow-item >> has-text=mass >> css=.pc-name"`), not from its value field. Pressed elsewhere,
   the page cancels the drag, and the answer says so.
-- [model.md](model.md) links two boxes and drops a search hit onto the canvas. The Overview has no page
-  yet; filing a model into a folder there goes like this:
-
-```sh
-node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Overview"
-node scripts/control-prism.mjs click "title=New folder — group the models by what they are for"
-node scripts/control-prism.mjs type "role=textbox:Folder name…" Packaging --enter
-node scripts/control-prism.mjs click "css=.ov-folder.loose >> title=Expand"
-node scripts/control-prism.mjs drag "css=.ov-folder.loose .ov-model >> has-text=bottle" "css=.ov-folder >> has-text=Packaging"
-node scripts/control-prism.mjs wait text "css=.ov-folder >> has-text=Packaging >> css=.ov-folder-count" 1 --exact
-```
+- [model.md](model.md) links two boxes and drops a search hit onto the canvas,
+  [overview.md](overview.md) files a model into a folder, and [parameters.md](parameters.md) moves a
+  parameter into a group.
 
 ## Keeping the map current
 
@@ -144,9 +136,50 @@ Every page has the same four sections:
 - [results.md](results.md) — the Results page: comparing subjects across indicators, the decomposition tree,
   sensitivity analysis.
 - [chat.md](chat.md) — the assistant's chat dock on the Model page.
+- [overview.md](overview.md) — the Overview: models, folders, the workspace box, the news and the tour.
+- [parameters.md](parameters.md) — the Parameters page: named values, formulas, allowed values, groups.
+- [scenarios.md](scenarios.md) — the Scenarios page: parameter overrides over the baseline.
+- [lcia.md](lcia.md) — the LCIA page: comparing characterisation factors, methods of your own.
+- [report.md](report.md) — the Report page's short report (without AI).
+- [settings.md](settings.md) — the Settings sheet.
 
-Not mapped yet: Overview, Parameters, Scenarios, LCIA, Report, Settings, the setup sheet and the import
-wizard. A change there gets its page in the same pull request.
+Not mapped yet: full reports (AI), the setup sheet and the import wizard. A change there gets its page
+in the same pull request.
+
+## Exploring before a release
+
+Before each release an agent drives the app on `main`, as it is about to be released, like a person:
+with `control-prism` and these pages, looking for what is broken rather than proving one change. It
+reports and changes nothing — no fix, no merge. Each finding becomes an issue of its own; a map page
+written on the way goes in a pull request of its own.
+
+- **Order:** the pages with neither a map page nor an end-to-end test first, then the partly tested
+  ones. End-to-end tests cover the setup sheet (first start, background import), the Model page
+  (build, calculate, change an amount, Undo, restart), the Results page (comparison, decomposition tree)
+  and the Report page (short report, a stored report).
+- **Every path:** success, error, cancel, the empty state and a restart. `console` at the end of each
+  page.
+- **Numbers only against an oracle:** a known value — the recipe in model.md gives 2 kg CO2-Eq, CO2
+  counts 1 in every GWP — or a relation: double the amount, double the result; Undo, the previous value;
+  a localized copy scores as its original; ±10 % on a linear parameter moves the result ±10 %. "The
+  number looks wrong" is not a finding.
+- **One session per run, its record kept:** `export CONTROL_PRISM_SESSION=<run>`, then `status` saved
+  after `launch` and again before `stop` (`stop --keep` keeps the folders but drops the record), with
+  `console --all` and the logs from `.cache/control-prism/logs/<run>/`. Launching the same session again
+  deletes its logs.
+- **A finding carries** the `control-prism` commands that reproduce it from `launch --seed`, a
+  screenshot, and whether it was reproduced in a new session. About ten per run at most: the ones that
+  matter most.
+- **Gaps are recorded, not worked around:** native dialogs (import, export, backup and restore, logo
+  and cover uploads), drags in from another program (a file onto the chat), and everything that costs
+  money — the chat, the AI report writer, research. Drags inside the window are driven (see "Drags").
+- **Left alone:** anything that opens a browser or goes online — Handbook, GitHub, Open in browser,
+  Subscribe, the lead developer's name, the links under Settings → About, the provider key and account
+  links under Settings → AI and Transport distances, "Load news from prismlca.com", "Check for updates"
+  — and the "Load news … at every start" switch on the tour's card and under Settings → General.
+- **When every command answers "no answer from the app",** ask the window itself before calling it
+  frozen: a page that answers a plain evaluation over its DevTools port means the driver is stuck, not
+  the app. A heavily loaded machine makes the driver time out; run when it is quiet.
 
 ## Across the app
 
