@@ -1636,6 +1636,7 @@ export default function Workbench(): JSX.Element {
             onImportedModel={openFreshModel}
             onImportedDatabase={() => void refreshDatabases()}
             onRenamedModel={renamedModel}
+            onModelInfoClosed={() => void reloadAudit()}
             onNewModel={newModel}
             onDuplicateModel={duplicateModel}
             onDeleteModel={deleteModel}

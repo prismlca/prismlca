@@ -64,6 +64,20 @@ node scripts/control-prism.mjs drag "css=.ov-folder.loose .ov-model >> has-text=
 node scripts/control-prism.mjs wait text "css=.ov-folder >> has-text=Packaging >> css=.ov-folder-count" 1 --exact
 ```
 
+Model info from a model row is an undo step like the one from the Model page: once the sheet closes, the
+toolbar's Undo names the edit, and Undo takes back that edit:
+
+```sh
+node scripts/control-prism.mjs click "css=aside >> nth=1 >> role=button:/^bottle Model info/ >> role=button:Model info"
+node scripts/control-prism.mjs type "role=textbox:Reference year" 2025 --commit
+node scripts/control-prism.mjs press Escape
+node scripts/control-prism.mjs wait attr "role=button:Undo" title "/reference_year/"
+node scripts/control-prism.mjs click "role=button:Undo"
+node scripts/control-prism.mjs click "css=aside >> nth=1 >> role=button:/^bottle Model info/ >> role=button:Model info"
+node scripts/control-prism.mjs wait value "role=textbox:Reference year" ""
+node scripts/control-prism.mjs press Escape
+```
+
 A second workspace, and back:
 
 ```sh

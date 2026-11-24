@@ -43,6 +43,7 @@ describe('Overview model list before its folders are known', () => {
     onImportedModel: () => {},
     onImportedDatabase: () => {},
     onRenamedModel: () => {},
+    onModelInfoClosed: () => {},
     onNewModel: () => {},
     onDuplicateModel: () => {},
     onDeleteModel: () => {},
