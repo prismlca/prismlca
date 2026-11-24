@@ -23,7 +23,7 @@ def _data() -> dict:
         "study": {
             "goal": "Wo liegen die Klimawirkungen?",
             "functional_unit": "1 Glas Apfelmus",
-            "author": "Jonas Harth",  # a name, not prose — must never be offered
+            "author": "Erika Mustermann",  # a name, not prose — must never be offered
             "limitations": [{"kind": "assumption", "text": "Eigene Schätzung ohne Primärdaten."}],
         },
         "activity": {"name": "Bio-Apfelmus 500 g", "code": "abc"},
@@ -51,7 +51,7 @@ def test_the_walk_collects_prose_and_only_prose():
     assert "Eigene Schätzung ohne Primärdaten." in found
     assert "Produktion und Abfüllung" in found
     assert "Anzahl der Umläufe." in found
-    assert "Jonas Harth" not in found  # author is a name
+    assert "Erika Mustermann" not in found  # author is a name
     assert "n_cycles" not in found  # parameter names are identifiers
     # V193: the reference product stood beside a translated process name and stayed German in all
     # seven rows of a real Spanish inventory table — it is the modeller's word, like the name.

@@ -762,7 +762,7 @@
   {
     "date": "2026-08-18",
     "title": "A scenario that changes nothing says so",
-    "details": "A scenario set to the value the model already has is the baseline under another name: every comparison returns zero and the report draws two bars of the same height. Creating such an override is now refused, with the parameter named. The other way in cannot be refused — a scenario can be meaningful when typed and lose its point later, when the baseline moves onto it — so the list marks those overrides as “same as the model” and the sensitivity check says which variant returned the baseline result."
+    "details": "A scenario set to the value the model already has is the baseline under another name: every comparison returns zero and the report draws two bars of the same height. Creating such an override is now refused, with the parameter named. An override that loses its point later, when the baseline moves onto it, is marked “same as the model” in the list, and the sensitivity check says which variant returned the baseline result."
   },
   {
     "date": "2026-08-18",
