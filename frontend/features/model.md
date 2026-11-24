@@ -44,7 +44,6 @@ node scripts/control-prism.mjs click "title=Create another model, or duplicate a
 node scripts/control-prism.mjs type "label=Model name (e.g. pet-bottle-2025)" bottle --enter
 node scripts/control-prism.mjs wait hidden "role=dialog:New model"
 node scripts/control-prism.mjs click "title=Add a new process to the model"
-node scripts/control-prism.mjs select "role=dialog:New process >> role=combobox:/^Unit/" kilogram
 node scripts/control-prism.mjs type "label=Name" bottle --enter
 node scripts/control-prism.mjs wait hidden "role=dialog:New process"
 node scripts/control-prism.mjs wait visible "css=.react-flow__node >> has-text=bottle"
@@ -132,10 +131,6 @@ node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Tes
 - **A result after an edit is stale** until calculated again: the bar gets the class `stale` and says
   "Outdated — recalculate". Calculate once and wait for the value; a check that accepts the stale value
   proves nothing.
-- **New process proposes the unit "unit",** and the unit field accepts only units the workspace's datasets
-  use. The BAFU fixture has no "unit": once its unit list has loaded, Create refuses with "Unknown unit"
-  and the dialog stays open. Pick one from the list (`role=combobox:/^Unit/` — its name carries the error
-  text while there is one).
 - The Inputs tab is open after every selection change; switch to Outputs before adding an output.
 - Selecting another box rebuilds the inspector: text typed but not committed is lost.
 - The method chooser lists hundreds of methods; `select` takes the exact label or a `/regex/` that

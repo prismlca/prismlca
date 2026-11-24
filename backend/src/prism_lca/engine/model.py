@@ -744,7 +744,15 @@ def property_vocabulary() -> dict[str, str]:
 
 
 def unit_vocabulary() -> list[str]:
-    return _vocab()["units"]
+    """Every unit of the read-only inventory, plus "unit".
+
+    "unit" is our own default for a new process and the spelling the importers give pieces and items, so
+    a strict unit field offers it even where no background dataset is counted in pieces — otherwise the
+    New process dialog would reject its own prefilled unit. Added here rather than in the scan, so a
+    vocabulary already cached on disk carries it too.
+    """
+    units = _vocab()["units"]
+    return units if "unit" in units else sorted([*units, "unit"])
 
 
 def location_vocabulary() -> list[dict]:
