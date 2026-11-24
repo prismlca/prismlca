@@ -2421,9 +2421,12 @@ class SetParameterCommand(Command):
         unit=None,
         group=None,
         rule=None,
+        create=False,
     ):
         self.database = database
-        self.name = name
+        # Stripped as set_param stores it: " mass" read as a new name here took no snapshot of "mass",
+        # so the write replaced it and its undo looked for " mass", found nothing and kept the new value.
+        self.name = (name or "").strip()
         self.amount = amount
         self.formula = formula
         self.group_id = group_id
@@ -2432,10 +2435,21 @@ class SetParameterCommand(Command):
         self.unit = unit
         #: What the value is allowed to be. `{}` removes the rule, None leaves it alone.
         self.rule = rule
+        #: A write that creates: refused when the name is taken. The add form sends it — a name typed there
+        #: that already exists is a parameter the author did not know about, and an upsert replaced its
+        #: value and its rule without a word.
+        self.create = create
         self._before: dict | None = None
 
     def execute(self) -> dict:
         self._before = params.snapshot(self.database, self.name)
+        if self.create and self._before is not None:
+            raise PrismError(
+                f"Parameter '{self.name}' already exists.",
+                code="param_exists",
+                status_code=409,
+                hint="Edit the existing parameter instead, or choose another name.",
+            )
         # Enter and blur both commit the same value, and the second commit used to be booked as an
         # undoable "Set parameter 'm_hose' = 4.5 kg" with no "was" (V413). A set that leaves
         # every field it names where it is changes nothing: nothing is written, the bus records nothing.

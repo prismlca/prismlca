@@ -20,6 +20,7 @@ import {
   TrashIcon
 } from '../components/icons'
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
+import NewParameterPanel from './NewParameterPanel'
 import AuditLog from '../components/AuditLog'
 import { IdleRoundedInput } from '../components/IdleRoundedInput'
 import ParamRuleEditor, {
@@ -33,7 +34,7 @@ import { modelKey, usePersisted } from '../lib/persist'
 import { mutationRunner } from '../lib/mutation'
 import { parseAmount } from '../lib/numberFormat'
 import FormulaInput from '../components/FormulaInput'
-import { lintFormula, type ParamName } from '../lib/formula'
+import { type ParamName } from '../lib/formula'
 import { useSettings, fmtSig } from '../lib/settings'
 
 interface Param {
@@ -57,26 +58,6 @@ interface Group {
   id: string
   name: string
   order: number
-}
-
-const EMPTY: {
-  name: string
-  amount: string
-  formula: string
-  unit: string
-  description: string
-  group_id: string
-  rule: ParamRule
-} = {
-  name: '',
-  amount: '',
-  formula: '',
-  unit: '',
-  description: '',
-  group_id: '',
-  // The rule the parameter is born with: a value is refused from the first one on, which is the
-  // point — a rule added afterwards has to argue with numbers that are already in the model.
-  rule: {}
 }
 
 /** Inline editor cell: commits on blur / Enter, reverts on Escape. `multiline` grows on focus. */
@@ -294,8 +275,9 @@ export default function Parameters({
   const [rows, setRows] = useState<Param[]>([])
   const [groups, setGroups] = useState<Group[]>([])
   const [err, setErr] = useState<string | null>(null)
-  const [f, setF] = useState({ ...EMPTY })
-  const [adding, setAdding] = useState(false) // "New parameter" panel open
+  // The "New parameter" panel, while open: the group it opened with, and a key that gives every opening
+  // a fresh form — a group heading's "+" clicked while the panel is open starts over in that group.
+  const [adding, setAdding] = useState<{ group: string; key: number } | null>(null)
   const [newGroup, setNewGroup] = useState<string | null>(null) // null = the field is closed
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<string | null>(null) // param name being edited inline (fields + comment)
@@ -393,27 +375,6 @@ export default function Parameters({
       onChanged?.()
     }
   })
-
-  const add = (): Promise<void> =>
-    run(async () => {
-      if (!activeDb || !f.name.trim()) return
-      // Unreadable text is not a zero: "abc" used to become 0 on the Enter path, which skipped the
-      // button's own check.
-      if (!f.formula && f.amount.trim() && parseAmount(f.amount) === null)
-        throw new Error('The value is not a number — use 0.5 or 0,5.')
-      if (newViolation) throw new Error(newViolation)
-      await api('POST', '/api/v1/params', {
-        database: activeDb,
-        name: f.name.trim(),
-        amount: f.formula ? undefined : (parseAmount(f.amount) ?? 0),
-        formula: f.formula || undefined,
-        unit: f.unit || undefined,
-        description: f.description || undefined,
-        group_id: f.group_id || undefined,
-        rule: f.rule
-      })
-      setF({ ...EMPTY })
-    })
 
   /** Edits made on a row since it was last loaded, per parameter: a second edit that lands before the
    *  first has been saved and re-read used to rebuild its request from the stale row and write the
@@ -518,20 +479,6 @@ export default function Parameters({
     ].some((s) => (s ?? '').toLowerCase().includes(q))
   const hits = q ? rows.filter(hit).length : rows.length
 
-  // The new parameter's value against the rule it is being given: the Add button is the commit here, so
-  // this is where "you cannot even enter it" has to hold. A formula's RESULT is checked by the backend; its
-  // text — unknown names, brackets, a decimal comma — is checked here, where it is typed.
-  const valueViolation = f.formula
-    ? null
-    : // Text that is not a number is its own refusal. Without this the Add button stayed live and
-      // wrote a 0, which is the failure the amount fields had everywhere.
-      f.amount.trim() && toNumber(f.amount) === null
-      ? 'not a number'
-      : ruleViolation(f.rule, f.amount === '' ? 0 : toNumber(f.amount))
-  const newViolation = f.formula
-    ? (lintFormula(f.formula, paramNames, { self: f.name.trim() || undefined })?.message ?? null)
-    : valueViolation
-
   const key = (gid: string | null): string => gid ?? '(ungrouped)'
 
   // The sections on screen, in display order: the groups, then the "Ungrouped" bucket (group_id null).
@@ -584,10 +531,8 @@ export default function Parameters({
     }
   }
 
-  const openAdd = (gid: string | null): void => {
-    setF({ ...EMPTY, group_id: gid ?? '' })
-    setAdding(true)
-  }
+  const openAdd = (gid: string | null): void =>
+    setAdding((a) => ({ group: gid ?? '', key: (a?.key ?? 0) + 1 }))
 
   return (
     <div className="view pview">
@@ -636,7 +581,7 @@ export default function Parameters({
           )}
           <button
             className="btn sm primary"
-            onClick={() => (adding ? setAdding(false) : openAdd(null))}
+            onClick={() => (adding ? setAdding(null) : openAdd(null))}
             disabled={!activeDb}
           >
             <AddIcon /> Parameter
@@ -672,95 +617,16 @@ export default function Parameters({
             {/* New parameter — one panel with named fields, opened from the toolbar or from a group's
                 own "+ Parameter" row (which pre-selects that group). */}
             {adding ? (
-              <div className="pnew">
-                <div className="pnew-grid">
-                  <label className="pnew-f wide">
-                    <span>Name</span>
-                    <input
-                      autoFocus
-                      placeholder="e.g. mass_glass_bottle"
-                      value={f.name}
-                      onChange={(e) => setF({ ...f, name: e.target.value })}
-                      onKeyDown={(e) => e.key === 'Enter' && f.name.trim() && !newViolation && void add()}
-                    />
-                  </label>
-                  <label className="pnew-f">
-                    <span>Value</span>
-                    <input
-                      className={`num${valueViolation ? ' refused' : ''}`}
-                      inputMode="decimal"
-                      placeholder="0"
-                      value={f.amount}
-                      disabled={!!f.formula}
-                      aria-invalid={valueViolation ? true : undefined}
-                      title={valueViolation ?? undefined}
-                      onChange={(e) => setF({ ...f, amount: e.target.value })}
-                    />
-                  </label>
-                  <label className="pnew-f">
-                    <span>Unit</span>
-                    <input
-                      placeholder="kg"
-                      value={f.unit}
-                      onChange={(e) => setF({ ...f, unit: e.target.value })}
-                    />
-                  </label>
-                  <label className="pnew-f wide">
-                    <span>Or formula</span>
-                    <FormulaInput
-                      multiline={false}
-                      className="mono"
-                      placeholder="mass * 0.05"
-                      value={f.formula}
-                      params={paramNames}
-                      self={f.name.trim() || undefined}
-                      onChange={(v) => setF({ ...f, formula: v })}
-                      // Enter adds, as it does in the Name field — unless the formula has a problem. A
-                      // blur must not: tabbing on to the group field or to Cancel created the parameter
-                      // before the author was done.
-                      commitOnBlur={false}
-                      onCommit={(problem) => {
-                        if (!problem && f.name.trim()) void add()
-                      }}
-                    />
-                  </label>
-                  <label className="pnew-f sel">
-                    <span>Group</span>
-                    <select
-                      className="search-sel"
-                      value={f.group_id}
-                      onChange={(e) => setF({ ...f, group_id: e.target.value })}
-                    >
-                      <option value="">— no group —</option>
-                      {groups.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <ParamRuleEditor rule={f.rule} onChange={(next) => setF({ ...f, rule: next })} />
-                {valueViolation ? <p className="pc-refused pnew-refused">{valueViolation}</p> : null}
-                <div className="pnew-acts">
-                  <button
-                    className="btn sm primary"
-                    onClick={add}
-                    disabled={!f.name.trim() || !!newViolation}
-                  >
-                    Add parameter
-                  </button>
-                  <button
-                    className="btn sm"
-                    onClick={() => {
-                      setAdding(false)
-                      setF({ ...EMPTY })
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+              <NewParameterPanel
+                key={adding.key}
+                database={activeDb}
+                params={paramNames}
+                groups={groups}
+                group={adding.group}
+                run={run}
+                onTaken={load}
+                onClose={() => setAdding(null)}
+              />
             ) : null}
 
             {rows.length === 0 && groups.length === 0 ? (

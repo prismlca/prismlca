@@ -69,6 +69,9 @@ class ParamRequest(BaseModel):
     #: "max": 1}`, `{"kind": "list", "values": [0.25, 0.5]}`. `{}` removes the rule; omitting the field
     #: leaves whatever the parameter carries. See engine/param_rules.py.
     rule: dict | None = None
+    #: True when the write creates the parameter: a name that exists is refused (409 `param_exists`) instead
+    #: of being overwritten. The add form sets it; an edit, and the assistant's set_parameter, upsert.
+    create: bool = False
     source: str = "user"
 
 
@@ -185,7 +188,7 @@ def _checked(request: Request, database: str, rules: list[tuple[str, dict | None
 async def set_param(request: Request, body: ParamRequest) -> dict:
     cmd = commands.SetParameterCommand(
         body.database, body.name, body.amount, body.formula, body.group_id,
-        body.description, body.unit, group=body.group, rule=body.rule,
+        body.description, body.unit, group=body.group, rule=body.rule, create=body.create,
     )
     rules = [(body.name, body.rule)] if body.source == "ai" else []
     return await _write(_checked(request, body.database, rules), cmd, source=body.source)

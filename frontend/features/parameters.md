@@ -7,7 +7,8 @@ a group; "Used by" lists the processes and parameters that read it.
 ## Sub-features
 
 - "Parameter" opens the add form (name, value or formula, unit, group, allowed values); it stays open
-  for the next one until Cancel.
+  for the next one until Cancel. A name the model already has is refused there ("… already exists —
+  edit it in its row"); the form creates and never overwrites.
 - In a row: the value field (Enter stores it), "Edit parameter" (formula, unit, comment, allowed
   values), "Delete parameter" (with a confirmation; refused while a formula or scenario uses it),
   "Add a comment…", and the "Used by" links.
@@ -58,6 +59,8 @@ node scripts/control-prism.mjs click "Delete parameter"
 node scripts/control-prism.mjs click "css=.modal-backdrop >> role=button:Delete"
 node scripts/control-prism.mjs wait visible "text=/Not deleted: 'mass' is still used/"
 node scripts/control-prism.mjs click "role=button:Parameter"
+node scripts/control-prism.mjs type "role=textbox:Name" mass
+node scripts/control-prism.mjs wait visible "text=/mass. already exists/"
 node scripts/control-prism.mjs type "role=textbox:Name" co2
 node scripts/control-prism.mjs type "role=textbox:Or formula" "mass * 1.5"
 node scripts/control-prism.mjs click "role=button:Add parameter"
@@ -87,8 +90,6 @@ node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Move paramet
 
 ## Gotchas
 
-- **"Add parameter" with a name that exists overwrites that parameter** — value and allowed values —
-  without asking. Use a fresh name, or edit the row.
 - After a refused value the field shows the stored value again, but the red note stays until the next
   edit.
 - Undo's title is the backend's confirmation of a stored value, as on the Model page: wait for it.
