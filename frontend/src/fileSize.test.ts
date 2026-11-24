@@ -39,7 +39,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/views/report/useChapterWriter.ts': 900, // 875, after the correction path went (Update report replaces it)
   'renderer/src/workbench/useCanvasModel.ts': 1141, // 1116
   'renderer/src/views/DetailedResults.tsx': 1237, // 1212
-  'renderer/src/views/Report.tsx': 1202, // 1177
+  'renderer/src/views/Report.tsx': 1187, // 1162, after the default indicators moved to lib/methods.ts
   'renderer/src/views/ImportWizard.tsx': 1208, // 1183
   'renderer/src/views/Parameters.tsx': 1070, // 1045, after the add form moved out (views/NewParameterPanel.tsx)
   'main/ai/reportWriter.ts': 882, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts), the continuation (writer/answers.ts) and the lookup context (writer/lookupCtx.ts) moved out

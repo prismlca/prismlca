@@ -32,8 +32,7 @@ function setup(view: AiCanvasToolsDeps['view']) {
     useAiCanvasTools({
       activeDb: 'm',
       methods: [],
-      chosen: '',
-      setChosen: vi.fn(),
+      method: null,
       calcBusy: null,
       calculate: vi.fn(),
       view,
@@ -107,8 +106,7 @@ describe('the wait for the drawn canvas', () => {
         useAiCanvasTools({
           activeDb: 'm',
           methods: [],
-          chosen: '',
-          setChosen: vi.fn(),
+          method: null,
           calcBusy: null,
           calculate: vi.fn(),
           view,

@@ -20,7 +20,7 @@ const chatRoute = (_body: unknown, path: string): unknown => ({
 
 interface Spies {
   selectOnly: Mock<(id: string) => void>
-  setChosen: Mock<(v: string) => void>
+  chooseMethod: Mock<(method: string[]) => void>
 }
 
 const boxes = (...ids: string[]): { current: Node[] } => ({ current: ids.map((id) => ({ id }) as Node) })
@@ -39,7 +39,7 @@ function Holder({
   useRunCalculationOnCanvas({
     activeDb,
     methods: METHODS,
-    setChosen: spies.setChosen,
+    chooseMethod: spies.chooseMethod,
     canvas: { selectOnly: spies.selectOnly, nodesRef }
   })
   return null
@@ -47,7 +47,7 @@ function Holder({
 
 const spies = (): Spies => ({
   selectOnly: vi.fn<(id: string) => void>(),
-  setChosen: vi.fn<(v: string) => void>()
+  chooseMethod: vi.fn<(method: string[]) => void>()
 })
 const calculated = (chatId: string, args: unknown, status: 'ok' | 'error' = 'ok') => ({
   chatId,
@@ -65,7 +65,7 @@ describe('the toolbar after a run that calculated', () => {
       routes: { 'GET /api/v1/ai/chats/:db': chatRoute }
     })
     act(() => prism.emit(calculated('chat-m', { code: 'fu', method: IPCC })))
-    await waitFor(() => expect(s.setChosen).toHaveBeenCalledWith('1'))
+    await waitFor(() => expect(s.chooseMethod).toHaveBeenCalledWith(IPCC))
     expect(s.selectOnly).toHaveBeenCalledWith('m/fu')
   })
 
@@ -78,7 +78,7 @@ describe('the toolbar after a run that calculated', () => {
     await waitFor(() => expect(chatLookups(prism.calls)).toBe(1))
     await act(async () => {})
     expect(s.selectOnly).not.toHaveBeenCalled()
-    expect(s.setChosen).not.toHaveBeenCalled()
+    expect(s.chooseMethod).not.toHaveBeenCalled()
   })
 
   it('changes nothing when the user opened another model before the answer came', async () => {
@@ -92,7 +92,7 @@ describe('the toolbar after a run that calculated', () => {
     rerender(<Holder activeDb="other" spies={s} />)
     await act(async () => answer({ chats: [{ id: 'chat-m' }] }))
     expect(s.selectOnly).not.toHaveBeenCalled()
-    expect(s.setChosen).not.toHaveBeenCalled()
+    expect(s.chooseMethod).not.toHaveBeenCalled()
   })
 
   it('asks nothing after a run that calculated nothing, or whose calculation failed', async () => {
@@ -119,7 +119,7 @@ describe('the toolbar after a run that calculated', () => {
       prism.emit({ chatId: 'chat-m', type: 'error', message: 'Provider down' })
     })
     await waitFor(() => expect(s.selectOnly).toHaveBeenCalledWith('m/part'))
-    expect(s.setChosen).toHaveBeenCalledWith('1')
+    expect(s.chooseMethod).toHaveBeenCalledWith(IPCC)
   })
 })
 
@@ -149,7 +149,7 @@ describe('a process the canvas does not show yet', () => {
       const { s, prism } = setup(nodesRef)
       act(() => prism.emit(calculated('chat-m', { code: 'new', method: IPCC })))
       await step(0)
-      expect(s.setChosen).toHaveBeenCalledWith('1') // the method does not wait
+      expect(s.chooseMethod).toHaveBeenCalledWith(IPCC) // the method does not wait
       await step(LOOK_AGAIN_MS)
       await step(LOOK_AGAIN_MS)
       expect(s.selectOnly).not.toHaveBeenCalled()
@@ -175,7 +175,7 @@ describe('a process the canvas does not show yet', () => {
       nodesRef.current = [...nodesRef.current, { id: 'm/new' } as Node]
       await step(LOOK_AGAIN_MS * 3)
       expect(s.selectOnly).not.toHaveBeenCalled()
-      expect(s.setChosen).toHaveBeenCalledWith('1')
+      expect(s.chooseMethod).toHaveBeenCalledWith(IPCC)
     } finally {
       vi.useRealTimers()
     }

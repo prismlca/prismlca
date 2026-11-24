@@ -18,7 +18,8 @@ boxes on the canvas.
   dialog asks for the amount); click an arrow to edit its amount. Dragging a box moves it.
 - Canvas tools: auto-layout, pan mode, tag highlight, colour brush, groups, expand/collapse upstream.
 - Calculate the selected process with the chosen LCIA method; the result bar above the canvas shows the
-  score and turns "Outdated" after any change to the model.
+  score and turns "Outdated" after any change to the model. Each model keeps its own method across
+  restarts; a model nobody chose one for starts on climate change of the newest EF family.
 - Undo and Redo of every stored step; the audit log under the inspector lists them.
 - Delete a process (Delete/Backspace or the context menu, with a confirmation; a second one when other
   processes use it).
@@ -67,13 +68,14 @@ node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Set amount .
 node scripts/control-prism.mjs wait visible "css=.result-bar.stale"
 ```
 
-Survive a restart — the model comes back, the selection and the undo history do not:
+Survive a restart — the model and its LCIA method come back, the selection and the undo history do not:
 
 ```sh
 node scripts/control-prism.mjs restart
 node scripts/control-prism.mjs wait app-ready
 node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Model"
 node scripts/control-prism.mjs select "Active model" bottle
+node scripts/control-prism.mjs wait text "css=select[aria-label='LCIA method'] >> css=option:checked" "/CML v4.8 2016 · climate change/"
 node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle"
 ```
 
@@ -135,6 +137,9 @@ node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Tes
 - Selecting another box rebuilds the inspector: text typed but not committed is lost.
 - The method chooser lists hundreds of methods; `select` takes the exact label or a `/regex/` that
   matches exactly one. A changed choice may read back the old value for a moment — wait on its effect.
+- **A chosen method that was deleted stays chosen**: the chooser reads "⚠ <name> — no longer available"
+  (the combobox is marked invalid) and Calculate is disabled, its title naming the method, until another
+  method is chosen. Nothing else is picked in its place.
 - **A drag's answer is not its proof.** It says whether the page followed the pointer itself (a link
   between handles, moving a box) or an HTML5 drag ran (a search hit), and for the latter whether the
   drop was taken. The proof is the effect: the "Add exchange" dialog and the Undo title naming the

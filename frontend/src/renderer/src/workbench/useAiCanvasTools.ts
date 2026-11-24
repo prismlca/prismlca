@@ -45,8 +45,8 @@ export interface ChatUiHandlers {
 export interface AiCanvasToolsDeps {
   activeDb: string | null
   methods: MethodEntry[]
-  chosen: string
-  setChosen: (v: string) => void
+  /** The Model page's method (useCanvasMethod): what a calculation without its own method uses. */
+  method: string[] | null
   calcBusy: 'calc' | 'mc' | null
   /** The canvas calculation (Sankey overlay) — owned by the Workbench, which holds the result bar. */
   calculate: (methodOverride?: string[], codeOverride?: string) => void
@@ -79,8 +79,7 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
   const {
     activeDb,
     methods,
-    chosen,
-    setChosen,
+    method: chosenMethod,
     calcBusy,
     calculate,
     view,
@@ -181,8 +180,9 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
             return { error: `Process "${target}" is not in the active model.` }
           selectOnly(id)
         }
-        const idx = methods.findIndex((m) => m.method.join('') === method.join(''))
-        if (idx >= 0) setChosen(String(idx))
+        if (!method.length && !chosenMethod)
+          return { error: 'Pass `method`: the Model page has no LCIA method to fall back on.' }
+        // The toolbar follows once the result is in (useCanvasCalc): to the method it was computed with.
         calculate(method.length ? method : undefined, target)
         // Deliberately not a result: the canvas calculation runs on its own and paints when it is
         // done, so this call can only report that it was started. Saying so is the point — a
@@ -455,14 +455,14 @@ export function useAiCanvasTools(deps: AiCanvasToolsDeps) {
         void reloadTagGroups()
       }
     }),
-    // chosen/calcBusy: calculateInCanvas closes over calculate(), which reads them — without
+    // chosenMethod/calcBusy: calculateInCanvas closes over calculate(), which reads them — without
     // these deps the assistant path could run with a stale busy-guard or default method.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       activeDb,
       methods,
       selected,
-      chosen,
+      chosenMethod,
       calcBusy,
       reloadGraph,
       reloadAudit,

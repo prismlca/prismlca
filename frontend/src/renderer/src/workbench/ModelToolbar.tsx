@@ -21,6 +21,8 @@ import {
   ModelIcon
 } from '../components/icons'
 import type { ViewKey } from './AppSidebar'
+import CanvasMethodSelect, { checkingTitle, goneTitle } from './CanvasMethodSelect'
+import type { CanvasMethod } from './useCanvasMethod'
 
 export interface ModelToolbarProps {
   view: ViewKey
@@ -34,8 +36,9 @@ export interface ModelToolbarProps {
   onUndo: () => void
   onRedo: () => void
   methods: MethodEntry[]
-  chosen: string
-  onChoose: (value: string) => void
+  /** The method this model calculates with, or the one it chose that is gone (useCanvasMethod). */
+  method: CanvasMethod
+  onChooseMethod: (method: string[]) => void
   calcBusy: 'calc' | 'mc' | null
   selectedCount: number
   /** Unit of the one selected process — what "1" in the FU pill is one of; undefined = none/several. */
@@ -207,29 +210,7 @@ export default function ModelToolbar(p: ModelToolbarProps): JSX.Element {
             )
           ) : null}
           {p.view === 'model' ? (
-            <select
-              className="search-sel"
-              // The title carries the chosen method's full name; the name stays the same whatever is chosen.
-              aria-label="LCIA method"
-              value={p.chosen}
-              onChange={(e) => p.onChoose(e.target.value)}
-              disabled={!p.methods.length}
-              // The full name, because the box is narrower than most of them and the ellipsis
-              // eats the indicator — which is the half that distinguishes two rows of the same
-              // family. It said "LCIA method", which the reader can see for themselves.
-              title={p.methods.length ? (p.methods[Number(p.chosen)]?.name ?? 'LCIA method') : 'LCIA method'}
-            >
-              {p.methods.length ? (
-                p.methods.map((m, i) => (
-                  <option key={i} value={String(i)}>
-                    {m.recommended ? '★ ' : ''}
-                    {m.name}
-                  </option>
-                ))
-              ) : (
-                <option>no methods</option>
-              )}
-            </select>
+            <CanvasMethodSelect methods={p.methods} method={p.method} onChoose={p.onChooseMethod} />
           ) : null}
           <span className="spacer" />
           {/* Three buttons that act on the CANVAS, so they belong to the canvas page. This branch
@@ -309,13 +290,17 @@ export default function ModelToolbar(p: ModelToolbarProps): JSX.Element {
           <button
             className="btn primary"
             onClick={p.onCalculate}
-            disabled={!!p.calcBusy || !p.methods.length || p.selectedCount !== 1}
+            disabled={!!p.calcBusy || !p.method.method || p.selectedCount !== 1}
             title={
               !p.methods.length
                 ? 'No LCIA methods installed yet (import ecoinvent)'
-                : p.selectedCount !== 1
-                  ? 'Select one process as the functional unit'
-                  : 'Compute LCIA'
+                : p.method.gone
+                  ? goneTitle(p.method.gone)
+                  : p.method.checking
+                    ? checkingTitle(p.method.checking)
+                    : p.selectedCount !== 1
+                      ? 'Select one process as the functional unit'
+                      : 'Compute LCIA'
             }
           >
             {p.calcBusy === 'calc' ? (

@@ -20,6 +20,48 @@ export function groupMethodsByFamily<M extends { method: string[] }>(methods: M[
   return map
 }
 
+/**
+ * Indicators a new report starts with — and, its first one, the method the Model page calculates with
+ * until somebody chooses one there.
+ *
+ * The old rule — the first four `recommended` entries of the catalogue — is alphabetical by family, so
+ * every report began on CML v4.8 2016 with acidification and two ecotoxicity variants. Nothing was
+ * wrong with the mechanism and everything with the result: a study whose scope says EF v3.1 got seven
+ * chapters written against a different method family, with no warning anywhere.
+ *
+ * So: prefer the newest EF family (the European reference method, and the one a footprint study is
+ * normally asked for), and within it a core set of five, climate change first — enough categories for a
+ * report to compare variants across (its radar needs more than three axes), small enough to stay
+ * readable. Every new report covers at least these; the Results page's picks come on top (`prefill.ts`).
+ * Falls back to the old behaviour when no EF family is installed.
+ */
+const PREFERRED_INDICATORS = [
+  'climate change',
+  'acidification',
+  'eutrophication: freshwater',
+  'energy resources: non-renewable',
+  'water use'
+]
+
+export function defaultReportMethods<M extends { method: string[]; recommended?: boolean }>(
+  methods: M[]
+): string[][] {
+  const families = [...new Set(methods.map((m) => m.method[0]))].filter(
+    (f) => /^EF v?\d/i.test(f) && !/no LT/i.test(f)
+  )
+  // Numeric-aware: plain sort() puts "EF v3.10" below "EF v3.9" the day a two-digit minor exists.
+  const family = families.sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).at(-1)
+  if (family) {
+    const inFamily = methods.filter((m) => m.method[0] === family && m.recommended)
+    const picked = PREFERRED_INDICATORS.map((want) =>
+      inFamily.find((m) => (m.method[1] ?? '').toLowerCase() === want)
+    ).filter((m): m is M => Boolean(m))
+    if (picked.length) return picked.map((m) => m.method)
+  }
+  const recommended = methods.filter((m) => m.recommended).slice(0, 4)
+  return (recommended.length ? recommended : methods.slice(0, 1)).map((m) => m.method)
+}
+
 /** A method's path form — the same string the backend carries as `method_label`. */
 export const methodPath = (method: string[]): string => method.join(' / ')
 

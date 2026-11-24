@@ -70,6 +70,7 @@ import { exchangeFacts } from './workbench/exchangeFacts'
 import { useProjectModels } from './workbench/useProjectModels'
 import { useAiCanvasTools } from './workbench/useAiCanvasTools'
 import { useCanvasCalc } from './workbench/useCanvasCalc'
+import { useCanvasMethod } from './workbench/useCanvasMethod'
 import { useCanvasUiTools } from './workbench/useCanvasUiTools'
 import ResultBar from './workbench/ResultBar'
 import { useTagging } from './workbench/useTagging'
@@ -164,17 +165,12 @@ export default function Workbench(): JSX.Element {
   const [dark, setDark] = useState<boolean>(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   // Subscription on the shared cache: the method catalog refreshes wherever it is invalidated
   // (project switch, ecoinvent import, the custom-method editor) — no per-site refetch code.
-  const methods = useQuery('/api/v1/calc/methods').data ?? []
+  const methodsQuery = useQuery('/api/v1/calc/methods')
+  const methods = methodsQuery.data ?? []
   // Known units (ecoinvent + models) for the unit autocomplete; strictness comes from Settings.
   // Loaded at startup AND healed whenever the new-activity dialog opens with an empty list
   // (e.g. the startup fetch predated an HMR update or failed).
   const [unitVocab, setUnitVocab] = useState<string[]>([])
-  const [chosen, setChosen] = useState('')
-  // The default indicator pick follows the catalog's arrival (it used to be set inline where the
-  // catalog was fetched; the fetch sites are gone, the default is not).
-  useEffect(() => {
-    if (methods.length) setChosen((prev) => prev || '0')
-  }, [methods.length])
   const [calcBusy, setCalcBusy] = useState<'calc' | 'mc' | null>(null)
   // The Monte Carlo bar is one model's result, like the canvas calculation's (workbench/useCanvasCalc.ts).
   const mcDb = useRef<string | null>(null)
@@ -741,12 +737,14 @@ export default function Workbench(): JSX.Element {
     setConfirm
   })
 
+  // The method the Model page calculates with, kept per model by what it is (workbench/useCanvasMethod.ts).
+  const canvasMethod = useCanvasMethod(activeDb, methods, methodsQuery.fresh)
   // The canvas calculation: the result bar and the Sankey overlay, kept in step across graph rebuilds.
   const { result, stale, calculate, clearResult } = useCanvasCalc({
     run,
     activeDb,
-    methods,
-    chosen,
+    method: canvasMethod.method,
+    chooseMethod: canvasMethod.choose,
     selected,
     nodes,
     setNodes,
@@ -759,8 +757,7 @@ export default function Workbench(): JSX.Element {
   const { chatUi, jumpFromAnyPage, whenDrawn } = useAiCanvasTools({
     activeDb,
     methods,
-    chosen,
-    setChosen,
+    method: canvasMethod.method,
     calcBusy,
     calculate,
     view,
@@ -775,7 +772,7 @@ export default function Workbench(): JSX.Element {
   // its chat panel is.
   useAiEditRefresh(activeDb, chatUi.refresh)
   // After a run that calculated, the toolbar holds its process and method — nothing is calculated.
-  useRunCalculationOnCanvas({ activeDb, methods, setChosen, canvas })
+  useRunCalculationOnCanvas({ activeDb, methods, chooseMethod: canvasMethod.choose, canvas })
   // External agents (MCP): their sessions for the drawer, their edits reloading the canvas exactly
   // like the chat's, and the window-side answers to what they ask of the app.
   const external = useExternalAgents((database) =>
@@ -804,12 +801,12 @@ export default function Workbench(): JSX.Element {
   // proper entry point; the mc result bar below still renders it.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const runMc = () => {
-    if (calcBusy || !activeDb || selected.length !== 1 || !methods.length) return
+    const method = canvasMethod.method
+    if (calcBusy || !activeDb || selected.length !== 1 || !method) return
     setCalcBusy('mc')
     void run(async () => {
       try {
         const [db, code] = splitId(selected[0])
-        const method = methods[Number(chosen) || 0].method
         setMc(await api('POST', '/api/v1/calc/montecarlo', { database: db, code, method, iterations: 1000 }))
       } finally {
         setCalcBusy(null)
@@ -966,8 +963,8 @@ export default function Workbench(): JSX.Element {
           onUndo={undo}
           onRedo={redo}
           methods={methods}
-          chosen={chosen}
-          onChoose={setChosen}
+          method={canvasMethod}
+          onChooseMethod={canvasMethod.choose}
           calcBusy={calcBusy}
           selectedCount={selected.length}
           fuUnit={
