@@ -144,8 +144,9 @@ def remove_background(name: str, drop_index: Callable[[str], bool] | None = None
         if n:
             users[other] = n
     if users:
+        counted = ", ".join(f"{k} ({v} exchange{'' if v == 1 else 's'})" for k, v in users.items())
         raise PrismError(
-            f"'{name}' is still used by {', '.join(f'{k} ({v} exchanges)' for k, v in users.items())}.",
+            f"'{name}' is still used by {counted}.",
             code="background_in_use",
             status_code=409,
             hint="Re-point or remove those exchanges first; a dangling background would leave "

@@ -66,6 +66,26 @@ def test_duplicate_model_remaps_internal_links(client, token, project):
     assert tech[0]["input"]["code"] == new_b
 
 
+def test_a_taken_name_is_refused_in_the_products_words(client, token, project):
+    """Brightway calls models, the library and background databases all "databases"; the refusal says which."""
+    from prism_lca.engine import guardrails
+    from prism_lca.engine.bootstrap import get_bd
+
+    db = _fg(client, token)
+    r = client.post("/api/v1/databases/foreground/duplicate", json={"source": db, "name": db}, headers=token)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "database_exists", r.text
+    assert r.json()["error"]["message"] == f"A model named '{db}' already exists."
+
+    bg = "bg-" + uuid.uuid4().hex[:6]
+    get_bd().Database(bg).register()
+    guardrails.set_read_only(bg, True)
+    r = client.post("/api/v1/databases/foreground/duplicate", json={"source": db, "name": bg}, headers=token)
+    assert r.status_code == 409, r.text
+    assert r.json()["error"]["message"] == f"'{bg}' is the name of a background database."
+    r = client.post("/api/v1/databases/foreground", json={"name": db}, headers=token)
+    assert r.status_code == 409 and "Database" not in r.json()["error"]["message"], r.text
+
+
 def test_duplicate_model_copies_fields_tags_and_study(client, token, project):
     """A model duplicate is a FULL copy: activity comment/ISO doc, tags, and the
     study metadata (goal & scope) must survive, not just names and exchanges."""

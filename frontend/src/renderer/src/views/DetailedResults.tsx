@@ -337,8 +337,8 @@ function ContribTree({
           Save image
         </button>
         <span className="ctree3-meta">
-          {data.meta.n_nodes} nodes · cutoff {(data.meta.cutoff * 100).toFixed(2)}% · depth{' '}
-          {data.meta.max_depth}
+          {data.meta.n_nodes} node{data.meta.n_nodes === 1 ? '' : 's'} · cutoff{' '}
+          {(data.meta.cutoff * 100).toFixed(2)}% · depth {data.meta.max_depth}
           {seconds != null ? ` · ${seconds.toFixed(1)} s` : ''}
         </span>
       </div>

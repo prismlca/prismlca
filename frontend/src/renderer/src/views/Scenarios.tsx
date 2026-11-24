@@ -661,6 +661,7 @@ export default function Scenarios({
                               className="pc-pick"
                               value={o.value}
                               disabled={!o.on}
+                              aria-label={`${p.name} override`}
                               onChange={(e) => setOv(p.name, { value: e.target.value })}
                             >
                               {ruleChoices(p.rule).some((c) => c === toNumber(o.value)) ? null : (
@@ -698,6 +699,8 @@ export default function Scenarios({
                                 self={p.name}
                                 isPlainValue={isNumber}
                                 placeholder="number or formula"
+                                // The name the field had while disabled: ticking it must not rename it.
+                                label={`${p.name} override`}
                               />
                             </span>
                           )}

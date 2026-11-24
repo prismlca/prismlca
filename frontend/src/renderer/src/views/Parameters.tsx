@@ -21,6 +21,7 @@ import {
 } from '../components/icons'
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
 import NewParameterPanel from './NewParameterPanel'
+import { deleteRefusal } from './paramInUse'
 import AuditLog from '../components/AuditLog'
 import { IdleRoundedInput } from '../components/IdleRoundedInput'
 import ParamRuleEditor, {
@@ -71,6 +72,7 @@ function CellInput({
   autoFocus,
   check,
   onRefused,
+  refusalId,
   idle
 }: {
   initial: string
@@ -89,11 +91,16 @@ function CellInput({
   check?: (v: string) => string | null
   /** Where to say it. Reported upward rather than drawn here: the value column is 128px wide, and a
    *  sentence in it either stacks one word per line or reaches over the description beside it. The
-   *  row draws it under the field, across the width it has. */
+   *  row draws it under the field, across the width it has. The sentence names the refused text: the
+   *  field shows the stored value again, so a bare "must be greater than 0" under it read as a verdict on
+   *  that value. For the same reason the field itself is not marked invalid. */
   onRefused?: (why: string | null) => void
+  /** The id of that sentence, which describes the field while it is shown. */
+  refusalId?: string
 }): JSX.Element {
   const [v, setV] = useState(initial)
-  const [why, setWhy] = useState<string | null>(null)
+  // A refusal is on screen under the row — the next keystroke takes it away.
+  const [told, setTold] = useState(false)
   // Escape has to beat the blur it triggers. `setV(initial)` does not reach `commit` before the browser
   // fires focusout, so the commit still saw the abandoned text and WROTE it — measured:
   // typing 9.99 into a parameter and pressing Escape posted 9.99. A ref is the only thing that crosses
@@ -105,9 +112,14 @@ function CellInput({
     if (abandoned.current) {
       abandoned.current = false
       setV(initial)
-      setWhy(null)
+      setTold(false)
       onRefused?.(null)
       return
+    }
+    const refuse = (typed: string, why: string): void => {
+      setTold(true)
+      onRefused?.(`Not stored: “${typed.trim()}” ${why}.`)
+      setV(initial)
     }
     let out = mono ? v.replace(/\s+/g, ' ').trim() : v
     if (numeric && out.trim()) {
@@ -115,9 +127,7 @@ function CellInput({
       // so `check` and every caller's `Number(v)` see the same digits the person meant.
       const n = parseAmount(out)
       if (n === null) {
-        setWhy('not a number')
-        onRefused?.('not a number')
-        setV(initial)
+        refuse(out, 'is not a number')
         return
       }
       out = String(n)
@@ -126,12 +136,10 @@ function CellInput({
     if (out === initial) return
     const refused = check?.(out) ?? null
     if (refused) {
-      setWhy(refused)
-      onRefused?.(refused)
-      setV(initial)
+      refuse(out, refused)
       return
     }
-    setWhy(null)
+    setTold(false)
     onRefused?.(null)
     onCommit(out)
   }
@@ -163,7 +171,7 @@ function CellInput({
     <>
       <IdleRoundedInput
         idle={idle !== undefined && v === initial ? idle : null}
-        className={`${numeric ? 'num' : ''} ${mono ? 'mono' : ''}${why ? ' refused' : ''}`.trim()}
+        className={`${numeric ? 'num' : ''} ${mono ? 'mono' : ''}`.trim()}
         // Always text. `type="number"` handed the meaning of a comma to Chromium's locale, so the
         // same keystrokes gave 0.5 on one machine and 5 on another; `inputMode` still asks a touch
         // keyboard for digits.
@@ -172,12 +180,11 @@ function CellInput({
         value={v}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        aria-invalid={why ? true : undefined}
-        title={why ?? undefined}
+        aria-describedby={told ? refusalId : undefined}
         onChange={(e) => {
           setV(e.target.value)
-          if (why) {
-            setWhy(null)
+          if (told) {
+            setTold(false)
             onRefused?.(null)
           }
         }}
@@ -416,7 +423,9 @@ export default function Parameters({
       onConfirm: () =>
         void run(async () => {
           if (!activeDb) return
-          await api('POST', '/api/v1/params/delete', { database: activeDb, name })
+          await api('POST', '/api/v1/params/delete', { database: activeDb, name }).catch((e: unknown) => {
+            throw deleteRefusal(name, e)
+          })
           if (editing === name) setEditing(null)
         })
     })
@@ -864,6 +873,7 @@ export default function Parameters({
                                       numeric
                                       check={(v) => ruleViolation(p.rule, v === '' ? 0 : toNumber(v))}
                                       onRefused={(why) => setRefused(why ? { name: p.name, why } : null)}
+                                      refusalId={`pc-refused-${p.name}`}
                                       onCommit={(v) => patch(p, { amount: v === '' ? 0 : Number(v) })}
                                     />
                                   )}
@@ -953,7 +963,11 @@ export default function Parameters({
                                   a sentence does not fit a value column. Below the rule's own phrase, which
                                   is where you look to find out what would have been allowed. */}
                               {refused?.name === p.name ? (
-                                <span className="pc-refused">{refused.why}</span>
+                                // An alert: Enter or Tab has already left the field, which shows the stored
+                                // value again — without it, a screen reader would not hear the edit failed.
+                                <span className="pc-refused" id={`pc-refused-${p.name}`} role="alert">
+                                  {refused.why}
+                                </span>
                               ) : null}
                             </div>
                             {editing === p.name ? (

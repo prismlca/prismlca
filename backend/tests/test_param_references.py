@@ -66,6 +66,12 @@ def test_a_parameter_a_formula_still_uses_is_not_deleted(client, token, project)
     assert "parameter 'eol_incineration'" in error["message"] and "parameter 'eol_landfill'" in error["message"]
     # The way out is in the answer: rewrite the users and delete beside them, in one call.
     assert '"action": "delete"' in error["hint"]
+    # The same users as data, for the Parameters page to word its own way out: the hint is for the assistant.
+    assert error["details"]["parameters"] == ["thermal_share"]
+    assert sorted((u["kind"], u["owner"], u["names"]) for u in error["details"]["uses"]) == [
+        ("parameter", "eol_incineration", ["thermal_share"]),
+        ("parameter", "eol_landfill", ["thermal_share"]),
+    ]
     assert "thermal_share" in _params(client, token, db)
 
     # A parameter nothing names is deleted as before.
@@ -91,6 +97,10 @@ def test_exchange_formulas_and_scenarios_count_as_users(client, token, project):
     assert r.status_code == 400, r.text
     assert "the amount of 'Granulate' in 'Bottle production'" in r.json()["error"]["message"]
     assert "edit_exchange" in r.json()["error"]["hint"]
+    assert r.json()["error"]["details"]["uses"] == [{
+        "kind": "exchange", "label": "the amount of 'Granulate' in 'Bottle production'", "owner": None,
+        "names": ["mass"],
+    }]
 
     assert _param(client, token, db, "share", amount=0.5).status_code == 200
     r = client.post("/api/v1/scenarios", json={"database": db, "name": "High", "overrides": {"share": 0.9}},
@@ -100,6 +110,7 @@ def test_exchange_formulas_and_scenarios_count_as_users(client, token, project):
     assert r.status_code == 400, r.text
     assert "scenario 'High'" in r.json()["error"]["message"]
     assert "edit_scenario" in r.json()["error"]["hint"]
+    assert [u["kind"] for u in r.json()["error"]["details"]["uses"]] == ["scenario"]
 
 
 def test_rewriting_the_users_and_deleting_in_one_batch_works_and_undoes_as_one(client, token, project):

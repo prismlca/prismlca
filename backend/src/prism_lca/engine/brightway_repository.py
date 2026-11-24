@@ -41,6 +41,18 @@ def _database_count(bd, project, current: str) -> int:
         return 0
 
 
+def _name_taken(name: str) -> PrismError:
+    """The refusal of a new model name the workspace already holds, in the product's words: Brightway calls
+    every one of them a database, while the name belongs to a model, the library or a background database."""
+    if is_library(name):
+        message = f"'{name}' is the name of your library."
+    elif name == BIOSPHERE_DB or is_read_only(name):
+        message = f"'{name}' is the name of a background database."
+    else:
+        message = f"A model named '{name}' already exists."
+    return PrismError(message, code="database_exists", status_code=409, hint="Choose another name.")
+
+
 def _refuse_while_used_elsewhere(name: str) -> None:
     """Refuse to delete a model whose processes still supply processes OUTSIDE it.
 
@@ -308,8 +320,7 @@ class BrightwayRepository(LcaRepository):
         bd = get_bd()
         name = (name or "foreground").strip()
         if name in bd.databases:
-            raise PrismError(f"Database '{name}' already exists.", code="database_exists",
-                             status_code=409, hint="Choose another name.")
+            raise _name_taken(name)
         # `searchable=False`: bw2data would otherwise maintain its own full-text index on every
         # save — PrismLCA has its own (`prism_search`) and never reads that one. See
         # engine/hygiene.py.
@@ -343,8 +354,7 @@ class BrightwayRepository(LcaRepository):
         if not name:
             raise PrismError("New model name must not be empty.", code="invalid_name")
         if name in bd.databases:
-            raise PrismError(f"Database '{name}' already exists.", code="database_exists",
-                             status_code=409, hint="Choose another name.")
+            raise _name_taken(name)
 
         src_db = bd.Database(source)
         code_map = {act.key[1]: _model.new_uid() for act in src_db}  # old code -> new code
@@ -451,8 +461,7 @@ class BrightwayRepository(LcaRepository):
             return DatabaseInfo(name=source, node_count=len(bd.Database(source)),
                                 read_only=False, kind="foreground")
         if name in bd.databases:
-            raise PrismError(f"Database '{name}' already exists.", code="database_exists",
-                             status_code=409, hint="Choose another name.")
+            raise _name_taken(name)
         from prism_lca.engine import model_rename
         from prism_lca.engine._store import per_model_stores
         from prism_lca.engine.lca import invalidate_lca_cache

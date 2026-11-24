@@ -83,7 +83,9 @@ export function TornadoCard({
           {result ? (
             <p className="sens-sub">
               {result.scenario ? result.scenario.name : 'Baseline'} · each input {pct} on its own ·{' '}
-              {all || sorted.length <= TOP ? sorted.length : `top ${TOP} of ${sorted.length}`} inputs
+              {all || sorted.length <= TOP
+                ? `${sorted.length} input${sorted.length === 1 ? '' : 's'}`
+                : `top ${TOP} of ${sorted.length} inputs`}
             </p>
           ) : null}
         </div>
