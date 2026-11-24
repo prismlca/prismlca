@@ -230,7 +230,7 @@ def test_the_plural_errs_towards_one_author():
     assert not is_plural_authors("Alexander Sandell")  # the "and" inside a word must not count
     assert is_plural_authors("Jane Doe, John Smith")
     assert is_plural_authors("A. Müller; B. Schmidt")
-    assert is_plural_authors("Jonas Harth und Anna Beispiel")
+    assert is_plural_authors("Erika Mustermann und Anna Beispiel")
     assert is_plural_authors("Jane Doe & John Smith")
 
 

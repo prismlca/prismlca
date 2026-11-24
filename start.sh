@@ -16,7 +16,7 @@ cd "$here/frontend"
 # nowhere. And the bare pattern also matches any shell whose own command line contains it, so the guard
 # could refuse because of the very command that invoked it (which is how this was found).
 # Both scoped to THIS checkout: the bare "electron-vite" matched every electron-vite app of the user
-# and every other Prism checkout, and --restart killed them.
+# and every other PrismLCA checkout, and --restart killed them.
 patterns=(
   "$here/frontend/node_modules/.*electron-vite"
   "$here/frontend/node_modules/electron/dist/electron"

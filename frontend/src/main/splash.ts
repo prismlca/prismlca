@@ -38,8 +38,8 @@ function splashHtml(versionLabel: string): string {
   .prism { width: 58px; height: 58px; border-radius: 15px; flex: none;
     background: conic-gradient(from 210deg, #93c120, #2f4e66, #9f5987, #93c120);
     box-shadow: 0 6px 18px rgba(47,78,102,.25); }
-  /* The wordmark as the app sets it everywhere else (.brand, .ov-hero h1): "Prism" regular,
-     "LCA" bold — not the whole name in one heavy weight. */
+  /* The wordmark as the app sets it everywhere else (.brand, .ov-hero h1): "LCA" bold, the rest
+     regular — not the whole name in one heavy weight. */
   h1 { font-size: 33px; letter-spacing: -.02em; color: #26313a; font-weight: 400; }
   h1 b { font-weight: 700; }
   .tagline { margin-top: 3px; font-size: 14.5px; color: #626b71; }
