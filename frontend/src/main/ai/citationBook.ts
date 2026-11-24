@@ -63,11 +63,14 @@ export class CitationBook {
    * the page (measured: every `source_url` of a research_bom run on Gemini) — this turns such a link
    * back into the page the engine resolved it to, so the item is matched, evidenced and stored under
    * an address that still works next month. Any other URL comes back unchanged.
+   *
+   * A provider's link the book also holds as an entry of its own is one whose resolution failed once (the
+   * transport keeps the link then); when another pass resolved it, the page it leads to wins.
    */
   canonical(url: string): string {
     const key = urlKey(url)
     const alias = this.aliases.get(key)
-    return !this.byKey.has(key) && alias ? (this.byKey.get(alias)?.url ?? url) : url
+    return alias && (!this.byKey.has(key) || isProviderLink(url)) ? (this.byKey.get(alias)?.url ?? url) : url
   }
   /**
    * The page a written address stands for, or null when it leads to none: a provider's link becomes

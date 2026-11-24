@@ -48,6 +48,9 @@ export interface ScriptedRound {
   /** Events a transport sends once its reply is complete — the pages it cites, its web searches —
    *  played after the usage and the finish, before the calls. */
   after?: StreamEvent[]
+  /** After its text the stream goes quiet until the request's signal aborts, then ends without usage or
+   *  finish — a reply cut off by a clock (a research leg's budget) with part of its answer written. */
+  stall?: boolean
 }
 
 /** What the code under test actually sent — snapshot per streamChat call, messages deep-copied so
@@ -61,6 +64,7 @@ export interface RecordedCall {
   reasoningEffort?: string
   maxTokens?: number
   webLookupsCap?: number
+  webDomains?: string[]
   /** Kept by reference, not copied: a test asks whether the caller's own signal arrived. */
   signal?: AbortSignal
 }
@@ -97,6 +101,14 @@ class ScriptedChat {
     for (const chars of round.reasoning ?? []) yield { type: 'reasoning', chars }
     const text = round.text ?? (this.alwaysDelta ? '' : undefined)
     if (text !== undefined) yield { type: 'delta', text }
+    if (round.stall) {
+      const signal = opts.signal
+      if (signal && !signal.aborted)
+        await new Promise<void>((resolve) =>
+          signal.addEventListener('abort', () => resolve(), { once: true })
+        )
+      return
+    }
     const usage = round.usage ?? this.defaultUsage
     if (usage) yield { type: 'usage', usage }
     const finish = round.finish ?? this.defaultFinish
@@ -129,6 +141,7 @@ class ScriptedChat {
       reasoningEffort: opts.reasoningEffort,
       maxTokens: opts.maxTokens,
       webLookupsCap: opts.webLookupsCap,
+      webDomains: opts.webDomains,
       signal: opts.signal
     })
     const round = this.rounds.shift() ?? (this.alwaysDelta ? { text: this.fallbackText } : {})
