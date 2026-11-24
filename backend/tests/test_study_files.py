@@ -39,6 +39,15 @@ def test_the_file_name_stays_short_for_a_long_model_name():
     assert len((study_file_name(name) + ".tmp").encode("utf-8")) < 255
 
 
+def test_no_study_file_starts_with_a_windows_device_name():
+    """Windows reserves CON, NUL, COM1 … also before an extension, so "CON.study~….json" is no file there."""
+    for name in ("CON.study", "nul.v2", "Aux.1", "COM1.x", "lpt9.draft"):
+        assert study_file_name(name).startswith("_"), name
+    # Without a dot after it the stem is "CON~<hash>", which Windows takes as an ordinary name.
+    for name in ("CON", "console.x", "Model A", "NULL.x"):
+        assert not study_file_name(name).startswith("_"), name
+
+
 def _legacy(folder, stem, data):
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{stem}.json").write_text(json.dumps(data), encoding="utf-8")

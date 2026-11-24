@@ -13,6 +13,7 @@ import pytest
 from prism_lca.engine import chat_transcripts
 
 API = "/api/v1/ai/chats"
+SWEEP = "/api/v1/ai/chat-runs/mark-interrupted"
 
 
 def _chat(client, token, db: str) -> str:
@@ -105,7 +106,7 @@ def test_mark_interrupted_flips_only_running_chats(client, token, project):
         client.put(f"{API}/{db}/{cid}/run", json={"runId": cid, "state": state, "outcome": "answered"}
                    if state == "stopped" else {"runId": cid, "state": state}, headers=token)
 
-    r = client.post(f"{API}/mark-interrupted", headers=token)
+    r = client.post(SWEEP, headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["count"] == 2
@@ -117,10 +118,14 @@ def test_mark_interrupted_flips_only_running_chats(client, token, project):
     assert client.get(f"{API}/fg-a/{stopped_a}", headers=token).json()["run"] == {
         "runId": stopped_a, "state": "stopped", "outcome": "answered"}
     assert "run" not in client.get(f"{API}/fg-b/{idle_b}", headers=token).json()
-    # the route did not create a model called "mark-interrupted"
-    assert client.get(f"{API}/mark-interrupted", headers=token).json()["chats"] == []
     # second call: nothing left
-    assert client.post(f"{API}/mark-interrupted", headers=token).json() == {"count": 0, "chats": []}
+    assert client.post(SWEEP, headers=token).json() == {"count": 0, "chats": []}
+
+
+def test_a_model_named_like_the_sweep_gets_its_chats(client, token, project):
+    """The sweep's route is not under `/chats/`, where the next segment is a model name."""
+    cid = _chat(client, token, "mark-interrupted")
+    assert [c["id"] for c in client.get(f"{API}/mark-interrupted", headers=token).json()["chats"]] == [cid]
 
 
 def test_an_empty_assistant_turn_is_stored_with_turn_id_and_outcome(client, token, project):

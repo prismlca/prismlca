@@ -88,7 +88,7 @@ async def list_databases(request: Request) -> list[DatabaseInfo]:
 )
 async def create_foreground(request: Request, body: CreateForegroundRequest) -> DatabaseInfo:
     model_scope.assert_no_new_model("create a model")
-    model_names.assert_one_line(body.name)
+    model_names.assert_allowed(body.name)
     # Check and mutation as one step: a project switch cannot land in between.
     with commands.project_guard():
         info = request.app.state.repository.create_foreground_database(body.name)
@@ -105,7 +105,7 @@ async def create_foreground(request: Request, body: CreateForegroundRequest) -> 
 )
 async def duplicate_foreground(request: Request, body: DuplicateForegroundRequest) -> DatabaseInfo:
     model_scope.assert_no_new_model("copy a model")
-    model_names.assert_one_line(body.name)
+    model_names.assert_allowed(body.name)
     with commands.project_guard():
         info = request.app.state.repository.duplicate_foreground_database(body.source, body.name)
     # The new model starts with one line and looks like it came from nothing, while all of its
@@ -129,7 +129,7 @@ def rename_foreground(request: Request, body: RenameForegroundRequest) -> Databa
     model_scope.assert_model_write(body.database)
     # Only a new name is checked, so an existing name keeps working.
     if body.name.strip() != body.database:
-        model_names.assert_one_line(body.name)
+        model_names.assert_allowed(body.name)
     # Under the lock a scenario window holds while it writes its overrides into the model's parameters and
     # restores them: a rename in between carried the overrides off under the new name, and the restore,
     # looking under the old one, found nothing to put back. The order is the parameter routes': the

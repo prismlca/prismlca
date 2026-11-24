@@ -489,7 +489,7 @@ export function registerChatIpc(
   return {
     onBackendReady: async () => {
       const { status, body } = await deps
-        .apiRequest('POST', '/api/v1/ai/chats/mark-interrupted')
+        .apiRequest('POST', '/api/v1/ai/chat-runs/mark-interrupted')
         .catch((e: unknown) => ({ status: 0, body: String(e) }))
       if (status === 0 || status >= 400) {
         aiLog(`interrupted-run sweep failed (HTTP ${status})`)

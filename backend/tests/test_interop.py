@@ -260,6 +260,19 @@ def test_import_as_model_keeps_the_name_on_one_line(client, token, project):
     assert r.status_code == 200, r.text
     assert r.json()["database"] == f"sheet {tag} model"
 
+
+def test_import_as_model_takes_the_slash_out_of_the_name(client, token, project):
+    import base64
+
+    _seed(get_bd())
+    workbook = client.get("/api/v1/interop/model/src", headers=token).content
+    tag = uuid.uuid4().hex[:6]
+    r = client.post("/api/v1/interop/model/import",
+                    json={"name": f"PET/glass {tag}", "content": base64.b64encode(workbook).decode()},
+                    headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["database"] == f"PET-glass {tag}"
+
 def test_import_as_model_leaves_no_empty_model_behind_when_refused(client, token, project):
     import base64
 

@@ -95,4 +95,15 @@ describe('Overview model list before its folders are known', () => {
     expect(bands()).toEqual(['Packaging 1', 'Unsorted 2'])
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('files a model named like an Object method where its own entry says, not nowhere', async () => {
+    const { Overview } = await freshOverview()
+    const named = [fg('constructor'), fg('toString'), fg('__proto__')]
+    // Parsed, so "__proto__" is an own key, as it arrives from the backend.
+    const folders = { ...FOLDERS, of: JSON.parse('{"__proto__": "f1"}') as Record<string, string> }
+    renderWithPrism(<Overview {...props} databases={named} />, { routes: { [ROUTE]: () => folders } })
+    expect(await screen.findByText('Packaging')).toBeInTheDocument()
+    // "__proto__" in its folder; "constructor" and "toString" in none — not filed under Object's methods.
+    expect(bands()).toEqual(['Packaging 1', 'Unsorted 2'])
+  })
 })

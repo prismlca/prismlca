@@ -14,6 +14,7 @@ import { fetchQuery, useQuery } from '../lib/server/useQuery'
 import { studyRoute } from '../lib/server/routes'
 import { errMsg } from '../lib/errors'
 import { fmtInt } from '../lib/format'
+import { nameMap } from '../lib/nameMap'
 
 const UNSORTED = '__unsorted__'
 
@@ -26,7 +27,7 @@ export default function ComparisonPicker(props: { database: string; onClose: () 
   const [open, setOpen] = useState<string[]>([])
   const [busy, setBusy] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [units, setUnits] = useState<Record<string, string>>({})
+  const [units, setUnits] = useState<Record<string, string>>(nameMap)
 
   useEffect(() => {
     void reloadFolders()
@@ -49,7 +50,7 @@ export default function ComparisonPicker(props: { database: string; onClose: () 
         return [name, fu] as const
       })
     ).then((pairs) => {
-      if (alive) setUnits(Object.fromEntries(pairs))
+      if (alive) setUnits(nameMap(pairs))
     })
     return () => {
       alive = false

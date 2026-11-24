@@ -102,8 +102,9 @@ def _chat_not_found() -> PrismError:
     return PrismError("Chat not found.", code="chat_not_found", status_code=404)
 
 
-# Declared BEFORE `POST /chats/{database}`, which would otherwise take "mark-interrupted" for a model.
-@router.post("/chats/mark-interrupted", summary="Mark every chat still 'running' as interrupted")
+# Not under `/chats/`: there the segment after it is a model name, and a model called "mark-interrupted"
+# could not have had a chat created without running this sweep instead.
+@router.post("/chat-runs/mark-interrupted", summary="Mark every chat still 'running' as interrupted")
 def mark_interrupted() -> dict:
     """Main calls this once at startup: a run cannot be going before main is, so any `running` is a
     run the app was closed under."""

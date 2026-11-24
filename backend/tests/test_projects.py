@@ -53,6 +53,26 @@ def test_delete_project(client, token):
     assert keep in names
 
 
+def test_a_workspace_name_with_a_slash_is_activated_and_deleted(client, token):
+    """The name travels percent-encoded, as the app sends it; the server decodes `%2F` before routing."""
+    from urllib.parse import quote
+
+    keep = "keep-" + uuid.uuid4().hex[:8]
+    slashed = f"PET/glass {uuid.uuid4().hex[:6]}/activate"
+    client.post("/api/v1/projects", json={"name": keep}, headers=token)
+    assert client.post("/api/v1/projects", json={"name": slashed}, headers=token).status_code == 200
+    client.post(f"/api/v1/projects/{keep}/activate", headers=token)
+
+    r = client.post(f"/api/v1/projects/{quote(slashed, safe='')}/activate", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == slashed
+    client.post(f"/api/v1/projects/{keep}/activate", headers=token)
+    r = client.delete(f"/api/v1/projects/{quote(slashed, safe='')}", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == slashed
+    assert slashed not in [p["name"] for p in client.get("/api/v1/projects", headers=token).json()]
+
+
 def _only_these_workspaces(monkeypatch, *names: str) -> None:
     """The landing after a deletion looks at every workspace, and this worker's Brightway folder holds every
     earlier test's too: the test sees only its own, in the order given, plus 'default' where named."""

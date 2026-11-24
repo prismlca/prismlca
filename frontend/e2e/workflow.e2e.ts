@@ -244,6 +244,41 @@ test('tag groups belong to their model: kept over a restart, unseen by the next 
   expect(running.rendererErrors).toEqual([])
 })
 
+test('a model name with a slash is refused, and one with the other odd characters works on every page', async () => {
+  const { page } = running!
+  const banner = page.locator('.wb-error')
+  // A slash would cut the name in two in the app's own addresses, and every page would answer "Not Found".
+  // The dialog stays open with the reason and a name that would do.
+  await newModel(page, 'PET/glass')
+  const dialog = page.locator('.modal-backdrop')
+  await expect(dialog.getByRole('alert')).toContainText('cannot contain a slash')
+  await expect(dialog.getByRole('alert')).toContainText('‘PET-glass’')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toBeHidden()
+  // Every other character travels percent-encoded: the ones a URL gives a meaning to, and a dot segment.
+  for (const name of ['odd #1 50% ?a=b&c+d \\ x', '..']) {
+    await newModel(page, name)
+    await page.getByTitle('Add a new process to the model').click()
+    await page.getByLabel('Name', { exact: true }).fill('bottle')
+    await page.getByRole('button', { name: 'Create', exact: true }).click()
+    await expect(processBox(page, 'bottle')).toBeVisible()
+    for (const view of ['Parameters', 'Scenarios', 'LCIA', 'Results', 'Report', 'Model']) {
+      const item = page.locator('.navitem', { hasText: view })
+      await item.click()
+      await expect(item).toHaveAttribute('aria-current', 'page')
+      await expectRest(page, `opening ${view} for the model ${name}`)
+      await expect(banner).toBeHidden()
+    }
+  }
+  expect(running!.rendererErrors).toEqual([])
+})
+
+async function newModel(page: Page, name: string): Promise<void> {
+  await page.getByTitle('Create another model, or duplicate an existing one').first().click()
+  await page.getByLabel('Model name (e.g. pet-bottle-2025)').fill(name)
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+}
+
 async function openTags(page: Page): Promise<void> {
   await page
     .getByTitle('Manage tag groups and values (assign tags via the tag button on a process box)')

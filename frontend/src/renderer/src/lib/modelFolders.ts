@@ -11,6 +11,7 @@
  * cannot go stale in half the UI while the other half is right.
  */
 import { api } from './api'
+import { nameMap } from './nameMap'
 
 export interface ModelFolder {
   id: string
@@ -31,7 +32,7 @@ export type FolderStatus = 'loading' | 'ready' | 'failed'
 export interface FolderState {
   /** Always alphabetical — the backend sorts, so nothing here has to remember to. */
   folders: ModelFolder[]
-  /** model name → folder id. A model that is in none is simply absent. */
+  /** model name → folder id (a `nameMap`). A model that is in none is simply absent. */
   of: Record<string, string>
   status: FolderStatus
 }
@@ -40,7 +41,7 @@ export interface FolderState {
  *  (just after start, mostly), and asking again at once would meet it just as busy. */
 export const FOLDER_RETRY_MS = 1500
 
-let snapshot: FolderState = { folders: [], of: {}, status: 'loading' }
+let snapshot: FolderState = { folders: [], of: nameMap(), status: 'loading' }
 const subscribers = new Set<() => void>()
 
 function publish(next: FolderState): void {
@@ -77,7 +78,8 @@ export async function reloadFolders(): Promise<FolderState> {
     .catch(() => pause(FOLDER_RETRY_MS).then(readFolders))
     .catch(() => null)
   if (generation !== workspaceGeneration) return snapshot // the workspace changed while this was out
-  if (next) publish({ folders: next.folders ?? [], of: next.of ?? {}, status: 'ready' })
+  if (next)
+    publish({ folders: next.folders ?? [], of: nameMap(Object.entries(next.of ?? {})), status: 'ready' })
   // Another read may have succeeded meanwhile; its state stands, and so does any good one before.
   else if (snapshot.status !== 'ready') publish({ ...snapshot, status: 'failed' })
   return snapshot
@@ -92,7 +94,7 @@ export async function reloadFolders(): Promise<FolderState> {
  */
 export function resetFolders(): Promise<FolderState> {
   workspaceGeneration++
-  publish({ folders: [], of: {}, status: 'loading' })
+  publish({ folders: [], of: nameMap(), status: 'loading' })
   return reloadFolders()
 }
 
