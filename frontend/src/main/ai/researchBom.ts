@@ -240,7 +240,9 @@ export async function researchBom(opts: {
           onCost: opts.onCost,
           budgetMs: attempts[i].budgetMs,
           domains: domains.length ? domains : undefined,
-          onCitations: (c) => book.add(c)
+          onCitations: (c) => book.add(c),
+          // Out of time with part of an answer: should it not parse, the next attempt is the short one.
+          onTimeout: () => (timedOut = true)
         })
       } catch (e) {
         // Out of time, or the connection died. One narrow retry is worth it; a second is not, the user

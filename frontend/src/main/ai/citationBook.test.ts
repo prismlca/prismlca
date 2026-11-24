@@ -55,6 +55,18 @@ describe('evidence from the engine', () => {
     expect(book.page(dead)).toBeNull()
   })
 
+  it('turns a provider’s link it once failed to resolve into its page when a later pass resolved it', () => {
+    const book = new CitationBook()
+    const link = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ1'
+    book.add([{ url: link }])
+    expect(book.canonical(link)).toBe(link)
+    book.add([{ url: 'https://maker.example/sheet.pdf', via: [link] }])
+    expect(book.canonical(link)).toBe('https://maker.example/sheet.pdf')
+    // A page of its own that is also another page's alias stays itself.
+    book.add([{ url: 'https://a.example/x' }, { url: 'https://b.example/y', via: ['https://a.example/x'] }])
+    expect(book.canonical('https://a.example/x')).toBe('https://a.example/x')
+  })
+
   it('tells a provider’s citation link from a page, so a dead one is not kept as a source', () => {
     expect(isProviderLink('https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9')).toBe(true)
     expect(isProviderLink('https://bottledwater.org/report.pdf')).toBe(false)

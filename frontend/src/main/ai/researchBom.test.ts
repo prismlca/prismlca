@@ -266,6 +266,27 @@ describe('researchBom', () => {
     expect(r.items).toHaveLength(1)
   })
 
+  // A leg the clock cut off returns what it had written. When that does not parse, its time is spent all
+  // the same: the next attempt is the short, narrow one, not the long question on a full budget again.
+  it('asks a leg its clock cut off mid-answer the short question next', async () => {
+    vi.useFakeTimers()
+    try {
+      chat.rounds = [
+        { text: '{"items": [{"component": "frame", "mass_kg": 7, "source_url": "https://e.or', stall: true },
+        answer({ items: [{ component: 'frame', mass_kg: 7, source_url: 'https://e.org/f' }] })
+      ]
+      const run = researchBom({ product: 'rack', components: ['frame'] })
+      await vi.advanceTimersByTimeAsync(360_000)
+      const r = await run
+      expect(chat.seen).toHaveLength(2)
+      expect(asked()[1]).toMatch(/BE BRIEF: the JSON object with one entry/)
+      expect(String(chat.seen[1].messages[0].content)).toMatch(/Time budget: about 2 minutes/)
+      expect(r.items).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   describe('with a recipe', () => {
     const soap = {
       formulation: { name: 'MP-01', kind: 'frame', source_url: 'https://pcc.example/mp01.pdf' },

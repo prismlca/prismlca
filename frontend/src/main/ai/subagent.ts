@@ -12,7 +12,7 @@
  *   - per-item questions run in PARALLEL;
  *   - the answer is verifiable (mass balance + mandatory sources).
  */
-import { CitationBook, isProviderLink, type Evidence } from './citationBook'
+import { CitationBook, isProviderLink, urlKey, type Evidence } from './citationBook'
 import { AiProviderError, type ChatMessage, type Citation } from './providers/types'
 import { providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
@@ -80,6 +80,9 @@ export interface ResearchOpts {
   logAs: string
   /** Ceiling on the provider's web lookups inside one request of this leg (Settings → AI → Limits). */
   webLookups?: number
+  /** Told when the budget ran out after the leg had written something. That text is still returned and
+   *  read like a finished answer, but the leg's time is spent: no further pass on the same budget. */
+  onTimeout?: () => void
 }
 
 /**
@@ -158,6 +161,9 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       `The research ran past its ${Math.round((opts.budgetMs ?? LEG_BUDGET_MS) / 60_000)}-minute budget and was stopped. ` +
         'Ask again with a narrower question, or supply the figures yourself.'
     )
+  // Out of time WITH an answer: the partial text is kept and returned, and the caller is told the clock
+  // ended it — otherwise a leg cut off mid-answer looks like one that finished with time to spare.
+  if (clock.signal.aborted) opts.onTimeout?.()
   return text
 }
 
@@ -193,6 +199,26 @@ export function normalizeDomain(raw: string): string | null {
     .replace(/[/?#].*$/, '')
     .replace(/[.,;:]+$/, '')
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null
+}
+
+/** Whether `host` is `domain` or one of its subdomains — how the providers' allow lists match. */
+function isWithin(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`)
+}
+
+/**
+ * The allow list for a pass that should search where a leg suggested, under the caller's own list. The
+ * suggestion can only narrow a caller's list, never widen it: the hosts both admit (a suggested host on a
+ * caller's domain, or a caller's host on a suggested domain), and the caller's list unchanged when they
+ * share none. Without a caller's list the suggestion is the list.
+ */
+export function narrowDomains(caller: string[], suggested: string[]): string[] {
+  if (!caller.length) return suggested
+  const both = normalizeDomains([
+    ...suggested.filter((s) => caller.some((c) => isWithin(s, c))),
+    ...caller.filter((c) => suggested.some((s) => isWithin(c, s)))
+  ])
+  return both.length ? both : caller
 }
 
 /** Normalise, de-duplicate and cap a domain list; the cap is OpenAI's documented ceiling. */
@@ -354,6 +380,25 @@ export function parseFindings(
   return { findings, dropped }
 }
 
+/** Longest statement a figure carries into the upgrade pass. */
+const FIGURE_CHARS = 400
+
+/**
+ * A finding as the upgrade pass is asked to confirm it: whole when it is short, otherwise its statement cut
+ * and its sources after it in full. The URL is what tells the pass which source it is to replace, and it
+ * stands at the end of the line, where a plain cut takes it off first.
+ */
+export function figureLine(f: WebFinding): string {
+  if (f.text.length <= FIGURE_CHARS || !f.sources.length) return f.text.slice(0, FIGURE_CHARS)
+  const statement = f.text
+    .replace(URL_RE, '')
+    .replace(/\([\s,;]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const cut = statement.length > FIGURE_CHARS ? `${statement.slice(0, FIGURE_CHARS).trimEnd()}…` : statement
+  return `${cut} (${f.sources.join(', ')})`
+}
+
 /** Classes that can carry a figure on their own; media/community only corroborate. */
 const STRONG_CLASSES = new Set(['official', 'industry'])
 
@@ -465,7 +510,10 @@ export async function researchWeb(opts: {
         onCost: opts.onCost,
         budgetMs: timedOut ? RETRY_BUDGET_MS : undefined,
         domains: domains.length ? domains : undefined,
-        onCitations: (c) => book.add(c)
+        onCitations: (c) => book.add(c),
+        // Ran out of time with part of an answer: the budget is spent all the same, so what follows is
+        // the short retry (when nothing usable came) and never the upgrade pass.
+        onTimeout: () => (timedOut = true)
       })
     } catch (e) {
       // Out of time or a dead connection — worth one narrow retry. A Stop from the user is not, and neither
@@ -507,16 +555,16 @@ export async function researchWeb(opts: {
   ) {
     // Where to look is the leg's own call: the hosts it named at the end of
     // its first pass become the search engine's allow list for this one — mechanically, so the
-    // engine cannot hand back the same blogs the prompt asks it to ignore. A caller-set allow list
-    // stays in force underneath. Nothing named = the open pass as before.
-    const upgradeDomains = normalizeDomains([...domains, ...suggested])
+    // engine cannot hand back the same blogs the prompt asks it to ignore. A caller's allow list is a
+    // limit the suggestion may narrow but never widen. Nothing named and no caller's list = the open pass.
+    const upgradeDomains = narrowDomains(domains, suggested)
     opts.onProgress?.(
       `${leg}${label}: only media/community sources — one pass for a stronger one` +
-        (suggested.length ? ` on ${suggested.join(', ')}` : '')
+        (upgradeDomains.length ? ` on ${upgradeDomains.join(', ')}` : '')
     )
     const figures = findings
       .slice(0, 3)
-      .map((f) => `- ${f.text.slice(0, 200)}`)
+      .map((f) => `- ${figureLine(f)}`)
       .join('\n')
     try {
       const text = await runResearch({
@@ -540,9 +588,24 @@ export async function researchWeb(opts: {
         domains: upgradeDomains.length ? upgradeDomains : undefined,
         onCitations: (c) => book.add(c)
       })
-      const seen = new Set(findings.map((f) => f.text))
+      // A stronger source is a page the first pass did not cite: the same blog in other words, tagged
+      // "industry" this time, is no upgrade. Pages are compared after the book resolved the provider's
+      // links, and never by host — a manufacturer's PDF on the domain of its shop page is what was asked for.
+      // A provider's link the book could not resolve is no page: it may lead to the very blog of the first
+      // pass, so it cannot make a finding new.
+      const page = (u: string): string | null => {
+        const p = book.canonical(u)
+        return isProviderLink(p) ? null : urlKey(p)
+      }
+      const cited = new Set(findings.flatMap((f) => f.sources.map(page)))
       const upgrades = parseFindings(splitAuthoritativeDomains(text).text, true).findings.filter(
-        (f) => f.source_class && STRONG_CLASSES.has(f.source_class) && !seen.has(f.text)
+        (f) =>
+          f.source_class &&
+          STRONG_CLASSES.has(f.source_class) &&
+          f.sources.some((u) => {
+            const key = page(u)
+            return key !== null && !cited.has(key)
+          })
       )
       const where = upgradeDomains.length ? ` (searched on ${upgradeDomains.join(', ')})` : ''
       if (upgrades.length) {
