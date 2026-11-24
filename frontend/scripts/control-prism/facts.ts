@@ -11,6 +11,7 @@ import type { RunningApp } from '../../e2e/app'
 import type { ProcessInfo } from '../../e2e/processes'
 import { inside } from './doctor'
 import { readableKeys } from './keys'
+import type { DriverState } from './watchdog'
 
 export interface BackendFacts {
   pid: number
@@ -40,6 +41,8 @@ export interface AppFacts {
   keyStore: string | null
   /** The providers with a stored key in the app's profile, and whether the app can decrypt each. */
   storedKeys: { provider: string; readable: boolean }[]
+  /** What the host's driver is doing (watchdog.ts); added by the host. Absent from an older host. */
+  driver?: DriverState
 }
 
 export const ENV_KEYS = [

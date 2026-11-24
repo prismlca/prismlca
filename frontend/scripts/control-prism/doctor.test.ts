@@ -93,6 +93,7 @@ function input(over: Partial<DoctorInput> = {}): DoctorInput {
     realChanged: [],
     devKeyFiles: [],
     backendEnvKeys: [],
+    window: { outcome: 'answers', attached: true, ms: 3, readyState: 'complete' },
     ...over
   }
 }
@@ -133,9 +134,96 @@ describe('judge', () => {
     expect(failures(input({ record: record({ frontend: '/other/frontend' }) }))[0]).toMatch(
       /not yours to drive/
     )
-    expect(failures(input({ app: null, hostError: 'refused' }))).toEqual([
-      expect.stringMatching(/does not answer \(refused\)/)
+    expect(failures(input({ app: null, hostError: 'refused', window: null }))).toEqual([
+      expect.stringMatching(/does not answer \(refused\) — run stop, then launch/)
     ])
+  })
+
+  it('tells a stuck driver from a frozen window when the host does not answer', () => {
+    const silent = (window: DoctorInput['window']): string[] =>
+      failures(input({ app: null, hostError: 'no answer within 40 s', window }))
+    expect(silent({ outcome: 'answers', attached: true, ms: 4, readyState: 'complete' })).toEqual([
+      expect.stringMatching(
+        /but the window does \(document complete, 4 ms\): the driver is stuck, not the app/
+      )
+    ])
+    expect(silent({ outcome: 'answers', attached: false, ms: 4, readyState: 'complete' })[0]).toMatch(
+      /nothing holds it any more: the driver is stuck/
+    )
+    expect(silent({ outcome: 'answers', attached: true, ms: 4, readyState: 'complete' })[0]).toMatch(
+      /logs\/default\/console\.log/
+    )
+    for (const frozen of [
+      { outcome: 'window-silent', attached: true, why: 'no answer within 10 s' },
+      { outcome: 'browser-silent', why: 'no answer within 10 s' }
+    ] as const) {
+      expect(silent(frozen)).toEqual([
+        expect.stringMatching(
+          /and neither does the window \(no answer within 10 s\): the app itself is frozen/
+        )
+      ])
+    }
+    expect(silent({ outcome: 'no-window', pages: [] })[0]).toMatch(/no main window/)
+    expect(silent({ outcome: 'unreachable', why: 'refused' })[0]).toMatch(
+      /could not be asked past it \(refused\) — run stop, then launch/
+    )
+  })
+
+  it('checks with the host answering that the window answers past the driver and is still held', () => {
+    const checks = judge(input())
+    expect(checks).toContainEqual({
+      status: 'ok',
+      text: 'the window answers a plain question past the driver (document complete, 3 ms)'
+    })
+    expect(
+      failures(input({ window: { outcome: 'answers', attached: false, ms: 3, readyState: 'complete' } }))
+    ).toEqual([expect.stringMatching(/nothing holds it any more: the driver has lost the window — restart/)])
+    expect(
+      failures(input({ window: { outcome: 'window-silent', attached: true, why: 'no answer within 10 s' } }))
+    ).toEqual([expect.stringMatching(/does not answer a plain question past the driver.*frozen or busy/)])
+    // A window that cannot be asked is said, not failed: the host's own checks still stand.
+    const unreachable = judge(input({ window: { outcome: 'unreachable', why: 'no port' } }))
+    expect(unreachable.filter((c) => c.status === 'FAIL')).toEqual([])
+    expect(unreachable).toContainEqual({
+      status: 'note',
+      text: 'the window could not be asked past the driver: no port'
+    })
+  })
+
+  it('says what the driver is busy with, and fails while a command given up on may still land', () => {
+    const driver = {
+      busy: [{ what: 'wait visible "Run"', ms: 12_000, leftMs: 38_000 }],
+      outstanding: { what: 'click "Delete"', ms: 41_000 },
+      overdue: []
+    }
+    const checks = judge(input({ app: app({ driver }) }))
+    expect(checks).toContainEqual({
+      status: 'note',
+      text:
+        'the driver is busy with wait visible "Run" for 12 s (it gives up on it in 38 s); commands wait ' +
+        'their turn behind it'
+    })
+    expect(failures(input({ app: app({ driver }) }))).toEqual([
+      expect.stringMatching(/gave up on click "Delete" 41 s ago, and it has not settled.*restart frees/)
+    ])
+    expect(failures(input({ app: app({ driver: { busy: [], outstanding: null, overdue: [] } }) }))).toEqual(
+      []
+    )
+  })
+
+  it('notes looks given up on that Playwright never answered, without failing on them', () => {
+    const overdue = ['snapshot', 'shot', 'read', 'snapshot "css=.modal"'].map((what, i) => ({
+      what,
+      ms: (i + 1) * 10_000
+    }))
+    const i = input({ app: app({ driver: { busy: [], outstanding: null, overdue } }) })
+    expect(failures(i)).toEqual([])
+    expect(judge(i)).toContainEqual({
+      status: 'note',
+      text:
+        'the driver gave up on snapshot (10 s ago), shot (20 s ago), read (30 s ago) and 1 more, and ' +
+        'Playwright has not answered since: when more commands are given up on, the driver is stuck — restart'
+    })
   })
 
   it('refuses a dev-server renderer or a renderer from elsewhere', () => {

@@ -26,6 +26,19 @@ function actionTimeout(flags: Flags): number {
   return flags.timeout === undefined ? ACTION_MS : waitTimeout(flags.timeout)
 }
 
+/** The least a later step of a command gets, so a step after a slow first one is not refused outright. */
+const STEP_MIN_MS = 500
+
+/**
+ * One bound for a command of several steps (fill, Enter, leave; key after key), shared by them: each step
+ * gets what is left. The host's watchdog gives up on a command past this bound plus a margin
+ * (watchdog.ts), so a bound per step would let a legitimate command outrun it.
+ */
+function budget(flags: Flags): () => number {
+  const until = Date.now() + actionTimeout(flags)
+  return () => Math.max(until - Date.now(), STEP_MIN_MS)
+}
+
 /** "Ctrl+Z" and "Cmd+K" in the spelling Playwright's keyboard knows. */
 export function normaliseKeys(keys: string): string {
   return keys
@@ -65,11 +78,11 @@ export async function hover(page: Page, args: string[], flags: Flags): Promise<s
 export async function type(page: Page, args: string[], flags: Flags): Promise<string> {
   const loc = target(page, args[0], 'type <target> <text> [--append] [--enter] [--commit]')
   if (args.length < 2) throw new Error('usage: type <target> <text> [--append] [--enter] [--commit]')
-  const timeout = actionTimeout(flags)
-  if (flags.append) await loc.pressSequentially(args[1], { timeout })
-  else await loc.fill(args[1], { timeout })
-  if (flags.enter) await loc.press('Enter', { timeout })
-  if (flags.commit) await loc.blur({ timeout })
+  const left = budget(flags)
+  if (flags.append) await loc.pressSequentially(args[1], { timeout: left() })
+  else await loc.fill(args[1], { timeout: left() })
+  if (flags.enter) await loc.press('Enter', { timeout: left() })
+  if (flags.commit) await loc.blur({ timeout: left() })
   const then = flags.enter ? ' and pressed Enter' : flags.commit ? ' and left the field' : ''
   return `typed into ${args[0]}${then}`
 }
@@ -79,10 +92,10 @@ export async function press(page: Page, args: string[], flags: Flags): Promise<s
   if (args.length === 0)
     throw new Error('usage: press <keys>… [--target <target>]   e.g. press Control+z, press Tab Tab Enter')
   const keys = args.map(normaliseKeys)
-  const timeout = actionTimeout(flags)
+  const left = budget(flags)
   if (typeof flags.target === 'string') {
     const loc = toLocator(page, parseTarget(flags.target))
-    for (const k of keys) await loc.press(k, { timeout })
+    for (const k of keys) await loc.press(k, { timeout: left() })
   } else {
     for (const k of keys) await page.keyboard.press(k)
   }
@@ -102,10 +115,10 @@ function listed(labels: string[], max = 12): string {
 export async function select(page: Page, args: string[], flags: Flags): Promise<string> {
   const loc = target(page, args[0], 'select <target> <option label | /regex/ | value>')
   if (args.length < 2) throw new Error('usage: select <target> <option label | /regex/ | value>')
-  const timeout = actionTimeout(flags)
+  const left = budget(flags)
   // The options are read before choosing; without this wait a target that is not there yet would read as
   // a list with no options.
-  await loc.waitFor({ state: 'attached', timeout })
+  await loc.waitFor({ state: 'attached', timeout: left() })
   const labels = (await loc.locator('option').allInnerTexts()).map((l) => l.trim())
   const re = /^\/(.+)\/([imsu]*)$/s.exec(args[1])
   let label: string | undefined
@@ -122,8 +135,8 @@ export async function select(page: Page, args: string[], flags: Flags): Promise<
     label = hits[0]
   } else if (labels.includes(args[1])) label = args[1]
   const chosen = label
-    ? await loc.selectOption({ label }, { timeout })
-    : await loc.selectOption({ value: args[1] }, { timeout }).catch(() => {
+    ? await loc.selectOption({ label }, { timeout: left() })
+    : await loc.selectOption({ value: args[1] }, { timeout: left() }).catch(() => {
         throw new Error(`${args[0]} has no option "${args[1]}". Its options: ${listed(labels)}`)
       })
   return `selected ${JSON.stringify(label ?? args[1])} in ${args[0]} (value ${chosen.join(', ')})`

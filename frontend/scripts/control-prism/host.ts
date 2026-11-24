@@ -5,7 +5,8 @@
  *
  * It listens on 127.0.0.1 only and answers only requests carrying the session's token. It ends itself
  * when the app goes away, and quits the app after a stretch without commands, so a forgotten session does
- * not run on.
+ * not run on. It runs one command at a time, each under the watchdog's deadline (watchdog.ts), so a call
+ * into Playwright that never settles cannot hold the line for the commands after it.
  */
 import { createHash } from 'node:crypto'
 import { createWriteStream, readFileSync } from 'node:fs'
@@ -28,11 +29,12 @@ import {
 } from './actions'
 import { realDirs } from './doctor'
 import { drag, InputBroken } from './drag'
-import { gatherAppFacts } from './facts'
+import { gatherAppFacts, type AppFacts } from './facts'
 import { forgetKeys } from './keys'
 import { seed } from './seed'
 import { NO_PATH_RULE, readSession, updateSession, type SessionRecord } from './session'
 import { runWait, withDeadline } from './waits'
+import { DRIVING, Overdue, QUESTIONS, Watchdog } from './watchdog'
 
 export interface Request {
   cmd: string
@@ -61,9 +63,6 @@ interface ConsoleEntry {
   text: string
   at: string
 }
-
-/** The commands that act on the window as a person does; looking (snapshot, shot, read, wait) is not one. */
-const DRIVING = new Set(['click', 'hover', 'type', 'press', 'select', 'drag'])
 
 export async function runHost(frontend: string, name: string): Promise<void> {
   // Before anything else: a rebuild while the app starts must not become the code this host counts as its own.
@@ -94,9 +93,14 @@ export async function runHost(frontend: string, name: string): Promise<void> {
   }
 
   const appLog = createWriteStream(join(record.logs, 'app.log'), { flags: 'a' })
+  // The window's console is kept on disk too: a session ended from outside (stop on a host that does not
+  // answer) takes the host's memory with it.
+  const consoleFile = createWriteStream(join(record.logs, 'console.log'), { flags: 'a' })
   const consoleLog: ConsoleEntry[] = []
   const note = (type: string, text: string): void => {
-    consoleLog.push({ n: consoleLog.length + 1, type, text, at: new Date().toISOString() })
+    const entry = { n: consoleLog.length + 1, type, text, at: new Date().toISOString() }
+    consoleLog.push(entry)
+    consoleFile.write(`#${entry.n} ${entry.at} ${type}: ${text}\n`)
   }
   /** Set while the host itself ends the app (stop, restart, idle): that close is not the app going away. */
   let ending = false
@@ -182,6 +186,9 @@ export async function runHost(frontend: string, name: string): Promise<void> {
   /** Set when a drag broke off with the window not answering: it may still finish on its own, so nothing
    *  is driven on top of it until a restart gives the session a fresh window. */
   let inputBroken: string | null = null
+  /** Set while restart swaps the app: a question asked out of line would find the old one, or none. */
+  let restarting = false
+  const watchdog = new Watchdog(say)
 
   const handle = async (req: Request): Promise<string> => {
     const page = running.page
@@ -227,9 +234,15 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         return JSON.stringify({ last: consoleLog.length, entries })
       }
       case 'facts': {
+        // Asked out of line (see below): while a restart swaps the app, its facts are neither app's.
+        if (restarting) throw new Error('the session is restarting; ask again once restart has answered')
         const processes = snapshotProcesses()
         update({ processes })
-        return JSON.stringify(await gatherAppFacts(running, processes, real))
+        const facts: AppFacts = {
+          ...(await gatherAppFacts(running, processes, real)),
+          driver: watchdog.state()
+        }
+        return JSON.stringify(facts)
       }
       case 'stop':
         return stop(!!req.flags.keep)
@@ -237,6 +250,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         // Quit as a person does and start again on the same folders: what was stored must come back.
         // The command line has checked (and if need be rebuilt) out/ and passes the build it starts from.
         ending = true
+        restarting = true
         let quitNote = ''
         try {
           await quit(running, record.install, { byPath: false })
@@ -244,6 +258,8 @@ export async function runHost(frontend: string, name: string): Promise<void> {
           // quit() ended whatever outlived the app before it threw; the folders are free to start again.
           quitNote = ` (the quit needed help: ${(e as Error).message.split('\n')[0]})`
         }
+        // Whatever the old window still had outstanding ended with it.
+        watchdog.reset()
         ending = false
         try {
           running = await start()
@@ -254,6 +270,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
           setTimeout(() => process.exit(1), 200)
           throw new Error(`${detail}. The session is over; stop cleans up, logs are in ${record.logs}.`)
         }
+        restarting = false
         const started = JSON.parse(req.args[0] ?? 'null') as Pick<
           SessionRecord,
           'build' | 'backendSrc'
@@ -269,11 +286,18 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const reply = (status: number, body: Reply): void => {
+      // Late news is said once, so only into an answer its caller will read: not to a refused request, nor
+      // to a caller that stopped waiting (a command dropped from the line, or one that ran past it).
+      const heard = status === 200 && !res.destroyed && !!res.socket && !res.socket.destroyed
+      const notes = [heard ? watchdog.takeNews() : undefined]
       if (startedCode && codePrint() !== startedCode) {
-        body.note =
+        notes.push(
           'control-prism itself changed after this session started, and the session still runs its old ' +
-          'code: stop and launch to drive with the new'
+            'code: stop and launch to drive with the new'
+        )
       }
+      const said = notes.filter((n): n is string => !!n)
+      if (said.length > 0) body.note = said.join('\n')
       res.writeHead(status, { 'content-type': 'application/json' })
       res.end(JSON.stringify(body))
     }
@@ -297,20 +321,31 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         if (!res.writableEnded) gone = true
       })
       // One command at a time, in the order they came: a click must not land in the middle of a wait. A
-      // command whose caller gave up while it waited in line is dropped: run late, it would act unseen.
-      const run = queue.then(() => {
-        if (gone || (parsed.expires !== undefined && Date.now() > parsed.expires)) {
-          throw new Error(`dropped: its caller stopped waiting before its turn came, so it did not run`)
-        }
-        return handle(parsed)
-      })
-      queue = run.catch(() => undefined)
+      // command whose caller gave up while it waited in line is dropped: run late, it would act unseen. Each
+      // holds the line until it settles or its deadline passes, whichever comes first. Questions about the
+      // session — its console, the app's facts — touch no window and do not wait in line: doctor answers
+      // also while a long wait holds it.
+      const outOfLine = QUESTIONS.has(parsed.cmd)
+      const run = outOfLine
+        ? watchdog.run(parsed, () => handle(parsed))
+        : queue.then(() => {
+            if (gone || (parsed.expires !== undefined && Date.now() > parsed.expires)) {
+              throw new Error(`dropped: its caller stopped waiting before its turn came, so it did not run`)
+            }
+            return watchdog.run(parsed, () => handle(parsed))
+          })
+      if (!outOfLine) queue = run.catch(() => undefined)
       run.then(
         (text) => {
           reply(200, { ok: true, text })
           if (parsed.cmd === 'stop') setTimeout(() => process.exit(0), 100)
         },
         async (e: Error) => {
+          // Given up on: the driver did not answer, so asking it again for an explanation would not either.
+          if (e instanceof Overdue) {
+            reply(200, { ok: false, error: e.message })
+            return
+          }
           const raw = ['click', 'hover', 'type', 'select'].includes(parsed.cmd)
             ? parsed.args[0]
             : parsed.cmd === 'drag'

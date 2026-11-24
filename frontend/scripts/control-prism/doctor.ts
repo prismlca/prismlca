@@ -9,6 +9,9 @@
  * - What does it hold? A copy of the person's data says where from and when, the search embeds the way
  *   its index was built, and stored provider keys are there only when launch was asked for them — and
  *   then readable.
+ * - Can it be driven? Whether the window answers a plain question asked past the driver (windowProbe.ts),
+ *   and what the driver is busy with — so a stuck driver is not taken for a frozen window, nor the other
+ *   way round.
  *
  * The facts are gathered in two places — the host knows the app (facts.ts), the command line knows the
  * checkout — and judged in one pure function, so the verdicts can be tested without an app.
@@ -19,6 +22,8 @@ import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AppFacts } from './facts'
 import type { SessionRecord } from './session'
+import type { DriverState } from './watchdog'
+import type { WindowProbe } from './windowProbe'
 
 export interface DoctorInput {
   frontend: string
@@ -26,6 +31,8 @@ export interface DoctorInput {
   app: AppFacts | null
   /** Why the host did not answer, when it did not. */
   hostError?: string
+  /** What the window said when asked past the driver; null when it was not asked. */
+  window: WindowProbe | null
   current: { src: string; out: string | null; backend: string }
   stamp: { src: string; out: string } | null
   realDirs: string[]
@@ -115,10 +122,7 @@ export function judge(input: DoctorInput): Check[] {
     `the session record names ${record.frontend}, not this checkout — it is not yours to drive`
   )
   if (!app) {
-    checks.push({
-      status: 'FAIL',
-      text: `the host does not answer${input.hostError ? ` (${input.hostError})` : ''} — run stop, then launch`
-    })
+    checks.push({ status: 'FAIL', text: hostSilent(input) })
     return checks
   }
   add(
@@ -126,6 +130,7 @@ export function judge(input: DoctorInput): Check[] {
     "the app is running and its host answers with this session's token",
     'the app is not running — run stop, then launch'
   )
+  checks.push(...judgeDriving(input.window, app.driver))
   add(
     resolve(app.appPath) === resolve(frontend),
     `the app runs from this checkout (${app.appPath})`,
@@ -284,6 +289,113 @@ export function judge(input: DoctorInput): Check[] {
         `${input.realChanged.length}${input.realChanged.length >= 20 ? '+' : ''} file(s) in your real profile changed since the ` +
         `launch (e.g. ${input.realChanged.slice(0, 3).join(', ')}). If your own PrismLCA is running, that is ` +
         'it; the checks above say whether this instance could have.'
+    })
+  }
+  return checks
+}
+
+const secs = (ms: number): string => `${Math.round(ms / 1000)} s`
+
+/** The window's answer to a plain question, in a few words. */
+function answered(w: Extract<WindowProbe, { outcome: 'answers' }>): string {
+  return `document ${w.readyState}, ${w.ms} ms`
+}
+
+/** The host did not answer: whether the window does says whether the driver or the app is stuck. */
+export function hostSilent(input: DoctorInput): string {
+  const host = `the host does not answer${input.hostError ? ` (${input.hostError})` : ''}`
+  const w = input.window
+  const logs = `the window's console so far is in ${input.record.logs}/console.log`
+  switch (w?.outcome) {
+    case 'answers':
+      return (
+        `${host}, but the window does (${answered(w)})${w.attached ? '' : ' — and nothing holds it any more'}: ` +
+        `the driver is stuck, not the app. restart keeps the data; when that gets no answer either, stop ` +
+        `ends the session (${logs})`
+      )
+    case 'window-silent':
+    case 'browser-silent':
+      return (
+        `${host}, and neither does the window (${w.why}): the app itself is frozen or busy — run doctor ` +
+        `again in a minute; if it stays so, stop ends the session (${logs})`
+      )
+    case 'no-window':
+      return `${host}, and the app has no main window open — run stop, then launch`
+    case 'unreachable':
+      return `${host}, and the window could not be asked past it (${w.why}) — run stop, then launch`
+    default:
+      return `${host} — run stop, then launch`
+  }
+}
+
+/** With the host answering: whether the window answers past the driver, the driver still holds it, and
+ *  the driver is free. */
+export function judgeDriving(w: WindowProbe | null, driver: DriverState | undefined): Check[] {
+  const checks: Check[] = []
+  switch (w?.outcome) {
+    case 'answers':
+      checks.push(
+        w.attached
+          ? { status: 'ok', text: `the window answers a plain question past the driver (${answered(w)})` }
+          : {
+              status: 'FAIL',
+              text:
+                `the window answers a plain question past the driver (${answered(w)}), but nothing holds it ` +
+                'any more: the driver has lost the window — restart (it keeps the data)'
+            }
+      )
+      break
+    case 'window-silent':
+      checks.push({
+        status: 'FAIL',
+        text:
+          `the window does not answer a plain question past the driver (${w.why}): it is frozen or busy — ` +
+          'run doctor again in a minute; if it stays so, restart'
+      })
+      break
+    case 'browser-silent':
+      checks.push({
+        status: 'FAIL',
+        text: `the app does not answer on its DevTools port (${w.why}): it is frozen or busy — run doctor again in a minute`
+      })
+      break
+    case 'no-window':
+      checks.push({
+        status: 'FAIL',
+        text: `the app has no main window open${w.pages.length ? ` (its pages: ${w.pages.join(', ')})` : ''}`
+      })
+      break
+    case 'unreachable':
+      checks.push({ status: 'note', text: `the window could not be asked past the driver: ${w.why}` })
+      break
+  }
+  if (driver?.outstanding) {
+    const o = driver.outstanding
+    checks.push({
+      status: 'FAIL',
+      text:
+        `the driver gave up on ${o.what} ${secs(o.ms)} ago, and it has not settled: it may still land, so ` +
+        'nothing is driven until it has — restart frees the session'
+    })
+  }
+  // A look given up on cannot act, but a call into Playwright that never answers is a stuck driver's mark.
+  const overdue = driver?.overdue ?? []
+  if (overdue.length > 0) {
+    const named = overdue.slice(0, 3).map((o) => `${o.what} (${secs(o.ms)} ago)`)
+    checks.push({
+      status: 'note',
+      text:
+        `the driver gave up on ${named.join(', ')}${overdue.length > 3 ? ` and ${overdue.length - 3} more` : ''}, ` +
+        'and Playwright has not answered since: when more commands are given up on, the driver is stuck — restart'
+    })
+  }
+  for (const b of driver?.busy ?? []) {
+    checks.push({
+      status: 'note',
+      text:
+        `the driver is busy with ${b.what} for ${secs(b.ms)}` +
+        (b.leftMs === null ? '' : ` (it gives up on it in ${secs(Math.max(b.leftMs, 0))})`) +
+        '; commands wait their turn behind it'
     })
   }
   return checks

@@ -12,7 +12,7 @@ import { FRONTEND } from '../../e2e/app'
 import { listProcesses } from '../../e2e/processes'
 import { parseArgs, UsageError, type Parsed } from './args'
 import { backendFingerprint, build, outFingerprint, readStamp, sourceFingerprint } from './build'
-import { Exit, out, requireSession, send } from './client'
+import { Exit, HostTimeout, out, requireSession, send } from './client'
 import { changedSince, judge, realDirs } from './doctor'
 import type { AppFacts } from './facts'
 import { hostAlive, runHost } from './host'
@@ -20,6 +20,7 @@ import { launch, restart, stop } from './lifecycle'
 import { controlDir, readSession, sessionName, type SessionRecord } from './session'
 import { TargetError } from './targets'
 import { WAIT_HELP } from './waits'
+import { probeWindow } from './windowProbe'
 
 const HELP = `control-prism — drive the built app like a person, for proof that a change works.
 Run from frontend/:  node scripts/control-prism.mjs <command> [--session <name>]
@@ -31,7 +32,9 @@ session
                      --copy starts on a copy of your own data and profile instead (blocks shared with
                      yours where the disk can; --full-copy copies in full where it cannot);
                      --keys copies your stored provider keys in: chats then bill your accounts
-  doctor             is the running app a valid witness? run it before every proof; exit 1 if not
+  doctor             is the running app a valid witness? run it before every proof; exit 1 if not.
+                     Also says whether the window answers past the driver, and what the driver is busy
+                     with: when commands get no answer, it tells a stuck driver from a frozen window
   status             the session's record
   restart [--no-build]   quit and start again on the same data (rebuilds out/ first if the sources changed)
   stop [--keep]      quit the app, end what it started, remove its folders (--keep keeps them,
@@ -109,19 +112,26 @@ function backendEnvKeys(): string[] {
 
 async function doctorCmd(record: SessionRecord): Promise<void> {
   const real = realDirs()
-  let app: AppFacts | null = null
-  let hostError: string | undefined
-  try {
-    app = JSON.parse(await send(record, 'facts', [], {})) as AppFacts
-  } catch (e) {
-    hostError = (e as Error).message
-  }
+  const facts = send(record, 'facts', [], {}).then(
+    (text): { app: AppFacts | null; hostError?: string } => ({ app: JSON.parse(text) as AppFacts }),
+    // doctor says itself what to do next; from the error it takes only what happened.
+    (e: Error) => ({
+      app: null,
+      hostError:
+        e instanceof HostTimeout
+          ? `no answer within ${e.seconds} s`
+          : e.message.split('\n')[0].split(' — ')[0]
+    })
+  )
+  // The window is asked past the driver at the same time, so its answer does not wait for the host's.
+  const [{ app, hostError }, window] = await Promise.all([facts, probeWindow(record.install.userData)])
   const fresh = readSession(FRONTEND, record.name) ?? record
   const checks = judge({
     frontend: FRONTEND,
     record: fresh,
     app,
     hostError,
+    window,
     current: {
       src: sourceFingerprint(FRONTEND),
       out: outFingerprint(FRONTEND),

@@ -1,13 +1,14 @@
 /**
  * The command line's side of a session: finding this checkout's record and asking its host, within a
- * deadline. A command that would wait longer than its own bound plus a margin gets an answer anyway — a
- * window that froze must not freeze the shell that drives it.
+ * deadline. The host gives up on a command past its own bound plus a margin (watchdog.ts); the caller waits
+ * a little longer still, so it hears that answer — and gets one anyway when the host itself does not
+ * answer: a stuck driver must not freeze the shell that drives it.
  */
 import { FRONTEND } from '../../e2e/app'
 import type { Parsed } from './args'
 import type { Reply } from './host'
 import { readSession, type SessionRecord } from './session'
-import { DEFAULT_WAIT_MS, MAX_WAIT_MS } from './waits'
+import { callerDeadline } from './watchdog'
 
 /** An error with the exit code the command line ends with: 1 failed, 2 wrong usage, 3 no session. */
 export class Exit extends Error {
@@ -19,6 +20,16 @@ export class Exit extends Error {
   }
 }
 
+/** The host gave no answer within the caller's deadline. */
+export class HostTimeout extends Exit {
+  constructor(
+    readonly seconds: number,
+    message: string
+  ) {
+    super(1, message)
+  }
+}
+
 export function out(line: string): void {
   process.stdout.write(line.endsWith('\n') ? line : line + '\n')
 }
@@ -27,32 +38,6 @@ export function requireSession(name: string): SessionRecord {
   const record = readSession(FRONTEND, name)
   if (!record) throw new Exit(3, `no session "${name}" in this checkout — launch one first`)
   return record
-}
-
-const MARGIN_MS = 30_000
-
-/** How long the host may take to answer `cmd`: its own bound where it has one, plus a margin. */
-export function deadline(cmd: string, flags: Parsed['flags']): number {
-  const asked = typeof flags.timeout === 'string' ? Number(flags.timeout) : NaN
-  const own = Number.isFinite(asked) ? Math.min(asked, MAX_WAIT_MS) : undefined
-  switch (cmd) {
-    case 'wait':
-      return (own ?? DEFAULT_WAIT_MS) + MARGIN_MS
-    case 'click':
-    case 'hover':
-    case 'type':
-    case 'press':
-    case 'select':
-    case 'drag':
-    case 'snapshot':
-      return (own ?? 10_000) + MARGIN_MS
-    case 'restart':
-      return 6 * 60_000
-    case 'stop':
-      return 3 * 60_000
-    default:
-      return 60_000
-  }
 }
 
 export async function send(
@@ -67,7 +52,7 @@ export async function send(
       `session "${record.name}" is ${record.status}${record.detail ? ` (${record.detail})` : ''} — run stop, then launch`
     )
   }
-  const ms = deadline(cmd, flags)
+  const ms = callerDeadline(cmd, flags)
   let res: Response
   try {
     res = await fetch(`http://127.0.0.1:${record.port}/`, {
@@ -78,11 +63,15 @@ export async function send(
     })
   } catch (e) {
     if ((e as Error).name === 'TimeoutError') {
-      throw new Exit(
-        1,
-        `no answer from the app within ${ms / 1000} s — the window may be frozen. If the command had begun, ` +
-          'it may still complete: look (snapshot, shot) before repeating it. A command still waiting its ' +
-          'turn is dropped. stop ends the session (and everything it started) also when it does not answer.'
+      // The host gives up on every command before this, so the command waited in line behind another one
+      // (a long wait from another shell), or the host itself is stuck. Which one, doctor says.
+      throw new HostTimeout(
+        ms / 1000,
+        `no answer from the session's host within ${ms / 1000} s: the command waited in line behind ` +
+          'another one, or the host itself is stuck. doctor says which, and whether the window answers. ' +
+          'A command still waiting its turn is dropped; one that had begun may still complete, so look ' +
+          '(snapshot, shot) before repeating it. stop ends the session (and everything it started) also ' +
+          'when its host does not answer.'
       )
     }
     throw new Exit(
