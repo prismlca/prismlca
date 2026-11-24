@@ -46,7 +46,18 @@ export interface ToolTrace {
   /** The provider's web lookups row only (main/ai/webLookups.ts): what the reply searched for and which
    *  pages came back, and the pages it cites. The answer's list of sources is read from here. */
   searches?: WebSearch[]
+  /** The pages the reply opened (Anthropic's page fetch names them). */
+  fetched?: WebFetch[]
   cited?: CitedPage[]
+}
+
+/** A page the provider opened inside a reply because its address stood in the conversation — address
+ *  and title, never the page text. */
+export interface WebFetch {
+  url: string
+  title?: string
+  /** The provider's reason the page could not be opened (`url_not_accessible`, `url_not_in_prior_context`, …). */
+  error?: string
 }
 
 /** One web search the provider ran inside a reply: what it searched for and which pages came back. */
@@ -98,6 +109,7 @@ export type AgentEvent =
       itemsFailed?: number
       notice?: string
       searches?: WebSearch[]
+      fetched?: WebFetch[]
       cited?: CitedPage[]
     }
   // The model is thinking and has produced this many characters of reasoning in the current round.

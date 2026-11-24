@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-23",
+    "title": "Assistant opens linked pages with Anthropic and Google",
+    "details": "With web search on, the assistant now opens a page whose address is in the chat, such as a safety data sheet you paste or a page a search found, with an Anthropic key too; with Google, its research helpers open the addresses they are given. The pages it opened are listed in the turn's web lookups and under the answer as \"Pages opened\"."
+  },
+  {
+    "date": "2026-11-23",
     "title": "Navigation and dialogs by keyboard",
     "details": "Tab now reaches the pages in the navigation on the left, and Enter or Space opens one; pages that need a model are skipped until one is open. Every dialog takes the keyboard focus when it opens, is announced to screen readers by its title, and gives the focus back to where you were when it closes."
   },

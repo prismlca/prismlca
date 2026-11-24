@@ -34,7 +34,7 @@ class ChatMessage(BaseModel):
     #: was stopped before it said a word — the trace, cost and stop reason belong to it.
     content: str = ""
     # Tool trace of an assistant turn: {name, args?, status?, detail?, preview?, resultChars?, ms?, and on the
-    # provider's web lookups row searches? and cited?}.
+    # provider's web lookups row searches?, cited? and fetched?}.
     # Shape is validated and capped in chat_store._cap_traces, so the UI never has to trust it.
     tools: list[dict] | None = None
     #: USD this turn cost, as OpenRouter billed it. Stored with the message so "what did that answer

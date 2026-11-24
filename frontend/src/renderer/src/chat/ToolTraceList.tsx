@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import type { ToolTrace } from '../lib/ai'
 import { fmtInt } from '../lib/format'
 import { usd } from './chatFormat'
-import { CitedList, WebSearchList } from './WebSources'
+import { CitedList, OpenedList, WebSearchList } from './WebSources'
 import { WEB_LOOKUPS_ROW } from './turnSources'
 
 /**
@@ -178,8 +178,15 @@ export function ToolTraceList({
                   {hidden > 0 ? `\n… ${fmtInt(hidden)} more characters` : ''}
                 </pre>
               ) : null}
-              {/* The provider's web lookups: what was searched for, what came back, what the reply cites. */}
+              {/* The provider's web lookups: what was searched for, what came back, what the reply opened
+                and what it cites. */}
               {t.searches?.length ? <WebSearchList searches={t.searches} /> : null}
+              {t.fetched?.length ? (
+                <>
+                  <div className="chat-sources-h">Opened in this reply</div>
+                  <OpenedList fetched={t.fetched} />
+                </>
+              ) : null}
               {t.cited?.length ? (
                 <>
                   <div className="chat-sources-h">Cited in this reply</div>

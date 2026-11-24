@@ -1,6 +1,7 @@
 /**
  * The WEB SEARCHES section of the review dossier: what the provider's web search looked for inside the
- * assistant's replies in this chat, which pages came back, and the passages a reply cited.
+ * assistant's replies in this chat, which pages came back, which pages a reply opened, and the passages a
+ * reply cited.
  *
  * A figure taken from such a search reaches the model as a number in an exchange and as a source in a
  * comment, and the reviewer saw only those: "whether the 24 kg is a retailer's figure is not visible in
@@ -32,21 +33,26 @@ export function searchesSection(records: WebRecord[]): string {
   const searches = records.flatMap((r) => r.searches ?? [])
   const cited = new Map<string, { url: string; title?: string; excerpt?: string }>()
   for (const r of records) for (const c of r.cited ?? []) if (!cited.has(c.url)) cited.set(c.url, c)
-  // Lookups only counted, never named (OpenRouter's server tools), in replies that named none.
+  const opened = new Map<string, { url: string; title?: string }>()
+  for (const r of records)
+    for (const f of r.fetched ?? []) if (!f.error && !opened.has(f.url)) opened.set(f.url, f)
+  // Lookups only counted, never named (OpenRouter's server tools): the kinds a reply did not name.
+  const named = (r: WebRecord, kind: string): boolean =>
+    kind === 'web_search_requests'
+      ? !!r.searches?.length
+      : kind === 'web_fetch_requests' && !!r.fetched?.length
   const unnamed = describeWebLookups(
-    records
-      .filter((r) => !r.searches?.length)
-      .reduce<Record<string, number>>((all, r) => {
-        for (const [k, n] of Object.entries(r.counts ?? {})) all[k] = (all[k] ?? 0) + n
-        return all
-      }, {})
+    records.reduce<Record<string, number>>((all, r) => {
+      for (const [k, n] of Object.entries(r.counts ?? {})) if (!named(r, k)) all[k] = (all[k] ?? 0) + n
+      return all
+    }, {})
   )?.short
-  if (!searches.length && !cited.size && !unnamed) return ''
+  if (!searches.length && !opened.size && !cited.size && !unnamed) return ''
   const head =
     'WEB SEARCHES IN THIS CHAT (run by the provider inside the assistant’s replies — titles and ' +
     'addresses only, you cannot open them): a source a process comment names that is listed here came ' +
-    'back from one of these searches, and the title says what kind of page it is (a manufacturer, a ' +
-    'retailer, a study). Nothing follows from a source that is not listed: it may come from the research ' +
+    'back from one of these searches or was opened in a reply, and the title says what kind of page it ' +
+    'is (a manufacturer, a retailer, a study). Nothing follows from a source that is not listed: it may come from the research ' +
     'tools (their record is under RESEARCH ON RECORD when the model has one), from the user, or from a ' +
     'search this list no longer holds.'
   const quoted = [...cited.values()]
@@ -56,6 +62,7 @@ export function searchesSection(records: WebRecord[]): string {
     [
       head,
       ...searches.map((s) => searchLine(s, perSearch)),
+      opened.size ? `PAGES THE REPLIES OPENED: ${[...opened.values()].map(page).join('; ')}` : '',
       unnamed ? `Further lookups whose search texts the provider does not report: ${unnamed}.` : '',
       quoted.length ? 'PASSAGES THE REPLIES CITED:' : '',
       ...quoted,

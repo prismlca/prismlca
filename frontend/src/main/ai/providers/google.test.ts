@@ -160,7 +160,7 @@ describe('the request', () => {
     expect(JSON.parse(String(calls[0].init.body)).model).toBe(DEFAULT_GOOGLE_MODEL_ID)
   })
 
-  it('attaches Google Search to a search-only request and turns the allow list into words', async () => {
+  it('attaches Google Search and the page opener to a search-only request and turns the allow list into words', async () => {
     const { calls } = capture(() => sse([created, completed('completed')]))
     await run({
       messages: [{ role: 'user', content: 'PET density?' }],
@@ -168,7 +168,7 @@ describe('the request', () => {
       webDomains: ['plasticseurope.org', 'iso.org']
     })
     const body = JSON.parse(String(calls[0].init.body))
-    expect(body.tools).toEqual([{ type: 'google_search' }])
+    expect(body.tools).toEqual([{ type: 'google_search' }, { type: 'url_context' }])
     expect(body.system_instruction).toContain('plasticseurope.org, iso.org')
   })
 
@@ -419,6 +419,43 @@ describe('the event stream', () => {
         prompt_tokens_details: { cached_tokens: 400_000 },
         server_tool_use: { web_search_requests: 2 }
       }
+    })
+  })
+
+  it('counts the pages url_context opened, without a fee, and hands the opened ones on as delivered', async () => {
+    capture(() =>
+      sse([
+        created,
+        start(0, { id: 'u1', type: 'url_context_call', signature: '' }),
+        delta(0, {
+          type: 'url_context_call',
+          signature: 'sig',
+          arguments: { urls: ['https://m.de/sds.pdf', 'https://m.de/gone', 'https://m.de/sds.pdf'] }
+        }),
+        stop(0),
+        start(1, { type: 'url_context_result', call_id: 'u1', signature: '' }),
+        delta(1, {
+          type: 'url_context_result',
+          signature: 'sig',
+          result: [
+            { url: 'https://m.de/sds.pdf', title: 'Safety data sheet', status: 'success' },
+            { url: 'https://m.de/gone', status: 'error' }
+          ]
+        }),
+        stop(1),
+        start(2, { type: 'model_output' }),
+        delta(2, { type: 'text', text: 'The sheet gives 0.9 kg.' }),
+        stop(2),
+        completed('completed', { total_input_tokens: 0, total_output_tokens: 0 })
+      ])
+    )
+    const events = await run({ webSearch: true })
+    const usage = events.find((e) => e.type === 'usage')
+    expect(usage?.type === 'usage' && usage.usage.server_tool_use).toEqual({ web_fetch_requests: 2 })
+    expect(usage?.type === 'usage' && usage.usage.cost).toBe(0)
+    expect(events.find((e) => e.type === 'citations')).toEqual({
+      type: 'citations',
+      citations: [{ url: 'https://m.de/sds.pdf', title: 'Safety data sheet', uncited: true }]
     })
   })
 

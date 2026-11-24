@@ -41,11 +41,12 @@ _TRACE_PREVIEW_CHARS = 6_000
 _TRACE_ARG_CHARS = 6_000
 _MAX_TRACES = 200
 #: The provider's web lookups on their trace row (main/ai/webLookups.ts): searches per row, pages per
-#: search, cited pages per row. A reply searches a handful of times and each search returns about ten
-#: pages; the caps only stop a runaway list.
+#: search, cited pages per row, pages the reply opened. A reply searches a handful of times and each
+#: search returns about ten pages; the caps only stop a runaway list.
 _MAX_SEARCHES = 20
 _MAX_PAGES = 20
 _MAX_CITED = 30
+_MAX_FETCHED = 20
 _URL_CHARS = 1_000
 _TITLE_CHARS = 300
 _QUERY_CHARS = 500
@@ -92,6 +93,21 @@ def _cap_searches(searches: object) -> list[dict]:
     return out
 
 
+def _cap_fetched(fetched: object) -> list[dict]:
+    """The pages a reply opened through the provider: address, title, and the provider's error code
+    where the page could not be opened."""
+    out: list[dict] = []
+    for f in fetched[:_MAX_FETCHED] if isinstance(fetched, list) else []:
+        page = _cap_page(f)
+        if not page:
+            continue
+        error = _text(f.get("error"), 100)
+        if error:
+            page["error"] = error
+        out.append(page)
+    return out
+
+
 def _cap_traces(tools: object) -> list[dict]:
     """Keep a tool trace readable but bounded. Unknown keys are dropped, not trusted."""
     if not isinstance(tools, list):
@@ -122,6 +138,9 @@ def _cap_traces(tools: object) -> list[dict]:
         pages = [p for p in (_cap_page(c, excerpt=True) for c in cited[:_MAX_CITED]) if p] if isinstance(cited, list) else []
         if pages:
             entry["cited"] = pages
+        fetched = _cap_fetched(t.get("fetched"))
+        if fetched:
+            entry["fetched"] = fetched
         out.append(entry)
     return out
 

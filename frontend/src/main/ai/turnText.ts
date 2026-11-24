@@ -11,6 +11,8 @@
 export class TurnText {
   private written = ''
   private answerStart = 0
+  /** Where the closing answer's own text ended, once its round has; notes come after it. */
+  private answerEnd: number | null = null
 
   constructor(private readonly stream: (text: string) => void) {}
 
@@ -33,5 +35,24 @@ export class TurnText {
   /** Everything written so far is the turn's record: the closing answer begins after it. */
   markAnswerStart(): void {
     this.answerStart = this.written.length
+    this.answerEnd = null
+  }
+
+  /** The round just streamed is over: what is added from here on (a stop, a cut-off) is a note on it. */
+  markAnswerEnd(): void {
+    this.answerEnd = this.written.length
+  }
+
+  /**
+   * The run's text outside the closing answer's own: the record before it and the notes after it. A
+   * transport that sends the closing round back as the provider made it sends this beside it — the
+   * round's blocks hold only what the model wrote in it.
+   */
+  get aside(): string {
+    const after = this.answerEnd === null ? '' : this.written.slice(this.answerEnd)
+    return [this.written.slice(0, this.answerStart), after]
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .join('\n\n')
   }
 }

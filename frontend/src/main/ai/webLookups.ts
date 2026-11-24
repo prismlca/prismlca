@@ -1,14 +1,14 @@
 /**
  * The provider-side web lookups of one reply: in words, and as the chat records them.
  *
- * The provider runs its web search (and OpenRouter its page fetch) inside a reply. OpenRouter reports
- * only counters; Anthropic and OpenAI also name what was searched for, and Anthropic which pages came
- * back. The chat's trace row, the round's log line and the log line of a research or review request all
+ * The provider runs its web search (and OpenRouter and Anthropic their page fetch) inside a reply.
+ * OpenRouter reports only counters; Anthropic and OpenAI also name what was searched for, and Anthropic
+ * which pages came back and which it opened. The chat's trace row, the round's log line and the log line of a research or review request all
  * name them the same way, from here; the round's record (`WebRecord`) rides on its message, where a later
  * request reads it back (providers/searchNote.ts) and the review dossier lists it.
  */
 import type { ToolTrace } from '../../shared/ipc'
-import type { CitedPage, Citation, WebRecord, WebSearch } from './providers/types'
+import type { CitedPage, Citation, WebFetch, WebRecord, WebSearch } from './providers/types'
 
 /** Trace-row name for the provider-side web lookups of a round. Not a tool: nothing dispatches on it. */
 export const WEB_LOOKUPS_ROW = 'web_lookups'
@@ -17,7 +17,7 @@ export const WEB_LOOKUPS_ROW = 'web_lookups'
 const EXCERPT_CHARS = 300
 
 /**
- * Put OpenRouter's `server_tool_use` counters into words. `web_search_requests` and
+ * Put a provider's `server_tool_use` counters into words. `web_search_requests` and
  * `web_fetch_requests` are the two known kinds; any other `*_requests` counter is named as it comes.
  * Returns null when nothing ran, so a round without lookups adds no row.
  */
@@ -61,6 +61,7 @@ export function describeWebLookups(
 export class RoundLookups {
   private counts: Record<string, number> = {}
   private searches: WebSearch[] = []
+  private fetched: WebFetch[] = []
   private cited = new Map<string, CitedPage>()
 
   count(use: Record<string, number> | undefined): void {
@@ -72,6 +73,10 @@ export class RoundLookups {
 
   searched(list: WebSearch[]): void {
     this.searches.push(...list)
+  }
+
+  opened(list: WebFetch[]): void {
+    this.fetched.push(...list)
   }
 
   /** The pages the reply cites, once each — a page the search only returned is not a citation. */
@@ -92,12 +97,14 @@ export class RoundLookups {
   take(): { record: WebRecord; row: ToolTrace } | null {
     const counts = Object.keys(this.counts).length ? this.counts : undefined
     const searches = this.searches
+    const fetched = this.fetched
     const cited = [...this.cited.values()]
     this.counts = {}
     this.searches = []
+    this.fetched = []
     this.cited = new Map()
     const described = describeWebLookups(counts)
-    if (!described && !searches.length && !cited.length) return null
+    if (!described && !searches.length && !fetched.length && !cited.length) return null
     const n = searches.length
     const preview =
       described?.preview ??
@@ -107,6 +114,7 @@ export class RoundLookups {
     const record: WebRecord = {
       ...(counts ? { counts } : {}),
       ...(n ? { searches } : {}),
+      ...(fetched.length ? { fetched } : {}),
       ...(cited.length ? { cited } : {})
     }
     const row: ToolTrace = {
@@ -115,6 +123,7 @@ export class RoundLookups {
       preview,
       resultChars: preview.length,
       ...(n ? { searches } : {}),
+      ...(fetched.length ? { fetched } : {}),
       ...(cited.length ? { cited } : {})
     }
     return { record, row }

@@ -16,8 +16,15 @@ process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
 const { streamChat, transcribeAudio } = await import('../client')
 const { setActiveProvider } = await import('./state')
-const { anthropicTransport, API_VERSION, BETA_THINKING_BINDING, effortFor, toMessages, usageEvent } =
-  await import('./anthropic')
+const {
+  anthropicTransport,
+  API_VERSION,
+  BETA_THINKING_BINDING,
+  effortFor,
+  FETCH_MAX_CONTENT_TOKENS,
+  toMessages,
+  usageEvent
+} = await import('./anthropic')
 import { assistantToolTurn, type ChatMessage, type StreamEvent } from './types'
 
 const API = 'https://api.anthropic.com/v1/messages'
@@ -154,7 +161,7 @@ describe('the request', () => {
     expect(effortFor('xhigh')).toBe('xhigh')
   })
 
-  it('carries web search as the basic server tool, with its cap and its domain list', async () => {
+  it('carries web search and page fetch as the basic server tools, each with the cap and the domain list', async () => {
     fetchMock.mockResolvedValueOnce(sse(toolRound))
     await collect({ webSearch: true, webLookupsCap: 3, webDomains: ['plasticseurope.org'] })
     expect(sentBody().tools).toEqual([
@@ -163,7 +170,27 @@ describe('the request', () => {
         name: 'web_search',
         max_uses: 3,
         allowed_domains: ['plasticseurope.org']
+      },
+      {
+        type: 'web_fetch_20250910',
+        name: 'web_fetch',
+        max_uses: 3,
+        allowed_domains: ['plasticseurope.org'],
+        max_content_tokens: FETCH_MAX_CONTENT_TOKENS
       }
+    ])
+    // No beta header for either: both tools are generally available.
+    expect(fetchMock.mock.calls[0][1].headers['anthropic-beta']).toBe(BETA_THINKING_BINDING)
+  })
+
+  it('sends neither web tool without web search, and no limits it was not given', async () => {
+    fetchMock.mockResolvedValueOnce(sse(toolRound)).mockResolvedValueOnce(sse(toolRound))
+    await collect()
+    expect(sentBody(0).tools).toBeUndefined()
+    await collect({ webSearch: true })
+    expect(sentBody(1).tools).toEqual([
+      { type: 'web_search_20250305', name: 'web_search' },
+      { type: 'web_fetch_20250910', name: 'web_fetch', max_content_tokens: FETCH_MAX_CONTENT_TOKENS }
     ])
   })
 
@@ -621,6 +648,8 @@ describe('the stream', () => {
     })
     const usage = events.find((e) => e.type === 'usage')
     expect(usage?.type === 'usage' && usage.usage.server_tool_use).toEqual({ web_search_requests: 1 })
+    // A closing reply that only searched goes back as its text and its record: no blocks are handed out.
+    expect(events.some((e) => e.type === 'tool_calls')).toBe(false)
   })
 
   it('continues a paused server-tool turn by sending the paused content back', async () => {
@@ -748,6 +777,200 @@ describe('the stream', () => {
         { query: 'avasco Diksmuide', results: [], error: 'max_uses_exceeded' }
       ]
     })
+  })
+
+  it('names the pages a reply opened, hands them on as delivered pages, and counts the fetches', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, { type: 'server_tool_use', id: 'srvtoolu_f1', name: 'web_fetch', input: {} }),
+        blockDelta(0, { type: 'input_json_delta', partial_json: '{"url":"https://m.de/sds.pdf"}' }),
+        blockStop(0),
+        blockStart(1, {
+          type: 'web_fetch_tool_result',
+          tool_use_id: 'srvtoolu_f1',
+          content: {
+            type: 'web_fetch_result',
+            url: 'https://m.de/sds.pdf',
+            content: {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0x' },
+              title: 'Safety data sheet'
+            },
+            retrieved_at: '2026-11-21T18:00:00Z'
+          }
+        }),
+        blockStop(1),
+        blockStart(2, { type: 'server_tool_use', id: 'srvtoolu_f2', name: 'web_fetch', input: {} }),
+        blockDelta(2, { type: 'input_json_delta', partial_json: '{"url":"https://m.de/gone"}' }),
+        blockStop(2),
+        blockStart(3, {
+          type: 'web_fetch_tool_result',
+          tool_use_id: 'srvtoolu_f2',
+          content: { type: 'web_fetch_tool_result_error', error_code: 'url_not_accessible' }
+        }),
+        blockStop(3),
+        blockStart(4, { type: 'text', text: 'The sheet gives 0.9 kg.' }),
+        blockStop(4),
+        messageDelta('end_turn', { ...usage0, server_tool_use: { web_fetch_requests: 2 } }),
+        messageStop
+      ])
+    )
+    const events = await collect({ webSearch: true })
+    expect(events.find((e) => e.type === 'web_fetches')).toEqual({
+      type: 'web_fetches',
+      fetches: [
+        { url: 'https://m.de/sds.pdf', title: 'Safety data sheet' },
+        { url: 'https://m.de/gone', error: 'url_not_accessible' }
+      ]
+    })
+    // Opened is delivered: a research leg may name the page as its source. A failed fetch delivered nothing.
+    expect(events.find((e) => e.type === 'citations')).toEqual({
+      type: 'citations',
+      citations: [{ url: 'https://m.de/sds.pdf', title: 'Safety data sheet', uncited: true }]
+    })
+    expect(events.some((e) => e.type === 'web_searches')).toBe(false)
+    const usage = events.find((e) => e.type === 'usage')
+    expect(usage?.type === 'usage' && usage.usage.server_tool_use).toEqual({ web_fetch_requests: 2 })
+    // A closing reply that opened a page hands its blocks out, without calls, to go back as they came.
+    const round = events.find((e) => e.type === 'tool_calls')
+    expect(round?.type === 'tool_calls' && round.calls).toEqual([])
+    expect(
+      round?.type === 'tool_calls' && round.replay?.steps.map((b) => (b as { type: string }).type)
+    ).toEqual([
+      'server_tool_use',
+      'web_fetch_tool_result',
+      'server_tool_use',
+      'web_fetch_tool_result',
+      'text'
+    ])
+  })
+
+  it('sends a closing reply that opened a page back as it came, the page with it and no record', () => {
+    const steps = [
+      {
+        type: 'server_tool_use',
+        id: 'srvtoolu_f1',
+        name: 'web_fetch',
+        input: { url: 'https://m.de/sds.pdf' }
+      },
+      {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'srvtoolu_f1',
+        content: { type: 'web_fetch_result', url: 'https://m.de/sds.pdf', content: { type: 'document' } }
+      },
+      { type: 'text', text: 'The sheet gives 0.9 kg.' }
+    ]
+    const { messages } = toMessages([
+      { role: 'user', content: 'https://m.de/sds.pdf — how heavy?' },
+      {
+        role: 'assistant',
+        content: 'The sheet gives 0.9 kg.',
+        web: { counts: { web_fetch_requests: 1 }, fetched: [{ url: 'https://m.de/sds.pdf' }] },
+        replay: { provider: 'anthropic', model: 'claude-haiku-5-5', steps }
+      },
+      { role: 'user', content: 'And the binder share?' }
+    ])
+    expect(messages[1].content).toEqual(steps)
+    // The same reply rebuilt (its blocks dropped by compaction in a later turn) names the page instead.
+    const { messages: rebuilt } = toMessages([
+      { role: 'user', content: 'https://m.de/sds.pdf — how heavy?' },
+      {
+        role: 'assistant',
+        content: 'The sheet gives 0.9 kg.',
+        web: { counts: { web_fetch_requests: 1 }, fetched: [{ url: 'https://m.de/sds.pdf' }] }
+      },
+      { role: 'user', content: 'And the binder share?' }
+    ])
+    expect(JSON.stringify(rebuilt[1].content)).toContain('In this reply you opened a page')
+    // The turn's record before the answer — a question answered on the way — goes after its blocks, as
+    // the agent kept it: never cut out of the text, where a short answer ("No") could match a user's reply.
+    const { messages: withRecord } = toMessages([
+      { role: 'user', content: 'https://m.de/sds.pdf — how heavy?' },
+      {
+        role: 'assistant',
+        content: '**Which unit?** — You answered: per kg\n\nThe sheet gives 0.9 kg.',
+        replay: { provider: 'anthropic', model: 'claude-haiku-5-5', steps },
+        record: '**Which unit?** — You answered: per kg'
+      },
+      { role: 'user', content: 'And the binder share?' }
+    ])
+    expect(withRecord[1].content).toEqual([
+      ...steps,
+      { type: 'text', text: '**Which unit?** — You answered: per kg' }
+    ])
+  })
+
+  it('hands out the closing pass of a paused reply that opened a page, to go back with it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, { type: 'text', text: 'The sheet gives 0.9 kg.' }),
+        blockStop(0),
+        messageDelta('end_turn', usage0),
+        messageStop
+      ])
+    )
+    const paused: ChatMessage = {
+      role: 'assistant',
+      content: null,
+      replay: {
+        provider: 'anthropic',
+        model: 'claude-haiku-5-5',
+        steps: [
+          { type: 'server_tool_use', id: 'srvtoolu_p', name: 'web_fetch', input: { url: 'https://m.de/a' } },
+          { type: 'web_fetch_tool_result', tool_use_id: 'srvtoolu_p', content: { type: 'web_fetch_result' } }
+        ]
+      }
+    }
+    const events = await collect({
+      webSearch: true,
+      messages: [{ role: 'user', content: 'https://m.de/a' }, paused]
+    })
+    const round = events.find((e) => e.type === 'tool_calls')
+    expect(round?.type === 'tool_calls' && round.calls).toEqual([])
+    expect(round?.type === 'tool_calls' && round.replay?.steps).toEqual([
+      { type: 'text', text: 'The sheet gives 0.9 kg.' }
+    ])
+  })
+
+  it('names a failed fetch whose call came in the reply before by the address it asked for', async () => {
+    const earlier = assistantToolTurn(null, [{ id: 'toolu_1', name: 'list_models', arguments: '{}' }], {
+      provider: 'anthropic',
+      steps: [
+        { type: 'server_tool_use', id: 'srvtoolu_f7', name: 'web_fetch', input: { url: 'https://x.org/a' } },
+        { type: 'tool_use', id: 'toolu_1', name: 'list_models', input: {} }
+      ]
+    })
+    fetchMock.mockResolvedValueOnce(
+      sse([
+        messageStart(),
+        blockStart(0, {
+          type: 'web_fetch_tool_result',
+          tool_use_id: 'srvtoolu_f7',
+          content: { type: 'web_fetch_tool_result_error', error_code: 'url_not_in_prior_context' }
+        }),
+        blockStop(0),
+        blockStart(1, { type: 'text', text: 'Could not open it.' }),
+        blockStop(1),
+        messageDelta('end_turn', usage0),
+        messageStop
+      ])
+    )
+    const events = await collect({
+      webSearch: true,
+      messages: [
+        { role: 'user', content: 'Open it' },
+        earlier,
+        { role: 'tool', tool_call_id: 'toolu_1', content: '[]' }
+      ]
+    })
+    expect(events.find((e) => e.type === 'web_fetches')).toEqual({
+      type: 'web_fetches',
+      fetches: [{ url: 'https://x.org/a', error: 'url_not_in_prior_context' }]
+    })
+    // The fetch's address is not a search text: no search is named.
+    expect(events.some((e) => e.type === 'web_searches')).toBe(false)
   })
 
   it('names no search in a reply that ran none', async () => {
@@ -1014,6 +1237,13 @@ describe('the cost', () => {
     expect(long.type === 'usage' && long.usage.cost).toBeCloseTo(0.075 + 0.02, 6)
   })
 
+  it('places a reply that opened a page by its first pass too, and charges no fee for the fetch', () => {
+    const fetched = { input_tokens: 150_000, output_tokens: 0, server_tool_use: { web_fetch_requests: 1 } }
+    const ev = usageEvent('claude-haiku-5-5', fetched, 50_000)
+    expect(ev.type === 'usage' && ev.usage.cost).toBeCloseTo(0.015, 6)
+    expect(ev.type === 'usage' && ev.usage.server_tool_use).toEqual({ web_fetch_requests: 1 })
+  })
+
   it('adds a cent per web search', () => {
     expect(
       cost('claude-haiku-5-5', {
@@ -1041,6 +1271,16 @@ describe('errors', () => {
     ).toBe('context')
     expect(err(413, 'request_too_large', 'too large').code).toBe('context')
     expect(err(529, 'overloaded_error', 'Overloaded').message).toMatch(/overloaded/i)
+  })
+
+  it('says where an organization switched a web tool off, without retrying', () => {
+    const off = err(400, 'invalid_request_error', 'Web fetch is not enabled for this organization.')
+    expect(off.message).toMatch(/^Web fetch is turned off for your Anthropic organization/)
+    expect(off.message).toContain('Settings → Capabilities')
+    expect(err(400, 'invalid_request_error', 'web_search is not enabled').message).toMatch(/^Web search/)
+    expect(anthropicTransport.retryable(400, 'Web fetch is not enabled')).toBe(false)
+    // Another 400 keeps Anthropic's own words.
+    expect(err(400, 'invalid_request_error', 'tools.1: unknown field').message).toContain('unknown field')
   })
 
   it('treats an empty balance as billing, never retried', () => {

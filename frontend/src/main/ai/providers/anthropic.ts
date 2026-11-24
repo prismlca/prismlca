@@ -27,10 +27,16 @@
  *  - **Cost is synthesized** from the reported tokens against the catalogue's list prices
  *    (directModels.ts): uncached input, cache writes, cache reads and output (thinking included) are
  *    priced apart, Haiku's longer-prompt tier is applied per request, and each web search adds $0.01.
- *  - **Web search is the basic server tool** (`web_search_20250305`): available on every model and
- *    eligible for zero retention, where the dynamic-filtering version runs code on Anthropic's side and is
- *    not. Its results come back as content blocks that must travel with the round; every returned page is
- *    handed on as a citation, with the passage the model cited where it cited one.
+ *  - **Web search and page fetch are the basic server tools** (`web_search_20250305`,
+ *    `web_fetch_20250910`): available on every model and eligible for zero retention, where the
+ *    dynamic-filtering versions run code on Anthropic's side and are not. Their results come back as
+ *    content blocks that must travel with the round; every returned or opened page is handed on as a
+ *    citation, with the passage the model cited where it cited one. The fetch opens only addresses that
+ *    already stand in the conversation — the user's messages, our tool results, earlier search results —
+ *    never one that appears only in the model's own output. That narrows what injected text can make it
+ *    send out in an address, it does not close it: a tool result that repeats the model's arguments
+ *    (`list_methods` echoes its query, `research_web` its question) puts the model's address into the
+ *    conversation, and a research leg opens any address its question carries.
  *  - **`pause_turn`**: a long server-tool turn may pause; the transport hands the paused content back as
  *    a replay with no calls, and the dispatcher (client.ts) sends it back to continue.
  *  - **No sampling parameters** (rejected on this API version), **no forced tool choice** (rejected on
@@ -40,7 +46,7 @@ import { clampMaxTokens, type ReasoningEffort } from '../../../shared/aiDefaults
 import { ANTHROPIC_CACHE_WRITE_FACTOR, ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH, priceFor } from '../directModels'
 import { getModels } from '../models'
 import { contextOverflow } from './contextOverflow'
-import { askedBefore, citationsOf, searchesOf } from './anthropicSearch'
+import { askedBefore, citationsOf, fetchesOf, searchesOf } from './anthropicSearch'
 import { searchNote } from './searchNote'
 import {
   AiProviderError,
@@ -65,6 +71,18 @@ const MAX_OUTPUT_TOKENS = 128_000
 
 /** Anthropic allows four cache breakpoints per request; a fifth is a 400. */
 const MAX_BREAKPOINTS = 4
+
+/** The most of one opened page's text the model reads (`max_content_tokens`; Anthropic sets no limit).
+ *  An opened page stays in the conversation: the round that read it goes back verbatim in every later
+ *  request — a reply's closing round too, where it opened a page (`finish`) — at the cache-read price.
+ *  Inside its turn compaction may not drop it; in a later turn it may, and the record then names the
+ *  page (searchNote.ts). A large
+ *  documentation page is about 25,000 tokens by Anthropic's own example — room for a data sheet or a
+ *  statistics page, and a cap on a page that runs on for ten times that. With the lookup cap, which
+ *  Anthropic counts across a whole tool loop rather than per request, a turn reads at most cap × this
+ *  much page text. The fetch cuts the text at the limit; a PDF it does not cut (the API's PDF limits
+ *  hold). */
+export const FETCH_MAX_CONTENT_TOKENS = 25_000
 
 const headers = (key: string): Record<string, string> => ({
   'x-api-key': key,
@@ -126,6 +144,15 @@ function errorFor(status: number, type: string, message: string): AiProviderErro
     )
   if (status === 400 && contextOverflow(detail))
     return new AiProviderError("Request too long for this model's context window.", 'context')
+  // An organization's admin can turn either web tool off; every request that carries it is then refused.
+  const tool = status === 400 ? /\bweb[ _-]?(search|fetch)\b[^.]*\bnot enabled\b/i.exec(detail) : null
+  if (tool)
+    return new AiProviderError(
+      `Web ${tool[1].toLowerCase()} is turned off for your Anthropic organization — an admin can switch ` +
+        'it on at platform.claude.com under Settings → Capabilities. Until then, switch web search off ' +
+        'for this chat.',
+      'http'
+    )
   if (status === 404 || type === 'not_found_error')
     return new AiProviderError(
       `${detail || 'Model not found on the Anthropic API.'} — pick another model under Settings → AI.`,
@@ -253,8 +280,8 @@ function markLast(blocks: Record<string, unknown>[]): void {
   }
 }
 
-/** A server tool's result inside an assistant turn (`web_search_tool_result`) — never one of our
- *  `tool_result` blocks, which sit in the user turn. */
+/** A server tool's result inside an assistant turn (`web_search_tool_result`, `web_fetch_tool_result`) —
+ *  never one of our `tool_result` blocks, which sit in the user turn. */
 const serverResult = (b: Record<string, unknown>): boolean =>
   typeof b.tool_use_id === 'string' && String(b.type).endsWith('_tool_result')
 
@@ -262,8 +289,9 @@ const serverResult = (b: Record<string, unknown>): boolean =>
  * The server-tool calls and results the replayed rounds of this request hold. A call and its result can
  * sit in two rounds: Claude searches beside one of our tools, and the API runs the search once our
  * results are in, so the result opens the next reply. Either half can go missing where the other stays
- * — a closing reply is stored as its text alone, and compaction or the transcript's size bound drops an
- * older round's replay — and a call without its result, or a result without its call, is refused.
+ * — a closing reply that opened no page is stored as its text alone, and compaction or the transcript's
+ * size bound drops an older round's replay — and a call without its result, or a result without its call,
+ * is refused.
  */
 function serverPairs(messages: ChatMessage[]): { calls: Set<string>; results: Set<string> } {
   const calls = new Set<string>()
@@ -312,6 +340,9 @@ function assistantBlocks(
           name: c.function.name,
           input: parseArgs(c.function.arguments)
         })
+    // A closing answer's blocks hold only its own round: the turn's record before it goes after them
+    // (agent.ts) — an answered question has nowhere else once compaction stubs its result.
+    if (!calls.length && m.record) blocks.push({ type: 'text', text: m.record })
   } else {
     // The searches of a rebuilt round are named ahead of its text: their own blocks are not sent.
     const note = searchNote(m.web)
@@ -378,8 +409,8 @@ export function toMessages(messages: ChatMessage[]): {
   return { system, messages: out }
 }
 
-/** A server-tool call (Claude's web search) in this assistant turn that has no result yet: Claude called
- *  it beside one of our tools, and the API runs it once our results are in. */
+/** A server-tool call (Claude's web search or page fetch) in this assistant turn that has no result yet:
+ *  Claude called it beside one of our tools, and the API runs it once our results are in. */
 function pendingServerCall(blocks: Record<string, unknown>[]): boolean {
   const answered = new Set(blocks.filter(serverResult).map((b) => String(b.tool_use_id)))
   return blocks.some((b) => b.type === 'server_tool_use' && !answered.has(String(b.id)))
@@ -445,9 +476,17 @@ interface AnthropicState {
   stopped: boolean
   /** An `error` event mid-stream: raised from `finish`, AFTER its usage went to the ledger. */
   failure?: AiProviderError
-  /** Search texts of the searches the request's replayed rounds made, by call id — a result in this
-   *  reply may answer one of them (see searchesOf). */
+  /** What the server-tool calls of the request's replayed rounds asked for — a search text, an
+   *  address — by call id: a result in this reply may answer one of them (see searchesOf, fetchesOf). */
   asked: Map<string, string>
+  /** This request continues a paused reply that opened a page: its closing pass goes back too (finish). */
+  continuesFetch: boolean
+}
+
+/** Blocks — or the paused reply a request continues — that hold a page fetch's result. */
+function opensPage(of: Record<string, unknown>[] | ChatMessage | undefined): boolean {
+  const steps = Array.isArray(of) ? of : of?.role === 'assistant' ? of.replay?.steps : undefined
+  return !!steps?.some((b) => isObj(b) && b.type === 'web_fetch_tool_result')
 }
 
 /** A refusal's reason as Anthropic states it (`stop_details`: a category such as "bio" or "cyber", and
@@ -477,7 +516,8 @@ const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v)
  *  runs several passes and the final report SUMS them, while the tier belongs to one request's prompt —
  *  measured: 2,867 tokens in the first pass, 21,944 reported for two searches. Deciding the tier on the
  *  sum would book a long search reply at five times its price, so a reply that searched is placed by
- *  its first pass, the one the conversation sets; later passes add only the results. An estimate, like
+ *  its first pass, the one the conversation sets; later passes add only the results. An opened page
+ *  makes a pass the same way; it has no fee of its own, its text is priced as input. An estimate, like
  *  every figure here, not checked against an invoice. */
 export function usageEvent(model: string, usage: Record<string, unknown>, firstPrompt?: number): StreamEvent {
   const input = num(usage.input_tokens)
@@ -485,13 +525,15 @@ export function usageEvent(model: string, usage: Record<string, unknown>, firstP
   const read = num(usage.cache_read_input_tokens)
   const output = num(usage.output_tokens)
   const prompt = input + written + read
-  const searches = num((usage.server_tool_use as Record<string, unknown> | undefined)?.web_search_requests)
+  const lookups = isObj(usage.server_tool_use) ? usage.server_tool_use : {}
+  const searches = num(lookups.web_search_requests)
+  const fetches = num(lookups.web_fetch_requests)
   // The cache write is priced by its lifetime; only five-minute entries are requested, a one-hour
   // entry (2×) would come from an account setting and is priced as what it is.
   const byTtl = isObj(usage.cache_creation) ? usage.cache_creation : null
   const hour = byTtl ? num(byTtl.ephemeral_1h_input_tokens) : 0
   const entry = getModels().find((m) => m.id === model && m.provider === 'anthropic')
-  const tierPrompt = searches && firstPrompt ? firstPrompt : prompt
+  const tierPrompt = (searches || fetches) && firstPrompt ? firstPrompt : prompt
   const price = entry ? priceFor(entry, tierPrompt) : undefined
   const reported = typeof usage.input_tokens === 'number'
   const cost =
@@ -512,7 +554,14 @@ export function usageEvent(model: string, usage: Record<string, unknown>, firstP
       // Thinking is output as far as the bill goes, and Anthropic counts it there already.
       completion_tokens: output,
       prompt_tokens_details: { cached_tokens: read },
-      ...(searches ? { server_tool_use: { web_search_requests: searches } } : {})
+      ...(searches || fetches
+        ? {
+            server_tool_use: {
+              ...(searches ? { web_search_requests: searches } : {}),
+              ...(fetches ? { web_fetch_requests: fetches } : {})
+            }
+          }
+        : {})
     }
   }
 }
@@ -536,13 +585,22 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
       description: t.function.description,
       input_schema: t.function.parameters
     }))
-    if (opts.webSearch)
-      tools.push({
-        type: 'web_search_20250305',
-        name: 'web_search',
+    if (opts.webSearch) {
+      // The cap and the allow list hold for each tool on its own, as on OpenRouter.
+      const limits = {
         ...(opts.webLookupsCap ? { max_uses: opts.webLookupsCap } : {}),
         ...(opts.webDomains?.length ? { allowed_domains: opts.webDomains } : {})
-      })
+      }
+      tools.push(
+        { type: 'web_search_20250305', name: 'web_search', ...limits },
+        {
+          type: 'web_fetch_20250910',
+          name: 'web_fetch',
+          ...limits,
+          max_content_tokens: FETCH_MAX_CONTENT_TOKENS
+        }
+      )
+    }
     // The automatic breakpoint pays where a conversation goes on: a tool loop, or a caller that asks for
     // it (the writers' lookup rounds). On a one-shot request it would only add the write surcharge.
     const tail =
@@ -577,7 +635,8 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
     usage: {},
     sentUsage: false,
     stopped: false,
-    asked: askedBefore(opts.messages)
+    asked: askedBefore(opts.messages),
+    continuesFetch: opensPage(opts.messages.at(-1))
   }),
 
   interpret(raw: unknown, state: AnthropicState): StreamEvent[] {
@@ -696,6 +755,8 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
     if (citations.length) events.push({ type: 'citations', citations })
     const searches = searchesOf(blocks, state.asked)
     if (searches.length) events.push({ type: 'web_searches', searches })
+    const fetches = fetchesOf(blocks, state.asked)
+    if (fetches.length) events.push({ type: 'web_fetches', fetches })
     const calls: AccumTool[] = order
       .filter((i) => state.blocks.get(i)?.type === 'tool_use')
       .map((i) => {
@@ -706,8 +767,11 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
     // A refused reply's output is to be discarded (Anthropic's refusal docs): calls it streamed before the
     // stop are not handed out to be run.
     if (state.stopReason === 'refusal') return events
-    // A tool round, or a paused one: either way the blocks have to go back as they came.
-    if (calls.length || state.stopReason === 'pause_turn')
+    // A tool round, or a paused one: either way the blocks have to go back as they came. So does a closing
+    // round that opened a page. Sent back as its text alone, it lost the fetch, and in the next turn the
+    // model found its plan to open the page, no fetch, and an answer full of the page's figures — and told
+    // the user it had not read the page.
+    if (calls.length || state.stopReason === 'pause_turn' || state.continuesFetch || opensPage(blocks))
       events.push({
         type: 'tool_calls',
         calls,

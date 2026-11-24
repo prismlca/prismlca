@@ -88,4 +88,47 @@ describe('the sources of an answer', () => {
     expect(screen.getByText('Cited in this reply')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'hornbach.de' })).toBeInTheDocument()
   })
+
+  // Anthropic's page fetch names the pages a reply opened.
+  const fetchedRow: ToolTrace = {
+    name: 'web_lookups',
+    status: 'ok',
+    preview: '2 pages fetched — run by the provider inside this reply.',
+    fetched: [
+      { url: 'https://www.meffert.de/sds.pdf', title: 'Safety data sheet' },
+      { url: 'https://www.meffert.de/gone', error: 'url_not_accessible' },
+      { url: 'https://www.galaxus.ch/p/64601145', title: 'Avasco Steckregal Atlas 175' }
+    ]
+  }
+
+  it('lists the opened pages under the answer, leaving out one it cites and one it could not open', () => {
+    const { opened } = webSourcesOf([fetchedRow, fetchedRow])
+    expect(opened.map((o) => o.url)).toEqual([
+      'https://www.meffert.de/sds.pdf',
+      'https://www.galaxus.ch/p/64601145'
+    ])
+    const { container } = render(
+      <MessageRow m={answer([row, fetchedRow])} labels={{}} onJump={() => {}} onReveal={() => {}} />
+    )
+    const sources = within(container.querySelector('.chat-sources') as HTMLElement)
+    expect(sources.getByText('Pages opened')).toBeInTheDocument()
+    expect(sources.getByRole('link', { name: 'Safety data sheet' })).toBeInTheDocument()
+    expect(sources.queryByText(/not opened/)).toBeNull()
+    // The cited page is listed once, under Sources (and among its search's results), not as opened too.
+    const opened2 = within(sources.getByText('Pages opened').nextElementSibling as HTMLElement)
+    expect(opened2.queryByRole('link', { name: 'Avasco Steckregal Atlas 175' })).toBeNull()
+  })
+
+  it('shows the opened pages under an answer that only opened pages', () => {
+    render(<MessageRow m={answer([fetchedRow])} labels={{}} onJump={() => {}} onReveal={() => {}} />)
+    expect(screen.queryByText('Sources')).toBeNull()
+    expect(screen.getByText('Pages opened')).toBeInTheDocument()
+  })
+
+  it('names in the trace row each page the reply opened, and why one was not', () => {
+    render(<ToolTraceList traces={[fetchedRow]} labels={{}} />)
+    expect(screen.getByText('Opened in this reply')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Safety data sheet' })).toBeInTheDocument()
+    expect(screen.getByText(/not opened \(url_not_accessible\)/)).toBeInTheDocument()
+  })
 })

@@ -72,7 +72,7 @@ export interface ChatSummary {
 // ToolTrace lives in shared/ipc.ts; `status`/`ms` are optional there for exactly this side's
 // in-flight rows (absent status = still running) and for stored traces from before every field
 // existed.
-export type { AttachmentMeta, CitedPage, ToolTrace, WebSearch } from '../../../shared/ipc'
+export type { AttachmentMeta, CitedPage, ToolTrace, WebFetch, WebSearch } from '../../../shared/ipc'
 import type { PendingAsk } from '../../../shared/ipc'
 import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
 

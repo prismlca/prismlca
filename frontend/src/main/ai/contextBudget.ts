@@ -164,13 +164,15 @@ export function compactMessages(
   dropped?: DroppedResult[]
 ): number {
   // Walk back to the start of the OLDEST round we want to keep; an assistant message carrying
-  // tool_calls marks the start of a round. Everything before that index gets stubbed — which
-  // includes the tool results of older rounds, since those follow their assistant message.
+  // tool_calls marks the start of a round, and so does a closing answer that went back with its blocks
+  // (one that opened a page): a chat of such answers alone would otherwise never reach its old pages.
+  // Everything before that index gets stubbed — which includes the tool results of older rounds, since
+  // those follow their assistant message.
   let cut = keepRounds < 1 ? messages.length : 0
   let seen = 0
   for (let i = messages.length - 1; i >= 0 && keepRounds >= 1; i--) {
     const m = messages[i]
-    if (m.role === 'assistant' && m.tool_calls?.length) {
+    if (m.role === 'assistant' && (m.tool_calls?.length || m.replay)) {
       seen++
       if (seen === keepRounds) {
         cut = i
