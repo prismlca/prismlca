@@ -111,6 +111,7 @@ const NOT_LITERAL = new Set([
   'Carbon dioxide, fossil air kilogram',
   '+ ★ climate change / global warming potential (GWP100) kg CO2-Eq',
   '★ climate change / global warming potential (GWP100) kg CO2-Eq',
+  'climate change / global warming potential (GWP100) kg CO2-Eq',
   'bottle 4.00',
   // assembled: views/ActivityEditor.tsx, "+ Add {input|output} flow"
   '+ Add output flow'

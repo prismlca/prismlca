@@ -40,7 +40,7 @@ node scripts/control-prism.mjs click "role=tab:Manage methods"
 node scripts/control-prism.mjs click "role=button:Duplicate method"
 node scripts/control-prism.mjs select "role=combobox:From family" "IPCC 2021"
 node scripts/control-prism.mjs type "css=.modal-backdrop >> placeholder=Filter indicators…" GWP100
-node scripts/control-prism.mjs click "css=.modal-backdrop >> role=checkbox >> nth=0"
+node scripts/control-prism.mjs click "css=.modal-backdrop >> role=checkbox:climate change / global warming potential (GWP100) kg CO2-Eq"
 node scripts/control-prism.mjs type "role=textbox:/^Name for/" "GWP100 doubled CO2"
 node scripts/control-prism.mjs click "role=button:/^Duplicate \d/"
 node scripts/control-prism.mjs wait hidden "css=.modal-backdrop" --timeout 60000
@@ -58,6 +58,9 @@ With the recipe in model.md (2 kg of CO2) the copy gives 4 kg CO2-Eq, twice the 
   a name: `"role=listbox"` (one on the page).
 - Indicators to compare are buttons "+ <indicator> <unit>" (with ★ for recommended ones, ✓ once chosen);
   `"Remove indicator"` (×) takes one off.
+- The duplicate dialog's indicators are checkboxes named "<indicator> <unit>", with the indicator named as
+  on Compare factors. Each ticked one gets a field `"role=textbox:/^Name for/"`, pre-filled with the same
+  parts joined by a dash: "climate change: biogenic – global warming potential (GWP100)".
 - The factor table's rows are named "<flow> <compartment> <unit> <factor>…", so a value can be checked
   with `wait visible "role=row:…"`. In a custom method the row's name ends in the factor and
   "Remove flow".
@@ -70,8 +73,10 @@ With the recipe in model.md (2 kg of CO2) the copy gives 4 kg CO2-Eq, twice the 
   name carries the value: name the row with a pattern over the number, as above, and use
   `type … --commit`. A row named with the old value is gone once the field changes. The page has no Undo
   button; a calculation shows the effect.
-- **The duplicate dialog names each indicator by its last part only:** IPCC 2021's GWP100 rows all read
-  "global warming potential (GWP100)". Pick by position or check what was copied in the Compare tab.
+- **An indicator is named by its category where that names one indicator, by the whole path below the
+  family where it does not** — EF v3.1's GWP100 is "climate change", IPCC 2021's is "climate change /
+  global warming potential (GWP100)", one of eight GWP100s there. Both tabs and the copy's default name
+  follow that rule, so a target that names the last part alone finds nothing.
 - **Deleting a custom method shifts the Model page's method choice** to the next method in the list (or
   back to the first of all). Check the Model page's chooser after deleting one.
 - An empty filter result shows "0 of … flows" and an empty table.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { familyToOpen, groupMethodsByFamily, indicatorLabel, indicatorLabels } from './methods'
+import { copyName, familyToOpen, groupMethodsByFamily, indicatorLabel, indicatorLabels } from './methods'
 
 const m = (...method: string[]): { method: string[] } => ({ method })
 
@@ -88,6 +88,47 @@ describe('indicatorLabels', () => {
   it('counts a duplicated entry once', () => {
     const twice = indicatorLabels([CATALOGUE[0], CATALOGUE[0]])
     expect([...twice.values()]).toEqual(['climate change'])
+  })
+})
+
+describe('copyName', () => {
+  const IPCC = [
+    m('IPCC 2021', 'climate change', 'global warming potential (GWP100)'),
+    m('IPCC 2021', 'climate change', 'global warming potential (GWP20)'),
+    m('IPCC 2021', 'climate change: biogenic', 'global warming potential (GWP100)'),
+    m('IPCC 2021', 'climate change: biogenic', 'global warming potential (GWP20)'),
+    m('IPCC 2021', 'climate change: fossil', 'global warming potential (GWP100)')
+  ]
+
+  it('gives copies of indicators that share their last part names of their own', () => {
+    const labels = indicatorLabels(IPCC)
+    const gwp100 = IPCC.filter((x) => x.method[2].includes('GWP100')).map((x) => copyName(x.method, labels))
+    expect(gwp100).toEqual([
+      'climate change – global warming potential (GWP100)',
+      'climate change: biogenic – global warming potential (GWP100)',
+      'climate change: fossil'
+    ])
+    expect(new Set(IPCC.map((x) => copyName(x.method, labels))).size).toBe(IPCC.length)
+  })
+
+  it('never puts the path separator into a name', () => {
+    // A copy is (family, name): a " / " in its name would read back as a third segment.
+    const labels = indicatorLabels([...IPCC, ...CATALOGUE])
+    for (const x of [...IPCC, ...CATALOGUE]) expect(copyName(x.method, labels)).not.toContain(' / ')
+  })
+
+  it('keeps the category where it names the indicator, as the Compare tab does', () => {
+    expect(
+      copyName(['EF v3.1', 'climate change', 'global warming potential (GWP100)'], indicatorLabels(CATALOGUE))
+    ).toBe('climate change')
+  })
+
+  it('names short and unknown methods from the method itself', () => {
+    expect(copyName(['My methods', 'GWP100 doubled CO2'], indicatorLabels(CATALOGUE))).toBe(
+      'GWP100 doubled CO2'
+    )
+    expect(copyName(['Gone', 'acidification', 'AP'], indicatorLabels(CATALOGUE))).toBe('acidification')
+    expect(copyName(['Only a family'])).toBe('Only a family')
   })
 })
 
