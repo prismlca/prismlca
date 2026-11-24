@@ -53,9 +53,11 @@ The table's rows are named by subject and score (`row "bottle 4.00"`), so a valu
 - Indicator rows are buttons named "+ <indicator> <unit>" (with ★ for recommended ones, ✓ once chosen);
   the family chooser is `"css=select.ind-family"`, the filter `"placeholder=Filter indicators…"`.
 - `"role=button:Save charts"` and `"role=button:Export Excel"` are disabled until there is a result.
-- Decomposition tree: the subject is a radio per model; `"role=button:/^Impact category/"` opens the
-  group with `"label=Method family"` and `"label=Indicator"`; after Calculate, `"role=button:Expand all"`,
-  `"Zoom in"`, `"Zoom out"`, `"Fit to view"`, and the tree's summary line `"css=.ctree3-meta"`.
+- Decomposition tree: the subjects are radios, one per process of this model on its list (it starts
+  with the model's first reference process; "+ Add from this model" adds others);
+  `"role=button:/^Impact category/"` opens the group with `"role=combobox:Method family"` and
+  `"role=combobox:Indicator"`; after Calculate, `"role=button:Expand all"`, `"Zoom in"`, `"Zoom out"`,
+  `"Fit to view"`, and the tree's summary line `"css=.ctree3-meta"`.
 
 ## Gotchas
 
@@ -65,7 +67,8 @@ The table's rows are named by subject and score (`row "bottle 4.00"`), so a valu
   open the group first.
 - **Charts are drawn on a canvas,** so they are not in the accessibility tree: check the table, or the
   tree's summary line, not the bars.
-- Radar and Heatmap appear only with two subjects or more.
+- Radar and Heatmap appear only with two subjects or more, and the heatmap is a second
+  `table.results-table`: narrow to `"css=table.results-table:not(.heatmap) >> visible"`.
 - After any change to the model, its parameters or scenarios, the shown result is outdated (a banner,
   and the status line "Selection changed — shown results are outdated."): calculate again.
 - The page remembers the chosen indicators and display options per model and in the window's storage,
