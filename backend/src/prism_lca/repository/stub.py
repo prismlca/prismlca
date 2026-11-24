@@ -60,10 +60,12 @@ class StubRepository(LcaRepository):
         if name == "default":
             raise PrismError("The 'default' workspace cannot be deleted.", code="project_protected",
                              status_code=400, hint="Brightway always keeps a 'default' workspace.")
-        if name == self._current:
-            self._current = "default"
-            self._dbs = {}
         self._projects.discard(name)
+        if name == self._current:
+            # No data to look for here (the stub keeps databases for the current project only), so the
+            # rest of Brightway's rule: another workspace the user made, 'default' when none is left.
+            self._current = next((n for n in sorted(self._projects) if n != "default"), "default")
+            self._dbs = {}
 
     def list_databases(self) -> list[DatabaseInfo]:
         return list(self._dbs.values())

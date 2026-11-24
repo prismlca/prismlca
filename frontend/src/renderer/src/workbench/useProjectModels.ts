@@ -90,9 +90,16 @@ export function useProjectModels(deps: ProjectModelDeps) {
   const switchBusy = useRef(false)
   /** Close the open model and let the canvas save its arrangement before anything else happens:
    *  flushSync commits at once, and React runs the effect cleanups of a synchronous commit right
-   *  away — the canvas's departure save among them. */
-  const leaveModel = useCallback(() => {
-    flushSync(() => setActiveDb(null))
+   *  away — the canvas's departure save among them. Answers which model it closed. */
+  const leaveModel = useCallback((): string | null => {
+    let left: string | null = null
+    flushSync(() =>
+      setActiveDb((prev) => {
+        left = prev
+        return null
+      })
+    )
+    return left
   }, [setActiveDb])
   const freshDatabases = useCallback(async (): Promise<DatabaseInfo[]> => {
     invalidate('/api/v1/databases')
@@ -161,64 +168,98 @@ export function useProjectModels(deps: ProjectModelDeps) {
     }
   }, [refreshDatabases])
 
+  /** Take the backend to another workspace and point every piece of state at it. `move` is the request
+   *  that moves it and answers where it stands then: activating a workspace by name, or deleting the
+   *  active one, which opens another. */
+  const switchWorkspace = useCallback(
+    async (move: () => Promise<string>): Promise<void> => {
+      // Views are keyed by model name and written into whichever workspace is active. The
+      // outgoing model is closed first — synchronously, so the canvas's own departure save runs
+      // NOW, while the backend still stands in its workspace — then the fence goes up. One save
+      // path, the one every model switch already takes; `finally` takes the fence down.
+      // One switch at a time: a second one started while the first still loads would interleave
+      // their fences and refreshes. The picker snaps back to the workspace shown.
+      if (switchBusy.current) return
+      switchBusy.current = true
+      const left = leaveModel()
+      const fence = await beginWorkspaceSwitch()
+      let switched = false
+      let refusal: unknown = null
+      try {
+        let name: string
+        try {
+          name = await move()
+        } catch (e) {
+          // A refusal mostly leaves the backend where it stood, not always: a deletion whose folder
+          // could not be put back stays in 'default'. Asked while the fence is still up; when it moved,
+          // the switch goes on to where it stands, and the refusal is still shown afterwards.
+          refusal = e
+          const info = await api<{ current_project: { name: string } | null }>(
+            'GET',
+            '/api/v1/system/info'
+          ).catch(() => null)
+          const where = info?.current_project?.name
+          if (!where || where === project) throw e
+          name = where
+        }
+        switched = true
+        // The same generation refreshDatabases counts: a refresh still running from the workspace
+        // just left must not land in this one, and a newer one wins over this read.
+        const mine = ++refreshSeq.current
+        // A project switch changes every server answer at once — one prefix covers them all.
+        invalidate('/api/v1/')
+        void resetFolders() // a store of its own, not a cached answer: told separately
+        resetThemePreviews()
+        setProject(name)
+        onProjectSwitched()
+        setActiveDb(null)
+        const dbs = await fetchQuery('/api/v1/databases')
+        // The old canvas has torn down (into the fence) while that was out; the caches go before the
+        // incoming model loads, or it would start from the old workspace's copy of its name.
+        endWorkspaceSwitch(fence)
+        if (mine === refreshSeq.current) {
+          setDatabases(dbs)
+          // Canvas is for foreground modelling only — never auto-load a huge read-only background
+          // DB (e.g. 26k-activity ecoinvent) into the graph; leave null until a foreground DB exists.
+          setActiveDb(dbs.find((d) => d.kind === 'foreground')?.name ?? null)
+          // Search targets a background DB (that's what you search); fall back to the first DB.
+          setSearchDbs(defaultSearchDbs(dbs))
+          setShowSetup(false)
+        }
+        // (`methods` is a subscription; the invalidate above already refreshes it.)
+        // The undo stacks are dropped server-side when a project is activated (they belonged to the
+        // project we just left), and the audit log is a different project's now. Both are read back
+        // here so the toolbar and the panel describe the project actually in front of you.
+        await reloadAudit()
+      } finally {
+        if (switched) endWorkspaceSwitch(fence)
+        else {
+          cancelWorkspaceSwitch(fence)
+          // Refused, and the backend stands where it stood: the model that was open opens again.
+          if (left) setActiveDb((cur) => cur ?? left)
+        }
+        switchBusy.current = false
+      }
+      if (refusal) throw refusal
+    },
+    [project, onProjectSwitched, reloadAudit, setActiveDb, leaveModel, setDatabases]
+  )
+
   const activateProject = useCallback(
     (name: string) => {
       if (!name || name === project) return
-      void run(async () => {
-        // Views are keyed by model name and written into whichever workspace is active. The
-        // outgoing model is closed first — synchronously, so the canvas's own departure save runs
-        // NOW, while the backend still stands in its workspace — then the fence goes up. One save
-        // path, the one every model switch already takes; `finally` takes the fence down.
-        // One switch at a time: a second one started while the first still loads would interleave
-        // their fences and refreshes. The picker snaps back to the workspace shown.
-        if (switchBusy.current) return
-        switchBusy.current = true
-        leaveModel()
-        const fence = await beginWorkspaceSwitch()
-        let switched = false
-        try {
+      void run(() =>
+        switchWorkspace(async () => {
           await api('POST', `/api/v1/projects/${encodeURIComponent(name)}/activate`)
-          switched = true
-          // The same generation refreshDatabases counts: a refresh still running from the workspace
-          // just left must not land in this one, and a newer one wins over this read.
-          const mine = ++refreshSeq.current
-          // A project switch changes every server answer at once — one prefix covers them all.
-          invalidate('/api/v1/')
-          void resetFolders() // a store of its own, not a cached answer: told separately
-          resetThemePreviews()
-          setProject(name)
-          onProjectSwitched()
-          setActiveDb(null)
-          const dbs = await fetchQuery('/api/v1/databases')
-          // The old canvas has torn down (into the fence) while that was out; the caches go before the
-          // incoming model loads, or it would start from the old workspace's copy of its name.
-          endWorkspaceSwitch(fence)
-          if (mine === refreshSeq.current) {
-            setDatabases(dbs)
-            // Canvas is for foreground modelling only — never auto-load a huge read-only background
-            // DB (e.g. 26k-activity ecoinvent) into the graph; leave null until a foreground DB exists.
-            setActiveDb(dbs.find((d) => d.kind === 'foreground')?.name ?? null)
-            // Search targets a background DB (that's what you search); fall back to the first DB.
-            setSearchDbs(defaultSearchDbs(dbs))
-            setShowSetup(false)
-          }
-          // (`methods` is a subscription; the invalidate above already refreshes it.)
-          // The undo stacks are dropped server-side when a project is activated (they belonged to the
-          // project we just left), and the audit log is a different project's now. Both are read back
-          // here so the toolbar and the panel describe the project actually in front of you.
-          await reloadAudit()
-        } finally {
-          if (switched) endWorkspaceSwitch(fence)
-          else cancelWorkspaceSwitch(fence)
-          switchBusy.current = false
-        }
-      })
+          return name
+        })
+      )
     },
-    [project, run, onProjectSwitched, reloadAudit, setActiveDb, leaveModel, setDatabases]
+    [project, run, switchWorkspace]
   )
 
   // Delete a Brightway project (and its data dir) after explicit confirmation. The backend
-  // refuses the active project and 'default'; not undoable, hence the danger dialog.
+  // refuses 'default'; not undoable, hence the danger dialog.
   const deleteProject = useCallback(
     (name: string): void =>
       setConfirm({
@@ -228,16 +269,23 @@ export function useProjectModels(deps: ProjectModelDeps) {
         danger: true,
         onConfirm: () => {
           void run(async () => {
-            const wasActive = name === project
-            await api('DELETE', `/api/v1/projects/${encodeURIComponent(name)}`)
+            const path = `/api/v1/projects/${encodeURIComponent(name)}`
+            if (name === project) {
+              // Deleting the workspace you stand in opens another, one with data where there is one
+              // (the backend picks it, as at start-up). A switch like any other, through the same door:
+              // the open model saves itself into the workspace about to go, never into the one opened,
+              // where a model of the same name would take its arrangement.
+              await switchWorkspace(
+                async () => (await api<{ current: string | null }>('DELETE', path)).current ?? 'default'
+              )
+            } else {
+              await api('DELETE', path)
+            }
             setProjects((await api<{ name: string }[]>('GET', '/api/v1/projects')).map((p) => p.name))
-            // The backend drops us into 'default' if we deleted the project we were standing in —
-            // pull that project's (empty) state into the UI so it doesn't show stale data.
-            if (wasActive) activateProject('default')
           })
         }
       }),
-    [setConfirm, run, project, activateProject]
+    [setConfirm, run, project, switchWorkspace]
   )
 
   /** Write a full project backup, after saying what it contains. Path in, path out: an archive of

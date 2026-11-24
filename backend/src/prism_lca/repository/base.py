@@ -60,7 +60,8 @@ class LcaRepository(ABC):
 
     @abstractmethod
     def delete_project(self, name: str) -> None:
-        """Delete a project and its data directory. Refuses the active project and 'default'."""
+        """Delete a project and its data directory. Refuses 'default'. Deleting the active project opens
+        another: one with data where there is one, 'default' only when nothing else is left."""
 
     @abstractmethod
     def list_databases(self) -> list[DatabaseInfo]:

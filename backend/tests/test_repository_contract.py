@@ -99,14 +99,15 @@ class TestInterfaceContract:
         with pytest.raises(PrismError) as excinfo:
             repo.delete_project("default")
         assert _err(excinfo).code == "project_protected"
-        # Deleting the ACTIVE project must not strand the caller: both implementations fall back
-        # to Brightway's ever-present 'default'.
+        # Deleting the ACTIVE project must not strand the caller: both implementations open another
+        # one that is still listed (which one is Brightway's to decide: see test_projects.py).
         name = _name("proj")
         repo.create_project(name)
         repo.delete_project(name)
-        assert name not in {p.name for p in repo.list_projects()}
+        listed = {p.name for p in repo.list_projects()}
+        assert name not in listed
         current = repo.current_project()
-        assert current is not None and current.name == "default"
+        assert current is not None and current.name != name and current.name in listed
 
     def test_create_foreground_database(self, repo: LcaRepository):
         db = _name("model")
