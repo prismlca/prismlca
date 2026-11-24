@@ -34,14 +34,22 @@ function isRealDir(path: string): boolean {
   }
 }
 
-/** The checkout that owns the git directory: the main checkout, also when called from a worktree. */
-export function mainCheckout(frontend: string): string {
-  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
-    cwd: frontend,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe']
-  }).trim()
-  return dirname(common)
+/** The main checkout that owns the git directory (also when asked from a worktree), and whether `frontend`
+ *  lies in that main checkout itself. Both answers come from git in one form, so neither depends on how a
+ *  path is spelled: Windows short names (`RUNNER~1`) or drive-letter case, links on the way elsewhere.
+ *  Git finds the repository from `frontend` alone: an inherited GIT_DIR (set inside git hooks, for one)
+ *  would have it answer for another checkout, and take a worktree for the main one. */
+function checkoutOf(frontend: string): { main: string; isMain: boolean } {
+  const env = { ...process.env }
+  for (const name of ['GIT_DIR', 'GIT_COMMON_DIR', 'GIT_WORK_TREE']) delete env[name]
+  const [gitDir, common] = execFileSync(
+    'git',
+    ['rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'],
+    { cwd: frontend, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+  )
+    .trim()
+    .split(/\r?\n/)
+  return { main: dirname(common), isMain: gitDir === common }
 }
 
 function entryPoint(venv: string): string {
@@ -57,16 +65,17 @@ export function planBackend(frontend: string): BackendPlan {
   if (!existsSync(resolve(frontend, '..', '.git'))) {
     return { via: 'own', detail: `uv run in ${backend} (not a git checkout)` }
   }
-  let main: string
+  let checkout: { main: string; isMain: boolean }
   try {
-    main = mainCheckout(frontend)
+    checkout = checkoutOf(frontend)
   } catch (e) {
     const why = (e as { stderr?: string }).stderr?.trim() || (e as Error).message
     throw new Error(`git could not say which checkout ${resolve(frontend, '..')} belongs to: ${why}`)
   }
-  if (resolve(main, 'backend') === backend) {
+  if (checkout.isMain) {
     return { via: 'own', detail: `uv run in the main checkout (${backend})` }
   }
+  const main = checkout.main
   if (isRealDir(join(backend, '.venv'))) {
     return { via: 'own', detail: `uv run on the worktree's own environment (${join(backend, '.venv')})` }
   }
