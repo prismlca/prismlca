@@ -15,7 +15,10 @@ const MODEL_CACHES = [
   // (or its undo) changes the second without touching the groups themselves. One prefix, both routes.
   '/api/v1/model/tag-groups',
   '/api/v1/study',
-  '/api/v1/scenarios'
+  '/api/v1/scenarios',
+  // The database list carries every model's process count, which a process created, deleted or moved
+  // changes; and the first move to the library creates the library.
+  '/api/v1/databases'
 ]
 
 export function invalidateModelCaches(): void {

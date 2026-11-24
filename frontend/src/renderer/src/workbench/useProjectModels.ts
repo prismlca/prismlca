@@ -10,10 +10,10 @@
  * that no longer exists).
  */
 import { resetThemePreviews } from '../views/ThemePreview'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { api, ApiError, type DatabaseInfo } from '../lib/api'
-import { fetchQuery, invalidate } from '../lib/server/useQuery'
+import { fetchQuery, invalidate, useQuery } from '../lib/server/useQuery'
 import { beginWorkspaceSwitch, cancelWorkspaceSwitch, endWorkspaceSwitch } from '../lib/modelView'
 import { usePersisted } from '../lib/persist'
 import { defaultSearchDbs } from '../lib/search'
@@ -64,6 +64,21 @@ export function useProjectModels(deps: ProjectModelDeps) {
     setDatabaseList(dbs)
     setListed(true)
   }, [])
+  // The list follows every edit inside a model too. The edit marks it stale together with the other model
+  // caches (lib/server/modelCaches), this subscription reads it again, and the answer becomes the list: a
+  // process created, deleted or moved changes a count, and the first move to the library creates the
+  // library. Which model is open and what the search has ticked stay with the paths below, which check
+  // them against a list they asked for themselves.
+  // Applied again whenever one of them writes the list: a read asked for before an edit can answer after
+  // the edit's own read, and its older counts would otherwise stay. A fresh answer in the cache is never
+  // older than such a read — the cache keeps only an answer asked for after the last invalidation.
+  // Not before start-up has confirmed a list: a failed start keeps an empty list, and with it the gate
+  // and its recovery controls, instead of models that cannot be opened.
+  const { data: served, fresh: servedFresh } = useQuery('/api/v1/databases')
+  useEffect(() => {
+    if (listed && served && servedFresh)
+      setDatabaseList((prev) => (sameDatabases(prev, served) ? prev : served))
+  }, [listed, served, servedFresh, databases])
   /**
    * The user opens a model — the one door every deliberate open goes through (the Overview list and
    * its "Last models" card, the toolbar dropdown, "Go to chat", a new, duplicated or imported model).
@@ -582,4 +597,19 @@ export function useProjectModels(deps: ProjectModelDeps) {
     createWorkspace,
     submitDuplicateModel
   }
+}
+
+/** Whether two lists describe the same databases. Most edits add or remove no process (a renamed one, an
+ *  amount): the list then keeps its identity, and nothing that reads it renders again. */
+function sameDatabases(a: DatabaseInfo[], b: DatabaseInfo[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (d, i) =>
+        d.name === b[i].name &&
+        d.node_count === b[i].node_count &&
+        d.read_only === b[i].read_only &&
+        d.kind === b[i].kind
+    )
+  )
 }
