@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { backendEnv, planBackend } from './backend'
 
 const windows = process.platform === 'win32'
@@ -54,6 +54,25 @@ describe('planBackend', () => {
     expect(backendEnv(plan, join(root, 'bin'))).toEqual({})
   })
 
+  it('knows the main checkout however its path is spelled', () => {
+    // Reached through a link, as a Windows short name (RUNNER~1) spells the same folder differently.
+    const alias = join(root, 'alias')
+    symlinkSync(main, alias, 'junction')
+    const plan = planBackend(join(alias, 'frontend'))
+    expect(plan.detail).toContain('main checkout')
+  })
+
+  it('takes a worktree for a worktree also when GIT_DIR names the main repository', () => {
+    // As inside a git hook; uv would re-sync the linked environment if this counted as the main checkout.
+    symlinkSync(join(main, 'backend', '.venv'), join(worktree, 'backend', '.venv'), 'junction')
+    vi.stubEnv('GIT_DIR', join(main, '.git'))
+    try {
+      expect(planBackend(join(worktree, 'frontend')).detail).not.toContain('uv run in the main checkout')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('runs uv as it is in a worktree with an environment of its own', () => {
     mkdirSync(join(worktree, 'backend', '.venv'))
     const plan = planBackend(join(worktree, 'frontend'))
@@ -71,9 +90,12 @@ describe('planBackend', () => {
   })
 
   it('refuses when git cannot answer for a checkout, rather than letting uv run', () => {
-    // A worktree whose link to the repository is broken; uv would re-sync the linked environment.
+    // A worktree whose link to the repository is broken; uv would re-sync the linked environment. Git for
+    // Windows marks the `.git` file hidden, and Windows will not open a hidden file for overwriting: replace it.
+    rmSync(join(worktree, '.git'))
     writeFileSync(join(worktree, '.git'), `gitdir: ${join(root, 'gone')}\n`)
-    symlinkSync(join(main, 'backend', '.venv'), join(worktree, 'backend', '.venv'))
+    // A junction needs no privilege on Windows; elsewhere the type is ignored.
+    symlinkSync(join(main, 'backend', '.venv'), join(worktree, 'backend', '.venv'), 'junction')
     expect(() => planBackend(join(worktree, 'frontend'))).toThrow(/git could not say which checkout/)
   })
 
