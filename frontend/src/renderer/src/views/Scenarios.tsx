@@ -225,8 +225,8 @@ export default function Scenarios({
    */
   /** The debounced write still waiting, so Close can send it first (see below). */
   const flushPending = useRef<(() => void) | null>(null)
-  // One way out of the editor for X, Escape and a click beside the sheet: in edit mode a pending
-  // override edit is written first, as Close always did — Escape used to drop it.
+  // One way out of the editor for Close, X, Escape and a click beside the sheet: in edit mode an edit
+  // still waiting for its debounce is written first.
   const closeEditor = (): void => {
     if (draft?.mode === 'edit') flushPending.current?.()
     setDraft(null)
@@ -242,23 +242,35 @@ export default function Scenarios({
     // Opening the dialog must not count as an edit: without this the audit log filled with updates that
     // changed nothing, every time someone looked at a scenario.
     if (lastSaved.current === fingerprint) return
+    let current = true // this draft is still the one in the dialog
     const send = (): void => {
+      // Sent once, by whichever comes first: once the timer has written the edit there is nothing left
+      // for closing the dialog to flush — a second identical write would be a second undo step that
+      // changes nothing.
+      flushPending.current = null
       lastSaved.current = fingerprint
       void api('POST', '/api/v1/scenarios/update', { id, ...body })
+        .catch((e: unknown) => {
+          // The write itself failed, so the edit is not stored: the same draft may send it again, and
+          // closing the dialog tries it once more while it is still the edit on screen.
+          if (lastSaved.current === fingerprint) lastSaved.current = null
+          if (current) flushPending.current = send
+          throw e
+        })
         .then(() => activeDb && invalidate(scenariosRoute(activeDb)))
         .then(() => load())
         .then(() => onChanged?.())
         .catch((e) => setErr(errMsg(e)))
     }
     const t = setTimeout(send, 400) // typing a name must not fire a request per keystroke
-    // Closing within the debounce used to clear the timer and lose the last edit under a dialog that
-    // says changes are saved as they are made: Close sends it now.
+    // Closing within the debounce sends the edit now rather than dropping it under a dialog that says
+    // changes are saved as they are made.
     flushPending.current = () => {
       clearTimeout(t)
-      flushPending.current = null
       send()
     }
     return () => {
+      current = false
       clearTimeout(t)
       flushPending.current = null
     }
@@ -708,13 +720,7 @@ export default function Scenarios({
               ) : null}
               <div className="acts">
                 {draft.mode === 'edit' ? (
-                  <button
-                    className="btn primary"
-                    onClick={() => {
-                      flushPending.current?.()
-                      setDraft(null)
-                    }}
-                  >
+                  <button className="btn primary" onClick={closeEditor}>
                     Close
                   </button>
                 ) : (
