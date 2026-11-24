@@ -3,7 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { useProjectModels } from './useProjectModels'
 import { makePrism, type PrismFixture } from '../test/prism'
 import { initAppSettings, setAS } from '../lib/appSettings'
-import { resetQueryCache } from '../lib/server/useQuery'
+import { fetchQuery, resetQueryCache } from '../lib/server/useQuery'
+import { invalidateModelCaches } from '../lib/server/modelCaches'
 import { getFolders, reloadFolders } from '../lib/modelFolders'
 
 /**
@@ -82,13 +83,18 @@ describe('overlapping database refreshes', () => {
     const OLD = [{ name: 'old', node_count: 1, read_only: false, kind: 'foreground' }]
     const NEW = [...OLD, { name: 'new', node_count: 0, read_only: false, kind: 'foreground' }]
     let releaseFirst: (v: unknown) => void = () => {}
-    let call = 0
+    // Armed right before the first refresh: the hook reads the list once on mount (for the process
+    // counts), and that read must not be the one held back.
+    let holdNext = false
     const fixture = makePrism({
       'GET /api/v1/system/info': { current_project: { name: 'demo' } },
       'GET /api/v1/projects': [{ name: 'demo' }],
       'GET /api/v1/model/audit': [],
-      'GET /api/v1/databases': () =>
-        ++call === 1 ? new Promise((resolve) => (releaseFirst = () => resolve(OLD))) : NEW
+      'GET /api/v1/databases': () => {
+        if (!holdNext) return NEW
+        holdNext = false
+        return new Promise((resolve) => (releaseFirst = () => resolve(OLD)))
+      }
     })
     ;(window as unknown as { prism: unknown }).prism = fixture.prism
     await initAppSettings()
@@ -104,6 +110,7 @@ describe('overlapping database refreshes', () => {
     )
     let first: Promise<unknown> = Promise.resolve()
     await act(async () => {
+      holdNext = true
       first = result.current.refreshDatabases() // started before the model existed, answers last
       await result.current.refreshDatabases() // the agent's open: sees the new model
     })
@@ -114,6 +121,113 @@ describe('overlapping database refreshes', () => {
     })
     expect(result.current.databases.map((d) => d.name)).toEqual(['old', 'new'])
     expect(result.current.activeDb).toBe('new')
+  })
+})
+
+/**
+ * The Overview's "N foreground processes" and the Last models card read the counts in this list. An edit
+ * inside a model (a process added or deleted) is no model-level action, so nothing re-read the list for
+ * it: a model built with one process said "0 processes" until a restart.
+ */
+describe('the process counts after an edit inside a model', () => {
+  it('follow the model, bring in a library that the edit created, and leave the open model alone', async () => {
+    resetQueryCache()
+    let served = [{ name: 'bottle', node_count: 1, read_only: false, kind: 'foreground' }]
+    const fixture = makePrism({
+      'GET /api/v1/system/info': { current_project: { name: 'demo' } },
+      'GET /api/v1/projects': [{ name: 'demo' }],
+      'GET /api/v1/model/audit': [],
+      'GET /api/v1/databases': () => served.map((d) => ({ ...d })) // a new answer each time, as over the wire
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+    await initAppSettings()
+    localStorage.setItem('prism.activeModel', JSON.stringify('bottle'))
+    const { result } = renderHook(() =>
+      useProjectModels({
+        run: async (fn) => fn(),
+        reloadAudit: async () => {},
+        setConfirm: () => {},
+        onProjectSwitched: () => {},
+        renameCanvasRefs: () => false,
+        openModelView: () => {}
+      })
+    )
+    await act(async () => {
+      await result.current.loadProjectsAndDatabases()
+    })
+    expect(result.current.databases.find((d) => d.name === 'bottle')?.node_count).toBe(1)
+    const before = result.current.databases
+
+    // An edit that changes no count re-renders nothing that reads the list.
+    const reads = (): number => fixture.calls.filter((c) => c.path === '/api/v1/databases').length
+    const readsBefore = reads()
+    act(() => invalidateModelCaches())
+    await waitFor(() => expect(reads()).toBe(readsBefore + 1))
+    await act(async () => {
+      await fetchQuery('/api/v1/databases') // the read just counted, landed
+    })
+    expect(reads()).toBe(readsBefore + 1)
+    expect(result.current.databases).toBe(before)
+
+    // The process moves to the library, which this first move creates.
+    served = [
+      { name: 'bottle', node_count: 0, read_only: false, kind: 'foreground' },
+      { name: 'My processes', node_count: 1, read_only: false, kind: 'library' }
+    ]
+    act(() => invalidateModelCaches()) // what every model edit ends in (the Workbench's reloadAudit)
+    await waitFor(() => expect(result.current.databases.find((d) => d.name === 'bottle')?.node_count).toBe(0))
+    expect(result.current.databases.find((d) => d.name === 'My processes')?.node_count).toBe(1)
+    expect(result.current.activeDb).toBe('bottle')
+    localStorage.removeItem('prism.activeModel')
+  })
+
+  it('are not set back by a refresh that was asked before the edit and answers after it', async () => {
+    resetQueryCache()
+    const at = (count: number) => [
+      { name: 'bottle', node_count: count, read_only: false, kind: 'foreground' }
+    ]
+    let served = at(0)
+    let release: () => void = () => {}
+    let holdNext = false
+    const fixture = makePrism({
+      'GET /api/v1/system/info': { current_project: { name: 'demo' } },
+      'GET /api/v1/projects': [{ name: 'demo' }],
+      'GET /api/v1/model/audit': [],
+      'GET /api/v1/databases': () => {
+        if (!holdNext) return served
+        holdNext = false
+        const before = served
+        return new Promise((resolve) => (release = () => resolve(before)))
+      }
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+    await initAppSettings()
+    const { result } = renderHook(() =>
+      useProjectModels({
+        run: async (fn) => fn(),
+        reloadAudit: async () => {},
+        setConfirm: () => {},
+        onProjectSwitched: () => {},
+        renameCanvasRefs: () => false,
+        openModelView: () => {}
+      })
+    )
+    await act(async () => {
+      await result.current.loadProjectsAndDatabases()
+    })
+    let older: Promise<unknown> = Promise.resolve()
+    act(() => {
+      holdNext = true
+      older = result.current.refreshDatabases() // still out with "0 processes"…
+    })
+    served = at(1) // …when a process is added, and the edit's own read answers first
+    act(() => invalidateModelCaches())
+    await waitFor(() => expect(result.current.databases[0].node_count).toBe(1))
+    await act(async () => {
+      release()
+      await older
+    })
+    expect(result.current.databases[0].node_count).toBe(1)
   })
 })
 

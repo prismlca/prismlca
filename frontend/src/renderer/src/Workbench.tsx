@@ -1704,7 +1704,10 @@ export default function Workbench(): JSX.Element {
               database={editDataset.database}
               code={editDataset.code}
               kind={dbKind(editDataset.database)}
-              onChanged={() => setModelRev((r) => r + 1)}
+              onChanged={() => {
+                setModelRev((r) => r + 1)
+                invalidateModelCaches() // models draw on it; an input added as a new process is counted
+              }}
               onShowDetails={setDetailsFor}
             />
           </div>

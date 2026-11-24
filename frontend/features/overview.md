@@ -49,6 +49,20 @@ node scripts/control-prism.mjs wait visible "css=aside >> nth=1 >> role=button:/
 node scripts/control-prism.mjs type "placeholder=Find a model…" ""
 ```
 
+The process counts follow the model: a process added on the canvas is counted on the Overview at once
+(deleting it, or undoing that, counts down and up again; "Move to library" moves it from the model's
+count to "My processes"):
+
+```sh
+node scripts/control-prism.mjs click "css=aside >> nth=1 >> role=button:/^bottle Model info/"
+node scripts/control-prism.mjs click "title=Add a new process to the model"
+node scripts/control-prism.mjs type "label=Name" bottle --enter
+node scripts/control-prism.mjs wait visible "css=.react-flow__node >> has-text=bottle"
+node scripts/control-prism.mjs click "css=.navitem >> has-text=Overview"
+node scripts/control-prism.mjs wait visible "css=aside >> nth=1 >> role=button:/^bottle .*1 foreground process$/"
+node scripts/control-prism.mjs wait visible "role=region:Last models >> role=button:/^bottle.*1 process/"
+```
+
 A folder, a duplicate, deleting the duplicate (Cancel first), and filing the model into the folder:
 
 ```sh
@@ -105,9 +119,6 @@ node scripts/control-prism.mjs wait app-ready --timeout 120000
 
 ## Gotchas
 
-- **The process counts lag.** A model's row and its Last models entry count processes from the model
-  list, which is not re-read when a process is added: check them after a restart or another model-level
-  action, not right after building.
 - **A filled Goal or Scope field is no longer found by its label:** once it holds text, the label's
   name includes that text. Target them as `"css=.modal-backdrop textarea >> nth=0"` (Goal) and
   `nth=1` (Scope).

@@ -139,6 +139,25 @@ describe('Workbench start-up that fails', () => {
     expect(document.querySelector('.setup .detail')).toBeNull() // cleared, not replaced by another error
     expect(screen.getByRole('button', { name: 'Import ecoinvent' })).toBeInTheDocument()
   })
+
+  it('keeps the gate when the model list could be read but the start-up could not', async () => {
+    const { prism } = renderWithPrism(<Workbench />, {
+      routes: {
+        ...baseRoutes([{ name: 'pet-bottle', node_count: 3, read_only: false, kind: 'foreground' }]),
+        'GET /api/v1/projects': {
+          status: 500,
+          body: { error: { code: 'internal', message: 'Backend hiccup.' } }
+        }
+      }
+    })
+    expect(await screen.findByText(/Backend hiccup/)).toBeInTheDocument()
+    // The list the project hook subscribes to for its counts was read meanwhile, and has landed.
+    await waitFor(() => expect(prism.calls.some((c) => c.path === '/api/v1/databases')).toBe(true))
+    await act(async () => {
+      await fetchQuery('/api/v1/databases')
+    })
+    expect(screen.getByRole('button', { name: 'Import ecoinvent' })).toBeInTheDocument()
+  })
 })
 
 describe('Workbench import wizard', () => {
