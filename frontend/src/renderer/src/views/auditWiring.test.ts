@@ -141,12 +141,18 @@ describe('the undo and redo buttons', () => {
   })
 
   it('re-read the history after a project switch, where the backend clears the stacks', () => {
-    // `activateProject` lives in workbench/useProjectModels.ts; the pinned behaviour —
-    // the switch endpoint AND a history re-read in the same body.
+    // The switch lives in workbench/useProjectModels.ts; the pinned behaviour — `switchWorkspace`
+    // re-reads the history, and both ways to another workspace go through it: activating one, and
+    // deleting the active one (the backend opens another).
     const pm = read('workbench/useProjectModels.ts')
-    const activate = pm.slice(pm.indexOf('const activateProject'))
-    const body = activate.slice(0, activate.indexOf('const deleteProject'))
-    expect(body).toContain('/projects/${encodeURIComponent(name)}/activate')
-    expect(body).toContain('reloadAudit()')
+    const between = (from: string, to: string): string => {
+      const rest = pm.slice(pm.indexOf(from))
+      return rest.slice(0, rest.indexOf(to))
+    }
+    expect(between('const switchWorkspace', 'const activateProject')).toContain('reloadAudit()')
+    const activate = between('const activateProject', 'const deleteProject')
+    expect(activate).toContain('switchWorkspace(')
+    expect(activate).toContain('/projects/${encodeURIComponent(name)}/activate')
+    expect(between('const deleteProject', 'const backupProject')).toContain('switchWorkspace(')
   })
 })

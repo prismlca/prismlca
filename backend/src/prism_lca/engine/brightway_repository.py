@@ -98,6 +98,46 @@ def _is_populated(bd) -> bool:
     return False
 
 
+def _lists_inventory(bd, name: str) -> bool:
+    """From the workspace's ``databases.json`` on disk, without opening it: does it list any database
+    besides the biosphere? One that lists none cannot hold inventory, so it is passed over unopened —
+    opening a workspace is a switch, with Brightway's project updates and our follow-ups behind it. When
+    the file cannot be read, the answer is yes: open it and look."""
+    import json
+
+    from bw2data.project import ProjectDataset
+
+    try:
+        row = ProjectDataset.get_or_none(ProjectDataset.name == name)
+        if row is None:
+            return False
+        path = bd.projects._project_dir(row) / "databases.json"
+        listed = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception as exc:  # noqa: BLE001 - unreadable is not empty
+        _log.swallowed(exc, "_lists_inventory")
+        return True
+    return any(db != BIOSPHERE_DB for db in listed)
+
+
+def _open_first_with_inventory(bd, names: list[str]) -> bool:
+    """Open the first workspace in ``names`` that holds inventory, and answer whether there was one.
+    When there was none, the last one tried may be open: the caller decides where to stand then."""
+    from prism_lca.engine import workspace_removal
+
+    for name in names:
+        try:
+            workspace_removal.put_back(name)
+        except PrismError as exc:  # its folder is set aside and cannot be put back yet: not this one
+            _log.swallowed(exc, "_open_first_with_inventory")
+            continue
+        if not _lists_inventory(bd, name):
+            continue
+        bd.projects.set_current(name)
+        if _is_populated(bd):
+            return True
+    return False
+
+
 class BrightwayRepository(LcaRepository):
     def backend_info(self) -> BackendInfo:
         bd = get_bd()
@@ -120,21 +160,36 @@ class BrightwayRepository(LcaRepository):
         bd = get_bd()
         if _is_populated(bd):
             return
+        original = bd.projects.current
+        if not _open_first_with_inventory(bd, [n for n in _project_names(bd) if n != original]):
+            bd.projects.set_current(original)
+
+    def _open_after_deleting_the_active(self) -> None:
+        """Where the user stands once the workspace they stood in is gone: in a workspace that holds data,
+        as at start-up — not in bw2data's empty ``default``, where the setup sheet reads as "your data is
+        gone" and offers to import into a workspace nobody chose. ``default`` comes last among those with
+        data: it is a throwaway unless the user filled it. With data nowhere, the first workspace the user
+        made; ``default`` only when it is all that is left. Brightway stands in ``default`` on the way in,
+        and stays there when anything here fails: the deletion has happened either way."""
         from prism_lca.engine import workspace_removal
 
-        original = bd.projects.current
-        for name in _project_names(bd):
-            if name == original:
-                continue
-            try:
-                workspace_removal.put_back(name)
-            except PrismError as exc:  # its folder is set aside and cannot be put back yet: not this one
-                _log.swallowed(exc, "ensure_working_project")
-                continue
-            bd.projects.set_current(name)
-            if _is_populated(bd):
+        bd = get_bd()
+        names = _project_names(bd)
+        own = [n for n in names if n != "default"]
+        try:
+            if _open_first_with_inventory(bd, own + [n for n in names if n == "default"]):
                 return
-        bd.projects.set_current(original)
+            for name in own:
+                try:
+                    workspace_removal.put_back(name)
+                except PrismError as exc:  # its folder is set aside and cannot be put back yet: not this one
+                    _log.swallowed(exc, "delete_project")
+                    continue
+                bd.projects.set_current(name)
+                return
+        except Exception as exc:  # noqa: BLE001 - a landing place is a courtesy; the deletion stands
+            _log.swallowed(exc, "delete_project")
+        bd.projects.set_current("default")
 
     def list_projects(self) -> list[ProjectInfo]:
         bd = get_bd()
@@ -192,7 +247,8 @@ class BrightwayRepository(LcaRepository):
         if name == "default":
             raise PrismError("The 'default' workspace cannot be deleted.", code="project_protected",
                              status_code=400, hint="Brightway always keeps a 'default' workspace.")
-        # Never delete the project we are standing in — switch to 'default' first.
+        # Brightway cannot delete the project it stands in: 'default' holds it while the folder goes, and
+        # afterwards the user is taken to a workspace with data (`_open_after_deleting_the_active`).
         was_current = name == bd.projects.current
         if was_current:
             bd.projects.set_current("default")
@@ -220,6 +276,8 @@ class BrightwayRepository(LcaRepository):
                 except PrismError as exc:
                     _log.swallowed(exc, "delete_project")
             raise
+        if was_current:
+            self._open_after_deleting_the_active()
 
     def list_databases(self) -> list[DatabaseInfo]:
         bd = get_bd()

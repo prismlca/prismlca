@@ -153,43 +153,65 @@ def activate_project(request: Request, name: str) -> ProjectInfo:
         from prism_lca.app import _migrate_study_files
 
         _migrate_study_files()
+    _project_changed(request)
+    _workspace_opened(request, info.name)
+    return info
+
+
+def _workspace_opened(request: Request, name: str) -> None:
+    """What the app start does for the workspace it starts in, for one opened later: activated by name,
+    or opened in place of the active one when that is deleted.
+
+    Under the workspace locks, and only while ``name`` is still the active workspace. These write into
+    it — the scenario-window recovery puts a recorded baseline back into its models — and at start-up
+    nothing else runs; here a switch that came in meanwhile would take those writes into a model of the
+    same name elsewhere. That switch runs them for its own workspace.
+    """
     # The crash marker lives in the project directory, so this is the first moment anyone could read
     # THIS project's model — the same check the app does at startup. Imported here, not at module
     # level: the app factory imports this router.
     from prism_lca.app import _ensure_library, _hygiene, recover_param_window
 
-    _project_changed(request)
-    recover_param_window(request.app)
-    _ensure_library(request.app)
-    _hygiene()
-    # The same one-time migration the app start runs, for the same reason: a project that was last
-    # opened by an older version still keeps its parameters and scenarios project-wide, and the
-    # per-model readers see none of them until it has run. Startup only ever migrates the project
-    # it starts in; switching to another old project has to do it too.
-    try:
-        from prism_lca.engine import params as _params
+    with lca._LCA_LOCK, commands.PROJECT_LOCK:
+        current = request.app.state.repository.current_project()
+        if current is None or current.name != name:
+            return
+        recover_param_window(request.app)
+        _ensure_library(request.app)
+        _hygiene()
+        # The same one-time migration the app start runs, for the same reason: a project that was last
+        # opened by an older version still keeps its parameters and scenarios project-wide, and the
+        # per-model readers see none of them until it has run. Startup only ever migrates the project
+        # it starts in; switching to another old project has to do it too.
+        try:
+            from prism_lca.engine import params as _params
 
-        _params.migrate_project_to_models()
-    except Exception as exc:  # noqa: BLE001 - never let a migration block a project switch
-        _log.swallowed(exc, "activate_project")
-    return info
+            _params.migrate_project_to_models()
+        except Exception as exc:  # noqa: BLE001 - never let a migration block a project switch
+            _log.swallowed(exc, "activate_project")
 
 
 @router.delete("/{name}", summary="Delete a project (and its data) via Brightway")
 def delete_project(request: Request, name: str) -> dict:
+    """Answers which workspace is active afterwards (`current`): deleting the active one opens another."""
+    repository = request.app.state.repository
     with lca._LCA_LOCK, commands.PROJECT_LOCK:
         ecoinvent.assert_no_import_running("deleting a workspace")
-        request.app.state.repository.delete_project(name)
-        # Deleting the active workspace switches to 'default' — an activation by another name.
+        before = repository.current_project()
+        repository.delete_project(name)
+        current = repository.current_project()
+        # Deleting the active workspace opens another one — an activation by another name.
         from prism_lca.app import _migrate_study_files
 
         _migrate_study_files()
     # Yes, delete needs this too, and not only for the line counts. Deleting the project you are
-    # standing in drops you into 'default' (the repository switches first, because Brightway cannot
-    # delete the active project) — which is a project switch by another name, and leaves the stacks
+    # standing in opens another (the repository leaves first, because Brightway cannot delete the
+    # active project) — which is a project switch by another name, and leaves the stacks
     # pointing at a project that no longer exists. Deleting some *other* project cannot poison the
     # stacks, so this is unconditional for the simpler reason: a route that clears only sometimes is
     # a route someone will get wrong. `replaced`: a project recreated under this name gets the same
     # cache keys, and must not inherit the deleted one's factorisation or search index.
     _project_changed(request, replaced=True)
-    return {"deleted": name}
+    if current is not None and (before is None or current.name != before.name):
+        _workspace_opened(request, current.name)
+    return {"deleted": name, "current": current.name if current else None}
