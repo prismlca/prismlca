@@ -17,11 +17,27 @@ def _create(client, token, db, name) -> str:
     ).json()["activity"]["code"]
 
 
+# A scanned vocabulary is "empty" without properties and CPC classes, and an empty one is rescanned.
+_PROPS = {"dry mass": "kilogram"}
+
+
 def test_unit_vocabulary_endpoint(client, token, project, monkeypatch):
-    monkeypatch.setattr(M, "_VOCAB", {"properties": {}, "units": ["kilogram", "cubic meter", "megajoule"]})
+    units = ["cubic meter", "kilogram", "unit"]
+    monkeypatch.setattr(M, "_VOCAB", {"properties": _PROPS, "units": units, "cpc": {}})
     r = client.get("/api/v1/model/unit-vocabulary", headers=token)
     assert r.status_code == 200, r.text
-    assert r.json()["units"] == ["kilogram", "cubic meter", "megajoule"]
+    assert r.json()["units"] == ["cubic meter", "kilogram", "unit"]
+
+
+def test_unit_vocabulary_offers_unit_when_no_background_dataset_uses_it(client, token, project, monkeypatch):
+    # A background without a dataset counted in pieces (a BAFU-only workspace): the New process dialog
+    # prefills "unit", and a strict unit field rejects whatever its list lacks.
+    scanned = ["kilogram", "megajoule", "ton kilometer"]
+    monkeypatch.setattr(M, "_VOCAB", {"properties": _PROPS, "units": list(scanned), "cpc": {}})
+    r = client.get("/api/v1/model/unit-vocabulary", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["units"] == ["kilogram", "megajoule", "ton kilometer", "unit"]
+    assert M._VOCAB["units"] == scanned  # the cached scan stays as scanned
 
 
 def test_flows_endpoint_returns_list(client, token, project):
