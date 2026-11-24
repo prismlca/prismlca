@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { useProjectModels } from './useProjectModels'
 import { makePrism, type PrismFixture } from '../test/prism'
@@ -395,5 +395,112 @@ describe('the New-model dialog', () => {
     })
     expect(result.current.activeDb).toBe('fresh')
     expect(views).toBe(1)
+  })
+})
+
+/** A dialog closes only once its model or workspace exists: `created` marks that moment, and a refused
+ *  name throws before it, for the dialog to show with what was typed. */
+describe('dialog submits report when the thing exists', () => {
+  const rig = (routes: Record<string, unknown>) => {
+    resetQueryCache()
+    const fixture = makePrism({
+      'GET /api/v1/system/info': { current_project: { name: 'demo' } },
+      'GET /api/v1/projects': [{ name: 'demo' }],
+      'GET /api/v1/model/audit': [],
+      'GET /api/v1/databases': [{ name: 'bottle', node_count: 0, read_only: false, kind: 'foreground' }],
+      ...routes
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+    return renderHook(() =>
+      useProjectModels({
+        run: async (fn) => fn(),
+        reloadAudit: async () => {},
+        setConfirm: () => {},
+        onProjectSwitched: () => {},
+        renameCanvasRefs: () => false,
+        openModelView: () => {}
+      })
+    )
+  }
+  const exists = (code: string, message: string) => ({ status: 409, body: { error: { code, message } } })
+
+  it('a taken model name throws before `created`, and nothing is written after it', async () => {
+    const { result } = rig({
+      'POST /api/v1/databases/foreground': exists('database_exists', "Database 'bottle' already exists.")
+    })
+    await initAppSettings()
+    const created = vi.fn()
+    await act(async () => {
+      await expect(
+        result.current.submitNewModel({ name: 'bottle', goal: 'Compare two bottles' }, created)
+      ).rejects.toThrow("Database 'bottle' already exists.")
+    })
+    expect(created).not.toHaveBeenCalled()
+  })
+
+  it('a new model calls `created` once it exists, before its goal is stored', async () => {
+    const order: string[] = []
+    const { result } = rig({
+      'POST /api/v1/databases/foreground': () => (order.push('create'), { ok: true }),
+      'POST /api/v1/study': () => (order.push('study'), { ok: true })
+    })
+    await initAppSettings()
+    await act(async () => {
+      await result.current.submitNewModel({ name: 'fresh', goal: 'g' }, () => order.push('created'))
+    })
+    expect(order).toEqual(['create', 'created', 'study'])
+  })
+
+  it('a duplicate under a taken name throws before `created`', async () => {
+    const { result } = rig({
+      'POST /api/v1/databases/foreground/duplicate': exists(
+        'database_exists',
+        "Database 'bottle' already exists."
+      )
+    })
+    await initAppSettings()
+    const created = vi.fn()
+    await act(async () => {
+      await expect(
+        result.current.submitDuplicateModel('bottle', { name: 'bottle' }, created)
+      ).rejects.toThrow('already exists')
+    })
+    expect(created).not.toHaveBeenCalled()
+  })
+
+  it('a taken workspace name throws before `created` and gives the open model back', async () => {
+    const { result } = rig({
+      'POST /api/v1/projects': exists('project_exists', "Workspace 'demo' already exists.")
+    })
+    await initAppSettings()
+    await act(async () => {
+      await result.current.loadProjectsAndDatabases()
+    })
+    act(() => result.current.openModel('bottle'))
+    const created = vi.fn()
+    await act(async () => {
+      await expect(result.current.submitNewProject({ name: 'demo' }, created)).rejects.toThrow(
+        'already exists'
+      )
+    })
+    expect(created).not.toHaveBeenCalled()
+    expect(result.current.project).toBe('demo')
+    expect(result.current.activeDb).toBe('bottle')
+  })
+
+  it('a restore under a typed name that is taken hands back that name and the reason', async () => {
+    const { result } = rig({
+      'POST /api/v1/projects/restore': exists('workspace_exists', "A workspace named 'demo' already exists.")
+    })
+    await initAppSettings()
+    const taken = vi.fn()
+    await act(async () => {
+      await result.current.restoreBackup(taken, '/backups/demo.tar.gz', 'demo')
+    })
+    await waitFor(() => expect(taken).toHaveBeenCalled())
+    expect(taken).toHaveBeenCalledWith('/backups/demo.tar.gz', {
+      name: 'demo',
+      error: expect.stringContaining("A workspace named 'demo' already exists.")
+    })
   })
 })

@@ -17,7 +17,8 @@ export type ModalState =
   | null
   | { kind: 'newModel' }
   | { kind: 'newProject' }
-  | { kind: 'restoreAs'; path: string }
+  // name/error: reopened after the backend refused the name it was given, with that name and the reason
+  | { kind: 'restoreAs'; path: string; name?: string; error?: string }
   | { kind: 'duplicateModel'; source: string }
   | { kind: 'newActivity'; pos?: { x: number; y: number } } // pos = canvas spot from the pane context menu
   | { kind: 'connect'; source: string; target: string; exchange: ExchangeFacts }
@@ -53,7 +54,7 @@ export default function WorkbenchModals({
         onClose={onClose}
         onSubmit={onSubmit}
         fields={[
-          { key: 'name', label: 'Model name (e.g. pet-bottle-2025)', value: '' },
+          { key: 'name', label: 'Model name (e.g. pet-bottle-2025)', value: '', required: true },
           {
             key: 'duplicateFrom',
             label: 'Duplicate from (optional)',
@@ -92,7 +93,12 @@ export default function WorkbenchModals({
         onClose={onClose}
         onSubmit={onSubmit}
         fields={[
-          { key: 'name', label: 'Workspace name (e.g. ecoinvent-3.11 for a second release)', value: '' }
+          {
+            key: 'name',
+            label: 'Workspace name (e.g. ecoinvent-3.11 for a second release)',
+            value: '',
+            required: true
+          }
         ]}
       />
     )
@@ -101,13 +107,15 @@ export default function WorkbenchModals({
       <Modal
         title="Restore under another name"
         submitLabel="Restore"
+        error={modal.error}
         onClose={onClose}
         onSubmit={onSubmit}
         fields={[
           {
             key: 'name',
             label: 'A workspace with the name in this backup exists already. Restore it as:',
-            value: ''
+            value: modal.name ?? '',
+            required: true
           }
         ]}
       />
@@ -119,7 +127,7 @@ export default function WorkbenchModals({
         submitLabel="Duplicate"
         onClose={onClose}
         onSubmit={onSubmit}
-        fields={[{ key: 'name', label: 'Name of the copy', value: `${modal.source} (copy)` }]}
+        fields={[{ key: 'name', label: 'Name of the copy', value: `${modal.source} (copy)`, required: true }]}
       />
     )
   if (modal.kind === 'newActivity')
@@ -184,7 +192,7 @@ function NewActivityModal({
       onSubmit={onSubmit}
       fields={[
         // The two examples side by side are what tells a process from the product it makes.
-        { key: 'name', label: 'Name', value: '', placeholder: 'e.g. bottle blowing' },
+        { key: 'name', label: 'Name', value: '', placeholder: 'e.g. bottle blowing', required: true },
         { key: 'product', label: 'Reference product', value: '', placeholder: 'e.g. PET bottle (optional)' },
         {
           key: 'unit',

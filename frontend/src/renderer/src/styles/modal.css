@@ -301,3 +301,6 @@
 /* A dialog's box takes the focus when it opens (DialogBox), so the next Tab starts inside it. It is not a
    control, and a ring around the whole sheet would only look like one. */
 [aria-modal='true']:focus { outline: none; }
+
+/* A dialog's own refusal (a taken name): under the fields, so the reason stands next to what is to change. */
+.modal-err { margin: 2px 0 0; color: var(--bad); font-size: var(--fs-sec); font-weight: 600; line-height: 1.5; }

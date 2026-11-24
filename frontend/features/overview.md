@@ -13,7 +13,10 @@ navigation sits on every page but is described here.
 - A model row opens the model; its buttons are Model info, Duplicate model, Export model (a save
   dialog) and Delete model (with a confirmation that says it cannot be undone).
 - "Model" in the panel and in the toolbar opens the New model dialog: name, "Duplicate from", folder,
-  goal and scope. Creating opens the new model on the Model page.
+  goal and scope. Creating opens the new model on the Model page. Create stays disabled until there is a
+  name; a name the backend refuses (one that exists) keeps the dialog open with the reason under the
+  fields and everything typed. Duplicate model and New workspace work the same way; Restore under
+  another name closes at once and comes back with the typed name and the reason if it is taken.
 - Import: the download-icon "Model" button takes a `.prism` file or a PrismLCA workbook, "Processes"
   takes SimaPro, openLCA, GaBi, EcoSpold or ILCD — both start with a file dialog.
 - Figures: models, background databases, My processes, elementary flows, LCIA indicators.
@@ -105,9 +108,9 @@ node scripts/control-prism.mjs wait app-ready --timeout 120000
 - **The process counts lag.** A model's row and its Last models entry count processes from the model
   list, which is not re-read when a process is added: check them after a restart or another model-level
   action, not right after building.
-- **Create with an empty name closes the dialog** without creating anything and without a message; the
-  goal and scope typed into it are gone. A refused name (an existing one) also closes the dialog and
-  shows the reason in the red banner at the top of the page.
+- **A filled Goal or Scope field is no longer found by its label:** once it holds text, the label's
+  name includes that text. Target them as `"css=.modal-backdrop textarea >> nth=0"` (Goal) and
+  `nth=1` (Scope).
 - **A search hides every folder without a match,** a new empty one included: clear "Find a model…"
   before looking for a folder.
 - **The tour has no way out but Finish:** no close button, no Escape (on purpose). Ten cards — click

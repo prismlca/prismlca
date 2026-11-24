@@ -59,7 +59,7 @@ import TagManager from './components/TagManager'
 import ModelInfo from './components/ModelInfo'
 import Overview from './views/Overview'
 import Report from './views/Report'
-import { mutationRunner } from './lib/mutation'
+import { mutationRunner, writeFromDialog } from './lib/mutation'
 import Overlay from './components/Overlay'
 import AppSidebar, { type ViewKey } from './workbench/AppSidebar'
 import ModelToolbar from './workbench/ModelToolbar'
@@ -578,6 +578,11 @@ export default function Workbench(): JSX.Element {
       ))}
     </select>
   )
+  // A restore whose name is taken asks for another, keeping the typed name and the reason.
+  const askRestoreName = (path: string, refused?: { name: string; error: string }): void =>
+    setModal({ kind: 'restoreAs', path, ...refused })
+  const closeModal = (): void => setModal(null)
+
   const projectActions = (
     <div className="scen-card-actions">
       <button
@@ -602,7 +607,7 @@ export default function Workbench(): JSX.Element {
       </button>
       <button
         className="act-icon"
-        onClick={() => void restoreBackup((path) => setModal({ kind: 'restoreAs', path }))}
+        onClick={() => void restoreBackup(askRestoreName)}
         aria-label="Restore a workspace backup"
         title="Restore a workspace backup (.tar.gz) as a workspace of its own — nothing existing is replaced"
       >
@@ -663,28 +668,21 @@ export default function Workbench(): JSX.Element {
       })
   }
 
-  const submitModal = (values: Record<string, string>) =>
-    run(async () => {
+  // The dialog stays open until its write went through (`done`): a refused name keeps what was typed.
+  const submitModal = (values: Record<string, string>): Promise<void> =>
+    writeFromDialog(run, closeModal, async (done) => {
       const m = modal
-      setModal(null)
       if (!m) return
-      if (m.kind === 'newModel') {
-        await submitNewModel(values)
-        return
-      }
-      if (m.kind === 'newProject') {
-        await submitNewProject(values)
-        return
-      }
+      if (m.kind === 'newModel') return submitNewModel(values, done)
+      if (m.kind === 'newProject') return submitNewProject(values, done)
       if (m.kind === 'restoreAs') {
+        // A restore runs for minutes: the dialog closes now, and a taken name reopens it.
+        done()
         const name = (values.name || '').trim()
-        if (name) await restoreBackup((path) => setModal({ kind: 'restoreAs', path }), m.path, name)
+        if (name) await restoreBackup(askRestoreName, m.path, name)
         return
       }
-      if (m.kind === 'duplicateModel') {
-        await submitDuplicateModel(m.source, values)
-        return
-      }
+      if (m.kind === 'duplicateModel') return submitDuplicateModel(m.source, values, done)
       if (!activeDb) return
       let created: string | null = null
       if (m.kind === 'newActivity') {
@@ -695,6 +693,7 @@ export default function Workbench(): JSX.Element {
           unit: values.unit || null,
           location: values.location || null
         })
+        done()
         created = `${activeDb}/${r.activity.code}`
         // Created from the pane context menu: the new node lands exactly where the user clicked.
         if (m.pos) posRef.current[created] = m.pos
@@ -707,6 +706,7 @@ export default function Workbench(): JSX.Element {
           '/api/v1/model/exchanges',
           connectBody(m.source, m.target, Number(values.amount) || 0, nodes)
         )
+        done()
         noteConnected(m.source, made?.exchange?.uid)
       } else if (m.kind === 'editAmount') {
         const [adb, acode] = splitId(m.target)
@@ -716,6 +716,7 @@ export default function Workbench(): JSX.Element {
           uid: m.uid,
           amount: Number(values.amount) || 0
         })
+        done()
       }
       const built = await reloadGraph(activeDb)
       // Selected once its box is on the canvas, so the inspector opens on it for the description and flows.
@@ -897,7 +898,7 @@ export default function Workbench(): JSX.Element {
           folders={folderState.folders}
           unitVocab={unitVocab}
           restrictUnits={!settings.modelling.freeUnits}
-          onClose={() => setModal(null)}
+          onClose={closeModal}
           onSubmit={submitModal}
         />
         {setupSheet}
@@ -928,7 +929,7 @@ export default function Workbench(): JSX.Element {
       folders={folderState.folders}
       unitVocab={unitVocab}
       restrictUnits={!settings.modelling.freeUnits}
-      onClose={() => setModal(null)}
+      onClose={closeModal}
       onSubmit={submitModal}
     />
   )

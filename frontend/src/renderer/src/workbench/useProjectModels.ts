@@ -20,6 +20,7 @@ import { defaultSearchDbs } from '../lib/search'
 import { assignFolder, reloadFolders, resetFolders } from '../lib/modelFolders'
 import { forgetView } from '../lib/modelView'
 import { rememberRecentModel, renameRecentModel } from '../lib/recentModels'
+import { errMsg } from '../lib/errors'
 import type { ConfirmSpec } from '../views/ConfirmDialog'
 
 export interface ProjectModelDeps {
@@ -319,9 +320,15 @@ export function useProjectModels(deps: ProjectModelDeps) {
    * Restore a workspace backup (the .tar.gz that "Back up this workspace" writes) as a workspace of its
    * own. Never over an existing one: a name clash comes back as `workspace_exists`, the caller asks for
    * another name (`onNameTaken`) and calls this again with it — the backend's overwrite stays unused here.
+   * When the clash is with a name the user typed, `onNameTaken` gets that name and the reason, so the
+   * dialog it reopens says what was refused and keeps the name to edit.
    */
   const restoreBackup = useCallback(
-    async (onNameTaken: (path: string) => void, path?: string, name?: string): Promise<void> => {
+    async (
+      onNameTaken: (path: string, refused?: { name: string; error: string }) => void,
+      path?: string,
+      name?: string
+    ): Promise<void> => {
       const file =
         path ?? (await window.prism.pickFile([{ name: 'Workspace backup', extensions: ['gz', 'tgz'] }]))
       if (!file) return
@@ -341,7 +348,7 @@ export function useProjectModels(deps: ProjectModelDeps) {
             })
           } catch (e) {
             if (e instanceof ApiError && e.code === 'workspace_exists') {
-              onNameTaken(file)
+              onNameTaken(file, name ? { name, error: errMsg(e) } : undefined)
               return
             }
             throw e
@@ -435,9 +442,10 @@ export function useProjectModels(deps: ProjectModelDeps) {
   )
 
   /** The "New model" dialog's submit: create (or copy), file, and open the model on its canvas —
-   *  from the start page too, where it used to stay on the start page with the model only selected. */
+   *  from the start page too, where it used to stay on the start page with the model only selected.
+   *  `created` runs as soon as the model exists (the dialog closes then; a refused name keeps it open). */
   const submitNewModel = useCallback(
-    async (values: Record<string, string>): Promise<void> => {
+    async (values: Record<string, string>, created?: () => void): Promise<void> => {
       const name = (values.name || '').trim()
       if (!name) return
       const from = (values.duplicateFrom || '').trim()
@@ -446,6 +454,7 @@ export function useProjectModels(deps: ProjectModelDeps) {
       } else {
         await api('POST', '/api/v1/databases/foreground', { name })
       }
+      created?.()
       // Optional goal & scope from the create dialog → the model's study metadata (the AI
       // assistant reads this as its brief; editable later via the Info button).
       const goal = (values.goal || '').trim()
@@ -474,17 +483,18 @@ export function useProjectModels(deps: ProjectModelDeps) {
 
   /** Create AND activate an (empty) workspace server-side, and point every piece of state at it.
    *  Shared by the "New workspace" dialog and the first-run import wizard, which proposes "Main"
-   *  instead of leaving the user in Brightway's `default`. */
+   *  instead of leaving the user in Brightway's `default`. `created` runs once the backend has it. */
   const createWorkspace = useCallback(
-    async (name: string): Promise<void> => {
+    async (name: string, created?: () => void): Promise<void> => {
       if (switchBusy.current) return // see activateProject
       switchBusy.current = true
-      leaveModel() // see activateProject
+      const left = leaveModel() // see activateProject
       const fence = await beginWorkspaceSwitch()
       let switched = false
       try {
         await api('POST', '/api/v1/projects', { name })
         switched = true
+        created?.()
         const mine = ++refreshSeq.current // see activateProject
         // The backend stands in the new workspace now: the old model goes BEFORE anything else is
         // awaited, so a failing refresh below cannot leave it on screen issuing requests against
@@ -503,7 +513,12 @@ export function useProjectModels(deps: ProjectModelDeps) {
         }
       } finally {
         if (switched) endWorkspaceSwitch(fence)
-        else cancelWorkspaceSwitch(fence)
+        else {
+          cancelWorkspaceSwitch(fence)
+          // Refused (a taken name): the backend never left this workspace, so the model it showed
+          // comes back — the dialog stays open over it for another name.
+          setActiveDb((cur) => cur ?? left)
+        }
         switchBusy.current = false
       }
     },
@@ -513,21 +528,23 @@ export function useProjectModels(deps: ProjectModelDeps) {
   /** The "New workspace" dialog's submit. The workspace has no databases yet, so the setup gate
    *  opens the import wizard — that's the "new workspace + import" path. */
   const submitNewProject = useCallback(
-    async (values: Record<string, string>): Promise<void> => {
+    async (values: Record<string, string>, created?: () => void): Promise<void> => {
       const name = (values.name || '').trim()
       if (!name) return
-      await createWorkspace(name)
+      await createWorkspace(name, created)
       setShowSetup(false)
     },
     [createWorkspace]
   )
 
-  /** The "Duplicate model" dialog's submit: the copy becomes the active model, like a new one. */
+  /** The "Duplicate model" dialog's submit: the copy becomes the active model, like a new one.
+   *  `created` runs as soon as the copy exists, as for a new model. */
   const submitDuplicateModel = useCallback(
-    async (source: string, values: Record<string, string>): Promise<void> => {
+    async (source: string, values: Record<string, string>, created?: () => void): Promise<void> => {
       const name = (values.name || '').trim()
       if (!name) return
       await api('POST', '/api/v1/databases/foreground/duplicate', { source, name })
+      created?.()
       const dbs = await freshDatabases()
       setDatabases(dbs)
       openModel(name)

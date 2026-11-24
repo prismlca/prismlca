@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import Modal from './Modal'
 
 describe('Modal keys', () => {
@@ -44,5 +44,92 @@ describe('Modal facts and units', () => {
     expect(screen.getByText('market for steel · GLO')).toBeTruthy()
     expect(screen.getByText('kg')).toBeTruthy()
     expect(screen.getByRole('spinbutton')).toBeTruthy()
+  })
+})
+
+/** Create with an empty name used to close the dialog without a word, and a refused name closed it
+ *  too — whatever was typed into the other fields was gone. */
+describe('Modal keeps its input', () => {
+  const fields = [
+    { key: 'name', label: 'Model name', value: '', required: true },
+    { key: 'goal', label: 'Goal', type: 'textarea', value: '' }
+  ]
+
+  it('keeps Create disabled while a required field is blank, also against Enter', () => {
+    const onSubmit = vi.fn()
+    render(
+      <Modal title="New model" submitLabel="Create" onSubmit={onSubmit} onClose={() => {}} fields={fields} />
+    )
+    const create = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement
+    const name = screen.getByRole('textbox', { name: 'Model name' })
+    expect(create.disabled).toBe(true)
+    fireEvent.change(name, { target: { value: '   ' } })
+    fireEvent.keyDown(name, { key: 'Enter' })
+    expect(create.disabled).toBe(true)
+    expect(onSubmit).not.toHaveBeenCalled()
+    fireEvent.change(name, { target: { value: 'bottle' } })
+    expect(create.disabled).toBe(false)
+  })
+
+  it('shows a refusal in the dialog and keeps every field as typed', async () => {
+    let refuse: (e: Error) => void = () => {}
+    const onSubmit = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)))
+    const onClose = vi.fn()
+    render(
+      <Modal title="New model" submitLabel="Create" onSubmit={onSubmit} onClose={onClose} fields={fields} />
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Model name' }), { target: { value: 'bottle' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Goal' }), {
+      target: { value: 'Compare two bottles' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'bottle', goal: 'Compare two bottles' })
+
+    // While the write is out the dialog neither submits again, nor closes, nor takes edits the write
+    // would not carry.
+    const create = screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement
+    expect(create.disabled).toBe(true)
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Goal' }), {
+      target: { value: 'changed meanwhile' }
+    })
+    expect((screen.getByRole('textbox', { name: 'Goal' }) as HTMLTextAreaElement).value).toBe(
+      'Compare two bottles'
+    )
+    expect(screen.getByRole('dialog').getAttribute('aria-busy')).toBe('true')
+
+    await act(async () => refuse(new Error("Database 'bottle' already exists. — Choose another name.")))
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Database 'bottle' already exists. — Choose another name."
+    )
+    expect((screen.getByRole('textbox', { name: 'Model name' }) as HTMLInputElement).value).toBe('bottle')
+    expect((screen.getByRole('textbox', { name: 'Goal' }) as HTMLTextAreaElement).value).toBe(
+      'Compare two bottles'
+    )
+    expect(create.disabled).toBe(false)
+    expect(onClose).not.toHaveBeenCalled()
+
+    // The next try starts without the old reason.
+    fireEvent.click(create)
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('opens with the reason it was reopened for, until the next submit', () => {
+    render(
+      <Modal
+        title="Restore under another name"
+        submitLabel="Restore"
+        error="A workspace named 'B' already exists."
+        onSubmit={() => {}}
+        onClose={() => {}}
+        fields={[{ key: 'name', label: 'Restore it as:', value: 'B', required: true }]}
+      />
+    )
+    expect(screen.getByRole('alert').textContent).toBe("A workspace named 'B' already exists.")
+    expect((screen.getByRole('textbox', { name: 'Restore it as:' }) as HTMLInputElement).value).toBe('B')
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'C' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
