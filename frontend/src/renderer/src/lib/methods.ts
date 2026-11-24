@@ -64,6 +64,19 @@ export function indicatorLabel(method: string[], labels?: Map<string, string>): 
 }
 
 /**
+ * The name a copy of an indicator starts with in a family of one's own. A copy is `(family, name)`, so
+ * its name has to carry everything that told the indicator apart: what `indicatorLabel` calls it, with
+ * the parts joined by a dash. Not by " / " — that is the separator of a method's path, and a name holding
+ * it reads back as category and indicator wherever a path is split again: the report would print two
+ * copies of one climate category under the same short name. Not by a comma either: categories carry
+ * their own ("climate change: biogenic, including SLCFs").
+ */
+export function copyName(method: string[], labels?: Map<string, string>): string {
+  const label = indicatorLabel(method, labels)
+  return method.length > 2 && label !== method[1] ? method.slice(1).join(' – ') : label
+}
+
+/**
  * The family an indicator picker opens on. The one it already shows, if that holds a picked indicator or
  * nothing is picked — a family someone was browsing stays put. Otherwise the family of the first picked
  * indicator: opening on a family with nothing ticked reads as "nothing selected" beside a row of chips.

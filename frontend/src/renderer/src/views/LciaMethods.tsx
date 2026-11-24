@@ -10,6 +10,7 @@ import EscapeCloser from '../components/EscapeCloser'
 import DialogBox from '../components/DialogBox'
 import LciaFactorEditor from './LciaFactorEditor'
 import type { MethodDetail, Ref } from './lciaFactors'
+import { copyName, indicatorLabel, indicatorLabels } from '../lib/methods'
 
 interface FamMethod {
   method: string[]
@@ -406,13 +407,19 @@ function DuplicateDialog({
     () => families.find((f) => f.family === srcFamily)?.methods ?? [],
     [families, srcFamily]
   )
+  // Rows are named as on the Compare tab: the category where it names one indicator, the whole path
+  // below the family where it does not — IPCC 2021 has eight GWP100s, one per climate category.
+  const labels = useMemo(() => indicatorLabels(families.flatMap((f) => f.methods)), [families])
+  const labelOf = useCallback((m: FamMethod): string => indicatorLabel(m.method, labels) || m.name, [labels])
   const shown = useMemo(() => {
     const q = indQuery.trim().toLowerCase()
-    return q ? srcMethods.filter((m) => m.name.toLowerCase().includes(q)) : srcMethods
-  }, [srcMethods, indQuery])
+    return q
+      ? srcMethods.filter((m) => m.name.toLowerCase().includes(q) || labelOf(m).toLowerCase().includes(q))
+      : srcMethods
+  }, [srcMethods, indQuery, labelOf])
 
   const keyOf = (m: FamMethod): string => m.method.join(' · ')
-  const origName = (m: FamMethod): string => m.method[m.method.length - 1]
+  const defaultName = (m: FamMethod): string => copyName(m.method, labels)
   const selected = srcMethods.filter((m) => keyOf(m) in names)
 
   const toggle = (m: FamMethod): void =>
@@ -422,7 +429,7 @@ function DuplicateDialog({
         const { [k]: _drop, ...rest } = prev
         return rest
       }
-      return { ...prev, [k]: origName(m) }
+      return { ...prev, [k]: defaultName(m) }
     })
 
   const submit = (): void => {
@@ -432,7 +439,7 @@ function DuplicateDialog({
       selected.map((m) => ({
         src: m.method,
         family: t,
-        name: (names[keyOf(m)] || origName(m)).trim() || origName(m)
+        name: (names[keyOf(m)] || defaultName(m)).trim() || defaultName(m)
       }))
     )
   }
@@ -477,9 +484,13 @@ function DuplicateDialog({
               const k = keyOf(m)
               const on = k in names
               return (
-                <label key={k} className={`lcia-dup-row${on ? ' on' : ''}`}>
+                <label
+                  key={k}
+                  className={`lcia-dup-row${on ? ' on' : ''}`}
+                  title={m.method.slice(1).join(' · ')}
+                >
                   <input type="checkbox" checked={on} onChange={() => toggle(m)} />
-                  <span className="lcia-dup-name">{origName(m)}</span>
+                  <span className="lcia-dup-name">{labelOf(m)}</span>
                   <span className="lcia-mrow-unit">{m.unit}</span>
                 </label>
               )
@@ -503,7 +514,7 @@ function DuplicateDialog({
                   const k = keyOf(m)
                   return (
                     <label key={k} className="mfield">
-                      <span>Name for “{origName(m)}”</span>
+                      <span>Name for “{labelOf(m)}”</span>
                       <input
                         value={names[k]}
                         onChange={(e) => setNames((prev) => ({ ...prev, [k]: e.target.value }))}

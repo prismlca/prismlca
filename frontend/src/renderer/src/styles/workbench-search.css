@@ -134,7 +134,7 @@
 .lcia-dup-row:last-child { border-bottom: none; }
 .lcia-dup-row:hover { background: var(--surface-2); }
 .lcia-dup-row.on { background: var(--navy-soft); }
-.lcia-dup-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcia-dup-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .lcia-dup-names { max-height: 200px; overflow-y: auto; }
 
 .work { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr var(--side-w); }
