@@ -236,6 +236,46 @@ describe('Workbench full chrome', () => {
     expect(posts('/api/v1/model/undo')).toBe(1)
   })
 
+  it('re-reads Undo and the audit log when the Model-info sheet opened from the Overview closes', async () => {
+    // The sheet writes through the command bus. Opened from the Model page's toolbar, its close re-read
+    // both; opened from a model row here, Undo went on naming the step before it while clicking it took
+    // back the edit just made, and the audit log left the edit out until the next one.
+    const user = userEvent.setup()
+    const r = routes()
+    let saved = false
+    r['POST /api/v1/study'] = () => {
+      saved = true
+      return {}
+    }
+    r['GET /api/v1/model/history'] = () => ({
+      can_undo: true,
+      can_redo: false,
+      next_undo: saved ? 'Edit study metadata for pet-bottle (reference_year)' : 'Create process bottle',
+      next_redo: null
+    })
+    const { prism } = renderWithPrism(<Workbench />, { routes: r })
+    await waitFor(() =>
+      expect(screen.getAllByTitle(/^Undo: Create process bottle/).length).toBeGreaterThan(0)
+    )
+    const audits = (): number => prism.calls.filter((c) => c.path.startsWith('/api/v1/model/audit')).length
+
+    // Found through the search rather than "Expand": an opened folder stays open for the rest of the run
+    // (module state in the Overview), and the later tests would see the row's name a second time.
+    await user.type(screen.getByPlaceholderText('Find a model…'), 'pet')
+    await user.click(await screen.findByRole('button', { name: 'Model info' }))
+    await user.type(await screen.findByRole('textbox', { name: 'Reference year' }), '2025')
+    const auditsBefore = audits()
+    await user.keyboard('{Escape}')
+
+    await waitFor(() => expect(saved).toBe(true))
+    await waitFor(() =>
+      expect(
+        screen.getAllByTitle(/^Undo: Edit study metadata for pet-bottle \(reference_year\)/).length
+      ).toBeGreaterThan(0)
+    )
+    expect(audits()).toBeGreaterThan(auditsBefore)
+  })
+
   it('restores a backup as a workspace of its own and asks for a name when that one is taken', async () => {
     const user = userEvent.setup()
     const r = routes()

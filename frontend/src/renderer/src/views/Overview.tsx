@@ -107,6 +107,7 @@ export default function Overview({
   onImportedModel,
   onImportedDatabase,
   onRenamedModel,
+  onModelInfoClosed,
   onNewModel,
   onDuplicateModel,
   onDeleteModel,
@@ -126,6 +127,9 @@ export default function Overview({
   /** Renamed in its info sheet: the list, the model dropdown and the open model all still say the old
    *  name, and every request under it would 404. */
   onRenamedModel: (from: string, to: string) => void
+  /** The info sheet closed. What it wrote — study fields, comparison links, the reference quantity — went
+   *  through the command bus, so Undo and the audit log have to be re-read, as the Model page does. */
+  onModelInfoClosed: () => void
   onNewModel: () => void
   onDuplicateModel: (name: string) => void
   onDeleteModel: (name: string) => void
@@ -832,6 +836,7 @@ export default function Overview({
           onClose={() => {
             setInfoFor(null)
             setSnippetRev((r) => r + 1) // an edited goal/scope should show in the list right away
+            onModelInfoClosed()
           }}
         />
       ) : null}
