@@ -265,6 +265,106 @@ describe('the view fence around a workspace switch', () => {
   })
 })
 
+/** Deleting the workspace you stand in opens another: the one the backend names, which picks one with data.
+ *  It is a workspace switch, so the open model saves itself before the DELETE — into the workspace about to
+ *  go, never into the one opened, where a model of the same name would take its arrangement. */
+describe('deleting the active workspace', () => {
+  async function standingInA(deleteReply: unknown, afterRefusal = 'A') {
+    resetQueryCache()
+    const { viewSet } = await import('../lib/modelView')
+    const { useEffect } = await import('react')
+    let active = 'A'
+    const fixture = makePrism({
+      'GET /api/v1/system/info': () => ({ current_project: { name: active } }),
+      'GET /api/v1/projects': () =>
+        active === 'Main' ? [{ name: 'Main' }] : [{ name: 'A' }, { name: 'Main' }],
+      'GET /api/v1/model/audit': [],
+      'DELETE /api/v1/projects/A': () => {
+        if (typeof deleteReply === 'object' && deleteReply && 'status' in deleteReply) {
+          active = afterRefusal
+          return deleteReply
+        }
+        active = 'Main'
+        return deleteReply
+      },
+      'GET /api/v1/databases': () =>
+        active === 'A'
+          ? [{ name: 'm', node_count: 1, read_only: false, kind: 'foreground' }]
+          : active === 'Main'
+            ? [{ name: 'study', node_count: 3, read_only: false, kind: 'foreground' }]
+            : []
+    })
+    ;(window as unknown as { prism: unknown }).prism = fixture.prism
+    await initAppSettings()
+    localStorage.setItem('prism.activeModel', JSON.stringify('m'))
+    let confirm: { onConfirm: () => void } | null = null
+    const { result } = renderHook(() => {
+      const hook = useProjectModels({
+        run: async (fn) => {
+          try {
+            await fn()
+          } catch {
+            /* the Workbench shows it */
+          }
+        },
+        reloadAudit: async () => {},
+        setConfirm: (spec) => {
+          confirm = spec
+        },
+        onProjectSwitched: () => {},
+        renameCanvasRefs: () => false,
+        openModelView: () => {}
+      })
+      // The canvas in miniature: it writes its arrangement when its model goes away.
+      const db = hook.activeDb
+      useEffect(
+        () => () => {
+          if (db) viewSet(db, 'layout', { pos: { p: { x: 1, y: 2 } } })
+        },
+        [db]
+      )
+      return hook
+    })
+    await act(async () => {
+      await result.current.loadProjectsAndDatabases()
+    })
+    expect(result.current.activeDb).toBe('m')
+    act(() => result.current.deleteProject('A'))
+    await act(async () => {
+      confirm!.onConfirm()
+    })
+    return { result, fixture }
+  }
+
+  it('saves the open model first and lands in the workspace the backend opened', async () => {
+    const { result, fixture } = await standingInA({ deleted: 'A', current: 'Main' })
+    await waitFor(() => expect(result.current.project).toBe('Main'))
+    await waitFor(() => expect(result.current.activeDb).toBe('study'))
+    expect(result.current.projects).toEqual(['Main'])
+    const order = fixture.calls.map((c) => `${c.method} ${c.path}`)
+    const put = order.indexOf('PUT /api/v1/views/m')
+    expect(put).toBeGreaterThanOrEqual(0)
+    expect(put).toBeLessThan(order.indexOf('DELETE /api/v1/projects/A'))
+    expect(order).not.toContain('POST /api/v1/projects/default/activate')
+  })
+
+  const refused = { status: 409, body: { error: { code: 'workspace_in_use', message: 'in use' } } }
+
+  it('opens the model again when the deletion is refused', async () => {
+    const { result } = await standingInA(refused)
+    await waitFor(() => expect(result.current.activeDb).toBe('m'))
+    expect(result.current.project).toBe('A')
+  })
+
+  it("follows the backend when a refused deletion left it in 'default'", async () => {
+    // The row could not be deleted and the folder not put back: the workspace stays listed, the
+    // backend stays out of it. Reopening its model here would show it over another workspace's data.
+    const { result } = await standingInA(refused, 'default')
+    await waitFor(() => expect(result.current.project).toBe('default'))
+    expect(result.current.activeDb).toBeNull()
+  })
+})
+
 /** Created from the start page, the model used to be selected but the start page stayed on screen:
  *  the dialog's submit now ends on the new model's canvas, wherever it was opened. */
 describe('the New-model dialog', () => {

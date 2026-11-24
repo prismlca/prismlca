@@ -47,16 +47,106 @@ def test_delete_project(client, token):
 
     r = client.delete(f"/api/v1/projects/{drop}", headers=token)
     assert r.status_code == 200, r.text
+    assert r.json()["current"] == keep  # deleting another workspace leaves the user where they are
     names = [p["name"] for p in client.get("/api/v1/projects", headers=token).json()]
     assert drop not in names
     assert keep in names
 
 
-def test_delete_active_falls_back_to_default(client, token, project):
-    r = client.delete(f"/api/v1/projects/{project}", headers=token)
+def _only_these_workspaces(monkeypatch, *names: str) -> None:
+    """The landing after a deletion looks at every workspace, and this worker's Brightway folder holds every
+    earlier test's too: the test sees only its own, in the order given, plus 'default' where named."""
+    from prism_lca.engine import brightway_repository
+
+    real = brightway_repository._project_names
+    monkeypatch.setattr(brightway_repository, "_project_names", lambda bd: [n for n in names if n in real(bd)])
+
+
+def _workspace(client, token, prefix: str, *, data: bool) -> str:
+    """A workspace of its own, active afterwards; with ``data``, a background inventory of one dataset."""
+    from prism_lca.engine.bootstrap import get_bd
+    from prism_lca.engine.guardrails import set_read_only
+
+    name = f"{prefix}-{uuid.uuid4().hex[:8]}"
+    assert client.post("/api/v1/projects", json={"name": name}, headers=token).status_code == 200
+    if data:
+        get_bd().Database("inventory").write({("inventory", "a"): {"name": "a", "unit": "kg", "exchanges": []}})
+        set_read_only("inventory", True)
+    return name
+
+
+def test_deleting_the_active_workspace_opens_one_with_data(client, token, monkeypatch):
+    """Not Brightway's empty 'default': its setup sheet reads as "your data is gone". An empty workspace listed
+    first is passed over, and the one opened gets what opening a workspace brings (here: its library)."""
+    from prism_lca.engine.library import LIBRARY_DB
+
+    empty = _workspace(client, token, "empty", data=False)
+    full = _workspace(client, token, "full", data=True)
+    drop = _workspace(client, token, "drop", data=False)
+    _only_these_workspaces(monkeypatch, empty, full, drop, "default")
+
+    r = client.delete(f"/api/v1/projects/{drop}", headers=token)
     assert r.status_code == 200, r.text
-    info = client.get("/api/v1/system/info", headers=token).json()
-    assert info["current_project"]["name"] == "default"
+    assert r.json() == {"deleted": drop, "current": full}
+    assert client.get("/api/v1/system/info", headers=token).json()["current_project"]["name"] == full
+    assert LIBRARY_DB in [d["name"] for d in client.get("/api/v1/databases", headers=token).json()]
+
+
+def test_with_data_nowhere_the_deletion_opens_another_workspace_of_the_users(client, token, monkeypatch):
+    empty = _workspace(client, token, "empty", data=False)
+    drop = _workspace(client, token, "drop", data=False)
+    _only_these_workspaces(monkeypatch, drop, empty)  # 'default' left out: an earlier test may have filled it
+
+    r = client.delete(f"/api/v1/projects/{drop}", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["current"] == empty
+
+
+def test_deleting_the_last_workspace_leaves_default(client, token, monkeypatch):
+    drop = _workspace(client, token, "drop", data=True)
+    _only_these_workspaces(monkeypatch, drop, "default")
+
+    r = client.delete(f"/api/v1/projects/{drop}", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["current"] == "default"
+    assert client.get("/api/v1/system/info", headers=token).json()["current_project"]["name"] == "default"
+
+
+def test_a_failing_landing_leaves_default_and_the_deletion_stands(client, token, monkeypatch):
+    from prism_lca.engine import brightway_repository
+
+    keep = _workspace(client, token, "keep", data=True)
+    drop = _workspace(client, token, "drop", data=False)
+    _only_these_workspaces(monkeypatch, keep, drop, "default")
+
+    def broken(bd, name):
+        raise RuntimeError("unreadable")
+
+    monkeypatch.setattr(brightway_repository, "_lists_inventory", broken)
+    r = client.delete(f"/api/v1/projects/{drop}", headers=token)
+    assert r.status_code == 200, r.text
+    assert r.json()["current"] == "default"
+    assert drop not in [p["name"] for p in client.get("/api/v1/projects", headers=token).json()]
+
+
+def test_what_opening_a_workspace_brings_runs_only_while_it_is_still_open(client, token, monkeypatch):
+    """The follow-ups of an activation or a deletion take the locks again after the switch. A switch that
+    came in meanwhile must not get the recovery of the workspace it left: it runs its own."""
+    from types import SimpleNamespace
+
+    import prism_lca.app as app_module
+    from prism_lca.api.v1 import projects
+    from prism_lca.engine.bootstrap import get_bd
+
+    here = _workspace(client, token, "here", data=False)
+    recovered: list[str] = []
+    monkeypatch.setattr(app_module, "recover_param_window", lambda app: recovered.append(get_bd().projects.current))
+    request = SimpleNamespace(app=client.app)
+
+    projects._workspace_opened(request, "left-meanwhile")
+    assert recovered == []
+    projects._workspace_opened(request, here)
+    assert recovered == [here]
 
 
 def test_delete_default_is_protected(client, token):
@@ -76,8 +166,8 @@ def test_empty_default_is_hidden_while_another_workspace_is_active(client, token
     names = [p["name"] for p in client.get("/api/v1/projects", headers=token).json()]
     assert project in names
     assert "default" not in names
-    # ... but it is listed as soon as the user stands in it (deleting the active one drops them there).
-    client.delete(f"/api/v1/projects/{project}", headers=token)
+    # ... but it is listed as soon as the user stands in it.
+    assert client.post("/api/v1/projects/default/activate", headers=token).status_code == 200
     names = [p["name"] for p in client.get("/api/v1/projects", headers=token).json()]
     assert "default" in names
 
