@@ -29,7 +29,9 @@ node scripts/control-prism.mjs help
   now (or its backend still runs older Python sources), when the instance belongs to another checkout,
   when any of its folders lies outside its own, when a provider key of yours reaches it unasked, or when
   keys it was given cannot be decrypted. It says where a copy came from and when it was taken. A
-  screenshot of a stale build proves nothing.
+  screenshot of a stale build proves nothing. It also asks the window a plain question past the driver
+  (over the app's DevTools port) and names what the driver is busy with, so a stuck driver is not taken
+  for a frozen window.
 - `restart` quits the app as a person does and starts it again on the same data — rebuilding first when
   the sources changed. Use it after an edit, and to prove that something survives a restart.
 - `stop` at the end. It ends what this session started and removes its folders (`--keep` keeps them for
@@ -177,9 +179,12 @@ written on the way goes in a pull request of its own.
   Subscribe, the lead developer's name, the links under Settings → About, the provider key and account
   links under Settings → AI and Transport distances, "Load news from prismlca.com", "Check for updates"
   — and the "Load news … at every start" switch on the tour's card and under Settings → General.
-- **When every command answers "no answer from the app",** ask the window itself before calling it
-  frozen: a page that answers a plain evaluation over its DevTools port means the driver is stuck, not
-  the app. A heavily loaded machine makes the driver time out; run when it is quiet.
+- **When commands time out, run `doctor` before calling the window frozen.** The session gives up on a
+  command that overruns its own bound and takes the next one; a click or keypress given up on may still
+  land, so nothing is driven until it has (or until `restart`). `doctor` asks the window past the driver:
+  "the driver is stuck, not the app" means `restart` (it keeps the data); "neither does the window" means
+  the app is frozen or busy. The window's console is also written to `console.log` in the session's logs,
+  so it outlives a `stop`. A heavily loaded machine makes the driver time out; run when it is quiet.
 
 ## Across the app
 
