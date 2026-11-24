@@ -439,11 +439,20 @@ def _safe(database: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", database or "default")
 
 
+#: Device names Windows reserves, also with an extension behind them: "CON.study~….json" opens the
+#: console, not a file, so a model called "CON.study" could not keep its goal & scope there.
+_WINDOWS_DEVICES = frozenset(
+    {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(10)), *(f"LPT{i}" for i in range(10))}
+)
+
+
 def study_file_name(database: str) -> str:
     """`<readable>~<hash>.json`: the readable part to find a file by eye, the hash of the exact name to keep
-    two models apart. `~` never occurs in the readable part, which is how a legacy name is told apart."""
+    two models apart. `~` never occurs in the readable part, which is how a legacy name is told apart.
+    Where the part before the first dot would be a Windows device name, the file name starts with `_`."""
     digest = hashlib.sha1((database or "default").encode("utf-8")).hexdigest()[:12]
-    return f"{_safe(database)[:_READABLE_MAX]}~{digest}.json"
+    name = f"{_safe(database)[:_READABLE_MAX]}~{digest}.json"
+    return f"_{name}" if name.split(".", 1)[0].upper() in _WINDOWS_DEVICES else name
 
 
 def migrate_legacy_files(

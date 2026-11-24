@@ -10,6 +10,7 @@ from urllib.parse import quote
 from fastapi.testclient import TestClient
 
 from prism_lca.engine import commands, guardrails
+from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.commands import Command
 from prism_lca.engine.library import LIBRARY_DB, ensure_library
 from prism_lca.engine.tags import TagStore
@@ -247,13 +248,11 @@ def test_redo_does_not_bring_back_a_link_the_chat_may_not_make(client, token, pr
 
 
 def test_tag_keys_are_split_from_the_right_like_the_store_does(client, token, project):
-    """A model name may hold a slash; a code does not. A merge in model ‘A’ does not reach the tags of
-    model ‘A/B’, though their keys start with ‘A/’ — and a merge in ‘A/B’ is not ‘A’'s to make."""
-    r = client.post("/api/v1/databases/foreground", json={"name": "A/B"}, headers=token)
-    if r.status_code != 200:
-        import pytest
-
-        pytest.skip(f"model names with a slash are refused here: {r.text}")
+    """A model from before slashes were refused may still hold one; a code does not. A merge in model ‘A’
+    does not reach the tags of model ‘A/B’, though their keys start with ‘A/’ — and a merge in ‘A/B’ is not
+    ‘A’'s to make."""
+    get_bd().Database("A/B").register(searchable=False)
+    guardrails.set_read_only("A/B", False)
     _fg(client, token, "A")
     slashed, plain = _code(client, token, "A/B"), _code(client, token, "A")
     for db, code in (("A/B", slashed), ("A", plain)):

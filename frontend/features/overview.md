@@ -14,9 +14,11 @@ navigation sits on every page but is described here.
   dialog) and Delete model (with a confirmation that says it cannot be undone).
 - "Model" in the panel and in the toolbar opens the New model dialog: name, "Duplicate from", folder,
   goal and scope. Creating opens the new model on the Model page. Create stays disabled until there is a
-  name; a name the backend refuses (one that exists) keeps the dialog open with the reason under the
-  fields and everything typed. Duplicate model and New workspace work the same way; Restore under
-  another name closes at once and comes back with the typed name and the reason if it is taken.
+  name; a name the backend refuses (one that exists, or one with a slash or a line break) keeps the dialog
+  open with the reason under the fields, a name that would do, and everything typed. Every other character
+  is fine in a model name, and a slash is fine in a workspace name. Duplicate model and New workspace work
+  the same way; Restore under another name closes at once and comes back with the typed name and the reason
+  if it is taken.
 - Import: the download-icon "Model" button takes a `.prism` file or a PrismLCA workbook, "Processes"
   takes SimaPro, openLCA, GaBi, EcoSpold or ILCD — both start with a file dialog.
 - Figures: models, background databases, My processes, elementary flows, LCIA indicators.

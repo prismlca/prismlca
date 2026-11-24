@@ -144,7 +144,9 @@ def restore_project(request: Request, body: RestoreRequest) -> dict:
     return result
 
 
-@router.post("/{name}/activate", response_model=ProjectInfo, summary="Activate a project")
+# `:path`: a workspace name may hold a slash, and the server routes on the decoded path, where
+# even `%2F` separates segments. Taking the rest of the path (up to `/activate`) keeps it whole.
+@router.post("/{name:path}/activate", response_model=ProjectInfo, summary="Activate a project")
 def activate_project(request: Request, name: str) -> ProjectInfo:
     with lca._LCA_LOCK, commands.PROJECT_LOCK:
         ecoinvent.assert_no_import_running("switching workspaces")
@@ -191,7 +193,8 @@ def _workspace_opened(request: Request, name: str) -> None:
             _log.swallowed(exc, "activate_project")
 
 
-@router.delete("/{name}", summary="Delete a project (and its data) via Brightway")
+# `:path` for the same reason as activate.
+@router.delete("/{name:path}", summary="Delete a project (and its data) via Brightway")
 def delete_project(request: Request, name: str) -> dict:
     """Answers which workspace is active afterwards (`current`): deleting the active one opens another."""
     repository = request.app.state.repository

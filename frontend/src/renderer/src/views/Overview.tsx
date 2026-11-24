@@ -50,6 +50,7 @@ import { fmtInt } from '../lib/format'
 import LastModelsCard from './overview/LastModelsCard'
 import FoldersPending from './overview/FoldersPending'
 import NewsCard from './overview/NewsCard'
+import { nameMap } from '../lib/nameMap'
 
 /** Entries of assets/whats-new.json — newest first. Every shipped FEATURE (not bugfixes) gets a
  * new entry there; the sidebar shows the FULL history (the list grows forever, panel scrolls) —
@@ -146,7 +147,7 @@ export default function Overview({
     .reduce((sum, d) => sum + d.node_count, 0)
 
   const [query, setQuery] = useState('')
-  const [snippets, setSnippets] = useState<Record<string, string>>({})
+  const [snippets, setSnippets] = useState<Record<string, string>>(nameMap)
   const [version, setVersion] = useState<string | null>(null)
   const [infoFor, setInfoFor] = useState<string | null>(null) // Model-info dialog target
   const [exportFor, setExportFor] = useState<string | null>(null) // model whose bundle to write
@@ -167,7 +168,7 @@ export default function Overview({
         return [name, text] as const
       })
     ).then((pairs) => {
-      if (alive) setSnippets(Object.fromEntries(pairs))
+      if (alive) setSnippets(nameMap(pairs))
     })
     return () => {
       alive = false

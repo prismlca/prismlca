@@ -137,9 +137,15 @@ def test_the_view_follows_a_renamed_model(client, token, project):
 def test_a_rename_follows_into_the_views_of_models_that_compare_it(client, token, project):
     """Model A compares B's process; renaming B left A pointing at the dead name
     (the subject vanished, and a new model called B would have taken its place)."""
+    from prism_lca.engine import guardrails
+    from prism_lca.engine.bootstrap import get_bd
+
     del project
     a = _model(client, token, "ViewCmpA")
-    b = _model(client, token, "ViewCmp/B")  # a name the subject key has to escape
+    # A name the subject key has to escape. New names cannot hold a slash; a model from before still may.
+    b = "ViewCmp/B"
+    get_bd().Database(b).register(searchable=False)
+    guardrails.set_read_only(b, False)
     client.put(
         f"/api/v1/views/{a}",
         json={
