@@ -12,7 +12,6 @@ import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 import type { Edge, Node } from '@xyflow/react'
 import { api, isSuperseded, type Graph } from '../lib/api'
 import { collectShares, splitId, type ShareTreeNode } from '../lib/canvas'
-import type { MethodEntry } from '../lib/methods'
 import { graphRoute } from '../lib/server/routes'
 import type { CalcMeta } from '../lib/occurrences'
 import {
@@ -38,9 +37,10 @@ type Busy = 'calc' | 'mc' | null
 export interface CanvasCalcDeps {
   run: (fn: () => Promise<void>) => Promise<void>
   activeDb: string | null
-  methods: MethodEntry[]
-  /** The method picked in the toolbar, as an index into `methods`. */
-  chosen: string
+  /** The method chosen in the toolbar (useCanvasMethod); null while there is none to calculate with. */
+  method: string[] | null
+  /** Sets the toolbar's method for the model on screen: to what a calculation with its own method used. */
+  chooseMethod: (method: string[]) => void
   selected: string[]
   nodes: Node[]
   setNodes: (update: (nodes: Node[]) => Node[]) => void
@@ -57,7 +57,18 @@ const backendGraph = async (db: string): Promise<string> =>
   graphFingerprint(await api<Graph>('GET', graphRoute(db)))
 
 export function useCanvasCalc(deps: CanvasCalcDeps) {
-  const { run, activeDb, methods, chosen, selected, nodes, setNodes, setEdges, calcBusy, setCalcBusy } = deps
+  const {
+    run,
+    activeDb,
+    method: chosen,
+    chooseMethod,
+    selected,
+    nodes,
+    setNodes,
+    setEdges,
+    calcBusy,
+    setCalcBusy
+  } = deps
   const [result, setResult] = useState<CanvasResult | null>(null)
   /** The model changed after the result was calculated: the bar says so, the canvas has no Sankey. */
   const [stale, setStale] = useState(false)
@@ -105,13 +116,13 @@ export function useCanvasCalc(deps: CanvasCalcDeps) {
   const calculate = (methodOverride?: string[], codeOverride?: string): void => {
     // Normally computes the single selected process with the chosen method; the assistant can pass
     // an explicit method + process code to trigger the same canvas calculation + Sankey overlay.
-    if (calcBusy || !activeDb || !methods.length) return
+    const method = methodOverride ?? chosen
+    if (calcBusy || !activeDb || !method) return
     if (!codeOverride && selected.length !== 1) return
     setCalcBusy('calc')
     void run(async () => {
       try {
         const [db, code] = codeOverride ? [activeDb, codeOverride] : splitId(selected[0])
-        const method = methodOverride ?? methods[Number(chosen) || 0].method
         // What the answer was computed on is the model as the backend holds it, which the canvas may not
         // show yet (an edit's reload is still on its way). So the graph is read right before and right
         // after: the same both times, the answer belongs to it; different, an edit landed in between and
@@ -128,6 +139,10 @@ export function useCanvasCalc(deps: CanvasCalcDeps) {
         const after = await backendGraph(db)
         // Another model is on the canvas by now; its bar must not show this one's score.
         if (activeDbRef.current !== activeDb) return
+        // A calculation with its own method (the assistant's) leaves the toolbar on it, so the next Calculate
+        // computes what the bar shows. The backend's tuple, not the one asked for: it resolves a name spelt
+        // otherwise, and it does not depend on the catalogue having loaded here.
+        if (methodOverride) chooseMethod(c.meta.method)
         // Shares keyed by the full `db/code` canvas id — codes alone can collide between the
         // foreground model and a background database.
         const overlay = { shares: collectShares(c.tree as ShareTreeNode, db), meta: c.meta }

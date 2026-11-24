@@ -369,3 +369,5 @@
    the compact size of the drawer's buttons while closed, the opened field takes the card's width. */
 .xa-q { display: flex; flex-direction: column; gap: 6px; }
 .xa-q .chat-ask-own { align-self: flex-start; padding: 4px 9px; font-size: var(--fs-sec); }
+/* The Model page's method chooser when its chosen method is gone from the catalogue (CanvasMethodSelect). */
+.topbar .search-sel.method-gone { border-color: var(--wait); }

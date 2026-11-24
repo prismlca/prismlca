@@ -42,7 +42,8 @@ SCHEMA = 1
 #: ``short_report`` holds the two parts of the short report's setup that belong to one model: the title and
 #: subtitle (``head``), which name a study, and the variants it compares (``compare``), which are the model's
 #: own scenarios and processes. ``sensitivity`` holds the Sensitivity analysis tab's setup and its last runs.
-KNOWN = ("layout", "colors", "groups", "results", "detailed", "short_report", "sensitivity")
+#: ``canvas`` holds the Model page's own choices: ``method``, the LCIA method its Calculate uses, as a path.
+KNOWN = ("layout", "colors", "groups", "results", "detailed", "short_report", "sensitivity", "canvas")
 
 
 # --- compare-subject keys ----------------------------------------------------------------------

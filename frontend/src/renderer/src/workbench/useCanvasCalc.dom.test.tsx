@@ -33,8 +33,9 @@ const ANSWER = {
 }
 
 /** `backend.graph` is the model as the backend holds it; the canvas shows what it last built. */
-function rig(answer: () => unknown = () => ANSWER) {
+function rig(answer: () => unknown = () => ANSWER, selected: string[] = []) {
   const backend = { graph: GRAPH, graphReads: 0 }
+  const chooseMethod = vi.fn<(method: string[]) => void>()
   const fixture = makePrism({
     'POST /api/v1/calc/contribution': () => answer(),
     'GET /api/v1/model/graph/m1': () => (backend.graphReads++, backend.graph)
@@ -55,9 +56,9 @@ function rig(answer: () => unknown = () => ANSWER) {
     const calc = useCanvasCalc({
       run,
       activeDb: 'm1',
-      methods: [{ method: ['IPCC', 'GWP100'], unit: 'kg CO2-Eq' }] as never,
-      chosen: '0',
-      selected: [],
+      method: ['IPCC', 'GWP100'],
+      chooseMethod,
+      selected,
       nodes: canvas.nodes,
       setNodes: canvas.setNodes,
       setEdges: canvas.setEdges,
@@ -67,7 +68,7 @@ function rig(answer: () => unknown = () => ANSWER) {
     })
     return { canvas, calc }
   })
-  return { ...hook, backend }
+  return { ...hook, backend, chooseMethod }
 }
 
 type Result = ReturnType<typeof rig>['result']
@@ -191,5 +192,29 @@ describe('the Sankey across a rebuild of the graph', () => {
     act(() => result.current.canvas.buildGraph(GRAPH))
     expect(share(result, 'm1/b')).toBeUndefined()
     expect(result.current.calc.stale).toBe(false)
+  })
+})
+
+/**
+ * The assistant's canvas calculation brings its own method. The toolbar follows it once the result is in,
+ * with the method the backend computed — so the next Calculate computes what the bar shows, also when the
+ * assistant spelt the method otherwise or the catalogue had not loaded in the window yet.
+ */
+describe('the toolbar method after a calculation', () => {
+  it('follows a calculation with its own method, to the tuple the backend computed', async () => {
+    const { result, chooseMethod } = rig(() => ({
+      ...ANSWER,
+      meta: { ...ANSWER.meta, method: ['IPCC', 'GWP100'] }
+    }))
+    act(() => result.current.calc.calculate(['ipcc', 'gwp 100'], 'a'))
+    await waitFor(() => expect(result.current.calc.result?.total).toBe(2))
+    expect(chooseMethod).toHaveBeenCalledWith(['IPCC', 'GWP100'])
+  })
+
+  it('stays as it is after a calculation with the toolbar method', async () => {
+    const { result, chooseMethod } = rig(undefined, ['m1/a'])
+    act(() => result.current.calc.calculate())
+    await waitFor(() => expect(result.current.calc.result?.total).toBe(2))
+    expect(chooseMethod).not.toHaveBeenCalled()
   })
 })

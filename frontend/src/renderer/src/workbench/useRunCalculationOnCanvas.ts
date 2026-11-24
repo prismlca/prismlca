@@ -34,7 +34,8 @@ export const LOOKS = 5
 export interface RunCalculationOnCanvasDeps {
   activeDb: string | null
   methods: MethodEntry[]
-  setChosen: (v: string) => void
+  /** Sets the Model page's method (useCanvasMethod) for the model on screen. */
+  chooseMethod: (method: string[]) => void
   canvas: Pick<Canvas, 'selectOnly' | 'nodesRef'>
 }
 
@@ -88,7 +89,8 @@ export function useRunCalculationOnCanvas(deps: RunCalculationOnCanvasDeps): voi
             processIds: new Set(now.canvas.nodesRef.current.map((n) => n.id)),
             methods: now.methods
           })
-          if (methodIndex !== undefined) now.setChosen(String(methodIndex))
+          const method = methodIndex !== undefined ? now.methods[methodIndex]?.method : undefined
+          if (method) now.chooseMethod(method)
           if (processId) now.canvas.selectOnly(processId)
           else if (awaitedProcessId) lookFor(awaitedProcessId, db, LOOKS)
         })

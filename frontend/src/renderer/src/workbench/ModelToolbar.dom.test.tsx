@@ -19,8 +19,8 @@ const props = (view: ViewKey): ModelToolbarProps => ({
   onUndo: vi.fn(),
   onRedo: vi.fn(),
   methods: [],
-  chosen: '0',
-  onChoose: vi.fn(),
+  method: { method: null, index: -1, gone: null, checking: null },
+  onChooseMethod: vi.fn(),
   calcBusy: null,
   selectedCount: 1,
   onCalculate: vi.fn(),
@@ -89,5 +89,39 @@ describe('the FU pill', () => {
     render(<ModelToolbar {...props('model')} selectedCount={1} fuUnit="kg" fuName="Granulate" />)
     const pill = screen.getByText('FU: 1 kg')
     expect(pill.getAttribute('title')).toContain('1 kg of Granulate')
+  })
+})
+
+/** Calculate computes with the method in the chooser — and with no other one when that is gone. */
+describe('Calculate and the chosen method', () => {
+  const gwp = {
+    method: ['EF v3.1', 'climate change', 'global warming potential (GWP100)'],
+    name: 'EF v3.1 · climate change · global warming potential (GWP100)',
+    unit: 'kg CO2-Eq',
+    recommended: true
+  }
+  const calc = (): HTMLButtonElement => screen.getByRole('button', { name: /Calculate/ }) as HTMLButtonElement
+
+  it('calculates with a method the catalogue has', () => {
+    render(
+      <ModelToolbar
+        {...props('model')}
+        methods={[gwp]}
+        method={{ method: gwp.method, index: 0, gone: null, checking: null }}
+      />
+    )
+    expect(calc().disabled).toBe(false)
+  })
+
+  it('waits for another method when the chosen one is gone, and says why', () => {
+    render(
+      <ModelToolbar
+        {...props('model')}
+        methods={[gwp]}
+        method={{ method: null, index: -1, gone: ['My methods', 'BBB'], checking: null }}
+      />
+    )
+    expect(calc().disabled).toBe(true)
+    expect(calc().title).toContain('"My methods · BBB" is no longer in the method catalogue')
   })
 })
