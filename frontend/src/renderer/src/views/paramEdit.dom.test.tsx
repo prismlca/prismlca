@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Parameters from './Parameters'
 import { renderWithPrism } from '../test/render'
@@ -135,5 +135,69 @@ describe('a long description (V430)', () => {
       if (!container.querySelector('.pc-desc-text')) throw new Error('no description')
     })
     expect(container.querySelector('.pc-desc-more')).toBeNull()
+  })
+})
+
+describe('a refused value', () => {
+  it('says what was not stored under the restored value, without marking or renaming the field', async () => {
+    const user = userEvent.setup()
+    const routes = { ...ROUTES, 'GET /api/v1/params': [{ ...PARAMS[0], rule: { kind: 'positive' } }] }
+    const { prism, container } = renderWithPrism(<Parameters activeDb="M" />, { routes })
+    const field = await valueField(container)
+
+    await user.clear(field)
+    await user.type(field, '-1{Enter}')
+
+    const note = await screen.findByRole('alert')
+    expect(note.textContent).toBe('Not stored: “-1” must be greater than 0.')
+    expect(field.value).toBe('3.95')
+    // The field holds an allowed value again: not invalid, and its name is not the refusal — the note
+    // describes it instead.
+    expect(field.getAttribute('aria-invalid')).toBeNull()
+    expect(field.getAttribute('title')).toBeNull()
+    expect(field.getAttribute('aria-describedby')).toBe(note.id)
+    expect(prism.calls.filter((c) => c.method === 'POST')).toEqual([])
+
+    await user.type(field, '5')
+    expect(screen.queryByText(/Not stored/)).toBeNull()
+    expect(field.getAttribute('aria-describedby')).toBeNull()
+  })
+})
+
+describe('deleting a parameter something still uses', () => {
+  it('names the page that changes the formula, not the assistant’s tool', async () => {
+    const user = userEvent.setup()
+    const refusal = {
+      status: 400,
+      body: {
+        error: {
+          code: 'param_in_use',
+          message:
+            "Not deleted: 'm_pvc' is still used by the amount of 'PVC' in 'bottle' — they would be left naming a " +
+            'parameter that does not exist.',
+          hint: 'Change the exchange formula first (edit_exchange).',
+          details: {
+            parameters: ['m_pvc'],
+            uses: [
+              { kind: 'exchange', label: "the amount of 'PVC' in 'bottle'", owner: null, names: ['m_pvc'] }
+            ]
+          }
+        }
+      }
+    }
+    renderWithPrism(<Parameters activeDb="M" />, {
+      routes: { ...ROUTES, 'POST /api/v1/params/delete': refusal }
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Delete parameter' }))
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    expect(
+      await screen.findByText(
+        "Not deleted: 'm_pvc' is still used by the amount of 'PVC' in 'bottle'. Change the formula of that " +
+          'amount on the Model page first, then delete it.'
+      )
+    ).toBeTruthy()
+    expect(screen.queryByText(/edit_exchange/)).toBeNull()
   })
 })

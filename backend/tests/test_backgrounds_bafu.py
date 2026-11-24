@@ -210,7 +210,7 @@ def test_remove_background_refuses_while_used_then_removes(client, token, projec
     guardrails.set_read_only("my-model", False)
     r = client.delete("/api/v1/setup/background/bafu-2026-v1", headers=token)
     assert r.status_code == 409 and r.json()["error"]["code"] == "background_in_use"
-    assert "my-model" in r.json()["error"]["message"]
+    assert "my-model (1 exchange)." in r.json()["error"]["message"]
 
     bd.Database("my-model").delete(warn=False)
     del bd.databases["my-model"]

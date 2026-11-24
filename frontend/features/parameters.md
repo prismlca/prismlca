@@ -10,7 +10,8 @@ a group; "Used by" lists the processes and parameters that read it.
   for the next one until Cancel. A name the model already has is refused there ("… already exists —
   edit it in its row"); the form creates and never overwrites.
 - In a row: the value field (Enter stores it), "Edit parameter" (formula, unit, comment, allowed
-  values), "Delete parameter" (with a confirmation; refused while a formula or scenario uses it),
+  values), "Delete parameter" (with a confirmation; refused while a formula or scenario uses it — the
+  refusal names the page where that use is changed),
   "Add a comment…", and the "Used by" links.
 - Allowed values: any number, only positive, only negative, a range, or a list. A value outside is
   refused at the field.
@@ -85,12 +86,12 @@ node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Move paramet
   creates it.
 - A row drags only from its name (`"css=.pc-name[title=mass]"`), not from its value field; drop it on
   the group's heading. `has-text=mass` would also match a row whose formula reads `mass`.
-- In the edit form, `"role=combobox:Allowed"` picks the rule; a refused value marks the field invalid
-  and names the rule ("must be greater than 0").
+- In the edit form, `"role=combobox:Allowed"` picks the rule; a refused value is not stored, and the
+  note under the row names it and the rule ("Not stored: “-1” must be greater than 0.").
 
 ## Gotchas
 
-- After a refused value the field shows the stored value again, but the red note stays until the next
-  edit.
+- After a refused value the field shows the stored value again, and the note under the row stays until
+  the next edit.
 - Undo's title is the backend's confirmation of a stored value, as on the Model page: wait for it.
 - A changed parameter makes the Model page's result stale: Calculate again before reading it.

@@ -31,6 +31,7 @@ export default function FormulaInput({
   params,
   self,
   placeholder,
+  label,
   autoFocus,
   className,
   multiline = true,
@@ -46,6 +47,9 @@ export default function FormulaInput({
   /** The parameter whose own formula this is — it may not name itself. */
   self?: string
   placeholder?: string
+  /** The field's accessible name, where no label element names it. A placeholder is not one: it is a hint
+   *  that changes with the state a form is in, so two such fields would read the same. */
+  label?: string
   autoFocus?: boolean
   className?: string
   /** A textarea (default) or a single-line input. */
@@ -217,6 +221,7 @@ export default function FormulaInput({
     className: `${className ?? ''}${tried && problem ? ' refused' : ''}`.trim() || undefined,
     value,
     placeholder,
+    'aria-label': label,
     autoFocus,
     spellCheck: false,
     'aria-invalid': tried && problem ? true : undefined,

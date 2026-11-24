@@ -313,7 +313,7 @@ export default function ModelInfo(props: {
 
   /**
    * Rename the model, from the ✓ or from Enter. A refused name stays in the field with the reason
-   * under it (“Database 'x' already exists.”) rather than being thrown away — the fix is usually one
+   * under it (“A model named 'x' already exists.”) rather than being thrown away — the fix is usually one
    * word, and re-typing the whole name to find out the next one is taken too is not a dialog.
    */
   const rename = async (): Promise<void> => {

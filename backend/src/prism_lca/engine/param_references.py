@@ -209,6 +209,14 @@ def _in_use(names: set[str], users: list[Use]) -> PrismError:
         "Not deleted: " + "; ".join(parts) + " — they would be left naming a parameter that does not exist.",
         code="param_in_use",
         hint=" ".join(hint),
+        # The hint names the assistant's tools; the Parameters page words the way out for a person from these.
+        details={
+            "parameters": gone,
+            "uses": [
+                {"kind": u.kind, "label": u.label, "owner": u.owner, "names": sorted(u.names & names)}
+                for u in users
+            ],
+        },
     )
 
 

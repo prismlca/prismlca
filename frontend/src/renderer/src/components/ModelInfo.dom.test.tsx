@@ -96,7 +96,7 @@ describe('ModelInfo → rename', () => {
           status: 409,
           body: {
             error: {
-              message: "Database 'Taken' already exists.",
+              message: "A model named 'Taken' already exists.",
               hint: 'Choose another name.',
               code: 'database_exists'
             }

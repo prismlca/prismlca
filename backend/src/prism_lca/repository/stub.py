@@ -73,7 +73,7 @@ class StubRepository(LcaRepository):
     def create_foreground_database(self, name: str) -> DatabaseInfo:
         name = (name or "foreground").strip()
         if name in self._dbs:
-            raise PrismError(f"Database '{name}' already exists.", code="database_exists",
+            raise PrismError(f"A model named '{name}' already exists.", code="database_exists",
                              status_code=409, hint="Choose another name.")
         info = DatabaseInfo(name=name, node_count=0, read_only=False, kind="foreground")
         self._dbs[name] = info

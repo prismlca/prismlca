@@ -27,7 +27,7 @@ node scripts/control-prism.mjs click "css=.navitem >> has-text=Scenarios"
 node scripts/control-prism.mjs click "role=button:Scenario"
 node scripts/control-prism.mjs type "role=textbox:Name" heavy
 node scripts/control-prism.mjs click "role=checkbox:/^mass/"
-node scripts/control-prism.mjs type "css=.modal-backdrop >> placeholder=number or formula" 8
+node scripts/control-prism.mjs type "css=.modal-backdrop >> role=textbox:mass override" 8
 node scripts/control-prism.mjs click "css=.modal-backdrop >> role=button:Create"
 node scripts/control-prism.mjs wait hidden "css=.modal-backdrop"
 node scripts/control-prism.mjs click "text=/^heavy$/ >> nth=0"
@@ -50,7 +50,7 @@ Edit it, then take the edit back:
 node scripts/control-prism.mjs click "css=.navitem >> has-text=Scenarios"
 node scripts/control-prism.mjs click "text=/^heavy$/ >> nth=0"
 node scripts/control-prism.mjs click "css=.scen-side >> role=button:Edit scenario"
-node scripts/control-prism.mjs type "css=.modal-backdrop >> placeholder=number or formula" 12 --commit
+node scripts/control-prism.mjs type "css=.modal-backdrop >> role=textbox:mass override" 12 --commit
 node scripts/control-prism.mjs press Escape
 node scripts/control-prism.mjs wait text "css=.scen-side" "/→\s*12 kg/"
 node scripts/control-prism.mjs click "role=button:Undo"
@@ -58,8 +58,8 @@ node scripts/control-prism.mjs click "role=button:Undo"
 
 - A parameter's tick box is named by the parameter, its baseline and its override
   (`"role=checkbox:/^mass 4 kg/"`); a regex on the start is steadier.
-- The override field is named "<parameter> override" while it is disabled and only by its placeholder
-  "number or formula" once ticked: scope it to the dialog, and with several ticked add `nth=`.
+- The override field is named "<parameter> override", disabled and ticked alike (a parameter with a list
+  rule has a dropdown of that name instead): scope it to the dialog.
 - The side panel is `"css=.scen-side"`; it carries the overrides and the audit log. The list rows and
   the side panel both have Edit, Duplicate and Delete — scope to `.scen-side` for the selected one.
 - The editor has two buttons named Close (✕ and the one at the bottom): Escape is simpler.

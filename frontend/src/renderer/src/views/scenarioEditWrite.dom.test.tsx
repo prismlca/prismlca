@@ -53,7 +53,7 @@ async function editOverride(
     routes: { ...ROUTES, 'POST /api/v1/scenarios/update': update }
   })
   const dialog = await openEditor(user)
-  const field = await within(dialog).findByPlaceholderText('number or formula')
+  const field = await within(dialog).findByRole('textbox', { name: 'mass override' })
   await user.clear(field)
   await user.type(field, value)
   expect(container.querySelector('.modal-backdrop')).not.toBeNull()
@@ -130,5 +130,20 @@ describe('Scenario editor stores one edit once', () => {
     await waitFor(() => expect(document.querySelector('.modal-backdrop')).toBeNull())
     await settle(500)
     expect(updates(calls)).toHaveLength(2)
+  })
+})
+
+describe('an override field', () => {
+  it('keeps its name when ticking makes it editable', async () => {
+    const user = userEvent.setup()
+    renderWithPrism(<Scenarios activeDb="M" rev={0} />, { routes: ROUTES })
+    await user.click(await screen.findByRole('button', { name: 'Scenario' }))
+    const dialog = await screen.findByRole('dialog')
+
+    const before = within(dialog).getByRole('textbox', { name: 'mass override' }) as HTMLInputElement
+    expect(before.disabled).toBe(true)
+    await user.click(within(dialog).getByRole('checkbox', { name: /^mass/ }))
+    const after = within(dialog).getByRole('textbox', { name: 'mass override' }) as HTMLInputElement
+    expect(after.disabled).toBe(false)
   })
 })
