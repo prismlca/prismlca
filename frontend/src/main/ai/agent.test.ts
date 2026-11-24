@@ -152,6 +152,27 @@ describe('compactMessages', () => {
     expect(withReplay).toEqual([9, 11, 13]) // the second turn's three rounds; the first turn's are gone
   })
 
+  it('reaches the pages of older answers in a chat of answers that only opened pages', () => {
+    // Such an answer goes back with its blocks and carries no calls: counted as no round, compaction never
+    // got past the first of them, and every page stayed until the window overflowed.
+    const page = {
+      provider: 'anthropic' as const,
+      model: 'm',
+      steps: [{ type: 'web_fetch_tool_result', tool_use_id: 's', content: { data: 'x'.repeat(40_000) } }]
+    }
+    const msgs: ChatMessage[] = []
+    for (let i = 0; i < 4; i++)
+      msgs.push(
+        { role: 'user', content: `q${i}` },
+        { role: 'assistant', content: `a${i}`, replay: { ...page } }
+      )
+    msgs.push({ role: 'user', content: 'q4' })
+    expect(compactMessages(msgs, 2)).toBe(2)
+    expect(msgs.map((m, i) => (m.replay ? i : -1)).filter((i) => i >= 0)).toEqual([5, 7])
+    // The answers' text stays: a rebuilt answer names its page from its record.
+    expect(msgs[1].content).toBe('a0')
+  })
+
   it('keeps the last N rounds verbatim and stubs older tool results', () => {
     const msgs = conversation(6)
     const before = estimateChars(msgs)

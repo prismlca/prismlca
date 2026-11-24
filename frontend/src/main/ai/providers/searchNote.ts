@@ -4,13 +4,15 @@
  * The provider's web search runs inside a reply, and what it searched for and which pages came back sit
  * in the provider's own blocks. Those go back only where a transport resends the round as it came
  * (Anthropic's replay). Everywhere else the round is rebuilt from its text and its calls — a turn's
- * closing answer, a round whose replay compaction dropped, every round on OpenRouter and OpenAI — and
+ * closing answer that opened no page, a round whose replay compaction dropped, every round on OpenRouter
+ * and OpenAI — and
  * the search vanished with it: asked where a figure came from, a model read its own source notes, found
  * no search behind them and declared them invented. This line keeps the search texts and the pages that
- * came back, as one line per search ahead of the round's text; the pages' text stays out.
+ * came back, as one line per search ahead of the round's text, and the pages the reply opened; the pages'
+ * text stays out.
  */
 import { describeWebLookups } from '../webLookups'
-import type { ChatMessage, CitedPage, WebRecord, WebSearch } from './types'
+import type { ChatMessage, CitedPage, WebFetch, WebRecord, WebSearch } from './types'
 
 /** Pages named per search: a search returns about ten, and the address is what a later answer cites. */
 const MAX_RESULTS = 10
@@ -22,6 +24,9 @@ const titled = (p: { url: string; title?: string }): string => {
   if (!title) return p.url
   return `${title.length > TITLE_CHARS ? `${title.slice(0, TITLE_CHARS - 1)}…` : title} (${p.url})`
 }
+
+/** An opened page, or the provider's reason it could not be opened. */
+const openedLine = (f: WebFetch): string => `- ${titled(f)}${f.error ? ` — not opened (${f.error})` : ''}`
 
 /** A cited page, with the passage the reply cited where the provider names it. */
 const citedLine = (c: CitedPage): string => `- ${c.excerpt ? `"${c.excerpt}" — ` : ''}${titled(c)}`
@@ -45,9 +50,10 @@ function searchLine(s: WebSearch, i: number): string {
 export function searchNote(web: WebRecord | undefined): string | null {
   if (!web) return null
   const searches = web.searches ?? []
+  const fetched = web.fetched ?? []
   const cited: CitedPage[] = web.cited ?? []
   const counted = describeWebLookups(web.counts)?.short
-  if (!searches.length && !cited.length && !counted) return null
+  if (!searches.length && !fetched.length && !cited.length && !counted) return null
   const lines: string[] = []
   if (searches.length)
     lines.push(
@@ -56,7 +62,13 @@ export function searchNote(web: WebRecord | undefined): string | null {
         'your reply cited; the rest of the pages’ text is gone:',
       ...searches.map(searchLine)
     )
-  else if (counted)
+  if (fetched.length)
+    lines.push(
+      `In this reply you opened ${fetched.length === 1 ? 'a page' : `${fetched.length} pages`} through ` +
+        'the provider. Kept are the addresses and titles; the pages’ text is gone:',
+      ...fetched.map(openedLine)
+    )
+  if (!searches.length && !fetched.length && counted)
     lines.push(
       `In this reply the provider looked things up on the web for you (${counted}). It reports neither ` +
         'what was searched for nor the pages that came back.'

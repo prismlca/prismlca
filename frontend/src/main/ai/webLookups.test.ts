@@ -44,6 +44,20 @@ describe('one round’s web lookups', () => {
     expect(cited?.record).toEqual({ cited: [{ url: 'https://a.org' }] })
   })
 
+  it('keeps the pages a round opened on its record and on its row', () => {
+    const r = new RoundLookups()
+    r.count({ web_fetch_requests: 1 })
+    r.opened([{ url: 'https://m.de/sds.pdf', title: 'Safety data sheet' }])
+    const done = r.take()
+    expect(done?.record).toEqual({
+      counts: { web_fetch_requests: 1 },
+      fetched: [{ url: 'https://m.de/sds.pdf', title: 'Safety data sheet' }]
+    })
+    expect(done?.row).toMatchObject({ fetched: done?.record.fetched })
+    expect(done?.row.preview).toContain('1 page fetched — run by the provider inside this reply')
+    expect(r.take()).toBeNull()
+  })
+
   it('is nothing when the provider looked nothing up and the reply cites nothing', () => {
     const r = new RoundLookups()
     r.count({ web_search_requests: 0 })

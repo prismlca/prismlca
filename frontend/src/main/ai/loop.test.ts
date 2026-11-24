@@ -1693,6 +1693,25 @@ describe('web lookups by the provider', () => {
     expect(round?.web).toEqual({ counts: { web_search_requests: 1 }, searches: [searched], cited })
   })
 
+  it('records the pages a reply opened on the row, live and on the round', async () => {
+    const events: Array<Record<string, unknown>> = []
+    const fetched = [{ url: 'https://m.de/sds.pdf', title: 'Safety data sheet' }]
+    chat.rounds = [
+      {
+        usage: { cost: 0.01, prompt_tokens: 30_000, server_tool_use: { web_fetch_requests: 1 } },
+        after: [{ type: 'web_fetches', fetches: fetched }],
+        calls: [{ id: 'a', name: 'list_models', arguments: '{}' }]
+      },
+      { text: 'done' }
+    ]
+    const res = await runAgent(request(), deps({ emit: (e: Record<string, unknown>) => events.push(e) }).deps)
+    expect(res.trace[0]).toMatchObject({ name: 'web_lookups', fetched })
+    const live = events.find((e) => e.type === 'tool' && e.name === 'web_lookups' && e.phase === 'done')
+    expect(live).toMatchObject({ fetched })
+    const round = chat.seen[1].messages.find((m) => m.role === 'assistant' && m.tool_calls?.length)
+    expect(round?.web).toEqual({ counts: { web_fetch_requests: 1 }, fetched })
+  })
+
   it('carries the searches of the closing answer into the next turn', async () => {
     chat.rounds = [{ text: 'About 24 kg.', after: found }]
     await runAgent(request({ chatId: 'web-1' }), deps().deps)
@@ -1712,6 +1731,69 @@ describe('web lookups by the provider', () => {
       .at(-1)!
       .messages.find((m) => m.role === 'assistant' && m.content === 'About 24 kg.')
     expect(answer?.web?.searches).toEqual([searched])
+  })
+
+  it('carries the blocks of a closing answer that opened a page into the next turn', async () => {
+    // Without them the next turn's model found no fetch behind its own figures and told the user it had
+    // not read the page (measured on Haiku 5.5: six follow-ups of six).
+    const replay = {
+      provider: 'anthropic' as const,
+      model: 'claude-haiku-5-5',
+      steps: [
+        { type: 'web_fetch_tool_result', tool_use_id: 'srvtoolu_1' },
+        { type: 'text', text: '27 000 kg/m².' }
+      ]
+    }
+    chat.rounds = [
+      { text: 'Checking the models first.', calls: [{ id: 'a', name: 'list_models', arguments: '{}' }] },
+      {
+        text: '27 000 kg/m².',
+        after: [
+          { type: 'web_fetches', fetches: [{ url: 'https://arxiv.org/pdf/1' }] },
+          { type: 'tool_calls', calls: [], replay }
+        ]
+      }
+    ]
+    const first = await runAgent(request({ chatId: 'fetch-1' }), deps().deps)
+    expect(first.outcome).toBe('answered')
+    expect(first.text).toBe('Checking the models first.\n\n27 000 kg/m².')
+    chat.rounds = [{ text: '95.7 % and 96.6 %.' }]
+    await runAgent(
+      request({
+        chatId: 'fetch-1',
+        history: [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: first.text }
+        ],
+        userText: 'And the efficiencies?'
+      }),
+      deps().deps
+    )
+    const answer = chat.seen.at(-1)!.messages.find((m) => m.role === 'assistant' && m.content === first.text)
+    expect(answer?.replay).toEqual(replay)
+    // What the turn wrote before its closing answer goes with it: the blocks hold only the closing round.
+    expect(answer?.record).toBe('Checking the models first.')
+    expect(answer?.web?.fetched).toEqual([{ url: 'https://arxiv.org/pdf/1' }])
+  })
+
+  it('sends the note on a cut-off answer that opened a page with it', async () => {
+    const replay = { provider: 'anthropic' as const, model: 'm', steps: [{ type: 'text', text: '27 000' }] }
+    chat.rounds = [{ text: '27 000', finish: 'length', after: [{ type: 'tool_calls', calls: [], replay }] }]
+    const first = await runAgent(request({ chatId: 'fetch-2' }), deps().deps)
+    chat.rounds = [{ text: 'continued' }]
+    await runAgent(
+      request({
+        chatId: 'fetch-2',
+        history: [
+          { role: 'user', content: 'hello' },
+          { role: 'assistant', content: first.text }
+        ],
+        userText: 'continue'
+      }),
+      deps().deps
+    )
+    const answer = chat.seen.at(-1)!.messages.find((m) => m.role === 'assistant' && m.replay)
+    expect(answer?.record).toMatch(/cut off at the model's output limit/)
   })
 
   it('keeps the searches of a reply the cost limit stopped, for the next turn', async () => {

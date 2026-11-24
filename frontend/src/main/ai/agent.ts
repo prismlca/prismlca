@@ -581,7 +581,7 @@ export interface AgentRequest {
   /** Ceiling on each reply's length (Settings); clamped into the supported window before sending. */
   maxTokens?: number
   disabledTools?: string[] // tools switched off in Settings → AI-Tools; never offered to the model
-  webSearch?: boolean // per-chat opt-in: attach OpenRouter's web_search/web_fetch server tools
+  webSearch?: boolean // per-chat opt-in: attach the provider's web search (and page fetch) server tools
   /** Ceiling on provider-side web lookups per reply (Settings → AI → Chat); 0/undefined = provider default. */
   webLookupsCap?: number
   /** App-wide web-search kill switch (Settings → AI → Chat). false = the research sub-agent refuses. */
@@ -1104,7 +1104,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   const endLookups = (): WebRecord | undefined => {
     const done = lookups.take()
     if (!done) return undefined
-    const { name, preview, resultChars, searches, cited } = done.row
+    const { name, preview, resultChars, searches, fetched, cited } = done.row
     deps.emit({ chatId: req.chatId, type: 'tool', name, phase: 'start' })
     deps.emit({
       chatId: req.chatId,
@@ -1114,6 +1114,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
       preview,
       resultChars,
       searches,
+      fetched,
       cited
     })
     trace.push(done.row)
@@ -1121,6 +1122,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   }
   /** The web lookups of the latest reply, carried by the answer unless its round message holds them (finish). */
   let answerWeb: WebRecord | undefined
+  /** The closing round's blocks where the provider hands them back (a page it opened): the answer carries them. */
+  let answerReplay: ProviderReplay | undefined
 
   /** Account a round's spend, trip the cost circuit breaker, and hand the figures to the round's log line. */
   const onUsage = (usage: {
@@ -1245,8 +1248,11 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     closeOpenCalls(messages)
     const last = messages[messages.length - 1]
     const web = answerWeb && !messages.some((m) => m.web === answerWeb) ? { web: answerWeb } : {}
+    const record = turn.aside
+    const replay =
+      answerReplay && !messages.some((m) => m.replay === answerReplay) ? { replay: answerReplay, record } : {}
     if (turn.text && !(last?.role === 'assistant' && last.content === turn.text))
-      messages.push({ role: 'assistant', content: turn.text, ...web })
+      messages.push({ role: 'assistant', content: turn.text, ...web, ...replay })
     await keepTranscript(
       req.chatId,
       turnId,
@@ -1409,6 +1415,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
             } else if (ev.type === 'usage') {
               onUsage(ev.usage)
             } else if (ev.type === 'web_searches') lookups.searched(ev.searches)
+            else if (ev.type === 'web_fetches') lookups.opened(ev.fetches)
             else if (ev.type === 'citations') lookups.cite(ev.citations)
             else if (ev.type === 'tool_calls') {
               toolCalls = ev.calls
@@ -1423,6 +1430,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           }
           if (echo.dropped) aiLog(`dropped a copy of the turn note from the reply (${echo.dropped} line(s))`)
           answerWeb = web = endLookups()
+          answerReplay = toolCalls?.length ? undefined : replay
+          turn.markAnswerEnd()
           telemetry.end()
           break
         } catch (e) {
@@ -1541,7 +1550,12 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
         // The model is done — but the user said something meanwhile. Their words become the next
         // round instead of waiting for a turn that would start without the tool transcript in view.
         if (deps.takeSteering && finishReason !== 'length') {
-          messages.push({ role: 'assistant', content: roundText, ...(web ? { web } : {}) })
+          messages.push({
+            role: 'assistant',
+            content: roundText,
+            ...(web ? { web } : {}),
+            ...(replay ? { replay } : {})
+          })
           if (deliverSteering()) continue
           messages.pop()
         }

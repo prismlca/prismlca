@@ -131,7 +131,8 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
     if (signal.aborted) break
     let roundText = ''
     // No `tools` array beyond the provider's server-side web tools, which `webSearch` attaches
-    // (OpenRouter: web_search+web_fetch; OpenAI: the Responses API web_search).
+    // (OpenRouter and Anthropic: web search + page fetch; Google: google_search + url_context; OpenAI:
+    // the Responses API web_search).
     // Reasoning effort LOW: a research leg's job is retrieval, and the thinking dial is the budget
     // that actually runs out — GLM 5.3 defaults to effort "max" (per OpenRouter's model listing) and
     // spent an entire eval leg reasoning without writing a line.

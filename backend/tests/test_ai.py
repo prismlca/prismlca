@@ -205,6 +205,38 @@ def test_chat_keeps_the_web_searches_and_cited_pages_of_a_turn(client, token, pr
     assert kept["cited"] == [{"url": "https://www.galaxus.ch/p/1", "title": "Atlas 175", "excerpt": ("Weight 24000 g " * 40).strip()[:300]}]
 
 
+def test_chat_keeps_the_pages_a_turn_opened(client, token, project):
+    """The pages a reply opened through the provider are listed under the answer and in its trace row,
+    and both are read from the stored row after a reload — with the reason a page could not be opened."""
+    db = "fg-fetch"
+    client.post("/api/v1/databases/foreground", json={"name": db}, headers=token)
+    cid = client.post(f"/api/v1/ai/chats/{db}", json={}, headers=token).json()["id"]
+    row = {
+        "name": "web_lookups",
+        "status": "ok",
+        "preview": "2 pages fetched",
+        "fetched": [
+            {"url": "https://arxiv.org/pdf/2611.12211", "title": "Environmental Assessment", "content": "x"},
+            {"url": "https://m.example/gone", "error": "url_not_accessible"},
+            {"url": "javascript:alert(1)", "title": "bad"},
+            "not a page",
+        ]
+        + [{"url": f"https://e.example/{i}"} for i in range(40)],
+    }
+    client.post(
+        f"/api/v1/ai/chats/{db}/{cid}/messages",
+        json={"messages": [{"role": "assistant", "content": "Done.", "tools": [row]}]},
+        headers=token,
+    )
+    kept = client.get(f"/api/v1/ai/chats/{db}/{cid}", headers=token).json()["messages"][0]["tools"][0]
+    # Web addresses only, unknown keys dropped, bounded before the junk is skipped.
+    assert kept["fetched"][:2] == [
+        {"url": "https://arxiv.org/pdf/2611.12211", "title": "Environmental Assessment"},
+        {"url": "https://m.example/gone", "error": "url_not_accessible"},
+    ]
+    assert len(kept["fetched"]) == 18
+
+
 def test_chat_keeps_what_a_turn_consumed(client, token, project):
     """The chat header adds these up over the conversation. The monthly ledger in Settings is per
     model and cannot tell two chats apart, so nothing else can answer it after a reload — and the

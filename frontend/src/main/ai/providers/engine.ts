@@ -99,7 +99,13 @@ async function errorBody(res: Response, abandon: () => void): Promise<string> {
 
 /** Events that hand the caller part of the reply. Before the first of them a failed request can be sent
  *  again without the caller noticing; after it, a second answer would be appended to the first. */
-const DELIVERS = new Set<StreamEvent['type']>(['delta', 'tool_calls', 'citations', 'web_searches'])
+const DELIVERS = new Set<StreamEvent['type']>([
+  'delta',
+  'tool_calls',
+  'citations',
+  'web_searches',
+  'web_fetches'
+])
 
 /** How one attempt ended, when it did not end the stream for good: the kind of failure and the
  *  provider's own `Retry-After` for the policy, a few words for the run bar, and the error to raise

@@ -39,6 +39,26 @@ describe('the record of a reply’s web lookups', () => {
     )
   })
 
+  it('names the pages a reply opened, and one it could not, instead of saying nothing was reported', () => {
+    const note = searchNote({
+      counts: { web_fetch_requests: 2 },
+      fetched: [
+        { url: 'https://m.de/sds.pdf', title: 'Safety data sheet' },
+        { url: 'https://m.de/gone', error: 'url_not_accessible' }
+      ]
+    })
+    expect(note).toBe(
+      '[Web search record kept by PrismLCA. In this reply you opened 2 pages through the provider. Kept ' +
+        'are the addresses and titles; the pages’ text is gone:\n' +
+        '- Safety data sheet (https://m.de/sds.pdf)\n' +
+        '- https://m.de/gone — not opened (url_not_accessible)]'
+    )
+    // Beside a search: both, the search first.
+    const both =
+      searchNote({ searches: [{ query: 'q', results: [] }], fetched: [{ url: 'https://a.org' }] }) ?? ''
+    expect(both.indexOf('searched the web once')).toBeLessThan(both.indexOf('opened a page'))
+  })
+
   it('lists ten pages of a search and counts the rest, and cuts a long title', () => {
     const results = Array.from({ length: 13 }, (_, i) => ({
       url: `https://e.org/${i}`,

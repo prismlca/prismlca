@@ -24,6 +24,10 @@
  *    item's source against them.
  *  - **No domain filter** exists on Google Search here, so the research legs' allow list becomes a
  *    sentence in the instructions — a request to the model, not a filter, and said as such.
+ *  - **Pages are opened with `url_context`**, beside the search wherever the search runs: a research leg
+ *    handed an address reads that document instead of searching for something like it. It opens the
+ *    addresses in the request and in the search's results; it has no fee, and the page text is billed as
+ *    the tool's prompt tokens, which are priced as input.
  *  - **No temperature**: the API has no sampling parameters; Google says to drop them for Gemini 3+.
  *  - **Errors come in three shapes** (JSON object, a JSON array for a bad key, SSE text mid-stream),
  *    a bad key is a 400 rather than a 401, and a model the key's tier does not include is a 429
@@ -353,6 +357,32 @@ interface GoogleState {
   failure?: AiProviderError
 }
 
+/** The addresses `url_context` was asked to open in this reply (its call steps' `urls`), each once. */
+function openedUrls(state: GoogleState): string[] {
+  const urls = new Set<string>()
+  for (const step of state.steps.values()) {
+    const asked = step.type === 'url_context_call' && isObj(step.arguments) ? step.arguments.urls : null
+    if (Array.isArray(asked)) for (const u of asked) if (typeof u === 'string' && u.trim()) urls.add(u.trim())
+  }
+  return [...urls]
+}
+
+/** The pages `url_context` did open (its result steps), as pages the reply was given but does not cite —
+ *  a research leg may name one as its source (citationBook.ts). */
+function openedPages(state: GoogleState): Citation[] {
+  const pages: Citation[] = []
+  for (const step of state.steps.values())
+    if (step.type === 'url_context_result' && Array.isArray(step.result))
+      for (const r of step.result)
+        if (isObj(r) && typeof r.url === 'string' && r.url && (r.status == null || r.status === 'success'))
+          pages.push({
+            url: r.url,
+            ...(typeof r.title === 'string' && r.title ? { title: r.title } : {}),
+            uncited: true
+          })
+  return pages
+}
+
 /** The url_citation annotations on one content part, wherever the API puts them. */
 function citationsOf(annotations: unknown): Citation[] {
   if (!Array.isArray(annotations)) return []
@@ -364,6 +394,7 @@ function citationsOf(annotations: unknown): Citation[] {
 }
 
 function usageEvent(state: GoogleState, usage: any): StreamEvent {
+  const opened = openedUrls(state)
   const input: number | undefined = usage?.total_input_tokens
   const cached: number = usage?.total_cached_tokens ?? 0
   const toolUse: number = usage?.total_tool_use_tokens ?? 0
@@ -388,7 +419,14 @@ function usageEvent(state: GoogleState, usage: any): StreamEvent {
       // Thinking is output as far as the bill goes, and the ledger's completion column is the bill's.
       completion_tokens: output + thought,
       prompt_tokens_details: { cached_tokens: cached },
-      ...(state.queries.size ? { server_tool_use: { web_search_requests: state.queries.size } } : {})
+      ...(state.queries.size || opened.length
+        ? {
+            server_tool_use: {
+              ...(state.queries.size ? { web_search_requests: state.queries.size } : {}),
+              ...(opened.length ? { web_fetch_requests: opened.length } : {})
+            }
+          }
+        : {})
     }
   }
 }
@@ -472,7 +510,7 @@ export const googleTransport: ChatTransport<GoogleState> = {
       console.warn(
         '[google] web search with function tools is not used on this API — request sent without it'
       )
-    if (search) tools.push({ type: 'google_search' })
+    if (search) tools.push({ type: 'google_search' }, { type: 'url_context' })
     const instructions = withDomainHint(system, search ? opts.webDomains : undefined)
     const level = thinkingLevel(opts.reasoningEffort)
     const body = JSON.stringify({
@@ -569,8 +607,8 @@ export const googleTransport: ChatTransport<GoogleState> = {
             state.annotations.push(...citationsOf(d.annotations))
             break
           default: {
-            // Server-side tool steps (google_search_call / _result) arrive as one delta named like the
-            // step: merge it whole, signature included — it goes back verbatim.
+            // Server-side tool steps (google_search_call / _result, url_context_call / _result) arrive as
+            // one delta named like the step: merge it whole, signature included — it goes back verbatim.
             const { type: _type, ...rest } = d
             Object.assign(step, rest)
             const queries = (d.arguments as { queries?: unknown } | undefined)?.queries
@@ -625,10 +663,12 @@ export const googleTransport: ChatTransport<GoogleState> = {
     const written = [...new Set([...state.text.values()].join('\n').match(REDIRECT_IN_TEXT) ?? [])].filter(
       (link) => !annotated.has(link)
     )
-    if (state.annotations.length || written.length) {
+    // A page the reply also cites keeps its annotation's entry (a later entry would replace it).
+    const opened = openedPages(state).filter((p) => !annotated.has(p.url))
+    if (state.annotations.length || written.length || opened.length) {
       const unresolvedWritten = new Set(written)
       const citations = (
-        await resolveCitations([...state.annotations, ...written.map((url) => ({ url }))])
+        await resolveCitations([...state.annotations, ...written.map((url) => ({ url })), ...opened])
       ).filter((c) => !unresolvedWritten.has(c.url))
       if (citations.length) events.push({ type: 'citations', citations })
     }

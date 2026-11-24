@@ -213,6 +213,7 @@ export function foldTurn(prev: TurnView | undefined, ev: AiEvent, now: number): 
         itemsFailed: ev.itemsFailed,
         notice: ev.notice,
         searches: ev.searches,
+        fetched: ev.fetched,
         cited: ev.cited
       }
       return { ...v, reasoning: 0, live, thinkingAt: now }

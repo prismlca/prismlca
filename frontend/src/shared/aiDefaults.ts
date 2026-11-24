@@ -158,7 +158,7 @@ export const MAX_MIN_THROUGHPUT = 500
 
 /**
  * Web lookups the provider may run INSIDE one reply (OpenRouter's `openrouter:web_search` /
- * `openrouter:web_fetch` server tools, `max_uses` on each).
+ * `openrouter:web_fetch` server tools and Anthropic's `web_search` / `web_fetch`, `max_uses` on each).
  *
  * Why a cap at all: a server tool is not a cheap side call. OpenRouter runs the model again with the
  * whole conversation after every lookup, and the round's usage sums those passes — in one

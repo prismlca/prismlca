@@ -62,8 +62,8 @@ export function useChatPrefs(
   const shownKey = chatId ?? newChatKey(activeDb)
   const [input, setInput] = useState(() => readDraft(shownKey))
   // Per-chat web access: **on unless this chat turned it off**. It used to start
-  // off, and the cost of that was invisible: the toggle attaches OpenRouter's `web_search` AND
-  // `web_fetch`, so with it off the assistant cannot open a URL the user pasted, cannot check a
+  // off, and the cost of that was invisible: the toggle attaches the provider's web search AND its
+  // page fetch, so with it off the assistant cannot open a URL the user pasted, cannot check a
   // safety data sheet, and — worst — is not told any of that. It answers from memory instead, which
   // is exactly the failure the sourcing rules exist to prevent. The app-wide switch in Settings → AI
   // → Chat still wins, and the same page caps how many lookups one reply may run (each one re-runs

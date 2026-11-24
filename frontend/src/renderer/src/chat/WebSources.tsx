@@ -1,10 +1,10 @@
-import type { CitedPage, ToolTrace, WebSearch } from '../lib/ai'
+import type { CitedPage, ToolTrace, WebFetch, WebSearch } from '../lib/ai'
 import { hostOf, openable, webSourcesOf } from './turnSources'
 
 /**
- * The provider's web lookups as a reader sees them: the pages an answer cites under the answer, and the
- * searches behind it — what was searched for, which pages came back. Before, a turn that searched four
- * times said "4 web searches" and nothing else, and the provider's citations were thrown away.
+ * The provider's web lookups as a reader sees them: the pages an answer cites or opened under the answer,
+ * and the searches behind it — what was searched for, which pages came back. Before, a turn that searched
+ * four times said "4 web searches" and nothing else, and the provider's citations were thrown away.
  */
 
 /** A page, by its title where the provider gave one, opened in the browser on a click. */
@@ -73,13 +73,30 @@ export function CitedList({ cited }: { cited: CitedPage[] }): JSX.Element {
   )
 }
 
+/** The pages a reply opened, each with the provider's reason where it could not be opened. */
+export function OpenedList({ fetched }: { fetched: WebFetch[] }): JSX.Element {
+  return (
+    <ol className="chat-sources-list">
+      {fetched.map((f, i) => (
+        <li key={i}>
+          <PageLink page={f} />
+          {f.error ? <span className="chat-web-host"> · not opened ({f.error})</span> : null}
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 /**
- * Under a finished answer: the pages it cites, and the searches behind them behind one line. Read from
- * the turn's trace, which is stored with the answer. Nothing when the turn did not search.
+ * Under a finished answer: the pages it cites, the pages it opened that it does not cite, and the
+ * searches behind them behind one line. Read from the turn's trace, which is stored with the answer.
+ * Nothing when the turn did not search or open a page.
  */
 export function AnswerSources({ traces }: { traces?: ToolTrace[] }): JSX.Element | null {
-  const { cited, searches } = webSourcesOf(traces)
-  if (!cited.length && !searches.length) return null
+  const { cited, opened, searches } = webSourcesOf(traces)
+  const citedUrls = new Set(cited.map((c) => c.url))
+  const read = opened.filter((o) => !citedUrls.has(o.url))
+  if (!cited.length && !read.length && !searches.length) return null
   const pages = new Set(searches.flatMap((s) => (s.results ?? []).map((r) => r.url))).size
   return (
     <div className="chat-sources">
@@ -87,6 +104,12 @@ export function AnswerSources({ traces }: { traces?: ToolTrace[] }): JSX.Element
         <>
           <div className="chat-sources-h">Sources</div>
           <CitedList cited={cited} />
+        </>
+      ) : null}
+      {read.length ? (
+        <>
+          <div className="chat-sources-h">Pages opened</div>
+          <OpenedList fetched={read} />
         </>
       ) : null}
       {searches.length ? (

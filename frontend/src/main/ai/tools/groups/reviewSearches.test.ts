@@ -28,6 +28,24 @@ describe('the dossier’s web searches', () => {
     expect(text).toContain('PAGES THE REPLIES CITED: https://a.org/x')
   })
 
+  it('lists the pages the replies opened, and counts as unnamed only the kinds a reply did not name', () => {
+    const text = searchesSection([
+      {
+        counts: { web_fetch_requests: 2 },
+        fetched: [
+          { url: 'https://m.de/sds.pdf', title: 'Safety data sheet' },
+          { url: 'https://m.de/gone', error: 'url_not_accessible' }
+        ]
+      },
+      { counts: { web_search_requests: 1, web_fetch_requests: 1 } }
+    ])
+    expect(text).toContain('PAGES THE REPLIES OPENED: Safety data sheet (https://m.de/sds.pdf)')
+    expect(text).not.toContain('m.de/gone')
+    expect(text).toContain(
+      'Further lookups whose search texts the provider does not report: 1 web search, 1 page fetched.'
+    )
+  })
+
   it('names fewer pages per search before it cuts the section', () => {
     const results = Array.from({ length: 10 }, (_, i) => ({
       url: `https://example.org/some/long/path/${i}`,

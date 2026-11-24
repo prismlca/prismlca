@@ -6,9 +6,9 @@
  */
 
 import type { AiProviderId, ReasoningEffort } from '../../../shared/aiDefaults'
-import type { CitedPage, WebSearch } from '../../../shared/ipc'
+import type { CitedPage, WebFetch, WebSearch } from '../../../shared/ipc'
 
-export type { CitedPage, WebSearch }
+export type { CitedPage, WebFetch, WebSearch }
 
 export type ProviderId = AiProviderId
 
@@ -59,8 +59,12 @@ export interface ChatMessage {
   tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>
   tool_call_id?: string
   name?: string
-  /** On an assistant tool-call turn: what its provider needs back verbatim (see ProviderReplay). */
+  /** On an assistant tool-call turn, or a closing answer that opened a page: what its provider needs back
+   *  verbatim (see ProviderReplay). */
   replay?: ProviderReplay
+  /** On such a closing answer: the turn's text outside it (questions answered, earlier rounds' prose, the
+   *  notes before and after it), which its blocks do not hold — sent after them (TurnText.aside). */
+  record?: string
   /** On an assistant message: the provider's web lookups inside the reply it records. A round that goes
    *  back without them — rebuilt from text and calls — names them ahead of its text (searchNote.ts), so a
    *  later request still knows what was searched and found. */
@@ -73,6 +77,8 @@ export interface WebRecord {
   counts?: Record<string, number>
   /** The searches, each with what it returned — where the provider names them. */
   searches?: WebSearch[]
+  /** The pages the reply opened — where the provider names them (Anthropic). */
+  fetched?: WebFetch[]
   /** The pages the reply cites. */
   cited?: CitedPage[]
 }
@@ -170,8 +176,9 @@ export interface Citation {
   /** The provider's own links to this page, when it cites through redirects (Google): what the model
    *  was shown, and so what it may quote as its source. `url` is the page they lead to. */
   via?: string[]
-  /** A page the search returned that no sentence of the reply cites (Anthropic names every result). The
-   *  research legs match a written source against these too; a list of what an answer cites leaves them out. */
+  /** A page the search returned or the fetch opened that no sentence of the reply cites (Anthropic names
+   *  every one). The research legs match a written source against these too; a list of what an answer
+   *  cites leaves them out. */
   uncited?: boolean
 }
 
@@ -204,6 +211,9 @@ export type StreamEvent =
   /** The provider's web searches in this reply, each with the pages it returned to the model. Only from a
    *  transport whose API names them (Anthropic, OpenAI); OpenRouter's server tools report counts only. */
   | { type: 'web_searches'; searches: WebSearch[] }
+  /** The pages the provider opened in this reply because their address stood in the conversation. Only
+   *  from a transport whose API names them (Anthropic); OpenRouter's page fetch reports a count only. */
+  | { type: 'web_fetches'; fetches: WebFetch[] }
   // A reasoning model sends its chain of thought before it writes a single visible token. We
   // deliberately do NOT surface the text — it is long, it is not an answer, and showing it invites
   // reading it as one. What we pass on is that it is happening and roughly how far along: enough to
@@ -248,8 +258,8 @@ export type StreamEvent =
         /** OpenRouter's generation id (`id` on the chunk that carried the usage): the handle for
          *  `GET /api/v1/generation?id=` when a usage figure looks wrong (V398). */
         generation_id?: string
-        /** OpenRouter: how many server-tool lookups ran inside this reply, by kind
-         *  (`web_search_requests`, `web_fetch_requests`, …). Absent when none did. */
+        /** How many server-tool lookups ran inside this reply, by kind (`web_search_requests`,
+         *  `web_fetch_requests`, …). Absent when none did. */
         server_tool_use?: Record<string, number>
       }
     }
@@ -267,7 +277,8 @@ export interface StreamChatOpts {
   /** Hard ceiling on this reply's length; see DEFAULT_MAX_TOKENS for why it is always sent. */
   maxTokens?: number
   /** Attach the provider's server-side web search to this request (OpenRouter: web_search +
-   *  web_fetch server tools; OpenAI: the Responses API web_search tool; Google: google_search). */
+   *  web_fetch server tools; Anthropic: web_search + web_fetch; OpenAI: the Responses API web_search
+   *  tool; Google: google_search + url_context, without function tools only). */
   webSearch?: boolean
   /** Ceiling on the provider-side web lookups per reply (`parameters.max_uses` on each OpenRouter server tool);
    *  undefined/0 = the provider's own default. Every lookup re-runs the whole conversation through the
