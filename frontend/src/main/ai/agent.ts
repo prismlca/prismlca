@@ -12,7 +12,9 @@ import {
   estimateChars,
   latestPlanResult,
   projectTokens,
-  type DroppedResult
+  sizeOfRound,
+  type DroppedResult,
+  type Measured
 } from './contextBudget'
 import {
   AiProviderError,
@@ -1012,6 +1014,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   )
   if (groups)
     aiLog(`focused tools: ${specs.length} of ${toolSpecs(model.vision).length} (${[...groups].join(', ')})`)
+  /** The tool definitions every request carries beside the messages (projectTokens). */
+  const toolChars = JSON.stringify(specs).length
   const turn = new TurnText((text) => deps.emit({ chatId: req.chatId, type: 'delta', text }))
   // The leftover lines stay visible where they took effect, as a delivered steer does.
   for (const t of leftover) turn.add(`> **You (earlier):** ${t.replace(/\n+/g, ' ')}\n\n`)
@@ -1051,8 +1055,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   let stallWrote = false
   /** The last request's size as the provider counted it, with the characters it was counted on
    *  (projectTokens). Null until the first count, and again after every compaction. */
-  let measured: { promptTokens: number; chars: number } | null = null
-  /** Characters of `messages` at the moment the current request went out. */
+  let measured: Measured | null = null
+  /** Characters of `messages` and the tool definitions at the moment the current request went out. */
   let charsAtRequest = 0
   /** The prompt size of the most recent round — the context meter's figure, kept with the turn. */
   let contextTokens: number | undefined
@@ -1139,16 +1143,16 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
     // saying nothing at all about 26 calls (V229, measured on the 2026-08-25 Ox Alpha run).
     onCost(model.id, costOf(usage))
     // The provider's count of what it was just sent: the one exact figure the context meter and the
-    // compaction trigger have (projectTokens) — its first pass where lookups made it bill several, whose
-    // sum is several copies of the conversation. An empty usage report leaves the previous reading.
-    if (typeof usage.prompt_tokens === 'number' && usage.prompt_tokens > 0) {
-      const sent = usage.context_tokens ?? usage.prompt_tokens
-      measured = { promptTokens: sent, chars: charsAtRequest }
-      contextTokens = sent
+    // compaction trigger have (projectTokens). Where lookups made it bill several passes, their sum is no
+    // size (sizeOfRound). An empty usage report leaves the previous reading.
+    const size = sizeOfRound(usage, charsAtRequest, measured)
+    if (size) {
+      measured = size.measured
+      contextTokens = size.tokens
       deps.emit({
         chatId: req.chatId,
         type: 'context',
-        tokens: sent,
+        tokens: size.tokens,
         window: model.contextTokens,
         budget: budgetTokens
       })
@@ -1284,7 +1288,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
 
       // Proactive: keep the conversation inside the window before we even ask — judged on the
       // provider's own token count where there is one (projectTokens), not on characters alone.
-      if (projectTokens(messages, measured) > budgetTokens) {
+      if (projectTokens(messages, measured, toolChars) > budgetTokens) {
         const dropped: DroppedResult[] = []
         const n = compactMessages(messages, KEEP_ROUNDS, dropped)
         if (n) {
@@ -1319,7 +1323,7 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
           // the round rather than accumulating across a turn.
           let reasoningChars = 0
           let reasoningSent = 0
-          charsAtRequest = estimateChars(messages)
+          charsAtRequest = estimateChars(messages) + toolChars
           telemetry.begin(round, charsAtRequest)
           for await (const ev of streamChat({
             model: model.id,

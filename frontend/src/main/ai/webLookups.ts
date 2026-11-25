@@ -1,9 +1,9 @@
 /**
  * The provider-side web lookups of one reply: in words, and as the chat records them.
  *
- * The provider runs its web search (and OpenRouter and Anthropic their page fetch) inside a reply.
- * OpenRouter reports only counters; Anthropic and OpenAI also name what was searched for, and Anthropic
- * which pages came back and which it opened. The chat's trace row, the round's log line and the log line of a research or review request all
+ * The provider runs its web search (and its page fetch) inside a reply. OpenRouter reports only counters;
+ * Anthropic and OpenAI also name what was searched for, which pages came back and which the reply opened.
+ * The chat's trace row, the round's log line and the log line of a research or review request all
  * name them the same way, from here; the round's record (`WebRecord`) rides on its message, where a later
  * request reads it back (providers/searchNote.ts) and the review dossier lists it.
  */
@@ -47,9 +47,10 @@ export function describeWebLookups(
   if (!total) return null
   const short = parts.join(', ')
   const preview =
-    `${short} — run by the provider inside this reply. Every lookup makes the model read the whole ` +
-    `conversation again, so this round's input tokens and cost cover ${total + 1} passes, not one. ` +
-    `Settings → AI → Chat caps how many lookups one reply may run.`
+    `${short} — run by the provider inside this reply. The model reads what they bring back, and with ` +
+    `some providers the whole conversation again after each one, so this round's input tokens and cost ` +
+    `are more than one pass over the conversation. Settings → AI → Chat caps how many lookups one reply ` +
+    `may run.`
   return { short, preview, total }
 }
 

@@ -33,6 +33,7 @@ import {
   type StreamChatOpts,
   type StreamEvent,
   type TranscribeOpts,
+  type WebFetch,
   type WebSearch
 } from './types'
 import { contextOverflow } from './contextOverflow'
@@ -209,8 +210,12 @@ interface OaiState {
   calls: Record<number, AccumTool>
   /** Paid web_search invocations, counted into the synthesized cost. */
   webSearches: number
+  /** The same calls by what they did (`lookupKind`), reported as the usage's `server_tool_use`. */
+  lookups: Record<string, number>
   /** What those searches looked for, and the pages they returned. */
   searched: WebSearch[]
+  /** The pages the reply opened (`open_page`), by address. */
+  opened: WebFetch[]
   /** Drops the raw citation markers a model leaves in text it writes between tool calls. */
   markers: CitationMarkerFilter
 }
@@ -237,6 +242,27 @@ function searchOf(action: unknown): WebSearch | null {
   return { ...(query ? { query } : {}), ...(sources ? { results: sources } : {}) }
 }
 
+/**
+ * The `server_tool_use` counter a `web_search_call` goes under, by its `action`: a search, a page opened, or
+ * text found in an opened page. Each is a lookup after which the model reads the conversation again.
+ */
+function lookupKind(action: unknown): string {
+  const type = action && typeof action === 'object' ? (action as { type?: unknown }).type : undefined
+  if (type === 'open_page') return 'web_fetch_requests'
+  if (type === 'find_in_page') return 'find_in_page_requests'
+  return 'web_search_requests'
+}
+
+/** The reply's lookups as `server_tool_use` counts, or null when it ran none. A call whose done item never
+ *  came is counted as a search, so the counts cover every call the fee covers. */
+function lookupCounts(state: OaiState): Record<string, number> | null {
+  const counts = { ...state.lookups }
+  const named = Object.values(counts).reduce((a, n) => a + n, 0)
+  if (state.webSearches > named)
+    counts.web_search_requests = (counts.web_search_requests ?? 0) + state.webSearches - named
+  return Object.keys(counts).length ? counts : null
+}
+
 /** A text event for what the marker filter let through — none for an empty piece. */
 function pushText(events: StreamEvent[], text: string): void {
   if (text) events.push({ type: 'delta', text })
@@ -249,8 +275,11 @@ function finishUsage(state: OaiState, response: any): StreamEvent {
   const cached: number = u.input_tokens_details?.cached_tokens ?? 0
   const completion: number | undefined = u.output_tokens
   const entry = getModels().find((m) => m.id === state.model && m.provider === 'openai')
-  // Above 272K input tokens the whole request costs the long-prompt prices. A reply that searched may
-  // report its passes summed and be placed in the band too early: too high rather than too low.
+  // Above 272K input tokens the whole request costs the long-prompt prices. A reply that searched reports
+  // more than it was sent — what it read after its lookups, and with many lookups repeated passes: 13
+  // searches on a prompt of 5k tokens reported 243k input tokens, 195k of them from the cache — and may be
+  // placed in the band too early: too high rather than too low. Its lookups go with the figures, so the
+  // agent knows the figure is no size.
   const pricing = entry && typeof prompt === 'number' ? priceFor(entry, prompt) : undefined
   let cost: number | undefined
   if (pricing && typeof prompt === 'number' && typeof completion === 'number') {
@@ -261,13 +290,15 @@ function finishUsage(state: OaiState, response: any): StreamEvent {
         1e6 +
       state.webSearches * OPENAI_WEB_SEARCH_USD_PER_CALL
   }
+  const lookups = lookupCounts(state)
   return {
     type: 'usage',
     usage: {
       ...(cost != null ? { cost, estimated: true } : {}),
       prompt_tokens: prompt,
       completion_tokens: completion,
-      prompt_tokens_details: { cached_tokens: cached }
+      prompt_tokens_details: { cached_tokens: cached },
+      ...(lookups ? { server_tool_use: lookups } : {})
     }
   }
 }
@@ -292,7 +323,7 @@ export const openaiTransport: ChatTransport<OaiState> = {
     if (opts.webSearch)
       tools.push({
         type: 'web_search',
-        // The Responses tool filters by allow list only (up to 100 hosts); no block list exists.
+        // Only the allow list is sent (up to 100 hosts), as under OpenRouter; the tool's block list is not.
         ...(opts.webDomains?.length ? { filters: { allowed_domains: opts.webDomains } } : {})
       })
 
@@ -327,7 +358,9 @@ export const openaiTransport: ChatTransport<OaiState> = {
     sentProvider: false,
     calls: {},
     webSearches: 0,
+    lookups: {},
     searched: [],
+    opened: [],
     markers: new CitationMarkerFilter()
   }),
 
@@ -395,8 +428,12 @@ export const openaiTransport: ChatTransport<OaiState> = {
             arguments: String(item.arguments ?? '')
           }
         } else if (item?.type === 'web_search_call') {
+          const kind = lookupKind(item.action)
+          state.lookups[kind] = (state.lookups[kind] ?? 0) + 1
           const searched = searchOf(item.action)
           if (searched) state.searched.push(searched)
+          const url = kind === 'web_fetch_requests' ? (item.action as { url?: unknown }).url : undefined
+          if (typeof url === 'string' && url) state.opened.push({ url })
         }
         break
       }
@@ -435,6 +472,7 @@ export const openaiTransport: ChatTransport<OaiState> = {
     logUnsendableArguments('OpenAI', assembled)
     return [
       ...(state.searched.length ? [{ type: 'web_searches' as const, searches: state.searched }] : []),
+      ...(state.opened.length ? [{ type: 'web_fetches' as const, fetches: state.opened }] : []),
       ...(assembled.length ? [{ type: 'tool_calls' as const, calls: assembled }] : [])
     ]
   }

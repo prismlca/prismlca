@@ -8,6 +8,7 @@
 import { stubForPartText } from './attachments'
 import { aiLog } from './aiLog'
 import { embeddedFileTokens } from './mediaTokens'
+import { searchNote } from './providers/searchNote'
 import { lastUserIndex, replayDroppable, type ChatMessage } from './providers/types'
 import { acceptedPlanAnswer } from './tools/groups/plan'
 
@@ -40,13 +41,49 @@ export function contextBudgetTokens(contextTokens?: number): number {
  * dropped the moment the messages are rewritten (compaction), because it then describes a
  * conversation that no longer exists; the guess carries the round until the next count arrives.
  */
-export function projectTokens(
-  messages: ChatMessage[],
-  measured: { promptTokens: number; chars: number } | null
-): number {
-  const chars = estimateChars(messages)
+export function projectTokens(messages: ChatMessage[], measured: Measured | null, toolChars = 0): number {
+  return projectChars(estimateChars(messages) + toolChars, measured)
+}
+
+/** A provider's count of a request, with the characters it counted: the messages' and the tool
+ *  definitions' (`toolChars`), which go with every request — a count includes them, and before the first
+ *  count they are estimated with the rest. */
+export interface Measured {
+  promptTokens: number
+  chars: number
+}
+
+/** {@link projectTokens} for messages already measured in characters. */
+function projectChars(chars: number, measured: Measured | null): number {
   if (!measured) return Math.round(chars / 4)
   return measured.promptTokens + Math.round(Math.max(0, chars - measured.chars) / 4)
+}
+
+/**
+ * What one round's usage report says about the size of the conversation: the count the projection builds
+ * on from now on, and the context meter's figure. Null when the report counts no prompt.
+ *
+ * The provider counts the prompt it was sent, except in a reply that ran web lookups on its side. There the
+ * count also holds what the model read after the lookups: their results, and passes over the conversation
+ * again (OpenRouter billed 375k prompt tokens for an 85k conversation; GPT-6 Luna under OpenAI reported 46k
+ * for a 29k request after three lookups). Anthropic also names the first pass, the conversation as sent
+ * (`context_tokens`); OpenAI and OpenRouter do not, so their figure is no size. The last real count then
+ * stays and the round is estimated from it, never above the figure. Under those two nothing of the lookups
+ * is sent again but the reply's text and a note of the searches, so the estimate is also what the next
+ * request builds on.
+ */
+export function sizeOfRound(
+  usage: { prompt_tokens?: number; context_tokens?: number; server_tool_use?: Record<string, number> },
+  charsAtRequest: number,
+  measured: Measured | null
+): { measured: Measured | null; tokens: number } | null {
+  const prompt = usage.prompt_tokens
+  if (typeof prompt !== 'number' || prompt <= 0) return null
+  const lookedUp = Object.values(usage.server_tool_use ?? {}).some((n) => Number(n) > 0)
+  if (usage.context_tokens === undefined && lookedUp)
+    return { measured, tokens: Math.min(prompt, projectChars(charsAtRequest, measured)) }
+  const sent = usage.context_tokens ?? prompt
+  return { measured: { promptTokens: sent, chars: charsAtRequest }, tokens: sent }
 }
 
 const OMITTED_TOOL = '[earlier tool result omitted to fit the context]'
@@ -80,8 +117,10 @@ export function estimateChars(messages: ChatMessage[]): number {
     n += typeof m.content === 'string' ? m.content.length : m.content ? sizeOf(m.content) : 0
     if (m.tool_calls) n += JSON.stringify(m.tool_calls).length
     // A provider's reasoning blocks travel with their round and count against the window like text, and
-    // so does the turn's text that goes with a closing round's blocks.
+    // so does the turn's text that goes with a closing round's blocks. A round sent without them carries
+    // the record of its web lookups ahead of its text instead (searchNote.ts).
     if (m.replay) n += sizeOf(m.replay) + (m.record?.length ?? 0)
+    else if (m.web) n += searchNote(m.web)?.length ?? 0
   }
   return n
 }
