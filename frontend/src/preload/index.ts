@@ -14,6 +14,7 @@ export interface DownloadOutcome {
 // type; that was wrong for type-only imports, which are erased at compile time.)
 import type {
   AttachmentMeta,
+  BackendExit,
   ChapterReview,
   KeyStatus,
   WriteAllOutcome,
@@ -86,6 +87,9 @@ const api = {
       status: number
       body: unknown
     }>,
+  /** How the backend process ended, or null while it runs — asked after a request failed, to tell a
+   *  stopped engine (only a restart helps) from one that did not answer this once. */
+  backendExit: () => ipcRenderer.invoke('prism:backendExit') as Promise<BackendExit | null>,
   pickDirectory: () => ipcRenderer.invoke('prism:pickDirectory') as Promise<string | null>,
   /** Write several rendered files into one folder the user picks once (Results → Save charts).
    *  null = the user cancelled the folder dialog. */

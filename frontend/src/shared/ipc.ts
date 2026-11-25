@@ -607,3 +607,15 @@ export function ipcErrorReason(e: unknown, fallback: string): string {
     .trim()
   return unwrapped || fallback
 }
+
+/**
+ * How the backend process ended, as the main process saw it; the bridge answers null while it runs.
+ * The shell never starts the backend again, so once this is set nothing answers until PrismLCA is
+ * restarted — which is what a view that has lost contact needs to know before it says so.
+ */
+export interface BackendExit {
+  /** The exit code; null when a signal ended the process. */
+  code: number | null
+  /** The signal that ended it (`SIGKILL` is what an out-of-memory killer sends); null after an exit. */
+  signal: string | null
+}

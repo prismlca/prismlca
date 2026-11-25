@@ -30,7 +30,8 @@ beforeEach(() => {
   showItemInFolder.mockClear()
   registerCore({
     apiRequest: async (method, path) => ({ status: 200, body: { method, path } }),
-    getStatus: () => ({ phase: 'ready' })
+    getStatus: () => ({ phase: 'ready' }),
+    getBackendExit: () => null
   })
 })
 
@@ -72,7 +73,8 @@ describe('opening a chat attachment', () => {
           ? { status, body: { path: `${SOURCES}/${stored}` } }
           : { status: 404, body: { detail: `No stored attachment '${id}'.` } }
       },
-      getStatus: () => ({ phase: 'ready' })
+      getStatus: () => ({ phase: 'ready' }),
+      getBackendExit: () => null
     })
   }
   const open = (id: string, reveal?: boolean): Promise<{ path?: string; error?: string }> =>
