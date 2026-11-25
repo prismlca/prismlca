@@ -294,7 +294,7 @@ export const TOOL_META: Record<string, { label: string; hint: string; group: str
   },
   explain_result: {
     label: 'Explain a result',
-    hint: 'Contribution tree or top elementary flows behind a score.',
+    hint: 'Contribution tree or top elementary flows behind a score, or why two results differ.',
     group: 'Calculate'
   },
   model_info: {

@@ -223,7 +223,7 @@ export const paramsTools: Tool[] = [
       function: {
         name: 'compare_scenarios',
         description:
-          'Score an activity for the baseline and one or more of the active model\'s scenarios. Returns the baseline first, then each scenario. Pass "methods" (a list of tuples) to score SEVERAL indicators in one call — a sensitivity reported for one indicator because the others would have cost a call each is a thinner study, not a decision. Get scenario ids from list_scenarios; get the method tuples from list_methods. A result row with "replaces_formula" names the parameters whose own formula that scenario\'s override replaced.',
+          'Score an activity for the baseline and one or more of the active model\'s scenarios. Returns the baseline first, then each scenario. Pass "methods" (a list of tuples) to score SEVERAL indicators in one call — a sensitivity reported for one indicator because the others would have cost a call each is a thinner study, not a decision. Get scenario ids from list_scenarios; get the method tuples from list_methods. A result row with "replaces_formula" names the parameters whose own formula that scenario\'s override replaced. Why a scenario moved the result — its difference split onto the exchanges it changed — is explain_result mode="difference".',
         parameters: obj(
           {
             code: str('Activity code (the reference product to score).'),

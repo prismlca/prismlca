@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-25",
+    "title": "Why two results differ, split exactly",
+    "details": "Ask the assistant why a scenario differs from the baseline, or a copied model from its original, and it splits the difference onto the inputs, credits and emissions that changed, largest first, each with its share. The changes add up to the difference, and whatever they leave over is reported. Agents connected over MCP get the same answer."
+  },
+  {
     "date": "2026-11-23",
     "title": "Assistant opens linked pages with Anthropic and Google",
     "details": "With web search on, the assistant now opens a page whose address is in the chat, such as a safety data sheet you paste or a page a search found, with an Anthropic key too; with Google, its research helpers open the addresses they are given. The pages it opened are listed in the turn's web lookups and under the answer as \"Pages opened\"."

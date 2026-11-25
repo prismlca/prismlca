@@ -225,10 +225,10 @@ export const calcTools: Tool[] = [
       function: {
         name: 'explain_result',
         description:
-          'Explain WHY a score is what it is. mode="tree" gives the contribution tree (which processes carry the impact; optional aggregate_by="tag:<dimension>" or "geo" for a per-phase breakdown, and "scenario" to see the tree under a scenario\'s overrides); mode="flows" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode="inventory" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass ("how many grams of glycerine are in one tube"; scope="foreground" for the model\'s own recipe, "query" for one material); mode="matrix" is the HOTSPOT MATRIX — the processes down the rows, the indicators in "methods" across, each cell a process\'s OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use "matrix" for the hotspot chapter and for any trade-off question across several indicators; "tree" for where a single indicator\'s impact sits in the supply chain. Pass "methods" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.',
+          'Explain WHY a score is what it is. mode="tree" gives the contribution tree (which processes carry the impact; optional aggregate_by="tag:<dimension>" or "geo" for a per-phase breakdown, and "scenario" to see the tree under a scenario\'s overrides); mode="flows" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode="inventory" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass ("how many grams of glycerine are in one tube"; scope="foreground" for the model\'s own recipe, "query" for one material); mode="matrix" is the HOTSPOT MATRIX — the processes down the rows, the indicators in "methods" across, each cell a process\'s OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use "matrix" for the hotspot chapter and for any trade-off question across several indicators; "tree" for where a single indicator\'s impact sits in the supply chain. mode="difference" says WHY one result differs from another: the difference split exactly onto the inputs, credits and emissions that changed, largest first, each with its contribution and share — a scenario against the baseline ("scenario", or "scenarios" for several), or a copy of a model against the model it was copied from ("against": {"database": "<original>"}). The changes add up to the difference; "not_explained" is the rest. Each change is valued with all the others in place, so it is not what that change would do on its own. Pass "methods" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.',
         parameters: obj(
           {
-            mode: str('One of: tree | flows | inventory | matrix.'),
+            mode: str('One of: tree | flows | inventory | matrix | difference.'),
             database: str('Model/database name; omit for the model open on the canvas.'),
             code: str('Activity code.'),
             method: strArr('LCIA method tuple.'),
@@ -245,20 +245,32 @@ export const calcTools: Tool[] = [
                 'call gives you both views — asking again without it repeats work you already have.'
             ),
             scenario: str(
-              'mode=tree only: a scenario id from list_scenarios — the tree is then computed with that ' +
-                "scenario's parameter overrides. This is how you show WHERE a scenario's difference " +
-                'comes from; compare_scenarios only gives the totals.'
+              'mode=tree or difference: a scenario id from list_scenarios. tree: the tree computed with that ' +
+                "scenario's parameter overrides. difference: the scenario whose difference to the baseline (or to " +
+                '"against") is split onto what it changed — the answer to WHY a scenario moved the result; ' +
+                'compare_scenarios only gives the totals.'
             ),
             scenarios: {
               type: 'array',
               description:
-                'mode=tree only: several scenario ids at once, one tree each, in order — and pass ' +
+                'mode=tree or difference: several scenario ids at once, in order. tree: one tree each — pass ' +
                 '"aggregate_by" with them to get the phases per scenario, which is the comparison a ' +
-                'sensitivity chapter is written from. Include the baseline by leaving one entry empty.',
+                'sensitivity chapter is written from; include the baseline by leaving one entry empty. ' +
+                'difference: each scenario split against the baseline, in one call.',
               items: str('Scenario id from list_scenarios; "" for the baseline.')
             },
+            against: {
+              ...obj({
+                database: str("Model the reference is in — a copy's original model."),
+                code: str('Process code there; omit it to take the process that pairs with "code".'),
+                scenario: str('A scenario of the reference, to split against it instead of the baseline.')
+              }),
+              description:
+                'mode=difference only: what the result is compared with. Omit it for the same process ' +
+                'without a scenario (the baseline).'
+            },
             top_n: num(
-              'How many rows to return: flows for mode="flows" (default 20), contributors for ' +
+              'How many rows to return: changes for mode="difference" (default 10), flows for mode="flows" (default 20), contributors for ' +
                 'mode="tree" (default 25), processes for mode="matrix" (default 30), datasets for mode="inventory" (default 40). The tree is also cut at a 1 % contribution and a depth ' +
                 'limit, so a process missing from it is BELOW the cutoff, not absent from the model.'
             ),
@@ -301,6 +313,22 @@ export const calcTools: Tool[] = [
     run: async (a0, ctx) => {
       const a = withActiveDb(a0, ctx)
       if ('error' in a) return S(a)
+      // One request for every scenario and indicator: each scenario window is opened once for all of them.
+      if (a.mode === 'difference')
+        return S(
+          await ctx.api('POST', '/api/v1/calc/difference', {
+            database: a.database,
+            code: a.code,
+            method: a.method,
+            methods: Array.isArray(a.methods) && a.methods.length ? a.methods : undefined,
+            amount: a.amount ?? 1.0,
+            scenario: a.scenario || undefined,
+            scenarios: Array.isArray(a.scenarios) && a.scenarios.length ? a.scenarios : undefined,
+            against: a.against && typeof a.against === 'object' ? a.against : undefined,
+            top_n: a.top_n || undefined,
+            partial: true
+          })
+        )
       // The matrix takes ALL methods in one call — that is its point — so it goes before the per-method batching.
       if (a.mode === 'matrix')
         return delegate({ matrix: 'contribution_matrix' }, { ...a, action: 'matrix' }, ctx)

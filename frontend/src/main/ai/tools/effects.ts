@@ -157,7 +157,7 @@ export const TOOL_EFFECTS: Record<string, Record<string, ToolEffect>> = {
   // external MCP session undoes its own steps freely and needs the user's card for any other step.
   // "Ask before every write" still asks.
   history: { undo: 'write', redo: 'write' },
-  explain_result: { tree: 'read', flows: 'read', inventory: 'read', matrix: 'read' },
+  explain_result: { tree: 'read', flows: 'read', inventory: 'read', matrix: 'read', difference: 'read' },
   // SetStudyMetaCommand is undoable.
   model_info: { get: 'read', set: 'write' },
   // Every exchange command is undoable; replace_input is add + remove.

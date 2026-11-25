@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from prism_lca.api.v1.deps import MethodRef, require_token
 from prism_lca.engine import (
     calc_jobs,
+    difference,
     inventory_per_unit,
     lca,
     method_lookup,
@@ -379,6 +380,44 @@ def compare(request: Request, body: CompareRequest) -> dict:
     except lca.CalcCancelled as e:
         raise PrismError("Superseded by a newer request.", code="calc_superseded", status_code=409,
                          situational=True) from e
+
+
+class DifferenceAgainst(BaseModel):
+    """What the result is compared with; every field left out is the subject's own."""
+
+    database: str | None = None
+    #: Left out for another model: the process there that pairs with the subject's.
+    code: str | None = None
+    scenario: str | None = None
+    amount: float | None = None
+
+
+class DifferenceRequest(BaseModel):
+    database: str
+    code: str
+    method: MethodRef | None = None
+    methods: list[MethodRef] | None = None
+    amount: float = 1.0
+    #: The subject under a scenario; ``scenarios`` for several, one split each ("" = the model as it stands).
+    scenario: str | None = None
+    scenarios: list[str] | None = None
+    #: Absent: the same process as it stands, without a scenario.
+    against: DifferenceAgainst | None = None
+    top_n: int = difference.TOP_N
+    partial: bool = False
+
+
+@router.post("/difference", summary="Split the difference between two results exactly onto what changed")
+def split_difference(body: DifferenceRequest) -> dict:
+    methods = list(body.methods or ([body.method] if body.method else []))
+    return difference.explain(
+        ScenarioStore(), body.database, body.code, methods,
+        amount=body.amount,
+        scenario_ids=list(body.scenarios) if body.scenarios else [body.scenario],
+        against=body.against.model_dump(exclude_none=True) if body.against else None,
+        partial=body.partial,
+        top_n=max(1, min(int(body.top_n), 200)),
+    )
 
 
 class CompareStackedRequest(BaseModel):
