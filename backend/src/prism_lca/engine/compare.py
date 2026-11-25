@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from prism_lca import _log
-from prism_lca.engine import lca, method_lookup, param_window, params
+from prism_lca.engine import compare_inventory, lca, method_lookup, param_window, params
 from prism_lca.errors import PrismError, scenario_calc_error
 
 
@@ -13,6 +13,7 @@ def compare(
     should_cancel=None,
     stacked_dimensions: list[str] | None = None,
     partial: bool = False,
+    inventory: bool = False,
 ) -> dict:
     """subjects: [{database, code, label?, scenario?, amount?}]; methods: [[str,...], ...].
     ``should_cancel`` is checked before every (subject, method) solve — cross-database
@@ -25,7 +26,11 @@ def compare(
     ``partial``: the methods are resolved before anything is computed; one that does not resolve is named
     under ``not_computed`` with its way out, and every subject is scored for the others. Only when none
     resolves is it an error. Without it, the first wrong method fails the whole matrix — the Results page
-    wants that: it computes what a user picked, and a row quietly missing there would go unnoticed."""
+    wants that: it computes what a user picked, and a row quietly missing there would go unnoticed.
+
+    ``inventory`` adds each subject's life cycle inventory (``compare_inventory``) to its row, as amounts keyed
+    by flow id, and names the flows once under ``inventory_flows``. It is read in the same pass for the reason
+    the stacked split is: a scenario subject's window is paid once."""
     not_computed: list[dict] = []
     if partial:
         found, not_computed = method_lookup.resolve_methods(methods)
@@ -36,15 +41,26 @@ def compare(
     units: dict[str, str] = {}
     rows: list[dict] = []
     stacked: list[dict] = []
+    flow_names: dict[int, dict] = {}
 
     def _row(s: dict) -> dict:
         db, code = s["database"], s["code"]
         amount = float(s.get("amount", 1.0))
         scores: dict[str, float] = {}
-        for m in methods:
+        amounts: dict[int, float] = {}
+
+        def read(system, _method) -> None:
+            # Off the last method's solve, while the system holds this subject's demand (and a scenario subject's
+            # window): the scores' own calculation, not a second one. The flows are named under the same lock,
+            # which a workspace switch waits for, so the names come from the workspace the amounts do.
+            amounts.update(compare_inventory.inventory_of(system))
+            flow_names.update(compare_inventory.flow_details(amounts.keys() - flow_names.keys()))
+
+        for i, m in enumerate(methods):
             if should_cancel and should_cancel():
                 raise lca.CalcCancelled()
-            res = lca.compute_lcia(db, code, list(m), amount)
+            last = inventory and i == len(methods) - 1
+            res = lca.compute_lcia(db, code, list(m), amount, observe=read if last else None)
             key = " · ".join(m)
             scores[key] = res["score"]
             units[key] = res["unit"]
@@ -60,8 +76,11 @@ def compare(
                 raise
             except Exception as exc:  # noqa: BLE001 — any failure means "ask for this split on its own"
                 _log.swallowed(exc, "compare: stacked split")
-        return {"label": s.get("label") or code, "database": db, "code": code,
-                "scenario": s.get("scenario"), "scores": scores}
+        row = {"label": s.get("label") or code, "database": db, "code": code,
+               "scenario": s.get("scenario"), "scores": scores}
+        if inventory:
+            row["inventory"] = {str(flow): value for flow, value in amounts.items()}
+        return row
 
     # Only touch parameters (which invalidates the factorisation cache) when a scenario is involved;
     # a plain multi-indicator comparison then reuses one factorisation across all subjects × methods.
@@ -110,6 +129,8 @@ def compare(
         out["not_computed"] = not_computed
     if stacked_dimensions:
         out["stacked"] = _merged_stacked(stacked, stacked_dimensions)
+    if inventory:
+        out["inventory_flows"] = {str(k): v for k, v in flow_names.items()}
     return out
 
 

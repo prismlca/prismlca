@@ -80,12 +80,29 @@ class CompareSubjectRow(BaseModel):
     total: bool = False
 
 
+class LciFlowRow(BaseModel):
+    flow: str
+    categories: list[str] = []
+    unit: str | None = None
+    #: One per subject, in the order of `LciTable.subjects`.
+    amounts: list[float | None] = []
+
+
+class LciTable(BaseModel):
+    """The life cycle inventory of the compared subjects: one column per subject, one row per flow."""
+
+    subjects: list[str]
+    flows: list[LciFlowRow]
+
+
 class CompareExportRequest(BaseModel):
     columns: list[CompareColumn]
     subjects: list[CompareSubjectRow]
     #: Header for the group column, e.g. "Life-cycle phase". Absent = no such column, one row per
     #: subject, which is what the plain export has always been.
     group_header: str | None = None
+    #: The inventory of the same subjects, written to a second sheet "LCI". Absent = no such sheet.
+    inventory: LciTable | None = None
     filename: str = "prism-results"
 
 
@@ -95,8 +112,20 @@ def export_compare_matrix(body: CompareExportRequest) -> dict:
         [c.model_dump() for c in body.columns],
         [s.model_dump() for s in body.subjects],
         group_header=body.group_header,
+        inventory=body.inventory.model_dump() if body.inventory else None,
     )
     stem = (body.filename or "prism-results").strip() or "prism-results"
+    return {"filename": f"{stem}.xlsx", "base64": base64.b64encode(data).decode("ascii")}
+
+
+class LciExportRequest(LciTable):
+    filename: str = "prism-lci"
+
+
+@router.post("/lci", summary="Export the life cycle inventory of compared subjects as XLSX (base64)")
+def export_lci(body: LciExportRequest) -> dict:
+    data = export.lci_xlsx(body.model_dump(exclude={"filename"}))
+    stem = _safe_stem((body.filename or "prism-lci").strip())
     return {"filename": f"{stem}.xlsx", "base64": base64.b64encode(data).decode("ascii")}
 
 

@@ -33,6 +33,8 @@ import { useResultsOpening } from './results/useResultsOpening'
 import { buildColorMap } from './results/subjectColors'
 import { familiesOffered, resolveSplit } from './results/splitBy'
 import { comparisonCharts } from './results/comparisonCharts'
+import { resultsWorkbook } from './results/resultsWorkbook'
+import { LciTable } from './results/LciTable'
 import { fmtPct, pngName, ZOOM_SCALE } from './results/chartUtils'
 import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
 import { useIndicatorPicking } from './results/useIndicatorPicking'
@@ -347,61 +349,18 @@ export default function Results({
   }, [stackData, orderedPicked, showValues, valueDecimals, useDiff, refCode, keyOf])
   const stackTopLabels = (pKey: string): string[] => stackTopLabelMap.get(pKey) ?? []
 
-  /** What the "Split by" choice is called in a document — the sheet's group column is headed with it. */
-  const splitLabel = (): string =>
-    stackBy === 'isic'
-      ? 'ISIC classification'
-      : stackBy === 'cpc'
-        ? 'CPC classification'
-        : stackBy.startsWith('tag:')
-          ? stackBy.slice(4)
-          : stackBy
-
   const exportXlsx = (): void => {
     if (!matrix) return
-    const columns = orderedPicked.map((p) => ({ key: p.key, family: p.family, label: p.label, unit: p.unit }))
-    // Disaggregated when the stacked switch is on and the split has actually been computed: one row
-    // per part of each subject, then the row that adds them up. The parts come from the stacked
-    // calculation the chart already made, so the export costs nothing extra and can never disagree
-    // with the bars beside it.
-    const split = stacked && stackData ? stackKeys : null
-    const rows =
-      split && split.length
-        ? stackData!.subjects.flatMap((s) => {
-            const label = s.label ?? keyOf(s)
-            const part = (k: string): Record<string, number | null> =>
-              Object.fromEntries(
-                orderedPicked.map((p) => [
-                  p.key,
-                  (s.methods[p.key]?.dims[stackBy] ?? []).find((g) => g.key === k)?.impact ?? 0
-                ])
-              )
-            // A part that is zero across every indicator for THIS subject is not its part at all —
-            // the key list is the union over all subjects, and printing forty empty rows per subject
-            // is how a disaggregated sheet stops being readable.
-            const used = split.filter((k) => Object.values(part(k)).some((v) => v !== 0))
-            return [
-              ...used.map((k) => ({ label, group: stackLabel(k), scores: part(k) })),
-              {
-                label,
-                group: 'Total',
-                total: true,
-                scores: Object.fromEntries(orderedPicked.map((p) => [p.key, s.methods[p.key]?.total ?? null]))
-              }
-            ]
-          })
-        : matrix.subjects.map((s) => ({
-            label: s.label,
-            scores: Object.fromEntries(orderedPicked.map((p) => [p.key, s.scores[p.key] ?? null]))
-          }))
+    const split =
+      stacked && stackData ? { data: stackData, keys: stackKeys, by: stackBy, label: stackLabel } : null
     void (async () => {
       try {
-        const r = await api<{ filename: string; base64: string }>('POST', '/api/v1/export/compare-matrix', {
-          columns,
-          subjects: rows,
-          group_header: split && split.length ? splitLabel() : null,
-          filename: 'prism-results'
-        })
+        const body = resultsWorkbook(matrix, orderedPicked, split, keyOf)
+        const r = await api<{ filename: string; base64: string }>(
+          'POST',
+          '/api/v1/export/compare-matrix',
+          body
+        )
         deliverBase64(r.base64, r.filename, XLSX_MIME)
       } catch (e) {
         setErr(errMsg(e))
@@ -1010,6 +969,7 @@ export default function Results({
                   ))}
                 </>
               )}
+              <LciTable matrix={matrix} onError={setErr} />
             </>
           ) : null}
 
