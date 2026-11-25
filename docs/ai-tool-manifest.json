@@ -883,7 +883,7 @@
       "name": "compare_scenarios",
       "label": "Compare scenarios",
       "group": "Scenarios",
-      "description": "Score an activity for the baseline and one or more of the active model's scenarios. Returns the baseline first, then each scenario. Pass \"methods\" (a list of tuples) to score SEVERAL indicators in one call — a sensitivity reported for one indicator because the others would have cost a call each is a thinner study, not a decision. Get scenario ids from list_scenarios; get the method tuples from list_methods. A result row with \"replaces_formula\" names the parameters whose own formula that scenario's override replaced.",
+      "description": "Score an activity for the baseline and one or more of the active model's scenarios. Returns the baseline first, then each scenario. Pass \"methods\" (a list of tuples) to score SEVERAL indicators in one call — a sensitivity reported for one indicator because the others would have cost a call each is a thinner study, not a decision. Get scenario ids from list_scenarios; get the method tuples from list_methods. A result row with \"replaces_formula\" names the parameters whose own formula that scenario's override replaced. Why a scenario moved the result — its difference split onto the exchanges it changed — is explain_result mode=\"difference\".",
       "surface": "api",
       "mutating": false,
       "parameters": {
@@ -2104,7 +2104,7 @@
       "name": "explain_result",
       "label": "Explain a result",
       "group": "Calculate",
-      "description": "Explain WHY a score is what it is. mode=\"tree\" gives the contribution tree (which processes carry the impact; optional aggregate_by=\"tag:<dimension>\" or \"geo\" for a per-phase breakdown, and \"scenario\" to see the tree under a scenario's overrides); mode=\"flows\" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode=\"inventory\" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass (\"how many grams of glycerine are in one tube\"; scope=\"foreground\" for the model's own recipe, \"query\" for one material); mode=\"matrix\" is the HOTSPOT MATRIX — the processes down the rows, the indicators in \"methods\" across, each cell a process's OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use \"matrix\" for the hotspot chapter and for any trade-off question across several indicators; \"tree\" for where a single indicator's impact sits in the supply chain. Pass \"methods\" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.",
+      "description": "Explain WHY a score is what it is. mode=\"tree\" gives the contribution tree (which processes carry the impact; optional aggregate_by=\"tag:<dimension>\" or \"geo\" for a per-phase breakdown, and \"scenario\" to see the tree under a scenario's overrides); mode=\"flows\" gives the top elementary flows (which emissions/resources drive it; direct_split=true says per flow how much the activity emits itself; phase={dimension, value} keeps only the flows of that tag value, e.g. the emissions that make up the Raw materials phase — a phase may be spread over several processes and inputs); mode=\"inventory\" gives QUANTITIES rather than impacts — how much of every material one functional unit pulls in, which is the read for checking a recipe against a declared mass (\"how many grams of glycerine are in one tube\"; scope=\"foreground\" for the model's own recipe, \"query\" for one material); mode=\"matrix\" is the HOTSPOT MATRIX — the processes down the rows, the indicators in \"methods\" across, each cell a process's OWN impact and share; a process is in it when it reaches the cutoff in at least one indicator and then carries its full row, so a material at 0.3 % of climate change but 40 % of land use is visible in both. Use \"matrix\" for the hotspot chapter and for any trade-off question across several indicators; \"tree\" for where a single indicator's impact sits in the supply chain. mode=\"difference\" says WHY one result differs from another: the difference split exactly onto the inputs, credits and emissions that changed, largest first, each with its contribution and share — a scenario against the baseline (\"scenario\", or \"scenarios\" for several), or a copy of a model against the model it was copied from (\"against\": {\"database\": \"<original>\"}). The changes add up to the difference; \"not_explained\" is the rest. Each change is valued with all the others in place, so it is not what that change would do on its own. Pass \"methods\" (a list of tuples) to explain SEVERAL indicators in one call instead of one call per indicator. Get the method tuples from list_methods.",
       "surface": "api",
       "mutating": false,
       "parameters": {
@@ -2112,7 +2112,7 @@
         "properties": {
           "mode": {
             "type": "string",
-            "description": "One of: tree | flows | inventory | matrix."
+            "description": "One of: tree | flows | inventory | matrix | difference."
           },
           "database": {
             "type": "string",
@@ -2150,19 +2150,38 @@
           },
           "scenario": {
             "type": "string",
-            "description": "mode=tree only: a scenario id from list_scenarios — the tree is then computed with that scenario's parameter overrides. This is how you show WHERE a scenario's difference comes from; compare_scenarios only gives the totals."
+            "description": "mode=tree or difference: a scenario id from list_scenarios. tree: the tree computed with that scenario's parameter overrides. difference: the scenario whose difference to the baseline (or to \"against\") is split onto what it changed — the answer to WHY a scenario moved the result; compare_scenarios only gives the totals."
           },
           "scenarios": {
             "type": "array",
-            "description": "mode=tree only: several scenario ids at once, one tree each, in order — and pass \"aggregate_by\" with them to get the phases per scenario, which is the comparison a sensitivity chapter is written from. Include the baseline by leaving one entry empty.",
+            "description": "mode=tree or difference: several scenario ids at once, in order. tree: one tree each — pass \"aggregate_by\" with them to get the phases per scenario, which is the comparison a sensitivity chapter is written from; include the baseline by leaving one entry empty. difference: each scenario split against the baseline, in one call.",
             "items": {
               "type": "string",
               "description": "Scenario id from list_scenarios; \"\" for the baseline."
             }
           },
+          "against": {
+            "type": "object",
+            "properties": {
+              "database": {
+                "type": "string",
+                "description": "Model the reference is in — a copy's original model."
+              },
+              "code": {
+                "type": "string",
+                "description": "Process code there; omit it to take the process that pairs with \"code\"."
+              },
+              "scenario": {
+                "type": "string",
+                "description": "A scenario of the reference, to split against it instead of the baseline."
+              }
+            },
+            "required": [],
+            "description": "mode=difference only: what the result is compared with. Omit it for the same process without a scenario (the baseline)."
+          },
           "top_n": {
             "type": "number",
-            "description": "How many rows to return: flows for mode=\"flows\" (default 20), contributors for mode=\"tree\" (default 25), processes for mode=\"matrix\" (default 30), datasets for mode=\"inventory\" (default 40). The tree is also cut at a 1 % contribution and a depth limit, so a process missing from it is BELOW the cutoff, not absent from the model."
+            "description": "How many rows to return: changes for mode=\"difference\" (default 10), flows for mode=\"flows\" (default 20), contributors for mode=\"tree\" (default 25), processes for mode=\"matrix\" (default 30), datasets for mode=\"inventory\" (default 40). The tree is also cut at a 1 % contribution and a depth limit, so a process missing from it is BELOW the cutoff, not absent from the model."
           },
           "query": {
             "type": "string",

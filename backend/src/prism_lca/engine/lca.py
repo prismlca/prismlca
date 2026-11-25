@@ -294,8 +294,10 @@ def _split(total: float, direct: float) -> dict:
 
 
 def compute_lcia(
-    database: str, code: str, method, amount: float = 1.0, direct_split: bool = False
+    database: str, code: str, method, amount: float = 1.0, direct_split: bool = False, observe=None
 ) -> dict:
+    """``observe(system, method)`` is called while the factorised system holds this demand and method —
+    for a reader that needs more of it than the score (engine/difference_terms.py)."""
     bd = get_bd()
     m = resolve_method(method)
     act = get_activity(database, code)
@@ -303,6 +305,8 @@ def compute_lcia(
         lca = get_lca({act.id: amount * _demand_sign(act)}, m)
         score = float(lca.score)
         direct = _direct_impact(lca, act) if direct_split else None
+        if observe is not None:
+            observe(lca, m)
     out = {
         # The activity's OWN database name, not the one the caller typed: names resolve forgivingly
         # now, so echoing the input would answer "cling film cradle-to-gate" to a question about

@@ -340,6 +340,7 @@ class BrightwayRepository(LcaRepository):
         links are remapped to the new copies; inputs to background/biosphere are shared. Tags on
         the source activities, the model's study metadata (goal & scope) and its research log are copied too."""
         from prism_lca.engine import model as _model
+        from prism_lca.engine.difference_pairing import COPIED_FROM
         from prism_lca.engine.study import COMPARED_WITH, StudyMetaStore
         from prism_lca.engine.tags import TagStore
 
@@ -375,6 +376,8 @@ class BrightwayRepository(LcaRepository):
                 if k not in ("database", "code", "id", "name", "unit", "location", "exchanges"):
                     new[k] = v
             new["type"] = act.get("type") or "process"
+            # Where it came from, for whatever later compares the copy with its original: the codes are new.
+            new[COPIED_FROM] = act.key[1]
             new.save()
             for tag in tags.list_for(source, act.key[1]):
                 tags.add(name, new_code, tag["dimension"], tag["value"])

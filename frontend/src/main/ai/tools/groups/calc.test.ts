@@ -196,3 +196,50 @@ describe('calculate', () => {
     expect(api).toHaveBeenCalledTimes(3)
   })
 })
+
+describe('explain_result mode="difference"', () => {
+  it('goes out as ONE request with every scenario, indicator and the reference, on the open model', async () => {
+    const api = vi.fn<ToolCtx['api']>(async () => ({ results: [] }))
+    await tool('explain_result').run(
+      {
+        mode: 'difference',
+        code: 'p1',
+        methods: [
+          ['a', 'b'],
+          ['c', 'd']
+        ],
+        scenarios: ['s1', 's2'],
+        against: { database: 'Original' },
+        top_n: 5
+      },
+      ctx(api)
+    )
+    expect(api).toHaveBeenCalledTimes(1)
+    const [method, path, body] = api.mock.calls[0]
+    expect([method, path]).toEqual(['POST', '/api/v1/calc/difference'])
+    expect(body).toMatchObject({
+      database: 'Model A',
+      code: 'p1',
+      methods: [
+        ['a', 'b'],
+        ['c', 'd']
+      ],
+      scenarios: ['s1', 's2'],
+      against: { database: 'Original' },
+      top_n: 5,
+      partial: true
+    })
+  })
+
+  it('passes one scenario and one method as they were sent', async () => {
+    const api = vi.fn<ToolCtx['api']>(async () => ({ results: [] }))
+    await tool('explain_result').run(
+      { mode: 'difference', code: 'p1', method: ['a', 'b'], scenario: 's1' },
+      ctx(api)
+    )
+    const body: any = api.mock.calls[0][2]
+    expect(body).toMatchObject({ method: ['a', 'b'], scenario: 's1', amount: 1 })
+    expect(body.methods).toBeUndefined()
+    expect(body.against).toBeUndefined()
+  })
+})
