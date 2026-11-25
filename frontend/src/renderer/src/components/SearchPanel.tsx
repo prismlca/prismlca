@@ -19,7 +19,7 @@ import GeoQueryNote from './GeoQueryNote'
 import SearchFilters from './SearchFilters'
 import { errMsg } from '../lib/errors'
 import { fmtInt } from '../lib/format'
-import { useIndexEta } from '../lib/indexEta'
+import IndexBuildProgress from './IndexBuildProgress'
 import SearchedAs from './SearchedAs'
 
 interface IndexInfo {
@@ -72,7 +72,6 @@ export default function SearchPanel({
   const multiBackground =
     offered.filter((d) => d.kind === 'background' && searchDbs.includes(d.name)).length > 1
   const building = buildStatus?.state === 'running'
-  const eta = useIndexEta(buildStatus)
 
   // Which of the offered databases have a (fresh) index. Re-checked when a build finishes or one is
   // queued, so a row's Index button disappears on its own.
@@ -140,9 +139,6 @@ export default function SearchPanel({
     (db) => idxInfo[db] && !isEmpty(db) && (!idxInfo[db].indexed || idxInfo[db].stale)
   )
   const emptyTicked = searchDbs.filter(isEmpty)
-  // The biosphere holds elementary flows, not datasets; its build follows the background's.
-  const buildUnit =
-    databases.find((d) => d.name === buildStatus?.database)?.kind === 'biosphere' ? 'flows' : 'datasets'
 
   const toggleDb = (name: string): void =>
     onSearchDbs(searchDbs.includes(name) ? searchDbs.filter((n) => n !== name) : [...searchDbs, name])
@@ -223,39 +219,7 @@ export default function SearchPanel({
           {s.searching ? '…' : 'Search'}
         </button>
       </div>
-      {building && buildStatus ? (
-        <div className="idx-progress" title={buildStatus.detail}>
-          <div className="idx-progress-bar">
-            <span
-              style={{
-                width:
-                  buildStatus.total > 0
-                    ? `${Math.round((buildStatus.count / buildStatus.total) * 100)}%`
-                    : '100%'
-              }}
-            />
-          </div>
-          <div className="idx-progress-num idx-line">
-            {buildStatus.total > 0 ? (
-              <>
-                <span>
-                  Indexing <b>{buildStatus.database}</b> · {fmtInt(buildStatus.count)} /{' '}
-                  {fmtInt(buildStatus.total)} {buildUnit}
-                </span>
-                {eta ? <span>{eta}</span> : null}
-              </>
-            ) : (
-              'Indexing… preparing'
-            )}
-          </div>
-          {/* Said while it runs, because it runs long the first time: what it is for, that it is kept,
-              and why the app may answer slower meanwhile (the embedding takes every core). */}
-          <div className="idx-note">
-            Preparing semantic search — the index is saved and reused on later starts. PrismLCA may respond
-            more slowly until it finishes.
-          </div>
-        </div>
-      ) : null}
+      <IndexBuildProgress status={buildStatus} databases={databases} />
       {/* Said once, about the databases actually ticked — the Index buttons above say *where*, this
           says what it costs you meanwhile. A hint about a database nobody is searching is noise. */}
       {(stale.length || emptyTicked.length) && !building ? (
