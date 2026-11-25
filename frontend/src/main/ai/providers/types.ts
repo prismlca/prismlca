@@ -77,7 +77,7 @@ export interface WebRecord {
   counts?: Record<string, number>
   /** The searches, each with what it returned — where the provider names them. */
   searches?: WebSearch[]
-  /** The pages the reply opened — where the provider names them (Anthropic). */
+  /** The pages the reply opened — where the provider names them (Anthropic, OpenAI). */
   fetched?: WebFetch[]
   /** The pages the reply cites. */
   cited?: CitedPage[]
@@ -211,8 +211,8 @@ export type StreamEvent =
   /** The provider's web searches in this reply, each with the pages it returned to the model. Only from a
    *  transport whose API names them (Anthropic, OpenAI); OpenRouter's server tools report counts only. */
   | { type: 'web_searches'; searches: WebSearch[] }
-  /** The pages the provider opened in this reply because their address stood in the conversation. Only
-   *  from a transport whose API names them (Anthropic); OpenRouter's page fetch reports a count only. */
+  /** The pages the provider opened in this reply, by address. Only from a transport whose API names
+   *  them (Anthropic, OpenAI); OpenRouter's page fetch reports a count only. */
   | { type: 'web_fetches'; fetches: WebFetch[] }
   // A reasoning model sends its chain of thought before it writes a single visible token. We
   // deliberately do NOT surface the text — it is long, it is not an answer, and showing it invites
@@ -247,9 +247,11 @@ export type StreamEvent =
          *  — reads only this field and works the same either way. */
         cost?: number
         prompt_tokens?: number
-        /** The size of the prompt as sent, where `prompt_tokens` says more: a reply that ran lookups on
-         *  the provider's side (Anthropic) re-ran its prompt for each, and the report sums the passes.
-         *  The context meter and the compaction trigger read this; cost and the ledger read the sum. */
+        /** The size of the prompt as sent, where `prompt_tokens` says more: in a reply that ran lookups
+         *  on the provider's side it also counts what the model read after them, their results and further
+         *  passes. Only Anthropic names its first pass; without it the agent estimates the size
+         *  (contextBudget.ts, `sizeOfRound`). The context meter and the compaction trigger read this; cost
+         *  and the ledger read the whole figure. */
         context_tokens?: number
         completion_tokens?: number
         /** Prefix-cache hits (present when the provider caches; see AiModel.explicitCache). */
@@ -263,7 +265,8 @@ export type StreamEvent =
          *  `GET /api/v1/generation?id=` when a usage figure looks wrong (V398). */
         generation_id?: string
         /** How many server-tool lookups ran inside this reply, by kind (`web_search_requests`,
-         *  `web_fetch_requests`, …). Absent when none did. */
+         *  `web_fetch_requests`, …). Absent when none did. Present, it also says that `prompt_tokens`
+         *  counts more than the prompt as sent. */
         server_tool_use?: Record<string, number>
       }
     }

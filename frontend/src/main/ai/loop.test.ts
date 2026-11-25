@@ -1412,6 +1412,66 @@ describe("runAgent — context accounting by the provider's own count", () => {
     const levels = d.events.filter((e) => e.type === 'context') as unknown as Array<{ tokens: number }>
     expect(levels.map((l) => l.tokens)).toEqual([20_000, 20_000, 20_000, 40_000, 42_000])
   })
+
+  it('estimates a round that searched where the provider names no first pass (OpenAI, OpenRouter)', async () => {
+    // The same 160,000 billed, with the lookups beside it and no first pass: the figure is no size, so the
+    // round is estimated from the last count and the next request is projected from that count.
+    const call = (i: number) => ({
+      calls: [{ id: `t${i}`, name: 'get_model_graph', arguments: `{"database":"demo-model","code":"p${i}"}` }]
+    })
+    chat.rounds = [
+      { ...call(1), usage: { prompt_tokens: 20_000 } },
+      { ...call(2), usage: { prompt_tokens: 20_000 } },
+      { ...call(3), usage: { prompt_tokens: 20_000 } },
+      { ...call(4), usage: { prompt_tokens: 160_000, server_tool_use: { web_search_requests: 3 } } },
+      { ...call(5), usage: { prompt_tokens: 42_000 } },
+      { text: 'done' }
+    ]
+    const d = deps({ apiRaw: async () => ({ status: 200, body: 'y'.repeat(2_000) }) })
+    const res = await runAgent(request({ model: SMALL_WINDOW }), d.deps)
+    expect(res.outcome).toBe('answered')
+    const stubbed = chat.seen
+      .flatMap((c) => c.messages)
+      .some((m) => m.role === 'tool' && m.content === '[earlier tool result omitted to fit the context]')
+    expect(stubbed).toBe(false)
+    const levels = (d.events.filter((e) => e.type === 'context') as unknown as Array<{ tokens: number }>).map(
+      (l) => l.tokens
+    )
+    expect(levels).toHaveLength(5)
+    // Round 4: round 3's count plus the one tool result added since, about 500 tokens.
+    expect(levels[3]).toBeGreaterThan(20_000)
+    expect(levels[3]).toBeLessThan(22_000)
+    expect(levels[4]).toBe(42_000)
+  })
+
+  it('estimates search rounds before any count with the tool definitions and the search records', async () => {
+    // A turn that searches from its first round: nothing is measured until round 3, so rounds 1 and 2 are
+    // estimates — of everything sent, the tool definitions beside the messages and, in round 2, the record of
+    // round 1's searches ahead of its text.
+    const { estimateChars } = await import('./contextBudget')
+    const searched = {
+      query: 'cling film roll weight',
+      results: Array.from({ length: 8 }, (_, i) => ({ url: `https://shop${i}.de/roll`, title: `Roll ${i}` }))
+    }
+    const search: ScriptedRound = {
+      usage: { prompt_tokens: 900_000, server_tool_use: { web_search_requests: 1 } },
+      after: [{ type: 'web_searches', searches: [searched] }],
+      calls: [{ id: 'a', name: 'list_models', arguments: '{}' }]
+    }
+    chat.rounds = [search, { ...search, calls: [{ id: 'b', name: 'list_models', arguments: '{}' }] }]
+    chat.rounds.push({ usage: { prompt_tokens: 30_000 }, text: 'done' })
+    const d = deps()
+    await runAgent(request(), d.deps)
+    const levels = (d.events.filter((e) => e.type === 'context') as unknown as Array<{ tokens: number }>).map(
+      (l) => l.tokens
+    )
+    const sent = (i: number): number =>
+      Math.round((estimateChars(chat.seen[i].messages) + JSON.stringify(chat.seen[i].tools).length) / 4)
+    expect(levels).toEqual([sent(0), sent(1), 30_000])
+    // Round 2 carries round 1's search record, which the estimate counts.
+    const recorded = chat.seen[1].messages.find((m) => m.role === 'assistant' && m.web)
+    expect(recorded?.web?.searches).toEqual([searched])
+  })
 })
 
 describe('runAgent — the confirmation card before irreversible actions', () => {
@@ -1680,7 +1740,7 @@ describe('web lookups by the provider', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].status).toBe('ok')
     expect(rows[0].preview).toContain('2 web searches, 1 page fetched')
-    expect(rows[0].preview).toContain('4 passes')
+    expect(rows[0].preview).toContain('more than one pass over the conversation')
     // Before the round's own call, which is the order things happened in.
     expect(res.trace.map((t) => t.name)).toEqual(['web_lookups', 'list_models'])
     // Live too: a start and a done event, so the row fills in place while the turn runs.
