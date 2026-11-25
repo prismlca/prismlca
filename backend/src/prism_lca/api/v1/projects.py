@@ -41,6 +41,9 @@ def _project_changed(request: Request, *, replaced: bool = False) -> None:
     the app start (V341), which until now ran once at startup and never again. Measured on a
     throwaway project with the real model: 9.95 s for a cold first search against 1.44 s warm, and
     the 1.44 s is the query embedding itself, which no cache can take away.
+
+    **The index builds of this workspace are taken up again**. A build stops when the user leaves its
+    workspace — it could only be saved there — and waits for them to come back (search/builds.py).
     """
     if replaced:
         lca.invalidate_lca_cache(model_change=True)
@@ -53,6 +56,7 @@ def _project_changed(request: Request, *, replaced: bool = False) -> None:
     request.app.state.command_bus.clear_history()
     audit_store.reset_cache()
     request.app.state.search.warm_indexes()
+    request.app.state.search.builds.resume()
 
 
 class CreateProjectRequest(BaseModel):
@@ -202,6 +206,7 @@ def delete_project(request: Request, name: str) -> dict:
         ecoinvent.assert_no_import_running("deleting a workspace")
         before = repository.current_project()
         repository.delete_project(name)
+        request.app.state.search.builds.forget(name)
         current = repository.current_project()
         # Deleting the active workspace opens another one — an activation by another name.
         from prism_lca.app import _migrate_study_files

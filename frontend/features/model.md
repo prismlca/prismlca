@@ -149,6 +149,10 @@ node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Tes
   corner there; drop on an empty spot. Dragging a box itself (`drag` from the box onto the pane, grabbed
   at its centre) puts its centre at the drop point, give or take the 2 px the drag starts with.
 - Search hits are gone once you leave the Model page: search again after coming back.
+- **A search-index build belongs to its workspace.** Switching workspace stops it before its next batch
+  (a minute or two with the local model) and it starts again from the beginning when that workspace is
+  opened. Meanwhile the other workspace's search panel says "Pausing the search index of workspace …"
+  instead of showing its progress; its own databases waiting behind it read "queued".
 - A hit whose region is not picked yet does not drag (its title says "Pick a region first").
 - "Export model" and workspace backups open native save dialogs: manual.
 - Delete and Control+Z do nothing while a modal is open or a field has the focus — press Escape or

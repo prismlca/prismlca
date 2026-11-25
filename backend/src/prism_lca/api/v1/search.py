@@ -197,6 +197,11 @@ def _status_dict(builds) -> dict:
     return {
         "state": st.state.value,
         "database": st.database,
+        #: The workspace the build belongs to, and whether that is another one than the current: a build
+        #: of the workspace just left runs on to the end of its batch, under a database name the current
+        #: workspace may hold as well.
+        "workspace": st.workspace,
+        "other_workspace": st.workspace is not None and st.workspace != str(get_bd().projects.current),
         "detail": st.detail,
         "count": st.count,
         "total": st.total,
