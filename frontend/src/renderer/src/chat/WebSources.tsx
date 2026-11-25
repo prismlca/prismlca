@@ -1,5 +1,5 @@
 import type { CitedPage, ToolTrace, WebFetch, WebSearch } from '../lib/ai'
-import { hostOf, openable, webSourcesOf } from './turnSources'
+import { hostOf, lookupFailure, openable, webSourcesOf } from './turnSources'
 
 /**
  * The provider's web lookups as a reader sees them: the pages an answer cites or opened under the answer,
@@ -44,7 +44,7 @@ export function WebSearchList({ searches }: { searches: WebSearch[] }): JSX.Elem
           {!s.results ? (
             <div className="chat-web-none">The provider does not report the pages it found.</div>
           ) : !s.results.length ? (
-            <div className="chat-web-none">No pages{s.error ? ` (${s.error})` : ''}</div>
+            <div className="chat-web-none">No pages{s.error ? lookupFailure(s.error) : ''}</div>
           ) : (
             <ul className="chat-web-results">
               {s.results.map((r, j) => (
@@ -80,7 +80,7 @@ export function OpenedList({ fetched }: { fetched: WebFetch[] }): JSX.Element {
       {fetched.map((f, i) => (
         <li key={i}>
           <PageLink page={f} />
-          {f.error ? <span className="chat-web-host"> · not opened ({f.error})</span> : null}
+          {f.error ? <span className="chat-web-host"> · not opened{lookupFailure(f.error)}</span> : null}
         </li>
       ))}
     </ol>

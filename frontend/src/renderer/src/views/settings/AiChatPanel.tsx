@@ -125,9 +125,11 @@ export function AiChatPanel(): JSX.Element {
           <p className="settings-hint">
             Searches and pages the provider may look up within one reply ({providersWith('webLookupsCap')}{' '}
             only). Each lookup runs the model over the whole conversation again, so a reply with three lookups
-            is billed four times; the chat then shows a “Web lookups by the provider” row. Default{' '}
-            {DEFAULT_WEB_LOOKUPS_PER_ANSWER}; 0 = no cap of ours, the provider’s limit of{' '}
-            {MAX_WEB_LOOKUPS_PER_ANSWER} applies.
+            is billed four times; the chat then shows a “Web lookups by the provider” row. Anthropic counts
+            them across the rounds of an answer instead of per reply; a note PrismLCA adds during the run (a
+            plan reminder, a screenshot) starts the count again. Default {DEFAULT_WEB_LOOKUPS_PER_ANSWER}; 0 =
+            no cap of ours, only the provider’s own: OpenRouter stops at {MAX_WEB_LOOKUPS_PER_ANSWER},
+            Anthropic sets none.
           </p>
         </>
       ) : null}

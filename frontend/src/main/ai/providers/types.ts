@@ -286,7 +286,8 @@ export interface StreamChatOpts {
   webSearch?: boolean
   /** Ceiling on the provider-side web lookups per reply (`parameters.max_uses` on each OpenRouter server tool);
    *  undefined/0 = the provider's own default. Every lookup re-runs the whole conversation through the
-   *  model, so this bounds the round's cost, not just a per-search fee (V398). */
+   *  model, so this bounds the round's cost, not just a per-search fee (V398). OpenRouter and OpenAI count it
+   *  per request; Anthropic across the requests of one turn (see the transport's buildRequest). */
   webLookupsCap?: number
   /** Restrict the provider-side web search (and fetch) to these domains — bare hosts, no scheme.
    *  OpenRouter: `parameters.allowed_domains` on both server tools (Exa and most native engines;

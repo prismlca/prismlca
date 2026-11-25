@@ -165,7 +165,11 @@ export const MAX_MIN_THROUGHPUT = 500
  * measured run a single round reported 375k prompt tokens for an 85k conversation (three passes,
  * 0.24 $ instead of 0.06 $). The most any round was seen to use is two lookups; eight per tool leaves
  * room for a real search-and-open sequence without letting one answer run to thirty passes
- * (OpenRouter's own default). 0 = send no cap and take the provider's default.
+ * (OpenRouter's own default). 0 = send no cap and take the provider's default (Anthropic has none).
+ *
+ * OpenRouter and OpenAI count the cap per request. Anthropic counts it across the tool loop — every
+ * request whose last message holds only tool results continues the turn — so there the eight hold for the
+ * whole answer to a message until the app adds a note of its own.
  */
 export const DEFAULT_WEB_LOOKUPS_PER_ANSWER = 8
 export const MAX_WEB_LOOKUPS_PER_ANSWER = 30

@@ -588,7 +588,13 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
       input_schema: t.function.parameters
     }))
     if (opts.webSearch) {
-      // The cap and the allow list hold for each tool on its own, as on OpenRouter.
+      // The cap and the allow list hold for each tool on its own, as on OpenRouter. Unlike there, the cap
+      // counts across the whole tool loop: a request whose last message holds only tool results continues
+      // the turn, and the lookups of its earlier requests count against `max_uses`. A note of ours after the
+      // results (plan reminder, screenshot, compaction summary) starts a new turn and a new count, unless a
+      // server call is still open and foldIntoOpenTurn moves it into the last result. Sending a fresh cap per
+      // request instead would change the tool definition and, per Anthropic's caching rules, throw away the
+      // cached conversation each time.
       const limits = {
         ...(opts.webLookupsCap ? { max_uses: opts.webLookupsCap } : {}),
         ...(opts.webDomains?.length ? { allowed_domains: opts.webDomains } : {})

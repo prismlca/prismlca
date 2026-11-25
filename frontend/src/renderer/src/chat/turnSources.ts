@@ -28,6 +28,17 @@ export function webSourcesOf(traces: ToolTrace[] | undefined): {
   return { cited: [...cited.values()], opened: [...opened.values()], searches }
 }
 
+/**
+ * Why a search returned no pages or a page was not opened, as it follows "No pages" or "not opened". The cap
+ * the user set is said in words with where to change it — under Anthropic it counts across all rounds of
+ * an answer, so it can run out in a later round. Any other reason stays the provider's code.
+ */
+export function lookupFailure(code: string): string {
+  return code === 'max_uses_exceeded'
+    ? ' — the cap “Web lookups per reply” was reached (Settings → AI → Chat)'
+    : ` (${code})`
+}
+
 /** Only a web address opens in the browser; anything else a provider might hand over stays text. */
 export const openable = (url: string): boolean => /^https?:\/\//i.test(url)
 
