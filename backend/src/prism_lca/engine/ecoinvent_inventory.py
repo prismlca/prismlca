@@ -150,7 +150,7 @@ def reader(
                                 f"{stall_seconds / 60:.0f} minutes ({len(data):,} of {total:,} read).",
                                 code="import_stalled",
                                 hint="Nothing was written. Start the import again; if it stalls "
-                                "again, report it together with the PrismLCA log.",
+                                "again, report it with this message and how much memory the computer has.",
                             ) from None
                         continue
                     except _Unreadable as exc:

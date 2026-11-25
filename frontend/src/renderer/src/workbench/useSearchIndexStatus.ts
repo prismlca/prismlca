@@ -18,8 +18,13 @@ import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
 export interface IndexBuildStatus {
-  state: 'idle' | 'running' | 'done' | 'error'
+  /** `stopped`: the user left the build's workspace; it continues when that workspace is opened again. */
+  state: 'idle' | 'running' | 'done' | 'error' | 'stopped'
   database: string | null
+  /** The workspace the build belongs to — two workspaces can hold databases of the same name. */
+  workspace?: string | null
+  /** The build belongs to another workspace than the current one: the one just left, winding down. */
+  other_workspace?: boolean
   detail: string
   count: number
   total: number
@@ -33,6 +38,8 @@ function same(a: IndexBuildStatus | null, b: IndexBuildStatus): boolean {
     a !== null &&
     a.state === b.state &&
     a.database === b.database &&
+    a.workspace === b.workspace &&
+    a.other_workspace === b.other_workspace &&
     a.detail === b.detail &&
     a.count === b.count &&
     a.total === b.total &&

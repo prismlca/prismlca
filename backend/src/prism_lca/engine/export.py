@@ -58,7 +58,9 @@ def rows_to_csv(headers: list[str], rows: list[list]) -> str:
     return buf.getvalue()
 
 
-def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | None = None) -> bytes:
+def compare_xlsx(
+    columns: list[dict], subjects: list[dict], group_header: str | None = None, inventory: dict | None = None
+) -> bytes:
     """Styled results matrix. ``columns`` = [{key, family, label, unit}] (already ordered, grouped
     by family); ``subjects`` = [{label, scores: {key: value}}]. Two header rows (family span +
     indicator/unit), bold subject column, banded rows, the house colours, frozen header + first column.
@@ -69,6 +71,8 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
     its rows rather than being merged down the column, because a merged cell is what stops a
     spreadsheet from sorting, filtering or pivoting the sheet, which is the whole reason to want the
     rows apart.
+
+    With ``inventory`` (see :func:`lci_xlsx`) the workbook gains a second sheet, "LCI".
     """
     NAVY, LIGHT, BAND = "2F4E66", "EFF4E1", "F7F7F7"
     thin = Side(style="thin", color="DDDDDD")
@@ -158,9 +162,70 @@ def compare_xlsx(columns: list[dict], subjects: list[dict], group_header: str | 
     ws.row_dimensions[2].height = 34
     ws.freeze_panes = f"{get_column_letter(1 + id_cols)}3"
 
+    if inventory is not None:
+        _lci_sheet(wb.create_sheet("LCI"), inventory)
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def lci_xlsx(inventory: dict) -> bytes:
+    """The life cycle inventory of the compared subjects on a sheet of its own. ``inventory`` =
+    ``{subjects: [label, ...], flows: [{flow, categories, unit, amounts: [one per subject]}]}``, rows in the
+    order they are to appear."""
+    wb = Workbook()
+    _lci_sheet(wb.active, inventory)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _lci_sheet(ws, inventory: dict) -> None:
+    """Flow | Compartment | Unit, then one amount column per subject; a plain header row and no merged cells,
+    so the sheet sorts and filters as it is."""
+    NAVY, BAND = "2F4E66", "F7F7F7"
+    thin = Side(style="thin", color="DDDDDD")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center")
+
+    ws.title = "LCI"
+    subjects = [str(s) for s in inventory.get("subjects") or []]
+    for j, header in enumerate(["Flow", "Compartment", "Unit", *subjects], start=1):
+        cell = put(ws, 1, j, header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=NAVY)
+        cell.alignment = center
+        cell.border = border
+
+    for r, flow in enumerate(inventory.get("flows") or []):
+        row = 2 + r
+        band = PatternFill("solid", fgColor=BAND) if r % 2 else None
+        cells = [
+            put(ws, row, 1, flow.get("flow")),
+            put(ws, row, 2, " / ".join(flow.get("categories") or [])),
+            put(ws, row, 3, flow.get("unit")),
+        ]
+        amounts = list(flow.get("amounts") or [])
+        for k in range(len(subjects)):
+            v = amounts[k] if k < len(amounts) else None
+            c = put(ws, row, 4 + k, v if isinstance(v, (int, float)) else None)
+            c.number_format = "0.000E+00"
+            c.alignment = right
+            cells.append(c)
+        for cell in cells:
+            cell.border = border
+            if band:
+                cell.fill = band
+
+    ws.column_dimensions["A"].width = 44
+    ws.column_dimensions["B"].width = 30
+    ws.column_dimensions["C"].width = 12
+    for k in range(len(subjects)):
+        ws.column_dimensions[get_column_letter(4 + k)].width = 18
+    ws.row_dimensions[1].height = 34
+    ws.freeze_panes = "D2"
 
 
 def flows_xlsx(meta: dict, flows: list[dict]) -> bytes:

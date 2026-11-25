@@ -329,6 +329,7 @@ describe('the event stream', () => {
     expect(u.prompt_tokens).toBe(1000)
     expect(u.prompt_tokens_details.cached_tokens).toBe(500)
     expect(u.completion_tokens).toBe(2000)
+    expect(u.server_tool_use).toBeUndefined() // nothing looked up: the prompt is one pass
   })
 
   it('adds the per-call web_search fee to the synthesized cost', async () => {
@@ -345,6 +346,50 @@ describe('the event stream', () => {
     const events = await run({ webSearch: true })
     const u = (events.find((e) => e.type === 'usage') as any).usage
     expect(u.cost).toBeCloseTo(0.02, 8) // 2 searches × $10/1k
+    // No done item said what they did: counted as searches, so the counts cover every call the fee covers.
+    expect(u.server_tool_use).toEqual({ web_search_requests: 2 })
+  })
+
+  it('reports the lookups with the usage by kind, which says the prompt sums several passes', async () => {
+    const call = (output_index: number, action: Record<string, unknown>): Array<Record<string, unknown>> => [
+      { type: 'response.output_item.added', output_index, item: { type: 'web_search_call' } },
+      {
+        type: 'response.output_item.done',
+        output_index,
+        item: { type: 'web_search_call', status: 'completed', action }
+      }
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        sse([
+          ...call(0, { type: 'search', query: 'avasco Atlas weight' }),
+          ...call(1, { type: 'open_page', url: 'https://g.ch/1' }),
+          ...call(2, { type: 'find_in_page', url: 'https://g.ch/1', pattern: 'kg' }),
+          ...call(3, { type: 'search', query: 'avasco Diksmuide' }),
+          completed({
+            input_tokens: 90_000,
+            input_tokens_details: { cached_tokens: 60_000 },
+            output_tokens: 10
+          })
+        ])
+      )
+    )
+    const events = await run({ webSearch: true })
+    const u = (events.find((e) => e.type === 'usage') as any).usage
+    expect(u.server_tool_use).toEqual({
+      web_search_requests: 2,
+      web_fetch_requests: 1,
+      find_in_page_requests: 1
+    })
+    // The billed sum stays the prompt figure: cost and ledger read it.
+    expect(u.prompt_tokens).toBe(90_000)
+    expect(u.context_tokens).toBeUndefined()
+    // The page it opened is named, as a page and not as a search; finding text in it opens nothing new.
+    expect(events.find((e) => e.type === 'web_fetches')).toEqual({
+      type: 'web_fetches',
+      fetches: [{ url: 'https://g.ch/1' }]
+    })
   })
 
   it('names what each web search looked for, and never opening a page as a search', async () => {

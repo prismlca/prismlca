@@ -94,4 +94,21 @@ describe('SearchPanel index messages', () => {
     await waitFor(() => expect(screen.getByText('queued')).toBeTruthy())
     expect(screen.queryByRole('button', { name: /index/i })).toBeNull()
   })
+
+  it("does not show the workspace just left's build as this one's", () => {
+    // Both workspaces hold "ecoinvent-3.12-cutoff": its progress read as this workspace's index.
+    panel({
+      state: 'running',
+      database: 'ecoinvent-3.12-cutoff',
+      workspace: 'ecoinvent 3.12',
+      other_workspace: true,
+      detail: '',
+      count: 2873,
+      total: 26533
+    })
+    expect(screen.getByText(/Pausing the search index of workspace/)).toBeTruthy()
+    expect(screen.getByText('ecoinvent 3.12')).toBeTruthy()
+    expect(screen.queryByText(/2,873/)).toBeNull()
+    expect(screen.queryByText(/saved and reused on later starts/)).toBeNull()
+  })
 })

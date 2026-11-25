@@ -13,8 +13,8 @@ import type {
 } from './types'
 
 /**
- * The Results page's run machinery: one request per subject (scores, then the stacked split — one for
- * both under a scenario), the generation guard that turns a cancelled or superseded run's answers into
+ * The Results page's run machinery: one request per subject (scores with the life cycle inventory, then the
+ * stacked split — one for both under a scenario), the generation guard that turns a cancelled or superseded run's answers into
  * no-ops, the stale flag, and the assistant's `setup_results run=true` token. Moved out of Results.tsx verbatim; the effects keep
  * their order because the page calls this hook where the block used to stand.
  */
@@ -110,12 +110,16 @@ export function useCompareRun({
     setLastSecs(null)
     setBusy(true)
     if (wantStacked) setStackBusy(true)
-    else setStackData(null)
+    // The previous run's split goes at once, not when the new one arrives: the new scores are published before
+    // their split, and an old split beside them — for good, if the new one fails or is cancelled — was exported
+    // as this run's disaggregated sheet next to this run's inventory.
+    setStackData(null)
     void (async () => {
       let done = 0
       try {
         const methodsReq = picked.map((p) => p.method)
         const rows: MatrixRow[] = []
+        const flows: NonNullable<Matrix['flows']> = {}
         let methodsOut: CompareResponse['methods'] = []
         // A scenario variant is computed inside an applied parameter window — apply, factorise, restore,
         // seconds each. With the split wanted, its scores and its split come from ONE request, so it pays
@@ -126,13 +130,17 @@ export function useCompareRun({
           if (runSeq.current !== mine) return
           const label = `${together(s) ? 'Scores and breakdown' : 'Scores'} — ${s.label}`
           setProgress({ done, total, label })
+          // The inventory comes along with the scores: read off the same solve, and for a scenario inside the
+          // same parameter window, so the LCI table can never describe another calculation than the scores.
           const r = await api<CompareResponse>('POST', '/api/v1/calc/compare', {
             subjects: [s],
             methods: methodsReq,
+            inventory: true,
             ...(together(s) ? { stacked_dimensions: stackDims } : {})
           })
           if (runSeq.current !== mine) return
           methodsOut = r.methods
+          Object.assign(flows, r.inventory_flows)
           rows.push(
             ...r.subjects.map((row) => ({ ...row, database: s.database, code: s.code, scenario: s.scenario }))
           )
@@ -143,7 +151,7 @@ export function useCompareRun({
           done += split ? 2 : 1
           setProgress({ done, total, label })
         }
-        setMatrix({ methods: methodsOut, subjects: rows })
+        setMatrix({ methods: methodsOut, subjects: rows, flows })
         setBusy(false)
         if (wantStacked) {
           const merged: StackedData = { dimensions: [], keys: {}, labels: {}, subjects: [] }

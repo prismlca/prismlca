@@ -10,11 +10,25 @@ export interface Picked {
   detail: string // specific indicator (method[2])
   unit: string
 }
+/** An elementary flow of the life cycle inventory, as `/calc/compare` names it under `inventory_flows`. */
+export interface LciFlow {
+  name: string
+  categories: string[]
+  unit: string
+}
 export interface CompareResponse {
   methods: { key: string; unit: string; method: string[] }[]
-  subjects: { label: string; code: string; scores: Record<string, number> }[]
+  subjects: {
+    label: string
+    code: string
+    scores: Record<string, number>
+    /** The subject's life cycle inventory, when the request asked for it (`inventory`): amount per flow id. */
+    inventory?: Record<string, number>
+  }[]
   /** The stacked split, when the request asked for it in the same pass (`stacked_dimensions`). */
   stacked?: StackedResp
+  /** The flows the rows' inventories name, by flow id. */
+  inventory_flows?: Record<string, LciFlow>
 }
 /** A matrix row as the page keeps it: the backend's row plus WHO it is — the subject it was computed
  *  for (database, code, scenario), since code alone repeats across models (see lib/subjectKey). */
@@ -22,6 +36,8 @@ export type MatrixRow = CompareResponse['subjects'][number] & SubjectRef
 export interface Matrix {
   methods: CompareResponse['methods']
   subjects: MatrixRow[]
+  /** Every flow any row's inventory names, by flow id; absent when the run computed no inventory. */
+  flows?: Record<string, LciFlow>
 }
 /** Subject from ANOTHER foreground model (the active model's activities are picked via the
  * checkbox list; another model is added by its reference process through ModelPickDialog).

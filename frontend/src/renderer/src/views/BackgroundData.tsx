@@ -5,6 +5,7 @@ import ImportProgress, { type ImportStatus } from '../components/ImportProgress'
 import { fmtInt } from '../lib/format'
 import EscapeCloser from '../components/EscapeCloser'
 import DialogBox from '../components/DialogBox'
+import { useImportJob } from './useImportJob'
 
 type BackgroundSource = 'ecoinvent' | 'bafu'
 
@@ -72,7 +73,6 @@ export default function BackgroundData({
   onChanged: () => void
 }): JSX.Element {
   const [overview, setOverview] = useState<BackgroundOverview | null>(null)
-  const [status, setStatus] = useState<ImportStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
   const [code, setCode] = useState<string | null>(null)
@@ -85,12 +85,9 @@ export default function BackgroundData({
   const [forcing, setForcing] = useState<string | null>(null)
   // Which background database a second click would remove — the first click only asks.
   const [removing, setRemoving] = useState<string | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout>>()
   // The scrolling column, and which of its sections is being read — so the rail can mark it.
   const bodyRef = useRef<HTMLDivElement>(null)
   const [current, setCurrent] = useState('overview')
-
-  useEffect(() => () => clearTimeout(timer.current), [])
 
   const load = useCallback(async () => {
     try {
@@ -173,16 +170,11 @@ export default function BackgroundData({
     return () => obs.disconnect()
   }, [sectionKey])
 
-  const poll = useCallback(async () => {
-    const st = await api<ImportStatus>('GET', '/api/v1/setup/status')
-    setStatus(st)
-    if (st.state === 'running') {
-      timer.current = setTimeout(() => void poll(), 1500)
-    } else {
-      await load()
-      onChanged()
-    }
-  }, [load, onChanged])
+  // Also a job started elsewhere (the wizard, before a reload) is followed once the sheet finds it running.
+  const { status, trouble, follow } = useImportJob(async () => {
+    await load()
+    onChanged()
+  })
 
   const cancelImport = useCallback(async () => {
     await api('POST', '/api/v1/setup/cancel')
@@ -193,12 +185,16 @@ export default function BackgroundData({
     if (!chosen) return
     setError(null)
     try {
-      await api('POST', '/api/v1/setup/lcia', { lcia_xlsx: chosen, project: overview?.project })
-      void poll()
+      follow(
+        await api<ImportStatus>('POST', '/api/v1/setup/lcia', {
+          lcia_xlsx: chosen,
+          project: overview?.project
+        })
+      )
     } catch (e) {
       setError(errMsg(e))
     }
-  }, [overview, poll])
+  }, [overview, follow])
 
   const requestCode = useCallback(async () => {
     setError(null)
@@ -234,7 +230,7 @@ export default function BackgroundData({
     }
   }, [typed, load, onChanged])
 
-  const running = status?.state === 'running'
+  const running = status?.state === 'running' && !trouble?.final
   const dangling = (overview?.models ?? []).reduce((n, m) => n + m.dangling_exchanges, 0)
   // The library is in this list because it would be left dangling like a model — but it is not one,
   // so it is counted and named apart rather than inflating "your models" by one.
@@ -323,6 +319,12 @@ export default function BackgroundData({
             </p>
           </aside>
           <div className="settings-panel bg-panel" ref={bodyRef}>
+            {/* A running job first: whoever opens the sheet during an import looks for it here. */}
+            {status ? (
+              <div className="bg-feedback bg-job">
+                <ImportProgress status={status} trouble={trouble} onCancel={cancelImport} />
+              </div>
+            ) : null}
             {overview ? (
               <>
                 {/* Four numbers first: the state of the project at a glance, before any card asks for a decision. */}
@@ -564,9 +566,8 @@ export default function BackgroundData({
               <p className="bg-empty">Loading…</p>
             )}
 
-            {status || done || error ? (
+            {done || error ? (
               <div className="bg-feedback">
-                {status ? <ImportProgress status={status} onCancel={cancelImport} /> : null}
                 {done ? <div className="setup-status done">{done}</div> : null}
                 {error ? <div className="setup-status error">{error}</div> : null}
               </div>

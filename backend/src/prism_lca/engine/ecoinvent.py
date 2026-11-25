@@ -504,7 +504,7 @@ def _run_import(
             raise PrismError(
                 f"'{database}' exists but is empty — a previous import was interrupted.",
                 code="import_incomplete",
-                hint="Delete the database and start over ('Start over' in Background data); a "
+                hint="Remove it in Background data (Remove… on its card), then import again; a "
                 "partially written inventory would give wrong results.",
                 status_code=409,
             )
@@ -730,7 +730,7 @@ def _assert_idle() -> None:
             code="import_busy",
             situational=True,
             status_code=409,
-            hint="Wait for it to finish (poll GET /api/v1/setup/status).",
+            hint="Wait until it has finished — Overview → Background shows its progress.",
         )
 
 

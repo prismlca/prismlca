@@ -185,6 +185,8 @@ export function makePrism(routes: Routes = {}, overrides: PrismOverrides = {}): 
       os: 'linux x64 6.19.10'
     }),
     api: call,
+    /** The backend runs; a test of a stopped engine overrides this through `bridge`. */
+    backendExit: async () => null,
     pickDirectory: async () => null,
     saveFilesTo: async () => null,
     pickFile: async () => null,

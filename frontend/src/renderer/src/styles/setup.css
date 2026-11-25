@@ -277,3 +277,7 @@
 .setup-step-row .setup-path { flex: 1 1 180px; min-width: 0; word-break: normal; overflow-wrap: anywhere; }
 .setup-step-row input { font: inherit; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
   background: var(--surface); color: var(--text); min-width: 0; flex: 1 1 200px; }
+/* What the import view says when it cannot follow the job: a note under the last status while requests
+   fail, the whole message once the engine has stopped (then in the error box's colour). */
+.setup-status-note { margin: 6px 0 0; font-size: var(--fs-sec); line-height: 1.45; }
+.setup-status.running .setup-status-note { color: var(--wait); }

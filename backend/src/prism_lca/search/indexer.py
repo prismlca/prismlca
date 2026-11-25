@@ -7,6 +7,7 @@ the type as a keyword.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 
 import numpy as np
 
@@ -71,6 +72,7 @@ def embed_unique(
     dim: int,
     batch_size: int = 256,
     on_progress: Callable[[int, int], None] | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> np.ndarray:
     """One vector per text, in the order given — each distinct text embedded once.
 
@@ -84,6 +86,10 @@ def embed_unique(
     user knows the database by — and advances in step with the embedding work. Counting the rows a
     finished batch happens to cover would run ahead whenever a batch holds a much-repeated text, and
     the time estimate drawn from that rate would promise too little.
+
+    ``checkpoint`` is called before every batch; whatever it raises ends the embedding there. It is how
+    a caller abandons a build that has become pointless: with the local model on a CPU one batch takes a
+    minute or two, the whole of ecoinvent about two hours.
     """
     slot: dict[str, int] = {}
     rows = np.fromiter((slot.setdefault(t, len(slot)) for t in texts), dtype=np.int64, count=len(texts))
@@ -92,6 +98,8 @@ def embed_unique(
     if on_progress:
         on_progress(0, len(texts))
     for start in range(0, len(unique), batch_size):
+        if checkpoint:
+            checkpoint()
         stop = min(start + batch_size, len(unique))
         vectors[start:stop] = provider.embed(unique[start:stop])
         if on_progress:
@@ -105,16 +113,25 @@ def build_index(
     provider: EmbeddingProvider,
     batch_size: int = 256,
     on_progress: Callable[[int, int], None] | None = None,
+    checkpoint: Callable[[], None] | None = None,
+    reading: Callable[[], AbstractContextManager[object]] = nullcontext,
 ) -> VectorIndex:
+    """The index of every activity in ``db_name``; ``checkpoint`` as in `embed_unique`.
+
+    The rows are read inside ``reading()`` and embedded outside it: a caller that has to know whose
+    database it read holds its lock there, for the seconds the read takes and not the hours of the
+    embedding.
+    """
     metas: list[dict] = []
     texts: list[str] = []
-    for act in bd.Database(db_name):
-        meta, text = activity_meta(act, db_name)
-        metas.append(meta)
-        texts.append(text)
+    with reading():
+        for act in bd.Database(db_name):
+            meta, text = activity_meta(act, db_name)
+            metas.append(meta)
+            texts.append(text)
 
     probe_dim = int(provider.embed(["probe"]).shape[1])
     index = VectorIndex(dim=probe_dim, provider=provider.name,
                         model=getattr(provider, "model", ""))
-    index.add(embed_unique(provider, texts, probe_dim, batch_size, on_progress), metas)
+    index.add(embed_unique(provider, texts, probe_dim, batch_size, on_progress, checkpoint), metas)
     return index

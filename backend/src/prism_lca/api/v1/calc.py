@@ -353,6 +353,8 @@ class CompareRequest(BaseModel):
     #: Compute the methods that resolve for every subject and name the others under ``not_computed``, as
     #: LciaRequest.partial does. The assistant's tool sets it; the Results page does not.
     partial: bool = False
+    #: Add each subject's life cycle inventory (elementary flows) to its row, read in the same pass.
+    inventory: bool = False
 
 
 @router.post("/compare", summary="Compare n subjects x m methods (matrix)")
@@ -373,6 +375,7 @@ def compare(request: Request, body: CompareRequest) -> dict:
             should_cancel=_canceller("compare", mine, key),
             stacked_dimensions=body.stacked_dimensions,
             partial=body.partial,
+            inventory=body.inventory,
         )
         if note:
             out["family"] = note
