@@ -83,7 +83,7 @@ def _split(client, token, db, code) -> dict[str, float]:
 
 
 def _input_tags(client, token, db, code, uid) -> list[dict]:
-    detail = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     ex = next(e for e in detail["exchanges"] if e["uid"] == uid)
     return ex.get("tags") or []
 
@@ -132,7 +132,7 @@ def test_tags_where_they_do_not_belong_are_refused_by_name(client, token, projec
 
 def test_a_production_exchange_is_no_input(client, token, project):
     w = _world(client, token)
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['M']}", headers=token).json()
     prod = next(e for e in detail["exchanges"] if e["type"] == "production")
     r = _set(client, token, [{"uid": prod["uid"]}], "Raw materials")
     assert r.status_code == 400 and "tag_target_not_input" in r.text
@@ -155,7 +155,7 @@ def test_a_new_input_carries_its_tags_in_one_undo_step(client, token, project):
     # The refusal names the way out: the supplying process is tagged itself, the input goes in without tags.
     assert "'Manufacturing' is a process of this model" in refused.text
     assert "tag the process itself (edit_tags)" in refused.text
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['R']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['R']}", headers=token).json()
     assert len([e for e in detail["exchanges"] if e["type"] == "technosphere"]) == 1  # nothing half-written
 
 
@@ -293,7 +293,7 @@ def test_duplicating_a_process_copies_its_tags_and_redo_keeps_the_uids(client, t
     _redo(client, token)
     _redo(client, token)
     assert _input_tags(client, token, w["db"], copy, steel_copy["uid"]) == [{"dimension": PHASE, "value": "Packaging"}]
-    tags = client.get(f"/api/v1/model/tags/{w['db']}/{copy}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database={w['db']}&code={copy}", headers=token).json()
     assert tags == [{"dimension": PHASE, "value": "Production"}]
 
 
@@ -349,7 +349,7 @@ def test_moving_a_process_to_the_library_leaves_its_tags_behind(client, token, p
     assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == []
     assert _split(client, token, w["db"], w["R"]) == pytest.approx({"Use": 5.0})
     _undo(client, token)
-    assert client.get(f"/api/v1/model/tags/{w['db']}/{w['M']}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={w['db']}&code={w['M']}", headers=token).json() == [
         {"dimension": PHASE, "value": "Production"}
     ]
     assert _input_tags(client, token, w["db"], w["M"], w["u_steel"]) == [{"dimension": PHASE, "value": "Raw materials"}]
@@ -371,10 +371,10 @@ def test_localizing_one_box_moves_only_its_inputs_and_keeps_the_split(client, to
     local = r.json()["activity"]["code"] if "activity" in r.json() else r.json()["code"]
     assert r.json()["relinked"] == 1
     # The box's tag became the local copy's own tag and left the input.
-    assert client.get(f"/api/v1/model/tags/{w['db']}/{local}", headers=token).json() == [{"dimension": PHASE, "value": "Use"}]
+    assert client.get(f"/api/v1/model/tags?database={w['db']}&code={local}", headers=token).json() == [{"dimension": PHASE, "value": "Use"}]
     assert _input_tags(client, token, w["db"], w["R"], use) == []
     # Manufacturing's electricity still draws on the background dataset.
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['M']}", headers=token).json()
     assert next(e for e in detail["exchanges"] if e["uid"] == w["u_elec"])["input"]["database"] == "bg"
     assert _split(client, token, w["db"], w["R"]) == pytest.approx(before)
     _undo(client, token)
@@ -396,7 +396,7 @@ def test_localizing_one_box_keeps_the_other_input_of_the_same_dataset(client, to
         headers=token,
     )
     assert r.status_code == 200, r.text
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['M']}", headers=token).json()
     kept = next(e for e in detail["exchanges"] if e["uid"] == second)
     assert kept["input"]["database"] == "bg" and kept["amount"] == pytest.approx(0.5)
     assert _split(client, token, w["db"], w["R"]) == pytest.approx(before)
@@ -414,7 +414,7 @@ def test_an_unconnected_copy_localized_moves_no_input(client, token, project):
     )
     assert r.status_code == 200, r.text
     assert r.json()["relinked"] == 0
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['M']}", headers=token).json()
     assert next(e for e in detail["exchanges"] if e["uid"] == w["u_steel"])["input"]["database"] == "bg"
 
 
@@ -433,7 +433,7 @@ def test_redo_finds_the_copied_input_by_identity_not_by_position(client, token, 
         _undo(client, token)
     _redo(client, token)
     _redo(client, token)
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{copy}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={copy}", headers=token).json()
     tagged = [e for e in detail["exchanges"] if e.get("tags")]
     assert [e["input"]["code"] for e in tagged] == ["steel"]
 
@@ -447,7 +447,7 @@ def test_a_blank_tag_on_a_new_input_writes_nothing(client, token, project):
         headers=token,
     )
     assert r.status_code == 400, r.text
-    detail = client.get(f"/api/v1/model/activities/{w['db']}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={w['db']}&code={w['M']}", headers=token).json()
     assert len([e for e in detail["exchanges"] if e["type"] == "technosphere"]) == 2
 
 
@@ -475,11 +475,11 @@ def test_the_library_move_writes_nothing_into_the_models_that_use_the_process(cl
     assert _input_tags(client, token, w["db"], w["R"], w["u_m"]) == []
     assert _input_tags(client, token, other, bottling, u_x) == [{"dimension": PHASE, "value": "Use"}]
     assert TagStore().snapshot_database(other) == tags_before
-    assert client.get(f"/api/v1/model/tags/{w['db']}/{w['R']}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={w['db']}&code={w['R']}", headers=token).json() == []
     assert client.get(f"/api/v1/model/tag-groups?database={other}", headers=token).json() == groups_before
 
     _undo(client, token)
-    own = client.get(f"/api/v1/model/tags/{w['db']}/{w['M']}", headers=token).json()
+    own = client.get(f"/api/v1/model/tags?database={w['db']}&code={w['M']}", headers=token).json()
     assert sorted((t["dimension"], t["value"]) for t in own) == [(PHASE, "Production"), ("Part", "Lid")]
     assert _input_tags(client, token, other, bottling, u_x) == [{"dimension": PHASE, "value": "Use"}]
 
@@ -529,7 +529,7 @@ def test_redo_of_a_sheet_import_keeps_the_inputs_a_later_tag_addresses(client, t
     imp = client.post("/api/v1/interop/model", data={"target_database": dst},
                       files={"file": ("model.xlsx", workbook, _XLSX)}, headers=token)
     assert imp.status_code == 200, imp.text
-    detail = client.get(f"/api/v1/model/activities/{dst}/{w['M']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={dst}&code={w['M']}", headers=token).json()
     steel = next(e for e in detail["exchanges"] if e["input"]["code"] == "steel")["uid"]
     _set(client, token, [{"uid": steel}], "Raw materials")
     _undo(client, token)

@@ -8,6 +8,7 @@ import EscapeCloser from '../components/EscapeCloser'
 import DialogBox from '../components/DialogBox'
 import { IdleRoundedInput } from '../components/IdleRoundedInput'
 import UnitCombo from '../components/UnitCombo'
+import { activityPropertiesRoute } from '../../../shared/processRoutes'
 
 /**
  * Flow-properties window for a process's reference product (ecoinvent product properties:
@@ -89,10 +90,7 @@ export default function FlowProperties({
   const inFlight = useRef(0)
 
   const load = useCallback(async () => {
-    const d = await api<PropsResponse>(
-      'GET',
-      `/api/v1/model/activities/${encodeURIComponent(database)}/${encodeURIComponent(code)}/properties`
-    )
+    const d = await api<PropsResponse>('GET', activityPropertiesRoute(database, code))
     const loaded: Row[] = Object.entries(d.properties)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, p]) => ({

@@ -1030,7 +1030,7 @@ def test_a_reference_quantity_divides_in_the_matrix_and_is_idempotent(client, to
     found = client.get(f"/api/v1/model/reference-quantity/{db}", headers=token).json()
     assert found["parameter"] == "lifetime_energy" and found["of"] == a
 
-    ex = client.get(f"/api/v1/model/activities/{db}/{new_code}", headers=token).json()["exchanges"]
+    ex = client.get(f"/api/v1/model/activity?database={db}&code={new_code}", headers=token).json()["exchanges"]
     tech = [e for e in ex if e["type"] == "technosphere"]
     assert len(tech) == 1
     assert tech[0]["formula"] == "1 / lifetime_energy"
@@ -1043,7 +1043,7 @@ def test_a_reference_quantity_divides_in_the_matrix_and_is_idempotent(client, to
     assert client.post(
         "/api/v1/params", json={"database": db, "name": "yield_kwh", "amount": 1100}, headers=token
     ).status_code == 200
-    moved = client.get(f"/api/v1/model/activities/{db}/{new_code}", headers=token).json()["exchanges"]
+    moved = client.get(f"/api/v1/model/activity?database={db}&code={new_code}", headers=token).json()["exchanges"]
     assert next(e for e in moved if e["type"] == "technosphere")["amount"] == 1 / 22000.0
 
     # Called again it re-points the same node — two dividers would divide twice.
@@ -1056,12 +1056,12 @@ def test_a_reference_quantity_divides_in_the_matrix_and_is_idempotent(client, to
     assert again.status_code == 200, again.text
     assert again.json()["replaced"] is True
     assert again.json()["activity"]["code"] == new_code
-    ex2 = client.get(f"/api/v1/model/activities/{db}/{new_code}", headers=token).json()["exchanges"]
+    ex2 = client.get(f"/api/v1/model/activity?database={db}&code={new_code}", headers=token).json()["exchanges"]
     assert len([e for e in ex2 if e["type"] == "technosphere"]) == 1
 
     # And undo does not delete a node an earlier step created.
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/activities/{db}/{new_code}", headers=token).status_code == 200
+    assert client.get(f"/api/v1/model/activity?database={db}&code={new_code}", headers=token).status_code == 200
 
 
 def test_a_reference_quantity_refuses_a_zero_denominator_and_itself(client, token, project):
@@ -1262,7 +1262,7 @@ def test_undoing_a_replaced_reference_quantity_puts_the_previous_one_back(client
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
     found = client.get(f"/api/v1/model/reference-quantity/{db}", headers=token).json()
     assert found["parameter"] == "p" and found["name"] == "per p"
-    ex = client.get(f"/api/v1/model/activities/{db}/{found['code']}", headers=token).json()["exchanges"]
+    ex = client.get(f"/api/v1/model/activity?database={db}&code={found['code']}", headers=token).json()["exchanges"]
     tech = [e for e in ex if e["type"] == "technosphere"]
     assert len(tech) == 1 and tech[0]["formula"] == "1 / p" and tech[0]["amount"] == 0.1
 

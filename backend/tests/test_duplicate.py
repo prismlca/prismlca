@@ -31,12 +31,12 @@ def test_duplicate_activity(client, token, project):
     assert dup["name"] == "Widget (copy)"
     assert dup["code"] != a
     # duplicate keeps the input to b
-    det = client.get(f"/api/v1/model/activities/{db}/{dup['code']}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={dup['code']}", headers=token).json()
     inputs = [e for e in det["exchanges"] if e["type"] == "technosphere"]
     assert len(inputs) == 1 and inputs[0]["input"]["code"] == b
     # undo removes the copy
     client.post("/api/v1/model/undo", headers=token)
-    assert client.get(f"/api/v1/model/activities/{db}/{dup['code']}", headers=token).status_code >= 400
+    assert client.get(f"/api/v1/model/activity?database={db}&code={dup['code']}", headers=token).status_code >= 400
 
 
 def test_duplicate_model_remaps_internal_links(client, token, project):
@@ -58,7 +58,7 @@ def test_duplicate_model_remaps_internal_links(client, token, project):
     assert names == {"A", "B"}
     new_a = next(x for x in acts if x["name"] == "A")["code"]
     new_b = next(x for x in acts if x["name"] == "B")["code"]
-    det = client.get(f"/api/v1/model/activities/{new}/{new_a}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={new}&code={new_a}", headers=token).json()
     tech = [e for e in det["exchanges"] if e["type"] == "technosphere"]
     # the internal A→B link must point at the COPY of B in the new db, not the original
     assert len(tech) == 1
@@ -111,11 +111,11 @@ def test_duplicate_model_copies_fields_tags_and_study(client, token, project):
     from prism_lca.engine.bootstrap import get_bd
 
     new_a = client.get(f"/api/v1/model/activities/{new}", headers=token).json()[0]["code"]
-    meta = client.get(f"/api/v1/model/activities/{new}/{new_a}/metadata", headers=token).json()
+    meta = client.get(f"/api/v1/model/activity/metadata?database={new}&code={new_a}", headers=token).json()
     assert meta["comment"] == "hand-collected data"
     copy = get_bd().get_node(database=new, code=new_a)
     assert (copy.get("prism_doc") or {}).get("data_source") == "plant survey 2025"
-    tags = client.get(f"/api/v1/model/tags/{new}/{new_a}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database={new}&code={new_a}", headers=token).json()
     assert {"dimension": "Component", "value": "Production"} in tags
     study = client.get(f"/api/v1/study?database={new}", headers=token).json()
     assert study.get("goal") == "test goal"

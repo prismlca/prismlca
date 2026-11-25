@@ -19,6 +19,7 @@ import { useFlowNote } from './useFlowNote'
 import { mutationRunner } from '../lib/mutation'
 import { errMsg } from '../lib/errors'
 import { shortUnit } from '../lib/units'
+import { activityRoute } from '../../../shared/processRoutes'
 
 /**
  * Inline foreground-process editor (right inspector). Umberto-inspired layout — a process shown
@@ -407,10 +408,7 @@ export default function ActivityEditor({
   }, [])
 
   const load = useCallback(async () => {
-    const d = await api<Detail>(
-      'GET',
-      `/api/v1/model/activities/${encodeURIComponent(database)}/${encodeURIComponent(code)}`
-    )
+    const d = await api<Detail>('GET', activityRoute(database, code))
     setDetail(d)
   }, [database, code])
 

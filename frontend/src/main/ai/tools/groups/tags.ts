@@ -7,6 +7,7 @@ import type { Tool } from '../context'
 import { obj, str } from '../schema'
 import { AI, S, batchResult, runItem } from '../format'
 import { delegate } from '../impl'
+import { activityTagsRoute } from '../../../../shared/processRoutes'
 
 /**
  * A model's tag groups as `list_tags` returns them: name, colour, the values in the model's order, and
@@ -50,10 +51,7 @@ export const tagsTools: Tool[] = [
     },
     run: async (a, ctx) => {
       if (a.database && a.code) {
-        const tags = await ctx.api(
-          'GET',
-          `/api/v1/model/tags/${encodeURIComponent(a.database)}/${encodeURIComponent(a.code)}`
-        )
+        const tags = await ctx.api('GET', activityTagsRoute(a.database, a.code))
         // The groups beside it are this model's: the activity may be a background dataset, which has none.
         const own = ctx.activeDb ? tagGroupsOf(await ctx.api('GET', groupsRoute(ctx.activeDb))) : []
         return S({ groups: own, activity_tags: tags })

@@ -1,9 +1,14 @@
-"""No fixed route takes a request that was meant for a model or a workspace of the same name.
+"""What a route's path may carry: no fixed route takes a request that was meant for a model or a workspace of
+the same name, and no route carries a process code at all.
 
 A route like `POST /ai/chats/{database}` answers for every model; a fixed route beside it, such as
 `POST /ai/chats/mark-interrupted`, wins for one name, and a model called that could not have a chat created
 (the request ran the fixed route instead). The check does not depend on declaration order: whichever of the
 two comes first, one of them can no longer be reached for that name.
+
+A process code is whatever a spreadsheet or a bundle brought in, slashes included ("P1/2"), and the server
+routes on the decoded path: a code sent as `P1%2F2` still splits its segment and the request answers "Not
+Found". So a code travels as a query parameter or in the body, never in the path.
 
 The templates come from each API module's own router, which keeps a parameter's converter: a name taken as
 `{name:path}` matches across slashes, and only its real pattern shows what it would swallow.
@@ -78,3 +83,22 @@ def test_the_check_sees_a_shadowed_route():
     ]
     assert _shadowed([("DELETE", "/api/v1/projects/old/trash"), ("DELETE", "/api/v1/projects/{name:path}")])
     assert not _shadowed([("DELETE", "/api/v1/projects/old/trash"), ("DELETE", "/api/v1/projects/{name}")])
+
+
+def _code_segments(routes: list[tuple[str, str]]) -> list[str]:
+    return [f"{method} {template}" for method, template in routes
+            if any(p == "code" or p.endswith("_code") for p in _PARAM.findall(template))]
+
+
+def test_no_route_carries_a_process_code_in_its_path():
+    carried = _code_segments(_templates())
+    assert not carried, (
+        "A process code may contain a slash, which splits a path segment. Take the code (with its database) as "
+        "query parameters instead, like GET /api/v1/model/activity?database=…&code=…:\n" + "\n".join(carried)
+    )
+
+
+def test_the_check_sees_a_code_in_a_path():
+    assert _code_segments([("GET", "/api/v1/model/activities/{database}/{code}"),
+                           ("GET", "/api/v1/model/consumers/{input_code}"), ("GET", "/api/v1/model/activity")]) == [
+        "GET /api/v1/model/activities/{database}/{code}", "GET /api/v1/model/consumers/{input_code}"]

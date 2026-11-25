@@ -141,7 +141,7 @@ def test_deleting_a_tag_group_changes_its_own_model_only(client, token, project)
     r = client.post("/api/v1/model/tag-groups/delete", json={"database": "One", "name": "Supplier"}, headers=token)
     assert r.status_code == 200, r.text
     assert r.json()["untagged"] == 1, "only One's assignment goes"
-    assert client.get(f"/api/v1/model/tags/Two/{b}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database=Two&code={b}", headers=token).json() == [
         {"dimension": "Supplier", "value": "acme"}
     ]
     two = client.get("/api/v1/model/tag-groups?database=Two", headers=token).json()["groups"]

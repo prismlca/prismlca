@@ -100,11 +100,11 @@ def test_a_tag_step_in_another_model_does_not_hold_the_undo(two_models):
     assert _history(client, token, "A")["can_undo"] is True
     assert _step(client, token, "undo", "A").status_code == 200
     assert _value(client, token, "A") == 1.0
-    tags = client.get(f"/api/v1/model/tags/B/{code}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database=B&code={code}", headers=token).json()
     assert tags == [{"dimension": "Supplier", "value": "ACME"}], "B's merge was taken back from A"
     # …and B's own undo still finds B's merge.
     assert _step(client, token, "undo", "B").status_code == 200
-    assert client.get(f"/api/v1/model/tags/B/{code}", headers=token).json() == [{"dimension": "Supplier", "value": "Acme"}]
+    assert client.get(f"/api/v1/model/tags?database=B&code={code}", headers=token).json() == [{"dimension": "Supplier", "value": "Acme"}]
 
 
 def test_a_step_that_is_not_local_still_holds_the_undo(two_models):

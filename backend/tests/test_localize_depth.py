@@ -82,7 +82,7 @@ def _score(client, token, db, code) -> float:
 
 
 def _inputs(client, token, db, code) -> list[tuple[str, str, float]]:
-    detail = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     return sorted(
         (e["input"]["database"], e["input"]["code"], e["amount"]) for e in detail["exchanges"]
         if e["type"] == "technosphere"
@@ -152,7 +152,7 @@ def test_one_undo_takes_the_whole_chain_back_and_redo_rebuilds_it_under_the_same
 
     assert client.post("/api/v1/model/redo", headers=token).status_code == 200
     assert listed() == made | {frame}
-    (ex,) = [e for e in client.get(f"/api/v1/model/activities/{fg}/{frame}", headers=token).json()["exchanges"]
+    (ex,) = [e for e in client.get(f"/api/v1/model/activity?database={fg}&code={frame}", headers=token).json()["exchanges"]
              if e["type"] == "technosphere"]
     assert ex["uid"] == uid and ex["input"]["database"] == fg
 

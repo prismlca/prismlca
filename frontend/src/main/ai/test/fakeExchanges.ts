@@ -59,8 +59,10 @@ export function fakeExchanges(
       const codes = [...new Set([...store.values()].map((e) => e.activity))]
       return codes.map((code) => ({ code, exchanges: on(code).map(copy) }))
     }
-    if (path.startsWith(`${prefix}/`)) {
-      const code = decodeURIComponent(path.slice(prefix.length + 1))
+    if (path.startsWith('/api/v1/model/activity?')) {
+      const query = new URLSearchParams(path.slice(path.indexOf('?') + 1))
+      if (query.get('database') !== db) throw new Error(`unexpected ${method} ${path}`)
+      const code = query.get('code') ?? ''
       return { activity: { code }, exchanges: on(code).map(copy) }
     }
     throw new Error(`unexpected ${method} ${path}`)

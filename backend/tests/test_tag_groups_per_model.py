@@ -62,7 +62,7 @@ def _set(client, token, keys: list[tuple[str, str]], group: str, value: str | No
 
 
 def _tags(client, token, db: str, code: str) -> list[dict]:
-    return client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json()
+    return client.get(f"/api/v1/model/tags?database={db}&code={code}", headers=token).json()
 
 
 def _audit(client, token, db: str | None = None) -> list[dict]:

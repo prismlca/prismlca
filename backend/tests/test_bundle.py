@@ -169,7 +169,7 @@ def test_the_graph_carries_formulas_and_uncertainty(client, token, filled):
     ex_graph = _read(_export(client, token, filled), "graph.json")
     tech = next(e for e in ex_graph["exchanges"] if e.get("type") == "technosphere")
     detail = client.get(
-        f"/api/v1/model/activities/{filled}/{tech['activity']}", headers=token
+        f"/api/v1/model/activity?database={filled}&code={tech['activity']}", headers=token
     ).json()
     uid = next(e["uid"] for e in detail["exchanges"] if e["type"] == "technosphere")
 
@@ -215,7 +215,7 @@ def test_the_graph_carries_formulas_and_uncertainty(client, token, filled):
     )
     assert r.status_code == 200, r.text
     back = client.get(
-        f"/api/v1/model/activities/WithFormula/{tech['activity']}", headers=token
+        f"/api/v1/model/activity?database=WithFormula&code={tech['activity']}", headers=token
     ).json()
     ex_back = next(e for e in back["exchanges"] if e["type"] == "technosphere")
     assert ex_back.get("formula") == "mass_kg * 2"
@@ -233,12 +233,12 @@ def test_the_graph_carries_formulas_and_uncertainty(client, token, filled):
         == 200
     )
     back = client.get(
-        f"/api/v1/model/activities/WithFormula/{tech['activity']}", headers=token
+        f"/api/v1/model/activity?database=WithFormula&code={tech['activity']}", headers=token
     ).json()
     ex_back = next(e for e in back["exchanges"] if e["type"] == "technosphere")
     assert ex_back["amount"] == pytest.approx(1.5)
     # The original is a separate model and keeps its own value.
-    orig = client.get(f"/api/v1/model/activities/{filled}/{tech['activity']}", headers=token).json()
+    orig = client.get(f"/api/v1/model/activity?database={filled}&code={tech['activity']}", headers=token).json()
     assert next(e for e in orig["exchanges"] if e["type"] == "technosphere")["amount"] == pytest.approx(1.0)
 
 
@@ -385,23 +385,23 @@ def test_an_imported_model_can_be_edited_like_a_local_one(client, token, filled)
     ).json()["database"]
     acts = client.get(f"/api/v1/model/activities/{name}", headers=token).json()
     for a in acts:
-        detail = client.get(f"/api/v1/model/activities/{name}/{a['code']}", headers=token).json()
+        detail = client.get(f"/api/v1/model/activity?database={name}&code={a['code']}", headers=token).json()
         assert all(ex["uid"] for ex in detail["exchanges"]), detail["exchanges"]
     bottle = next(a for a in acts if a["name"] == "bottle")
-    detail = client.get(f"/api/v1/model/activities/{name}/{bottle['code']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={name}&code={bottle['code']}", headers=token).json()
     ex = next(e for e in detail["exchanges"] if e["type"] != "production")
     base = {"activity_database": name, "activity_code": bottle["code"], "uid": ex["uid"]}
     r = client.post("/api/v1/model/exchanges/amount", json={**base, "amount": 3.0}, headers=token)
     assert r.status_code == 200, r.text
     r = client.post("/api/v1/model/exchanges/comment", json={**base, "comment": "from the bundle"}, headers=token)
     assert r.status_code == 200, r.text
-    after = client.get(f"/api/v1/model/activities/{name}/{bottle['code']}", headers=token).json()
+    after = client.get(f"/api/v1/model/activity?database={name}&code={bottle['code']}", headers=token).json()
     edited = next(e for e in after["exchanges"] if e["uid"] == ex["uid"])
     assert edited["amount"] == 3.0 and edited["comment"] == "from the bundle"
     # The original is untouched: the copy got uids of its own.
     orig = client.get(f"/api/v1/model/activities/{filled}", headers=token).json()
     ob = next(a for a in orig if a["name"] == "bottle")
-    o_detail = client.get(f"/api/v1/model/activities/{filled}/{ob['code']}", headers=token).json()
+    o_detail = client.get(f"/api/v1/model/activity?database={filled}&code={ob['code']}", headers=token).json()
     assert ex["uid"] not in {e["uid"] for e in o_detail["exchanges"]}
 
 def test_importing_twice_renames_rather_than_merges(client, token, filled):

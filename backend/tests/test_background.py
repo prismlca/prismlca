@@ -81,7 +81,7 @@ def test_localize_path_copies_and_preserves_result(client, token, project):
     elec_copy = next(c for c in res["copies"] if c["from"] == ["bg", "elec"])
 
     # the localized bottle now links to the localized elec (foreground), not bg/elec
-    detail = client.get(f"/api/v1/model/activities/{fg}/{bottle_copy['code']}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={fg}&code={bottle_copy['code']}", headers=token).json()
     tech = [e for e in detail["exchanges"] if e["type"] == "technosphere"]
     assert len(tech) == 1
     assert tech[0]["input"]["database"] == fg

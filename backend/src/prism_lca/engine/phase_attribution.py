@@ -320,9 +320,11 @@ def _value_not_reached(fg: Foreground, dimension: str, value: str, groups: dict)
             code="phase_value_not_found",
             hint=f"Check the tag value; the values of {dimension} here are: {', '.join(present)}.",
         )
-    databases = {node.act.key[0] for node in fg.nodes.values()}
+    # A key belongs to a model when the model's name and a slash start it — never split at the last slash,
+    # since a code may hold one ("P1/2" from a spreadsheet).
+    prefixes = tuple({f"{node.act.key[0]}/" for node in fg.nodes.values()})
     dimensions = sorted(
-        {t["dimension"] for key, tags in fg.tag_map.items() if key.rpartition("/")[0] in databases for t in tags}
+        {t["dimension"] for key, tags in fg.tag_map.items() if key.startswith(prefixes) for t in tags}
     )
     return PrismError(
         f"No process or input in this supply chain carries a tag of the dimension '{dimension}', so no phase "

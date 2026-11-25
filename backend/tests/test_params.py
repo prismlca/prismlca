@@ -19,7 +19,7 @@ def _create(client, token, db, name) -> str:
 
 
 def _amount(client, token, db, code, uid) -> float:
-    d = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    d = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     return next(e["amount"] for e in d["exchanges"] if e["uid"] == uid)
 
 
@@ -178,7 +178,7 @@ def test_duplicate_keeps_formulas_alive(client, token, project):
     r = client.post("/api/v1/model/activities/duplicate", json={"database": db, "code": a}, headers=token)
     assert r.status_code == 200, r.text
     copy_code = r.json()["activity"]["code"]
-    d = client.get(f"/api/v1/model/activities/{db}/{copy_code}", headers=token).json()
+    d = client.get(f"/api/v1/model/activity?database={db}&code={copy_code}", headers=token).json()
     copy_uid, copy_amount = next(
         (e["uid"], e["amount"]) for e in d["exchanges"] if e.get("formula") == "m12 * 3"
     )
@@ -414,7 +414,7 @@ def test_a_duplicated_model_is_not_frozen(client, token, project):
     # Find "A" and its formula-bearing exchange in the copy (codes and uids are freshly minted).
     acts = client.get(f"/api/v1/model/activities/{copy}", headers=token).json()
     a2 = next(x["code"] for x in acts if x["name"] == "A")
-    detail = client.get(f"/api/v1/model/activities/{copy}/{a2}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={copy}&code={a2}", headers=token).json()
     ex = next(e for e in detail["exchanges"] if e.get("formula") == "mass * 3")
     assert abs(ex["amount"] - 6.0) < 1e-9  # copied as-is
 
@@ -783,7 +783,7 @@ def test_setting_an_uncertainty_keeps_the_formula_driven_amount(client, token, p
     assert _amount(client, token, db, a, uid) == pytest.approx(1.0)
     # The distribution is reported in the review detail, under `type` — the old assertion read a field
     # that never existed and fell back to its own expected value.
-    d = client.get(f"/api/v1/model/activities/{db}/{a}?detail=review", headers=token).json()
+    d = client.get(f"/api/v1/model/activity?database={db}&code={a}&detail=review", headers=token).json()
     ex = next(e for e in d["exchanges"] if e["uid"] == uid)
     assert ex["uncertainty"]["type"] == "lognormal"
     assert ex["uncertainty"]["scale"] == pytest.approx(math.log(1.2))
@@ -1048,7 +1048,7 @@ def test_a_step_naming_a_renamed_model_only_in_its_snapshot_is_dropped_too(clien
         "input_database": "A", "input_code": supplier, "amount": 2,
     }, headers=token)
     assert r.status_code == 200, r.text
-    detail = client.get(f"/api/v1/model/activities/B/{consumer}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database=B&code={consumer}", headers=token).json()
     uid = next(e["uid"] for e in detail["exchanges"] if e["type"] == "technosphere")
     r = client.post("/api/v1/model/exchanges/remove", json={"activity_database": "B", "activity_code": consumer, "uid": uid}, headers=token)
     assert r.status_code == 200, r.text

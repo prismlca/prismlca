@@ -21,25 +21,21 @@ def _phase_findings(database: str, adjacency: dict[tuple, set]) -> list[tuple[st
     Returns ``(severity, code, message, activity_key)`` tuples; the caller resolves the key, and a key of
     None is a finding about the model as a whole.
     """
-    tag_map = TagStore().load_map()
+    # By the model's own codes, not by the last slash of a key: a code may hold a slash ("P1/2" from a
+    # spreadsheet), and an older model's name may too.
+    own = TagStore().snapshot_database(database)
     # Only dimensions this database actually uses, and only those with more than one value in it —
     # a dimension where every process carries the same value is not a phase split.
     tagged: dict[str, dict[tuple, str]] = {}
-    for key, tags in tag_map.items():
-        db, _, code = key.rpartition("/")
-        if db != database or TagStore.is_exchange_key(key):  # an input's tag is no process of the graph
+    for code, tags in own.items():
+        if TagStore.split_code(code)[1] is not None:  # an input's tag is no process of the graph
             continue
         for t in tags:
-            tagged.setdefault(t["dimension"], {})[(db, code)] = t["value"]
+            tagged.setdefault(t["dimension"], {})[(database, code)] = t["value"]
     out: list[tuple[str, str, str, tuple | None]] = []
     # No phase tag at all — on no process and no input — gives no dimension to check below, so the model
     # passed silently while its results could not be split by phase. Counted, never guessed (V489).
-    phased = any(
-        same_dimension(t["dimension"], "Life-cycle phase")
-        for key, tags in tag_map.items()
-        if key.rpartition("/")[0] == database
-        for t in tags
-    )
+    phased = any(same_dimension(t["dimension"], "Life-cycle phase") for tags in own.values() for t in tags)
     if len(adjacency) >= _PHASED_FROM and not phased:
         out.append(
             (

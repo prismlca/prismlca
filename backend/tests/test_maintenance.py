@@ -27,13 +27,13 @@ def test_delete_preview_lists_dependents(client, token, project):
                 json={"activity_database": db, "activity_code": b, "input_database": db,
                       "input_code": a, "amount": 1.0}, headers=token)
 
-    prev = client.get(f"/api/v1/model/delete-preview/{db}/{a}", headers=token).json()
+    prev = client.get(f"/api/v1/model/delete-preview?database={db}&code={a}", headers=token).json()
     assert prev["blocked"] is True
     assert prev["dependent_count"] == 1
     assert prev["dependents"][0]["code"] == b
 
     # B has no dependents
-    prev_b = client.get(f"/api/v1/model/delete-preview/{db}/{b}", headers=token).json()
+    prev_b = client.get(f"/api/v1/model/delete-preview?database={db}&code={b}", headers=token).json()
     assert prev_b["blocked"] is False
     assert prev_b["dependent_count"] == 0
 

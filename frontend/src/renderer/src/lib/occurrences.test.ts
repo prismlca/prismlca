@@ -9,6 +9,7 @@ import {
   pendingCopyId,
   placeByDataset,
   reconcileBoxes,
+  revealedId,
   shareFor,
   shownTags,
   tagKey
@@ -21,10 +22,14 @@ describe('box ids', () => {
   it('splitId answers the dataset for a box of it', () => {
     expect(splitId('ei/elec#3f2a91c04d1e')).toEqual(['ei', 'elec'])
     expect(splitId('ei/elec#new-2')).toEqual(['ei', 'elec'])
-    expect(splitId('ei/coal#ei/elec#3f2a91c04d1e')).toEqual(['ei', 'coal'])
+    expect(splitId(revealedId('ei/coal', 'ei/elec#3f2a91c04d1e'))).toEqual(['ei', 'coal'])
+    expect(splitId(revealedId('ei/coal', revealedId('ei/elec', 'ei/x')))).toEqual(['ei', 'coal'])
+    expect(splitId(revealedId('ei/P#stage/2', 'ei/x'))).toEqual(['ei', 'P#stage/2'])
     expect(splitId('m1/a/b')).toEqual(['m1', 'a/b'])
-    // A process code that contains '#' is not an occurrence and stays whole.
+    // A process code that contains '#' is not an occurrence and stays whole — with a slash after it too.
     expect(splitId('m1/mix#v2')).toEqual(['m1', 'mix#v2'])
+    expect(splitId('m1/P#stage/2')).toEqual(['m1', 'P#stage/2'])
+    expect(splitId('m1/P#stage/2#new-1')).toEqual(['m1', 'P#stage/2'])
   })
 
   it('a copy gets the next free id', () => {

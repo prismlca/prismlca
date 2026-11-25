@@ -18,6 +18,7 @@ import { paramsSection } from './reviewParams'
 import { numbersFingerprint, rememberJudged, withTextOnlyNote } from './reviewNumbers'
 import { afterReviewNote, outcomesAnswer, reviewerIdentity } from './reviewAnswer'
 import { scoredFor } from '../advice/scored'
+import { activityRoute } from '../../../../shared/processRoutes'
 
 export const reviewTools: Tool[] = [
   {
@@ -175,10 +176,7 @@ export const reviewTools: Tool[] = [
       const selfDescriptions: string[] = []
       for (const h of needsALook(linkedHotspots(hotspots?.tree, db)).slice(0, 6)) {
         const d: any = await part(`dataset "${h.name}"`, () =>
-          ctx.api(
-            'GET',
-            `/api/v1/model/activities/${encodeURIComponent(h.database)}/${encodeURIComponent(h.code)}`
-          )
+          ctx.api('GET', activityRoute(h.database, h.code))
         )
         const act = d?.activity
         if (!act) continue

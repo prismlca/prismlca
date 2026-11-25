@@ -27,7 +27,7 @@ const activity = (database: string, read_only: boolean): object => ({
 
 const mount = (database: string, read_only: boolean, kind?: string): void => {
   renderWithPrism(<ActivityEditor database={database} code="c1" kind={kind} onChanged={() => {}} />, {
-    routes: { 'GET /api/v1/model/activities/:db/:code': activity(database, read_only) }
+    routes: { 'GET /api/v1/model/activity': activity(database, read_only) }
   })
 }
 
@@ -85,7 +85,7 @@ const mountBlock = (opts: { amount?: number; readOnly?: boolean } = {}): RenderW
     />,
     {
       routes: {
-        'GET /api/v1/model/activities/:db/:code': {
+        'GET /api/v1/model/activity': {
           ...activity(db, !!opts.readOnly),
           exchanges: [production(opts.amount ?? 1, db)]
         },
@@ -134,7 +134,7 @@ describe('ActivityEditor → reference product block', () => {
   it('leaves a production exchange of a separate product node a row with its own name', async () => {
     renderWithPrism(<ActivityEditor database="my model" code="c1" kind="foreground" onChanged={() => {}} />, {
       routes: {
-        'GET /api/v1/model/activities/:db/:code': {
+        'GET /api/v1/model/activity': {
           ...activity('my model', false),
           exchanges: [
             {
@@ -161,7 +161,7 @@ describe('ActivityEditor → reference product block', () => {
   it('keeps product and unit of a read-only dataset without a production exchange', async () => {
     renderWithPrism(
       <ActivityEditor database="ecoinvent-3.12-cutoff" code="c1" kind="background" onChanged={() => {}} />,
-      { routes: { 'GET /api/v1/model/activities/:db/:code': activity('ecoinvent-3.12-cutoff', true) } }
+      { routes: { 'GET /api/v1/model/activity': activity('ecoinvent-3.12-cutoff', true) } }
     )
     await screen.findByText('No production exchange.')
     expect(document.querySelector('.refblock.ro .ref-name')?.textContent).toBe('water')
@@ -189,7 +189,7 @@ describe('ActivityEditor → unit change', () => {
       <ActivityEditor database="my model" code="c1" kind="foreground" onChanged={() => {}} />,
       {
         routes: {
-          'GET /api/v1/model/activities/:db/:code': () => {
+          'GET /api/v1/model/activity': () => {
             const d = activity('my model', false) as { activity: object }
             return { ...d, activity: { ...d.activity, unit }, exchanges: [production(1)] }
           },
@@ -223,7 +223,7 @@ describe('ActivityEditor → unit change', () => {
     fireEvent.blur(input)
     // The write, then the reload it triggers: only after both is "no warning" an answer.
     const reads = (): number =>
-      prism.calls.filter((c) => c.method === 'GET' && c.path.includes('/activities/')).length
+      prism.calls.filter((c) => c.method === 'GET' && c.path.startsWith('/api/v1/model/activity?')).length
     await waitFor(() => expect(reads()).toBe(2))
     expect(document.querySelector('.settings-hint.warn')).toBeNull()
   })

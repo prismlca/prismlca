@@ -130,7 +130,7 @@ def test_the_sheet_carries_formula_uncertainty_comment_and_tags(client, token, p
     client.post("/api/v1/model/tags", json={"database": db, "code": a,
                                             "dimension": "Life-cycle phase", "value": "Production"},
                 headers=token)
-    detail = client.get(f"/api/v1/model/activities/{db}/{a}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={db}&code={a}", headers=token).json()
     uid = next(e["uid"] for e in detail["exchanges"] if e["type"] == "technosphere")
     client.post("/api/v1/params/exchange-formula",
                 json={"activity_database": db, "activity_code": a, "uid": uid,
@@ -165,7 +165,7 @@ def test_the_sheet_carries_formula_uncertainty_comment_and_tags(client, token, p
     # The sheet has no parameters, so `mass_kg` is unknown in the target — the import says so and
     # keeps the formula rather than dropping it or failing.
     assert "mass_kg" in (r.json().get("formulas_unresolved") or "")
-    back = client.get(f"/api/v1/model/activities/InteropBack/{a}", headers=token).json()
+    back = client.get(f"/api/v1/model/activity?database=InteropBack&code={a}", headers=token).json()
     ex_back = next(e for e in back["exchanges"] if e["type"] == "technosphere")
     assert ex_back.get("formula") == "mass_kg * 1.5"
     # The exchange detail does not surface the distribution (it is edited through its own endpoint),
@@ -175,7 +175,7 @@ def test_the_sheet_carries_formula_uncertainty_comment_and_tags(client, token, p
     snap = exchange_uncertainty_snapshot("InteropBack", a, ex_back["uid"])
     assert snap.get("uncertainty type") == 2
     assert snap.get("scale")
-    tags = client.get(f"/api/v1/model/tags/InteropBack/{a}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database=InteropBack&code={a}", headers=token).json()
     assert {(t["dimension"], t["value"]) for t in tags} == {("Life-cycle phase", "Production")}
 
 
@@ -222,7 +222,7 @@ def test_a_production_amount_other_than_one_survives_the_round_trip(client, toke
     )
     assert imp.status_code == 200, imp.text
     production = [
-        e for e in client.get(f"/api/v1/model/activities/{dst}/elec", headers=token).json()["exchanges"]
+        e for e in client.get(f"/api/v1/model/activity?database={dst}&code=elec", headers=token).json()["exchanges"]
         if e["type"] == "production"
     ]
     assert len(production) == 1, production

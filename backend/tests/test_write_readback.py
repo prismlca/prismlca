@@ -35,7 +35,7 @@ def _create(client, token, db, name, **kw) -> str:
 
 
 def _exchange(client, token, db, code, uid) -> dict:
-    detail = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     return next(e for e in detail["exchanges"] if e["uid"] == uid)
 
 

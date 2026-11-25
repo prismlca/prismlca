@@ -17,7 +17,7 @@ describe('the inspector’s tags', () => {
     let tags: { dimension: string; value: string }[] = []
     ;(window as unknown as { prism: unknown }).prism = makePrism({
       'GET /api/v1/model/tag-groups': { groups: [] },
-      'GET /api/v1/model/tags/:db/:code': () => tags
+      'GET /api/v1/model/tags': () => tags
     }).prism
     const deps: CanvasModelDeps = {
       run: async (fn) => {

@@ -36,11 +36,11 @@ def test_create_activity_undo_redo(client, token, project):
     assert detail["activity"]["read_only"] is False
     assert any(e["type"] == "production" for e in detail["exchanges"])
 
-    assert client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).status_code == 200
+    assert client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).status_code == 200
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).status_code == 404
+    assert client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).status_code == 404
     assert client.post("/api/v1/model/redo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).status_code == 200
+    assert client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).status_code == 200
 
 
 def test_add_exchange_set_amount_undo(client, token, project):
@@ -66,7 +66,7 @@ def test_add_exchange_set_amount_undo(client, token, project):
     assert r.status_code == 200 and r.json()["exchange"]["amount"] == 5.0
 
     client.post("/api/v1/model/undo", headers=token)
-    detail = client.get(f"/api/v1/model/activities/{db}/{a}", headers=token).json()
+    detail = client.get(f"/api/v1/model/activity?database={db}&code={a}", headers=token).json()
     ex = [e for e in detail["exchanges"] if e["uid"] == uid][0]
     assert ex["amount"] == 2.0
 
@@ -201,7 +201,7 @@ def test_localize_moves_the_models_consumers_onto_the_copy(client, token, projec
     assert r.json()["relinked"] == 1
 
     def steel_input():
-        detail = client.get(f"/api/v1/model/activities/{fg}/{a}", headers=token).json()
+        detail = client.get(f"/api/v1/model/activity?database={fg}&code={a}", headers=token).json()
         (ex,) = [e for e in detail["exchanges"] if e["type"] != "production"]
         return ex
 
@@ -213,7 +213,7 @@ def test_localize_moves_the_models_consumers_onto_the_copy(client, token, projec
     ex = steel_input()
     assert (ex["input"]["database"], ex["input"]["code"]) == (bg, "steel")
     assert ex["amount"] == 3.0 and ex["uid"] == uid
-    assert client.get(f"/api/v1/model/activities/{fg}/{copy}", headers=token).status_code == 404
+    assert client.get(f"/api/v1/model/activity?database={fg}&code={copy}", headers=token).status_code == 404
 
 
 def test_tags_add_list_remove_undo(client, token, project):
@@ -227,11 +227,11 @@ def test_tags_add_list_remove_undo(client, token, project):
     )
     assert r.status_code == 200 and r.json()["tagged"] == 1
 
-    tags = client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database={db}&code={code}", headers=token).json()
     assert {"dimension": "material", "value": "raw materials"} in tags
 
     client.post("/api/v1/model/undo", headers=token)
-    assert client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={db}&code={code}", headers=token).json() == []
 
 
 def test_graph_nodes_and_edges(client, token, project):
