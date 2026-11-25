@@ -156,8 +156,8 @@ export function AiLimitsPanel(): JSX.Element {
             research costs. One web-research call sends one to three requests per question, so at most{' '}
             {3 * maxResearch} with the limit above; a bill-of-materials research sends a few per component.
             The chat shows what the research of a run has cost, and the cost limit below ends a research that
-            outgrows it. Default {DEFAULT_RESEARCH_WEB_LOOKUPS}; 0 = no cap of ours, the provider’s limit of{' '}
-            {MAX_WEB_LOOKUPS_PER_ANSWER} applies.
+            outgrows it. Default {DEFAULT_RESEARCH_WEB_LOOKUPS}; 0 = no cap of ours, only the provider’s own:
+            OpenRouter stops at {MAX_WEB_LOOKUPS_PER_ANSWER}, Anthropic sets none.
           </>
         )}
       </p>

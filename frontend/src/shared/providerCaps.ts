@@ -55,7 +55,8 @@ export const PROVIDER_CAPS: Record<AiProviderId, ProviderCaps> = {
   anthropic: {
     name: 'Anthropic',
     routing: false,
-    // `max_uses` and `allowed_domains` on the web_search server tool.
+    // `max_uses` and `allowed_domains` on the web_search and web_fetch server tools; `max_uses` counts
+    // across the requests of a turn, not per request (anthropic.ts, buildRequest).
     webLookupsCap: true,
     webDomainFilter: true,
     searchBesideTools: true,

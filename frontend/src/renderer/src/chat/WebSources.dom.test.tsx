@@ -131,4 +131,20 @@ describe('the sources of an answer', () => {
     expect(screen.getByRole('link', { name: 'Safety data sheet' })).toBeInTheDocument()
     expect(screen.getByText(/not opened \(url_not_accessible\)/)).toBeInTheDocument()
   })
+
+  // Anthropic counts the cap across all rounds of an answer, so a later round can run into it.
+  it('says in words that the lookup cap was reached, and where it is set', () => {
+    const capped: ToolTrace = {
+      name: 'web_lookups',
+      status: 'ok',
+      preview: '1 web search — run by the provider inside this reply.',
+      searches: [{ query: 'avasco Atlas Datenblatt', results: [], error: 'max_uses_exceeded' }],
+      fetched: [{ url: 'https://www.meffert.de/sds.pdf', error: 'max_uses_exceeded' }]
+    }
+    render(<ToolTraceList traces={[capped]} labels={{}} />)
+    const reached = /the cap “Web lookups per reply” was reached \(Settings → AI → Chat\)/
+    expect(screen.getByText(new RegExp(`^No pages — ${reached.source}$`))).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`not opened — ${reached.source}`))).toBeInTheDocument()
+    expect(screen.queryByText(/max_uses_exceeded/)).toBeNull()
+  })
 })
