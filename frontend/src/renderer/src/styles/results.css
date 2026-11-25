@@ -402,3 +402,36 @@
 .sens-trio label { display: flex; flex-direction: column; gap: 3px; font-size: var(--fs-sec); color: var(--muted); }
 .sens-trio input { width: 100%; min-width: 0; }
 .sens-subjects { max-height: 260px; overflow: auto; }
+/* Life cycle inventory at the foot of the Results page: a folded card whose head reads like a rail group's
+   (chevron, title, summary), and when open a flow × subject table under a filter row. `flex: none` for the
+   reason the score table has it: in this scrolling column a scroll container would otherwise shrink to its
+   borders. */
+.res-lci { flex: none; margin-top: 14px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.res-lci-head { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: none; padding: 10px 14px;
+  font: inherit; color: var(--text); text-align: left; cursor: pointer; border-radius: var(--r-lg); }
+.res-lci-head:hover { background: var(--surface-2); }
+.res-lci-head .car { display: inline-flex; align-items: center; color: var(--faint); flex: none; transition: transform .16s; }
+.res-lci-head .car svg { width: 13px; height: 13px; }
+.res-lci.open .res-lci-head .car { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .res-lci-head .car { transition: none; } }
+.res-lci-head .t { font-size: var(--fs-body); font-weight: 600; }
+.res-lci-head .s { margin-left: auto; font-size: var(--fs-sec); color: var(--faint); }
+.res-lci-body { padding: 0 14px 12px; }
+.res-lci-tools { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
+.res-lci-tools .flowpick-search { max-width: 280px; margin-bottom: 0; }
+.res-lci-count { color: var(--muted); font-size: var(--fs-sec); white-space: nowrap; }
+.res-lci-export { margin-left: auto; }
+.res-lci-scroll { overflow: auto; max-height: min(70vh, 720px); border: 1px solid var(--border); border-radius: 8px; }
+.lci-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+.lci-table th, .lci-table td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.lci-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-3); color: var(--navy); vertical-align: bottom; }
+.lci-table th.lci-amt-th { text-align: right; white-space: normal; max-width: 160px; overflow-wrap: break-word; }
+.lci-table .th-sort-btn { all: unset; cursor: pointer; text-align: inherit; }
+.lci-table .th-sort-btn:hover { color: var(--green-ink); }
+.lci-table .th-sort-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; border-radius: 2px; }
+.lci-table tbody tr:hover { background: var(--surface-3); }
+.lci-table td.lci-flow { max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+.lci-table td.lci-cats { color: var(--muted); }
+.lci-table td.lci-amt { text-align: right; font-variant-numeric: tabular-nums; }
+.res-lci-note { margin: 8px 0 0; font-size: var(--fs-label); color: var(--faint); }
+.res-lci-more { margin: 8px 10px; }
