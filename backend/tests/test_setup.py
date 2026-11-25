@@ -245,6 +245,48 @@ def test_import_refuses_an_empty_leftover_database(client, token, project, tmp_p
     assert "is empty" in st.detail
 
 
+def test_an_interrupted_import_is_removed_on_its_own(client, token, project, tmp_path):
+    """The way past the refusal above: the overview lists the leftover as an interrupted inventory,
+    and its Remove takes it away without starting over — the refusal's hint says so."""
+    from prism_lca.engine import ecoinvent
+    from prism_lca.engine.bootstrap import get_bd
+
+    bd = get_bd()
+    bd.Database("ei-leftover").write({})
+    listed = client.get("/api/v1/setup/background", headers=token).json()["background"]
+    assert [b["complete"] for b in listed if b["name"] == "ei-leftover"] == [False]
+    ecoinvent.start_import(
+        str(_release_dir(tmp_path)), project, "ei-leftover", run_in_thread=False
+    )
+    assert "Remove it in Background data" in ecoinvent.status().detail
+
+    r = client.delete("/api/v1/setup/background/ei-leftover", headers=token)
+    assert r.status_code == 200, r.text
+    assert "ei-leftover" not in bd.databases
+
+
+def test_removing_never_takes_an_empty_model_or_runs_under_an_import(
+    client, token, project, monkeypatch
+):
+    """Only a read-only leftover counts as an interrupted import — an empty model of the user's is
+    writable and stays. And nothing is removed while an import runs: the database it is writing
+    looks empty until the write has finished."""
+    from prism_lca.engine import ecoinvent, guardrails
+    from prism_lca.engine.bootstrap import get_bd
+
+    bd = get_bd()
+    bd.Database("my-empty-model").write({})
+    guardrails.set_read_only("my-empty-model", False)
+    r = client.delete("/api/v1/setup/background/my-empty-model", headers=token)
+    assert r.status_code == 404 and "my-empty-model" in bd.databases
+
+    bd.Database("ei-being-written").write({})
+    monkeypatch.setattr(ecoinvent._status, "state", ecoinvent.JobState.running)
+    r = client.delete("/api/v1/setup/background/ei-being-written", headers=token)
+    assert r.status_code == 409 and r.json()["error"]["code"] == "import_busy"
+    assert "ei-being-written" in bd.databases
+
+
 def test_import_accepts_a_database_imported_before_the_completion_flag(
     client, token, project, tmp_path
 ):

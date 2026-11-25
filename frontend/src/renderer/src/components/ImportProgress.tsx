@@ -3,6 +3,10 @@
  * the backend can still stop it, a Cancel button. The bar is determinate while the backend can say how far
  * it is (ecoinvent counts the datasets it has read, BAFU reads file by file) and indeterminate otherwise.
  * Shared by the import wizard and the Background panel so both show the same thing.
+ *
+ * `trouble` comes from following the job (views/useImportJob.ts): while requests fail the last status stays
+ * up with a note under it; once the engine has stopped, the step it stopped at and what to do replace the
+ * bar, the clock and Cancel — none of them would move again.
  */
 import { useEffect, useState } from 'react'
 import { elapsedLabel } from '../lib/report/writeStatus'
@@ -21,17 +25,26 @@ export interface ImportStatus {
   started_at?: number | null
 }
 
+/** Why the job cannot be followed right now. `final`: the engine has stopped; nothing answers until a restart. */
+export interface ImportTrouble {
+  message: string
+  final: boolean
+}
+
 export default function ImportProgress({
   status,
+  trouble,
   onCancel
 }: {
   status: ImportStatus
+  trouble?: ImportTrouble | null
   /** Asks the backend to stop; the parent keeps polling until the state says `cancelled`. */
   onCancel?: () => Promise<void>
 }): JSX.Element | null {
   const [cancelling, setCancelling] = useState(false)
   const [now, setNow] = useState<number | null>(null)
-  const running = status.state === 'running'
+  const stopped = trouble?.final === true
+  const running = status.state === 'running' && !stopped
   useEffect(() => {
     if (!running) {
       setCancelling(false)
@@ -42,6 +55,17 @@ export default function ImportProgress({
     const timer = setInterval(tick, 1000)
     return () => clearInterval(timer)
   }, [running])
+  if (stopped) {
+    return (
+      <div className="setup-status error" role="alert">
+        <div className="setup-status-line">
+          <strong>{status.step}</strong>
+          {status.detail ? <span> — {status.detail}</span> : null}
+        </div>
+        <p className="setup-status-note">{trouble.message}</p>
+      </div>
+    )
+  }
   if (status.state === 'idle') return null
   const pct = typeof status.progress === 'number' ? Math.max(0, Math.min(1, status.progress)) : null
   const elapsed = running && status.started_at && now !== null ? now - status.started_at : null
@@ -59,6 +83,7 @@ export default function ImportProgress({
         <strong>{status.step}</strong>
         {status.detail ? <span> — {status.detail}</span> : null}
       </div>
+      {trouble ? <p className="setup-status-note">{trouble.message}</p> : null}
       {running || status.state === 'done' ? (
         <div
           className={`setup-progress${pct === null && running ? ' indeterminate' : ''}`}

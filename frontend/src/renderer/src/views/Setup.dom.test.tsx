@@ -11,6 +11,20 @@ import { renderWithPrism } from '../test/render'
 import type { ReactElement } from 'react'
 
 const RUNNING = { state: 'running', step: 'starting', detail: '', progress: 0 }
+const IDLE = { state: 'idle', step: '', detail: '' }
+
+/** The start and the status of one import: idle until the wizard has started it, running after — the
+ *  wizard asks on opening and would otherwise follow a job it was meant to start. */
+const importRoutes = () => {
+  let started = false
+  return {
+    'POST /api/v1/setup/background': () => {
+      started = true
+      return RUNNING
+    },
+    'GET /api/v1/setup/status': () => (started ? RUNNING : IDLE)
+  }
+}
 /** The release the backend reads from the chosen folder: named by its folder, as most are. */
 const RELEASE = {
   release: true,
@@ -23,11 +37,7 @@ const RELEASE = {
 /** The wizard with a backend that accepts the import and a folder picker that answers at once. */
 const mount = (ui: ReactElement) =>
   renderWithPrism(ui, {
-    routes: {
-      'POST /api/v1/setup/background': RUNNING,
-      'GET /api/v1/setup/status': RUNNING,
-      'GET /api/v1/setup/ecoinvent-release': RELEASE
-    },
+    routes: { ...importRoutes(), 'GET /api/v1/setup/ecoinvent-release': RELEASE },
     overrides: { bridge: { pickDirectory: async () => '/data/datasets' } }
   })
 
@@ -171,8 +181,7 @@ describe('Setup wizard: the ecoinvent release', () => {
     let answer: (value: unknown) => void = () => {}
     renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
       routes: {
-        'POST /api/v1/setup/background': RUNNING,
-        'GET /api/v1/setup/status': RUNNING,
+        ...importRoutes(),
         'GET /api/v1/setup/ecoinvent-release': () => new Promise((resolve) => (answer = resolve))
       },
       overrides: { bridge: { pickDirectory: async () => '/data/renamed' } }
@@ -186,8 +195,7 @@ describe('Setup wizard: the ecoinvent release', () => {
   it('asks for the version where the files name none, and sends what was typed', async () => {
     const { prism } = renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
       routes: {
-        'POST /api/v1/setup/background': RUNNING,
-        'GET /api/v1/setup/status': RUNNING,
+        ...importRoutes(),
         'GET /api/v1/setup/ecoinvent-release': { ...RELEASE, version: null, database: null, source: null }
       },
       overrides: { bridge: { pickDirectory: async () => '/data/renamed' } }
@@ -200,5 +208,55 @@ describe('Setup wizard: the ecoinvent release', () => {
     await waitFor(() => expect(prism.calls.some((c) => c.path === '/api/v1/setup/background')).toBe(true))
     const sent = prism.calls.find((c) => c.path === '/api/v1/setup/background')?.body as { version?: string }
     expect(sent.version).toBe('3.13')
+  })
+})
+
+describe('Setup wizard: an import it did not start, and an engine that stops', () => {
+  it('shows the progress of an import that was running when it opened', async () => {
+    renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
+      routes: {
+        'GET /api/v1/setup/status': {
+          ...RUNNING,
+          step: 'inventory',
+          detail: 'Reading datasets: 18,704 of 27,400'
+        },
+        'GET /api/v1/setup/ecoinvent-release': RELEASE
+      }
+    })
+    expect(await screen.findByText(/Reading datasets: 18,704 of 27,400/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Importing…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /choose folder/i })).toBeDisabled()
+  })
+
+  it('says the engine stopped and that only a restart helps, instead of importing forever', async () => {
+    let started = false
+    renderWithPrism(<Setup project="Main" onDone={() => {}} />, {
+      routes: {
+        'POST /api/v1/setup/background': () => {
+          started = true
+          return RUNNING
+        },
+        'GET /api/v1/setup/status': () => {
+          if (started)
+            throw new Error("Error invoking remote method 'prism:api': Error: Backend is not ready.")
+          return IDLE
+        },
+        'GET /api/v1/setup/ecoinvent-release': RELEASE
+      },
+      overrides: {
+        bridge: {
+          pickDirectory: async () => '/data/datasets',
+          backendExit: async () => (started ? { code: null, signal: 'SIGKILL' } : null)
+        }
+      }
+    })
+    await userEvent.click(screen.getByRole('button', { name: /choose folder/i }))
+    await userEvent.click(screen.getByRole('button', { name: /start import/i }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toMatch(/engine stopped during the import.*ran out of memory/)
+    expect(alert.textContent).toMatch(/Restart PrismLCA/)
+    expect(screen.queryByRole('button', { name: 'Importing…' })).toBeNull()
+    expect(screen.getByRole('button', { name: /start import/i })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /cancel import/i })).toBeNull()
   })
 })

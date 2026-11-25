@@ -117,16 +117,31 @@ def background_overview() -> dict:
     }
 
 
+def _interrupted_import(bd, name: str) -> bool:
+    """An inventory the import registered and never filled: what a write leaves behind when the engine
+    is killed under it (the overview lists it as "empty — the import was interrupted"). It holds nothing
+    a model could lose, and the next ecoinvent import refuses to start beside it, so it must be removable
+    on its own rather than only by starting over."""
+    return (
+        name in bd.databases
+        and name != BIOSPHERE_DB
+        and not is_library(name)
+        and is_read_only(name)
+        and not len(bd.Database(name))
+    )
+
+
 def remove_background(name: str, drop_index: Callable[[str], bool] | None = None) -> dict:
     """Remove ONE background database — the way back when a second import failed
     or was the wrong one, without taking the other background down with it.
 
-    Refuses while any model or the library still points into it (names them). Leaves the
-    biosphere and the methods alone, except for the flows this import created that nothing
-    references any more.
+    Refuses while an import runs (the database it is writing looks empty until it has finished) and
+    while any model or the library still points into it (names them). Leaves the biosphere and the
+    methods alone, except for the flows this import created that nothing references any more.
     """
+    _assert_idle()
     bd = get_bd()
-    if not backgrounds.is_background(name):
+    if not backgrounds.is_background(name) and not _interrupted_import(bd, name):
         raise PrismError(
             f"'{name}' is not a background database of this workspace.",
             code="not_a_background",

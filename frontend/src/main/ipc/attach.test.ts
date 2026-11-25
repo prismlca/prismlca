@@ -79,7 +79,7 @@ beforeEach(() => {
   fsSpy.stat.length = 0
   fsSpy.readFile.length = 0
   attachGrants.clear()
-  registerCore({ apiRequest, getStatus: () => ({}) })
+  registerCore({ apiRequest, getStatus: () => ({}), getBackendExit: () => null })
   registerChatIpc(
     { apiRequest, getWindow: () => null },
     new Map(),

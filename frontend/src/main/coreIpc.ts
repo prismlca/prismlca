@@ -14,15 +14,19 @@ import { isStoredFileOf, isViewSafe, shownInFolderNote } from './viewSafeFiles'
 
 import { attachGrants } from './attachGrants'
 import { lastDialogDir, rememberDialogPick } from './dialogDirs'
+import type { BackendExit } from '../shared/ipc'
 
 export interface CoreDeps {
   apiRequest: (method: string, path: string, body?: unknown) => Promise<{ status: number; body: unknown }>
   /** Startup status is owned by the boot flow; read it live, never copy it. */
   getStatus: () => unknown
+  /** How the backend process ended; null while it runs. Owned by the boot flow like the status. */
+  getBackendExit: () => BackendExit | null
 }
 
 export function registerCore(deps: CoreDeps): void {
   ipcMain.handle('prism:status', () => deps.getStatus())
+  ipcMain.handle('prism:backendExit', () => deps.getBackendExit())
   ipcMain.handle('prism:info', async () => {
     const r = await deps.apiRequest('GET', '/api/v1/system/info')
     return r.body

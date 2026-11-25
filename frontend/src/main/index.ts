@@ -35,6 +35,7 @@ import { endProcess, exitedWithin, holdQuitForBackend } from './backendExit'
 import { onMainsPower } from './powerSource'
 import type { McpControl } from './ipc/mcp'
 import type { PrepareInstallResult } from '../shared/updates'
+import type { BackendExit } from '../shared/ipc'
 
 /**
  * Electron main process.
@@ -55,6 +56,9 @@ type AppState =
 
 let backend: ChildProcess | null = null
 let backendInfo: BackendInfo | null = null
+/** How the backend process ended, once it has: nothing starts it again, so the window can say that only
+ *  a restart helps (and, for a SIGKILL, that memory most likely ran out) instead of waiting forever. */
+let backendExit: BackendExit | null = null
 let status: AppState = { state: 'starting' }
 let mainWindow: BrowserWindow | null = null
 
@@ -116,9 +120,10 @@ function startBackend(onProgress?: (detail: string) => void): Promise<void> {
     })
     backend.stdout?.on('data', (chunk: Buffer) => read(chunk.toString()))
     backend.stderr?.on('data', (chunk: Buffer) => console.error('[backend]', chunk.toString().trim()))
-    backend.on('exit', (code) => {
-      console.error(`[backend] exited with code ${code}`)
+    backend.on('exit', (code, signal) => {
+      console.error(`[backend] exited with code ${code}${signal ? ` (${signal})` : ''}`)
       backendInfo = null
+      backendExit = { code, signal }
     })
     backend.on('error', reject)
 
@@ -520,7 +525,7 @@ function startApp(): void {
     return bridgeState()
   })
 
-  registerCore({ apiRequest, getStatus: () => status })
+  registerCore({ apiRequest, getStatus: () => status, getBackendExit: () => backendExit })
   // Transport distances: its own namespace beside the core surface, not under registerAi — the keys
   // and the ledger are not an AI concern, and the panel works with the assistant switched off.
   registerDistanceIpc({ apiRequest })

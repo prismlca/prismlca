@@ -153,9 +153,9 @@ Every page has the same four sections:
 - [lcia.md](lcia.md) — the LCIA page: comparing characterisation factors, methods of your own.
 - [report.md](report.md) — the Report page's short report (without AI).
 - [settings.md](settings.md) — the Settings sheet.
+- [background.md](background.md) — the setup screen, the import wizard and the Background data sheet.
 
-Not mapped yet: full reports (AI), the setup sheet and the import wizard. A change there gets its page
-in the same pull request.
+Not mapped yet: full reports (AI). A change there gets its page in the same pull request.
 
 ## Exploring before a release
 

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '../lib/api'
 import { errMsg } from '../lib/errors'
 import ImportProgress, { type ImportStatus } from '../components/ImportProgress'
 import { fmtInt } from '../lib/format'
 import { SetupHelp, SetupStep } from './SetupParts'
+import { useImportJob } from './useImportJob'
 import { ReleaseStep, useEcoinventRelease } from './ReleaseStep'
 import DialogBox from '../components/DialogBox'
 
@@ -30,8 +31,9 @@ export type BackgroundSource = 'ecoinvent' | 'bafu'
 /**
  * Background import wizard for one of the two supported databases: ecoinvent (local ecoSpold-2
  * folder plus the release's LCIA workbook) or BAFU:20XY (the download's ecoSpold-1 folder). Kicks off
- * POST /setup/background and polls /setup/status for live progress. No background data is ever
- * shipped — each user imports from their own copy (ADR: ecoinvent distribution; BAFU is free).
+ * POST /setup/background and follows the job (useImportJob) — also one that was already running when
+ * the wizard opened. No background data is ever shipped — each user imports from their own copy (ADR:
+ * ecoinvent distribution; BAFU is free).
  */
 /** Brightway's own throwaway workspace — where a fresh installation stands before anything is imported. */
 const BRIGHTWAY_DEFAULT = 'default'
@@ -71,7 +73,6 @@ export default function Setup({
   const [starting, setStarting] = useState(false)
   const [lcia, setLcia] = useState<string | null>(null)
   const release = useEcoinventRelease(source === 'ecoinvent' ? dir : null, lcia)
-  const [status, setStatus] = useState<ImportStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   // What was imported, read from the registry once the job is done — the wizard stays open and
   // shows it; before, it closed itself on "done" and the summary was never seen.
@@ -79,25 +80,17 @@ export default function Setup({
   // Whether the other provider's database is already in the workspace — then there is nothing to offer.
   const other: BackgroundSource = source === 'ecoinvent' ? 'bafu' : 'ecoinvent'
   const [otherPresent, setOtherPresent] = useState(true)
-  const timer = useRef<ReturnType<typeof setTimeout>>()
 
-  useEffect(() => () => clearTimeout(timer.current), [])
-
-  const poll = useCallback(async () => {
-    const st = await api<ImportStatus>('GET', '/api/v1/setup/status')
-    setStatus(st)
-    if (st.state === 'running') {
-      timer.current = setTimeout(() => void poll(), 1500)
-    } else if (st.state === 'done') {
-      try {
-        const overview = await api<{ background: ImportedEntry[] }>('GET', '/api/v1/setup/background')
-        setResult(overview.background.find((b) => b.name === st.database) ?? null)
-        setOtherPresent(overview.background.some((b) => b.provider === other))
-      } catch {
-        setResult(null)
-      }
+  const { status, trouble, follow } = useImportJob(async (st: ImportStatus) => {
+    if (st.state !== 'done') return
+    try {
+      const overview = await api<{ background: ImportedEntry[] }>('GET', '/api/v1/setup/background')
+      setResult(overview.background.find((b) => b.name === st.database) ?? null)
+      setOtherPresent(overview.background.some((b) => b.provider === other))
+    } catch {
+      setResult(null)
     }
-  }, [other])
+  })
 
   const pick = useCallback(async () => {
     const chosen = await window.prism.pickDirectory()
@@ -116,25 +109,27 @@ export default function Setup({
     try {
       const name = workspace.trim()
       if (askWorkspace && name && name !== BRIGHTWAY_DEFAULT) await onCreateWorkspace!(name)
-      await api('POST', '/api/v1/setup/background', {
+      const started = await api<ImportStatus>('POST', '/api/v1/setup/background', {
         source,
         path: dir,
         lcia_xlsx: source === 'ecoinvent' ? lcia : null,
         version: source === 'ecoinvent' ? release.versionToSend : null
       })
-      void poll()
+      follow(started)
     } catch (e) {
       setError(errMsg(e))
     } finally {
       setStarting(false)
     }
-  }, [dir, lcia, poll, source, workspace, askWorkspace, onCreateWorkspace, starting, release.versionToSend])
+  }, [dir, lcia, follow, source, workspace, askWorkspace, onCreateWorkspace, starting, release.versionToSend])
 
   const cancel = useCallback(async () => {
     await api('POST', '/api/v1/setup/cancel')
   }, [])
 
-  const running = status?.state === 'running' || starting
+  // Once the engine has stopped nothing runs any more, and nothing can be started until a restart.
+  const stopped = trouble?.final === true
+  const running = (status?.state === 'running' && !stopped) || starting
   const done = status?.state === 'done'
   const bafu = source === 'bafu'
 
@@ -218,7 +213,7 @@ export default function Setup({
         </ol>
         {!running && !done ? <SetupHelp source={source} /> : null}
 
-        {status ? <ImportProgress status={status} onCancel={cancel} /> : null}
+        {status ? <ImportProgress status={status} trouble={trouble} onCancel={cancel} /> : null}
         {done && result ? (
           <div className="setup-result">
             <div className="eyebrow">Imported</div>
@@ -287,7 +282,11 @@ export default function Setup({
               </button>
             </>
           ) : (
-            <button className="btn primary" onClick={start} disabled={!dir || running || !release.ready}>
+            <button
+              className="btn primary"
+              onClick={start}
+              disabled={!dir || running || stopped || !release.ready}
+            >
               {running ? 'Importing…' : 'Start import'}
             </button>
           )}
