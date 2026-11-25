@@ -12,9 +12,10 @@
  *   - per-item questions run in PARALLEL;
  *   - the answer is verifiable (mass balance + mandatory sources).
  */
+import type { ReasoningEffort } from '../../shared/aiDefaults'
 import { CitationBook, isProviderLink, urlKey, type Evidence } from './citationBook'
 import { AiProviderError, type ChatMessage, type Citation } from './providers/types'
-import { providerDefaults } from './models'
+import { findModel, modelBelongsTo, providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
 import { collectText } from './stream'
 
@@ -36,8 +37,8 @@ const MAX_RESEARCH_ROUNDS = 6
  * a leg rather than an evening. The client's own stall detector catches a dead stream sooner; this
  * catches the other shape, a stream that dribbles forever without ever finishing. Raised from five
  * alongside the sharper levers against the failure that actually eats budgets: legs run
- * at low reasoning effort, are told their budget, and write findings as they go — the ceiling is the
- * backstop, not the plan.
+ * at low reasoning effort (except on the rows that measurably need more, `legEffort`), are told their
+ * budget, and write findings as they go — the ceiling is the backstop, not the plan.
  */
 const LEG_BUDGET_MS = 360_000
 
@@ -127,15 +128,13 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
   // The provider default when Settings leaves the research model empty — resolved HERE, so the id
   // the leg requests is the id its costs are booked under.
   const legModel = opts.model ?? providerDefaults(getActiveProvider()).research
+  const reasoningEffort = legEffort(legModel)
   for (let round = 0; round < MAX_RESEARCH_ROUNDS; round++) {
     if (signal.aborted) break
     let roundText = ''
     // No `tools` array beyond the provider's server-side web tools, which `webSearch` attaches
     // (OpenRouter and Anthropic: web search + page fetch; Google: google_search + url_context; OpenAI:
     // the Responses API web_search).
-    // Reasoning effort LOW: a research leg's job is retrieval, and the thinking dial is the budget
-    // that actually runs out — GLM 5.3 defaults to effort "max" (per OpenRouter's model listing) and
-    // spent an entire eval leg reasoning without writing a line.
     roundText = await collectText({
       model: legModel,
       messages,
@@ -143,7 +142,7 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       webDomains: opts.domains,
       webLookupsCap: opts.webLookups,
       onCitations: opts.onCitations,
-      reasoningEffort: 'low',
+      reasoningEffort,
       signal,
       // Well inside the leg's own clock, so a provider that refuses or a network that is gone ends the
       // leg with that error, not with "ran past its budget" from a clock that fired in a pause.
@@ -166,6 +165,20 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
   // ended it — otherwise a leg cut off mid-answer looks like one that finished with time to spare.
   if (clock.signal.aborted) opts.onTimeout?.()
   return text
+}
+
+/**
+ * The reasoning effort a leg runs at on this model under the active provider: LOW unless the catalogue row
+ * says otherwise (`researchEffort`). Low is the rule because a research leg's job is retrieval, and the
+ * thinking dial is the budget that actually runs out — GLM 5.3 defaults to effort "max" (per OpenRouter's
+ * model listing) and spent an entire eval leg reasoning without writing a line. The exceptions are rows
+ * whose legs measurably stopped searching too early at low; why each one is set stands at the row.
+ */
+export function legEffort(model: string): ReasoningEffort {
+  const provider = getActiveProvider()
+  // Only the row this id names under this provider: findModel alone falls back to the provider's default
+  // chat model, whose setting must not leak onto an id the catalogue does not know.
+  return (modelBelongsTo(model, provider) && findModel(model, provider).researchEffort) || 'low'
 }
 
 /** A leg that ran past its wall-clock budget — the one failure the narrower retry is made for. */

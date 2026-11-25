@@ -182,6 +182,9 @@ export interface AiModel {
    */
   minChatEffort?: ReasoningEffort
   minChatEffortNote?: string
+  /** The effort a research leg runs at on this row (subagent.ts); absent = `low`. Set only where a measurement
+   *  showed the legs search too shallowly at low — the row says what was measured. */
+  researchEffort?: ReasoningEffort
 }
 
 /**
