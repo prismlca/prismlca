@@ -12,6 +12,8 @@
  * - Can it be driven? Whether the window answers a plain question asked past the driver (windowProbe.ts),
  *   and what the driver is busy with — so a stuck driver is not taken for a frozen window, nor the other
  *   way round.
+ * - Is it sealed? A session launched with --sealed has the seal in place in the main process and the
+ *   backend, and a probe request through each of the main process's network stacks is refused (sealed.ts).
  *
  * The facts are gathered in two places — the host knows the app (facts.ts), the command line knows the
  * checkout — and judged in one pure function, so the verdicts can be tested without an app.
@@ -22,6 +24,7 @@ import { isAbsolute, join, posix, relative, resolve, win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { AppFacts } from './facts'
 import type { SessionRecord } from './session'
+import { judgeSeal, type SealEntry } from './sealed'
 import type { DriverState } from './watchdog'
 import type { WindowProbe } from './windowProbe'
 
@@ -33,6 +36,8 @@ export interface DoctorInput {
   hostError?: string
   /** What the window said when asked past the driver; null when it was not asked. */
   window: WindowProbe | null
+  /** The seal log of a sealed session (sealed.ts), read after the app's facts; absent when not read. */
+  sealLog?: SealEntry[] | null
   current: { src: string; out: string | null; backend: string }
   stamp: { src: string; out: string } | null
   realDirs: string[]
@@ -200,6 +205,7 @@ export function judge(input: DoctorInput): Check[] {
   }
   checks.push(...judgeKeys(record, app))
   checks.push(...judgeData(record, app))
+  checks.push(...judgeSeal(record, app, input.sealLog ?? null))
   for (const real of input.realDirs) {
     for (const [label, value] of [
       ['userData', app.userData],

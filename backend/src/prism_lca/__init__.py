@@ -7,6 +7,12 @@ from __future__ import annotations
 
 import importlib.metadata
 
+from prism_lca.seal import install_from_env as _seal_from_env
+
+# A driven test instance run from source may be sealed: nothing this process asks of the network leaves the
+# computer (seal.py). Here, because every process that runs our code imports this package first.
+_seal_from_env()
+
 
 def _version_from_pyproject() -> str:
     """Running from source without an install: read the one version that exists, never a copy.

@@ -27,6 +27,7 @@ import {
   type CopyReport
 } from './copy'
 import { hostAlive } from './host'
+import { SEAL_LOG } from './sealed'
 import { copyKeys, forgetKeys } from './keys'
 import {
   controlDir,
@@ -168,6 +169,10 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
     )
   if (flags['full-copy'] && !flags.copy)
     return Promise.reject(new Exit(2, '--full-copy says how to --copy; it needs --copy'))
+  if (flags.sealed && flags.keys)
+    return Promise.reject(
+      new Exit(2, '--keys is of no use to a --sealed instance: it refuses the providers the keys are for')
+    )
   return locked(name, async () => {
     const existing = readSession(FRONTEND, name)
     if (existing) {
@@ -206,6 +211,7 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
         ...(copy ? { copy } : {}),
         seeded: !!flags.seed,
         keys,
+        seal: flags.sealed ? join(logs, SEAL_LOG) : null,
         build: stamp,
         backendSrc: backendFingerprint(FRONTEND),
         backend: { via: plan.via, detail: plan.detail },
@@ -235,7 +241,8 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
     updateSession(FRONTEND, name, record.token, { host, hostRecorded: true })
 
     out(
-      `launching session "${name}" in ${install.root}${flags.seed ? ' (with seed — about a minute)' : ''}` +
+      `launching ${flags.sealed ? 'sealed ' : ''}session "${name}" in ${install.root}` +
+        `${flags.seed ? ' (with seed — about a minute)' : ''}` +
         `${mode === 'copy' ? ' (your data: the backend loads it and its search model — up to a minute)' : ''} …`
     )
     const limit = Date.now() + (flags.seed ? 600_000 : 300_000)
@@ -245,6 +252,7 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
         throw new Exit(1, `the record of session "${name}" was replaced meanwhile`)
       if (now.status === 'ready') {
         out(`ready: session "${name}", backend via ${plan.detail}`)
+        if (record.seal) out(`sealed: what it refuses goes to ${record.seal} (refused lists it)`)
         out(`next: doctor, then drive (help lists the commands; frontend/features/ maps the pages)`)
         return
       }

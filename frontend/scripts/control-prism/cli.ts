@@ -17,6 +17,7 @@ import { changedSince, judge, realDirs } from './doctor'
 import type { AppFacts } from './facts'
 import { hostAlive, runHost } from './host'
 import { launch, restart, stop } from './lifecycle'
+import { readSealLog, refusedLines } from './sealed'
 import { controlDir, readSession, sessionName, type SessionRecord } from './session'
 import { TargetError } from './targets'
 import { WAIT_HELP } from './waits'
@@ -26,12 +27,15 @@ const HELP = `control-prism — drive the built app like a person, for proof tha
 Run from frontend/:  node scripts/control-prism.mjs <command> [--session <name>]
 
 session
-  launch [--fresh] [--seed] [--copy [--full-copy]] [--keys] [--no-build] [--idle <min>]
+  launch [--fresh] [--seed] [--copy [--full-copy]] [--keys] [--sealed] [--no-build] [--idle <min>]
                      build out/ if it is not the current source, start a fresh isolated instance;
                      --seed imports the BAFU test fixture through the setup sheet (preparation only);
                      --copy starts on a copy of your own data and profile instead (blocks shared with
                      yours where the disk can; --full-copy copies in full where it cannot);
-                     --keys copies your stored provider keys in: chats then bill your accounts
+                     --keys copies your stored provider keys in: chats then bill your accounts;
+                     --sealed lets nothing leave this computer: links, files and folders handed to the
+                     desktop and every request are refused, native dialogs cancelled, each written
+                     down (see refused) — launch sealed before exploring or clicking at random
   doctor             is the running app a valid witness? run it before every proof; exit 1 if not.
                      Also says whether the window answers past the driver, and what the driver is busy
                      with: when commands get no answer, it tells a stuck driver from a frozen window
@@ -53,6 +57,7 @@ driving                              (<target>: see "targets" below)
                      (default: its centre); --steps pointer moves on the way (default 10)
   wait <condition> … [--timeout <ms>]                    see "wait" below
   console [--all] [--since <n>]      the window's errors since launch (or since message n); exit 1 if any
+  refused [--since <n>]              what a --sealed instance refused or cancelled since launch (or since line n)
   snapshot [--target <target>] [--options]   the accessibility tree: roles and names, as targets use them
   shot [<file.png>] [--target <target>] [--full]
   read '<expression>'                look at state in the window; never the proof, never a wait loop
@@ -69,7 +74,8 @@ ${WAIT_HELP.split('\n')
 
 Every session belongs to the checkout that launched it (--session or CONTROL_PRISM_SESSION picks one of
 several; default "default"). Its logs are in .cache/control-prism/logs/<session>/. Native dialogs (file
-pickers, OAuth) and drags in from other programs are manual: they are not driven.`
+pickers, OAuth) and drags in from other programs are manual: they are not driven (a sealed instance cancels
+the dialogs).`
 
 function bundlePath(): string {
   // The command line runs as one bundle in .cache/; FRONTEND (e2e/app.ts) is computed from its folder.
@@ -126,6 +132,8 @@ async function doctorCmd(record: SessionRecord): Promise<void> {
   // The window is asked past the driver at the same time, so its answer does not wait for the host's.
   const [{ app, hostError }, window] = await Promise.all([facts, probeWindow(record.install.userData)])
   const fresh = readSession(FRONTEND, record.name) ?? record
+  // Read after the facts, so the lines of this doctor's own probes are in it.
+  const sealLog = fresh.seal ? readSealLog(fresh.seal) : null
   const checks = judge({
     frontend: FRONTEND,
     record: fresh,
@@ -141,13 +149,27 @@ async function doctorCmd(record: SessionRecord): Promise<void> {
     realDirs: real,
     realChanged: changedSince(real, Date.parse(record.launchedAt)),
     devKeyFiles: devKeyFiles(),
-    backendEnvKeys: backendEnvKeys()
+    backendEnvKeys: backendEnvKeys(),
+    sealLog
   })
   out(`doctor — session "${record.name}", ${FRONTEND}`)
   for (const c of checks) out(`  ${c.status.padEnd(4)}  ${c.text}`)
   const failed = checks.filter((c) => c.status === 'FAIL').length
   if (failed > 0) throw new Exit(1, `NOT a valid witness: ${failed} check(s) failed`)
   out('a valid witness for this checkout')
+}
+
+function refusedCmd(record: SessionRecord, flags: Parsed['flags']): void {
+  if (!record.seal) throw new Exit(1, `session "${record.name}" is not sealed — launch --sealed`)
+  const since = flags.since === undefined ? 0 : Number(flags.since)
+  if (!Number.isInteger(since) || since < 0) throw new Exit(2, '--since takes a line number, e.g. --since 12')
+  const entries = readSealLog(record.seal) ?? []
+  const lines = refusedLines(entries, since)
+  lines.forEach(out)
+  out(
+    `${lines.length} refused${since ? ` since #${since}` : ' since launch'}; latest #${entries.length} — ` +
+      `--since ${entries.length} shows only what comes next (log: ${record.seal})`
+  )
 }
 
 async function consoleCmd(record: SessionRecord, flags: Parsed['flags']): Promise<void> {
@@ -195,6 +217,8 @@ async function main(argv: string[]): Promise<void> {
       return doctorCmd(requireSession(name))
     case 'console':
       return consoleCmd(requireSession(name), p.flags)
+    case 'refused':
+      return refusedCmd(requireSession(name), p.flags)
     case 'shot': {
       const r = requireSession(name)
       const file = p.args[0] ?? join(controlDir(FRONTEND), 'shots', `${name}-${Date.now()}.png`)

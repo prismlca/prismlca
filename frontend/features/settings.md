@@ -61,11 +61,12 @@ node scripts/control-prism.mjs wait unchecked "role=checkbox:Show the product"
 
 ## Gotchas
 
-- **Several controls here reach the network or another program, and a check leaves them alone:** the
+- **Several controls here reach the network or another program; a check leaves them alone unless the
+  session is sealed** (`launch --sealed`, which refuses them and lists them under `refused`): the
   "Load news from prismlca.com at every start" switch (General, and on the tour's card), the provider
   key links under AI → Provider (they open the provider's key page in a browser), the account links under
   Transport distances, the links on About, and "Check for updates" (disabled outside the installed app).
 - **No key can be stored in a control-prism instance** unless it was launched with `--keys`, and typing a
   key into a provider field may send it to the provider to check it: leave the key fields empty.
-- The logo "Upload" opens a file dialog: manual.
+- The logo "Upload" opens a file dialog: manual (a sealed session cancels it).
 - Reset only resets the page shown, not the whole sheet.

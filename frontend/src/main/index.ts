@@ -22,6 +22,7 @@ import { getSettings } from './settings'
 import { attachSpellcheckMenu, initSpellcheck } from './spellcheck'
 import { applyRootDistrust } from './distrustedRoots'
 import { disableProxyDiscovery } from './networkProxy'
+import { sealFromEnv } from './seal'
 import { ensureSearchModel } from './searchModel'
 import { createSplash, type Splash } from './splash'
 import { guardWindow } from './windowGuard'
@@ -479,6 +480,9 @@ function startApp(): void {
     app.quit()
     return
   }
+  // A driven test instance from source may be sealed: nothing leaves this computer, and what tried is
+  // written down (seal/index.ts). Before any window, session, request or child process.
+  const seal = sealFromEnv()
   app.on('second-instance', (_e, _argv, _cwd, additionalData) => {
     const by = ((additionalData as { launchedBy?: string } | undefined)?.launchedBy ?? 'human') as LaunchedBy
     // Only a PERSON's second start means anything here: another bridge losing the lock is just the
@@ -581,6 +585,7 @@ function startApp(): void {
 
     try {
       splash?.setStatus('Starting local engine…', 12)
+      await seal?.ready
       await startBackend((detail) => splash?.setStatus(detail, 30))
       splash?.setStatus('Waiting for the LCA engine…', 55)
       await waitForHealth(() => backendInfo)

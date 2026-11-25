@@ -25,13 +25,22 @@ node scripts/control-prism.mjs help
 - `--keys` (with or without `--copy`) copies your stored provider keys into the session, and nothing
   else of your keys: environment variables and the checkout's `.secrets/` stay out. Without it the
   instance has no key at all. The keys leave the session at `stop`, also with `--keep`.
+- `--sealed` lets nothing of the session leave this computer. Links, files and folders the app would hand
+  to the desktop, and every request of the app, its backend and the programs they start, are refused;
+  native dialogs and the file and colour choosers are cancelled. Each attempt is a line in
+  `sealed.jsonl` in the session's logs, and `refused` lists them. The app sees what it sees offline: the
+  news card says prismlca.com could not be reached. Launch sealed to explore or to click where you like;
+  a proof that needs a link opened or a request answered runs unsealed. It does not go with `--keys`:
+  the providers are refused.
 - `doctor` before every proof. It fails when the running app is not the build of the checkout as it is
   now (or its backend still runs older Python sources), when the instance belongs to another checkout,
   when any of its folders lies outside its own, when a provider key of yours reaches it unasked, or when
   keys it was given cannot be decrypted. It says where a copy came from and when it was taken. A
   screenshot of a stale build proves nothing. It also asks the window a plain question past the driver
   (over the app's DevTools port) and names what the driver is busy with, so a stuck driver is not taken
-  for a frozen window.
+  for a frozen window. A sealed session fails it unless the seal is in place in the main process, in
+  every window and in the backend, and a probe request through each of the main process's network
+  stacks is refused; an unsealed one gets a note that it is not sealed.
 - `restart` quits the app as a person does and starts it again on the same data — rebuilding first when
   the sources changed. Use it after an edit, and to prove that something survives a restart.
 - `stop` at the end. It ends what this session started and removes its folders (`--keep` keeps them for
@@ -155,6 +164,8 @@ with `control-prism` and these pages, looking for what is broken rather than pro
 reports and changes nothing — no fix, no merge. Each finding becomes an issue of its own; a map page
 written on the way goes in a pull request of its own.
 
+- **Sealed:** `launch --seed --sealed`, and `doctor` says the seal is in place. An unsealed session is
+  not for exploring: a block list of controls by name missed links, a switch and a file dialog before.
 - **Order:** the pages with neither a map page nor an end-to-end test first, then the partly tested
   ones. End-to-end tests cover the setup sheet (first start, background import), the Model page
   (build, calculate, change an amount, Undo, restart), the Results page (comparison, decomposition tree)
@@ -167,18 +178,19 @@ written on the way goes in a pull request of its own.
   number looks wrong" is not a finding.
 - **One session per run, its record kept:** `export CONTROL_PRISM_SESSION=<run>`, then `status` saved
   after `launch` and again before `stop` (`stop --keep` keeps the folders but drops the record), with
-  `console --all` and the logs from `.cache/control-prism/logs/<run>/`. Launching the same session again
+  `console --all`, `refused` and the logs from `.cache/control-prism/logs/<run>/`. Launching the same session again
   deletes its logs.
 - **A finding carries** the `control-prism` commands that reproduce it from `launch --seed`, a
   screenshot, and whether it was reproduced in a new session. About ten per run at most: the ones that
   matter most.
-- **Gaps are recorded, not worked around:** native dialogs (import, export, backup and restore, logo
-  and cover uploads), drags in from another program (a file onto the chat), and everything that costs
-  money — the chat, the AI report writer, research. Drags inside the window are driven (see "Drags").
-- **Left alone:** anything that opens a browser or goes online — Handbook, GitHub, Open in browser,
-  Subscribe, the lead developer's name, the links under Settings → About, the provider key and account
-  links under Settings → AI and Transport distances, "Load news from prismlca.com", "Check for updates"
-  — and the "Load news … at every start" switch on the tour's card and under Settings → General.
+- **Gaps are recorded, not worked around:** what lies behind a native dialog (import, export, backup
+  and restore, logo and cover uploads — the seal cancels the dialog), drags in from another program (a
+  file onto the chat), and everything that costs money — the chat, the AI report writer, research. Drags
+  inside the window are driven (see "Drags").
+- **Controls that go out are clicked like the rest:** Handbook, GitHub, Open in browser, Subscribe, the
+  links under Settings → About and on the tour's cards, "Load news from prismlca.com", the "Load news …
+  at every start" switch. Sealed, they open and send nothing, and `refused` names the address each one
+  tried: a link that opens nothing is not a finding, one with the wrong address is.
 - **When commands time out, run `doctor` before calling the window frozen.** The session gives up on a
   command that overruns its own bound and takes the next one; a click or keypress given up on may still
   land, so nothing is driven until it has (or until `restart`). `doctor` asks the window past the driver:

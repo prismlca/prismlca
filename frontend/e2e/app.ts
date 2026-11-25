@@ -104,12 +104,18 @@ export interface LaunchOptions {
    * can read keys a person's app stored; only for an instance that was given those keys on request.
    */
   keyStore?: 'test' | 'system'
+  /**
+   * The log file of a sealed instance (main/seal/ and the backend's seal.py): nothing leaves the computer —
+   * no link, no file or folder handed to the desktop, no native dialog, no request — and each attempt is
+   * written there. Unset, the app reaches out as an installed one does.
+   */
+  sealed?: string
 }
 
 /** Starts the app on `install` and returns once its main window (not the splash) has loaded. */
 export async function launch(
   install: Install,
-  { searchModel = 'hashing', keyStore = 'test' }: LaunchOptions = {}
+  { searchModel = 'hashing', keyStore = 'test', sealed }: LaunchOptions = {}
 ): Promise<RunningApp> {
   const app = await _electron.launch({
     cwd: FRONTEND,
@@ -139,7 +145,8 @@ export async function launch(
       // variable outranks the file. Keys stored in the app's profile still reach the backend — the main
       // process passes them on when it starts it.
       PRISM_OPENROUTER_API_KEY: '',
-      PRISM_OPENAI_API_KEY: ''
+      PRISM_OPENAI_API_KEY: '',
+      ...(sealed ? { PRISM_SEALED: sealed } : {})
     },
     timeout: 120_000
   })

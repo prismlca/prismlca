@@ -109,9 +109,11 @@ export async function runHost(frontend: string, name: string): Promise<void> {
   const start = async (): Promise<RunningApp> => {
     // A copy was indexed with the app's own search model; an empty install embeds offline. Keys copied in
     // on request were encrypted with the system's key store, so only then does the app use it.
+    // A sealed session's app appends to its log for the session's whole life, restarts included.
     const app = await launch(record.install, {
       searchModel: record.mode === 'copy' ? 'app' : 'hashing',
-      keyStore: record.keys ? 'system' : 'test'
+      keyStore: record.keys ? 'system' : 'test',
+      sealed: record.seal ?? undefined
     })
     const proc = app.app.process()
     proc.stdout?.on('data', (b: Buffer) => appLog.write(b))

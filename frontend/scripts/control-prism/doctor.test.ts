@@ -312,9 +312,10 @@ describe('judge', () => {
       expect.stringMatching(/holds stored keys \(openai, openrouter\) though launch was not asked/)
     ])
     const asked = record({ keys: ['openai', 'openrouter'] })
-    const notes = judge(input({ record: asked, app: app({ storedKeys: keys }) })).filter(
-      (c) => c.status === 'note'
-    )
+    // The keys' notes; an unsealed session also says it is not sealed (sealed.test.ts).
+    const keyNote = (c: { status: string; text: string }): boolean =>
+      c.status === 'note' && !c.text.startsWith('not sealed')
+    const notes = judge(input({ record: asked, app: app({ storedKeys: keys }) })).filter(keyNote)
     expect(notes.map((c) => c.text)).toEqual([
       expect.stringMatching(/openai, openrouter .* bills your provider/)
     ])
@@ -322,7 +323,7 @@ describe('judge', () => {
     expect(failures(input({ record: asked, app: app({ storedKeys: unreadable }) }))).toEqual([
       expect.stringMatching(/cannot decrypt your stored key\(s\) for openrouter/)
     ])
-    const none = judge(input({ record: record({ keys: [] }) })).filter((c) => c.status === 'note')
+    const none = judge(input({ record: record({ keys: [] }) })).filter(keyNote)
     expect(none.map((c) => c.text)).toEqual([expect.stringMatching(/there were none/)])
   })
 
