@@ -20,6 +20,7 @@ const legs = (): Array<{ system: string; reasoningEffort?: string }> =>
 
 const { researchBom } = await import('./researchBom')
 const { researchWeb } = await import('./subagent')
+const { setActiveProvider } = await import('./providers/state')
 
 /** The app log's lines, without stamp and tag. */
 let logged: string[] = []
@@ -80,12 +81,38 @@ describe('researchBom brief', () => {
   // The two levers against the budget-eater found by the first eval run (2026-08-29): GLM 5.3
   // defaults to reasoning effort "max" and spent a whole leg thinking without writing a line. A
   // research leg is retrieval work, so it runs at LOW effort and is told its wall-clock budget.
-  it('runs every leg at low reasoning effort and names the time budget', async () => {
+  it('runs a leg at low reasoning effort by default and names the time budget', async () => {
     await researchBom({ product: 'bottle', components: ['body'] })
     expect(legs()).toHaveLength(1)
     expect(legs()[0].reasoningEffort).toBe('low')
     expect(legs()[0].system).toMatch(/Time budget: about 6 minutes/)
     expect(legs()[0].system).toMatch(/write your answer early/)
+  })
+
+  // Claude Sonnet and Haiku stopped after two searches at low and reported parts as not found; their direct
+  // rows carry `researchEffort: 'high'`. Only those rows: Opus, the OpenRouter route to the same model, and an
+  // id the catalogue does not know stay low — the last must not inherit the provider's default chat row.
+  it('runs the legs at the effort named on the research model row under the active provider', async () => {
+    const effortOf = async (model: string | undefined): Promise<string | undefined> => {
+      chat.seen.length = 0
+      await researchBom({ product: 'bottle', components: ['body'], model })
+      return legs()[0]?.reasoningEffort
+    }
+    setActiveProvider('anthropic')
+    try {
+      expect(await effortOf(undefined)).toBe('high') // the provider's research default, Haiku
+      expect(await effortOf('claude-haiku-5-5')).toBe('high')
+      expect(await effortOf('claude-sonnet-5-5')).toBe('high')
+      expect(await effortOf('claude-opus-5-5')).toBe('low')
+      expect(await effortOf('claude-haiku-9-9')).toBe('low')
+      chat.seen.length = 0
+      await researchWeb({ question: 'How much does a 0.5 l PET bottle weigh?', allowUnsourced: true })
+      expect(legs().map((l) => l.reasoningEffort)).toEqual(legs().map(() => 'high'))
+    } finally {
+      setActiveProvider('openrouter')
+    }
+    expect(await effortOf('anthropic/claude-haiku-5.5')).toBe('low')
+    expect(await effortOf(undefined)).toBe('low') // GLM 5.3 Flash
   })
 
   // A research request exists to search and read, and it went out without any cap on the provider's

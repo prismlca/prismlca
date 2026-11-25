@@ -214,6 +214,7 @@ describe('reasoning effort per row', () => {
       expect(ranks, m.id).toEqual([...ranks].sort((a, b) => a - b))
       expect(new Set(levels).size, m.id).toBe(levels.length)
       if (m.defaultEffort) expect(levels, m.id).toContain(m.defaultEffort)
+      if (m.researchEffort) expect(levels, m.id).toContain(m.researchEffort)
       if (m.minChatEffort) {
         expect(levels, m.id).toContain(m.minChatEffort)
         // A floor without its reason would cut the picker short with nothing to say why.
@@ -237,6 +238,15 @@ describe('reasoning effort per row', () => {
     expect(direct.reasoningEfforts).toEqual(levels)
     expect(routed.reasoningEfforts).toEqual(levels)
     expect(direct.defaultEffort).toBe(dflt)
+  })
+
+  // Measured on the direct Anthropic route only; every other row's legs keep the default, low.
+  it('raises the research effort on the direct Claude Sonnet and Haiku rows alone', () => {
+    expect(
+      AI_MODELS.filter((m) => m.researchEffort)
+        .map((m) => `${m.id}:${m.researchEffort}`)
+        .sort()
+    ).toEqual(['claude-haiku-5-5:high', 'claude-sonnet-5-5:high'])
   })
 
   it('puts the chat floor on GPT-6 Luna alone, on both routes, and leaves it the cheap roles', () => {

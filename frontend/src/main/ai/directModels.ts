@@ -88,6 +88,14 @@ export const DIRECT_MODELS: AiModel[] = [
   // one row priced by prompt length (`longPrompt`). `intelligence`, `planTool` and the effort
   // levels are their OpenRouter rows' — the same models, the same readings; Anthropic's `max` is not
   // offered, since only the OpenAI rows have been checked for it so far.
+  //
+  // Research legs on Sonnet and Haiku run at `high` (`researchEffort`), not the `low` every other row gets. At
+  // low both ended a leg after one or two searches and reported a part as "no mass found". Measured on three
+  // bills of materials and four web questions, Haiku at high searched about twice as often (a median of three
+  // to five searches per leg), opened pages, worked masses out from dimensions and density where none was
+  // published, and returned twice the findings — at about twice the cost (at most 2.8× for one call) and a
+  // minute instead of twenty seconds per call. Sonnet searched more too, at 1.4 to 3.8 times the cost. Opus is
+  // unmeasured and keeps `low`; so do the OpenRouter routes to the same models.
   {
     id: 'claude-sonnet-5-5',
     provider: 'anthropic',
@@ -100,7 +108,8 @@ export const DIRECT_MODELS: AiModel[] = [
     planTool: false,
     contextTokens: 1000000,
     explicitCache: true,
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+    researchEffort: 'high'
   },
   {
     id: 'claude-opus-5-5',
@@ -146,7 +155,8 @@ export const DIRECT_MODELS: AiModel[] = [
     planTool: true,
     contextTokens: 1000000,
     explicitCache: true,
-    reasoningEfforts: ['low', 'medium', 'high', 'xhigh']
+    reasoningEfforts: ['low', 'medium', 'high', 'xhigh'],
+    researchEffort: 'high'
   },
 
   // --- Direct-OpenAI catalogue (Settings → AI → provider 'OpenAI') --------------------------------
