@@ -15,6 +15,7 @@ export const SWITCHES = new Set([
   'seed',
   'copy',
   'keys',
+  'sealed',
   'full-copy',
   'no-build',
   'options',

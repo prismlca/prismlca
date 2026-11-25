@@ -128,10 +128,11 @@ node scripts/control-prism.mjs wait app-ready --timeout 120000
   before looking for a folder.
 - **The tour has no way out but Finish:** no close button, no Escape (on purpose). Ten cards — click
   `"role=dialog:Welcome to PrismLCA >> role=button:Next"` nine times, then Finish. Its "Load news …
-  at every start" switch is a network switch: leave it alone.
+  at every start" switch is a network switch: leave it alone unless the session is sealed.
 - **Deleting the workspace you are in opens another one:** the first with data, as at start-up; with
   data nowhere, another workspace of yours; Brightway's empty "default" (with the setup sheet) only
   when no other workspace is left. Check the switcher for where you landed.
 - Handbook, GitHub, Open in browser, Subscribe, the lead developer's name and "Check for updates" open a
-  browser or go online; "Load news from prismlca.com" goes online. Export model, Import, Back up and
+  browser or go online; "Load news from prismlca.com" goes online. A sealed session (`launch --sealed`)
+  refuses them and lists them under `refused`. Export model, Import, Back up and
   Restore open native file dialogs: manual.

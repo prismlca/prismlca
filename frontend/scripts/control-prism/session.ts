@@ -42,6 +42,8 @@ export interface SessionRecord {
   seeded: boolean
   /** The providers whose stored keys launch copied in (`--keys`); null when it was not asked to. */
   keys: string[] | null
+  /** The log of a sealed instance (`--sealed`, sealed.ts); null or absent (older records) when not sealed. */
+  seal?: string | null
   /** The build the app was started from (fingerprints from build.json at launch or the last restart). */
   build: { src: string; out: string }
   /** The backend sources the app was started from; the backend runs them as they were at that moment. */

@@ -11,6 +11,7 @@ import type { RunningApp } from '../../e2e/app'
 import type { ProcessInfo } from '../../e2e/processes'
 import { inside } from './doctor'
 import { readableKeys } from './keys'
+import { gatherSealFacts, type SealFacts } from './sealed'
 import type { DriverState } from './watchdog'
 
 export interface BackendFacts {
@@ -23,6 +24,9 @@ export interface BackendFacts {
   editableSrc: string | null
   /** The backend's provider key settings that hold a value (names only). */
   keySettings: string[]
+  /** Its PRISM_SEALED and HTTPS_PROXY (sealed.ts); absent from an older host. */
+  seal?: string | null
+  proxy?: string | null
 }
 
 export interface AppFacts {
@@ -43,6 +47,8 @@ export interface AppFacts {
   storedKeys: { provider: string; readable: boolean }[]
   /** What the host's driver is doing (watchdog.ts); added by the host. Absent from an older host. */
   driver?: DriverState
+  /** The main process's seal (sealed.ts); null when it is not sealed, absent from an older host. */
+  seal?: SealFacts | null
 }
 
 export const ENV_KEYS = [
@@ -116,7 +122,9 @@ function backendFacts(p: ProcessInfo): BackendFacts | null {
       brightwayDir: env.PRISM_BRIGHTWAY_DIR ?? null,
       pythonPath: env.PYTHONPATH ?? null,
       editableSrc: editableSrc(python),
-      keySettings: BACKEND_KEY_SETTINGS.filter((k) => !!env[k]?.trim())
+      keySettings: BACKEND_KEY_SETTINGS.filter((k) => !!env[k]?.trim()),
+      seal: env.PRISM_SEALED ?? null,
+      proxy: env.HTTPS_PROXY ?? null
     }
   } catch {
     return null
@@ -174,5 +182,15 @@ export async function gatherAppFacts(
     openInRealDirs = processes.flatMap((p) => openFilesIn(p, real))
   }
   const storedKeys = await readableKeys(running, main.userData)
-  return { alive, ...main, rendererUrl: running.page.url(), processes, backends, openInRealDirs, storedKeys }
+  const seal = await gatherSealFacts(running)
+  return {
+    alive,
+    ...main,
+    rendererUrl: running.page.url(),
+    processes,
+    backends,
+    openInRealDirs,
+    storedKeys,
+    seal
+  }
 }
