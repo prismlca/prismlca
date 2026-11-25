@@ -1296,13 +1296,13 @@ def _end_of_life(database: str):
     eol_keys: set[tuple] = set()
     tagged: set[tuple] = set()  # every key that carries a tag at all
     try:
-        for tag_key, tags in TagStore().load_map().items():
-            tdb, _, tcode = tag_key.rpartition("/")
-            if tdb != database or not tags:
+        # By the model's own codes, not by the last slash of a key: a code may hold a slash.
+        for tcode, tags in TagStore().snapshot_database(database).items():
+            if not tags:
                 continue
-            tagged.add((tdb, tcode))
+            tagged.add((database, tcode))
             if any(_EOL_TAG_RE.search(str(t.get("value") or "")) for t in tags):
-                eol_keys.add((tdb, tcode))
+                eol_keys.add((database, tcode))
     except Exception as exc:  # noqa: BLE001 — tags are an optional signal, never a reason to fail
         _log.swallowed(exc, "_end_of_life")
         eol_keys = set()

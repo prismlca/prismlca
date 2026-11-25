@@ -13,7 +13,7 @@ function withLookup(lookup: (code: string) => unknown) {
   const fake = fakeExchanges('M', seed)
   const asked: string[] = []
   const api = async (method: string, path: string, body?: unknown): Promise<any> => {
-    const m = /^\/api\/v1\/model\/activities\/M\/([^?]+)\?background_fallback=true$/.exec(path)
+    const m = /^\/api\/v1\/model\/activity\?database=M&code=([^&]+)&background_fallback=true$/.exec(path)
     if (m) {
       asked.push(decodeURIComponent(m[1]))
       return lookup(decodeURIComponent(m[1]))

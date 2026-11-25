@@ -3,11 +3,12 @@ import { MarkerType, type Edge } from '@xyflow/react'
 /** Canvas node ids are `<database>/<code>`. Database names never contain `/` (guarded at
  * creation), but codes may — so split on the FIRST slash only. A box of an outside dataset may carry an
  * occurrence after the code (lib/occurrences.ts): `#<12 hex>` for its tags, `#new-<n>` for a copy, or
- * `#<parent id>` under an expanded box. Only those are cut off — a process code may contain `#` itself. */
+ * `#<parent id, encoded>` under an expanded box — encoded so that it holds no `/` and no `#` of its own, only
+ * `%2F`. Only those are cut off: a process code may contain `#` and `/` ("P#stage/2" from a spreadsheet). */
 export function splitId(id: string): [string, string] {
   const i = id.indexOf('/')
   const rest = id.slice(i + 1)
-  const m = /^(.*?)#([0-9a-f]{12}|new-\d+|[^#]*\/.*)$/.exec(rest)
+  const m = /^(.*?)#([0-9a-f]{12}|new-\d+|[^#/]*%2F[^#/]*)$/.exec(rest)
   return [id.slice(0, i), m ? m[1] : rest]
 }
 

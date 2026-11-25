@@ -34,7 +34,9 @@ describe('get_process_details reads a code from the one background that has it (
         )
       )
     )
-    expect(paths[0]).toBe('/api/v1/model/activities/Bottle/gran?background_fallback=true&summary=true')
+    expect(paths[0]).toBe(
+      '/api/v1/model/activity?database=Bottle&code=gran&background_fallback=true&summary=true'
+    )
     expect(out.found_in).toBe('bg-db')
     expect(out.found_in_note).toContain("'bg-db'")
     // The hotspot check matches on where the dataset really is, not on the model the call defaulted to.
@@ -47,13 +49,15 @@ describe('get_process_details reads a code from the one background that has it (
       { database: 'bg-db', code: 'gran', detail: 'review' },
       ctxWith(async (_m, path) => (paths.push(path), { activity: {}, exchanges: [] }))
     )
-    expect(paths[0]).toBe('/api/v1/model/activities/bg-db/gran?background_fallback=true&detail=review')
+    expect(paths[0]).toBe(
+      '/api/v1/model/activity?database=bg-db&code=gran&background_fallback=true&detail=review'
+    )
   })
 })
 
 describe('get_process_details batch (V470 b)', () => {
   const notFound: ApiRaw = async (_m, path) =>
-    path.includes('/gran')
+    /code=gran2?&/.test(path)
       ? { status: 200, body: { activity: { name: 'widget granulate' }, exchanges: [] } }
       : {
           status: 404,

@@ -12,8 +12,7 @@ import SourceChip from '../components/SourceChip'
 import { errMsg } from '../lib/errors'
 import EscapeCloser from '../components/EscapeCloser'
 import DialogBox from '../components/DialogBox'
-
-const enc = encodeURIComponent
+import { activityMetadataRoute, activityRoute } from '../../../shared/processRoutes'
 
 /**
  * Read-only process-details window for a (background) activity, opened from the search results.
@@ -104,10 +103,10 @@ export default function ProcessDetails({
 
   useEffect(() => {
     setError(null)
-    void api<Metadata>('GET', `/api/v1/model/activities/${enc(database)}/${enc(code)}/metadata`)
+    void api<Metadata>('GET', activityMetadataRoute(database, code))
       .then(setMeta)
       .catch((e) => setError(errMsg(e)))
-    void api<Detail>('GET', `/api/v1/model/activities/${enc(database)}/${enc(code)}`)
+    void api<Detail>('GET', activityRoute(database, code))
       .then(setDetail)
       .catch((e) => setError(errMsg(e)))
   }, [database, code])

@@ -39,12 +39,12 @@ def test_activity_fields_and_undo(client, token, project):
     assert r.status_code == 200, r.text
     assert r.json()["doc"]["data_source"] == "works 2025"
 
-    det = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     assert det["activity"]["name"] == "Renamed"
     assert det["activity"]["location"] == "DE"
 
     client.post("/api/v1/model/undo", headers=token)
-    det2 = client.get(f"/api/v1/model/activities/{db}/{code}", headers=token).json()
+    det2 = client.get(f"/api/v1/model/activity?database={db}&code={code}", headers=token).json()
     assert det2["activity"]["name"] == "A"
 
 

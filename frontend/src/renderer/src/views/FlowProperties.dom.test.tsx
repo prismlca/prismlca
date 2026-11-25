@@ -21,7 +21,7 @@ const open = () => {
     <FlowProperties database="model" code="proc" onClose={onClose} onChanged={onChanged} />,
     {
       routes: {
-        'GET /api/v1/model/activities/:db/:code/properties': {
+        'GET /api/v1/model/activity/properties': {
           product: 'widget',
           unit: 'kilogram',
           read_only: false,

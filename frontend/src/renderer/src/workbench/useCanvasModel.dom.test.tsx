@@ -258,11 +258,11 @@ describe('boxes per occurrence', () => {
     await act(async () => result.current.expandNode('ei/e#0123456789ab'))
     await waitFor(() => expect(result.current.nodes).toHaveLength(6))
     // The second box's coal is a node of its own, hanging under that box only.
-    expect(result.current.nodes.map((n) => n.id)).toContain('ei/coal#ei/e#0123456789ab')
+    expect(result.current.nodes.map((n) => n.id)).toContain('ei/coal#ei%2Fe%230123456789ab')
     const underTagged = result.current.edges
       .filter((e) => e.target === 'ei/e#0123456789ab')
       .map((e) => e.source)
-    expect(underTagged).toEqual(['ei/coal#ei/e#0123456789ab'])
+    expect(underTagged).toEqual(['ei/coal#ei%2Fe%230123456789ab'])
   })
 
   it('carries position and group to the new id when a box is tagged', () => {
@@ -827,7 +827,9 @@ describe('the node menu on a selection', () => {
     act(() => result.current.buildGraph(TWO))
     act(() => result.current.expandNodes(['ei/e', 'ei/h']))
     await waitFor(() => expect(result.current.nodes).toHaveLength(6))
-    expect(result.current.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(['ei/coal', 'ei/coal#ei/h']))
+    expect(result.current.nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(['ei/coal', 'ei/coal#ei%2Fh'])
+    )
 
     act(() => result.current.collapseNodes(['ei/e', 'ei/h']))
     expect(result.current.nodes.map((n) => n.id).sort()).toEqual(['ei/e', 'ei/h', 'm1/a', 'm1/b'])

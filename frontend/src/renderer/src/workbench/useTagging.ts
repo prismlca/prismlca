@@ -16,6 +16,7 @@ import { groupsFromTags } from '../lib/groups'
 import { boxTags, isBox, shownTags, type BoxData } from '../lib/occurrences'
 import type { useCanvasModel } from './useCanvasModel'
 import { deleteNotice, mergeNotice, type TagReferences } from '../components/tagChangeNotice'
+import { activityTagsRoute } from '../../../shared/processRoutes'
 
 // Stable fallback: `?? []` would be a fresh array each render and rattle every dependent memo.
 const NO_GROUPS: TagGroup[] = []
@@ -106,10 +107,7 @@ export function useTagging(deps: TaggingDeps) {
     const box = nodesRef.current.find((n) => n.id === id)
     if (isBox(box)) return Object.fromEntries(boxTags(box).map((t) => [t.dimension, t.value]))
     const [db, code] = splitId(id)
-    const tags = await api<{ dimension: string; value: string }[]>(
-      'GET',
-      `/api/v1/model/tags/${encodeURIComponent(db)}/${encodeURIComponent(code)}`
-    )
+    const tags = await api<{ dimension: string; value: string }[]>('GET', activityTagsRoute(db, code))
     return Object.fromEntries(tags.map((t) => [t.dimension, t.value]))
   }
 
@@ -337,10 +335,7 @@ export function useTagging(deps: TaggingDeps) {
       }
       const [db, code] = splitId(target)
       void run(async () => {
-        const tags = await api<{ dimension: string; value: string }[]>(
-          'GET',
-          `/api/v1/model/tags/${encodeURIComponent(db)}/${encodeURIComponent(code)}`
-        )
+        const tags = await api<{ dimension: string; value: string }[]>('GET', activityTagsRoute(db, code))
         // Guard against out-of-order responses when selecting nodes in quick succession.
         if (selectedRef.current[0] === target) setInspTags(tags)
       })

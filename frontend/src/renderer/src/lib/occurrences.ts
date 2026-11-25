@@ -84,6 +84,13 @@ export function pendingCopyId(datasetId: string, existing: Iterable<string>): st
   return `${datasetId}#new-${n}`
 }
 
+/** The id of ``datasetId``'s node under the expanded box ``parent``, when the dataset already stands on the
+ *  canvas elsewhere. The parent's id is encoded, so the suffix holds no `/` and no `#` and `splitId` cannot
+ *  mistake a process code with both in it ("P#stage/2") for one. */
+export function revealedId(datasetId: string, parent: string): string {
+  return `${datasetId}#${encodeURIComponent(parent)}`
+}
+
 /** The body of "add an input" for a line drawn from ``source`` into ``target``: a box hands its tags to the
  *  new input, so the line lands in the same box rather than in an untagged one. */
 export function connectBody(

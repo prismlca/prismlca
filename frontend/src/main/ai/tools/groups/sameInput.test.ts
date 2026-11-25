@@ -60,7 +60,7 @@ describe('an add from an input the process already has', () => {
     const ctx = {
       ...fake.ctx,
       api: (m: string, p: string, b?: unknown) => {
-        if (m === 'GET' && p.endsWith('/dist')) reads.push(p)
+        if (m === 'GET' && p.endsWith('&code=dist')) reads.push(p)
         return api(m, p, b)
       }
     }

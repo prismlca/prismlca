@@ -122,7 +122,7 @@ describe('a typed parameter value', () => {
 })
 
 describe('a flow property', () => {
-  const PATH = '/api/v1/model/activities/fg/c1/properties'
+  const PATH = '/api/v1/model/activity/properties'
   const routes = (amount: number, readOnly = false, post: unknown = {}): Record<string, unknown> => ({
     [`GET ${PATH}`]: {
       product: 'PVC',

@@ -65,7 +65,7 @@ def test_a_copy_from_another_model_or_drawing_on_one_is_refused(client, token, p
 
     names = _names(client, token, "A")
     assert names == ["bottle"], names
-    inputs = client.get(f"/api/v1/model/activities/A/{c['bottle']}", headers=token).json()
+    inputs = client.get(f"/api/v1/model/activity?database=A&code={c['bottle']}", headers=token).json()
     assert [(e["input"]["database"], e["input"]["code"]) for e in inputs["exchanges"] if e["type"] == "technosphere"] == [
         ("B", c["part"])
     ]

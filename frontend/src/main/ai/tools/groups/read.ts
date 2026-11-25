@@ -14,6 +14,7 @@ import { detailsBatch } from './detailsBatch'
 import { alreadyAsked, withPlaceHint, withSearchWarnings, type SearchScope } from '../advice/warnings'
 import { searchRegions } from '../searchRegions'
 import type { ToolCtx } from '../context'
+import { activityPropertiesRoute, activityRoute } from '../../../../shared/processRoutes'
 
 /**
  * Stamp hits from the user's own library with `library: true`.
@@ -567,8 +568,8 @@ export const readTools: Tool[] = [
         // was where one run gave up (V470).
         const full = await ctx.api(
           'GET',
-          `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(code)}` +
-            `?background_fallback=true${a.detail === 'review' ? '&detail=review' : ''}` +
+          activityRoute(db, code) +
+            `&background_fallback=true${a.detail === 'review' ? '&detail=review' : ''}` +
             (a.summary ? '&summary=true' : '')
         )
         // Remember that this dataset has been read, so the contribution list can say which of the
@@ -627,13 +628,8 @@ export const readTools: Tool[] = [
       if (!db) return NO_MODEL
       const r = await resolveCode(ctx, db, a)
       if ('error' in r) return r.error
-      const input = a.input ? `?input=${encodeURIComponent(String(a.input))}` : ''
-      return S(
-        await ctx.api(
-          'GET',
-          `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(r.code)}/properties${input}`
-        )
-      )
+      const input = a.input ? `&input=${encodeURIComponent(String(a.input))}` : ''
+      return S(await ctx.api('GET', activityPropertiesRoute(db, r.code) + input))
     }
   },
   {

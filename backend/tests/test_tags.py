@@ -33,7 +33,7 @@ def test_tag_group_crud_and_cascade(client, token, project):
         json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": "Production"},
         headers=token,
     )
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [
         {"dimension": "Component", "value": "Production"}
     ]
     client.post(
@@ -41,7 +41,7 @@ def test_tag_group_crud_and_cascade(client, token, project):
         json={"database": fg, "group": "Component", "value": "Production"},
         headers=token,
     )
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
 
     # deleting the group cascades too
     client.post(
@@ -50,7 +50,7 @@ def test_tag_group_crud_and_cascade(client, token, project):
         headers=token,
     )
     client.post("/api/v1/model/tag-groups/delete", json={"database": fg, "name": "Component"}, headers=token)
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
 
 
 def _group(client, token, fg, name) -> dict:
@@ -81,11 +81,11 @@ def test_tag_taxonomy_delete_is_undoable(client, token, project):
         headers=token,
     )
     assert r.status_code == 200 and r.json()["untagged"] == 1
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
     component = _group(client, token, fg, "Component")
     assert component["values"] == ["Production", "Distribution", "End-of-life"]  # original order kept
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [
         {"dimension": "Component", "value": "Distribution"}
     ]
 
@@ -93,12 +93,12 @@ def test_tag_taxonomy_delete_is_undoable(client, token, project):
     color = component["color"]
     r = client.post("/api/v1/model/tag-groups/delete", json={"database": fg, "name": "Component"}, headers=token)
     assert r.status_code == 200 and r.json()["untagged"] == 1
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
     component = _group(client, token, fg, "Component")
     assert component["values"] == ["Production", "Distribution", "End-of-life"]
     assert component["color"] == color
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [
         {"dimension": "Component", "value": "Distribution"}
     ]
 
@@ -119,7 +119,7 @@ def test_one_value_per_group(client, token, project):
             json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": v},
             headers=token,
         )
-    tags = client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json()
+    tags = client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json()
     assert tags == [{"dimension": "Component", "value": "Distribution"}]  # replaced, not appended
 
     # empty value clears the group + undo restores
@@ -128,9 +128,9 @@ def test_one_value_per_group(client, token, project):
         json={"keys": [{"database": fg, "code": a}], "group": "Component", "value": None},
         headers=token,
     )
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
     client.post("/api/v1/model/undo", headers=token)
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [
         {"dimension": "Component", "value": "Distribution"}
     ]
 
@@ -294,7 +294,7 @@ def test_foreground_classification_in_stacked(client, token, project):
         headers=token,
     )
     assert r.status_code == 200, r.text
-    info = client.get("/api/v1/model/activities/fg/A", headers=token).json()["activity"]
+    info = client.get("/api/v1/model/activity?database=fg&code=A", headers=token).json()["activity"]
     assert info["isic"] == "C" and info["cpc"] == "34240"
 
     body = client.post(
@@ -306,7 +306,7 @@ def test_foreground_classification_in_stacked(client, token, project):
     assert body["labels"]["isic"]["C"].startswith("C — ")
 
     client.post("/api/v1/model/undo", headers=token)
-    info = client.get("/api/v1/model/activities/fg/A", headers=token).json()["activity"]
+    info = client.get("/api/v1/model/activity?database=fg&code=A", headers=token).json()["activity"]
     assert info["isic"] is None and info["cpc"] is None
 
 
@@ -473,7 +473,7 @@ def test_a_tag_written_under_an_alias_joins_the_canonical_group(client, token, p
         headers=token,
     )
     assert r.status_code == 200, r.text
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [
         {"dimension": "Life-cycle phase", "value": "Use"}
     ]
     groups = client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]
@@ -493,7 +493,7 @@ def test_deleting_and_undoing_an_activity_keeps_its_classification(client, token
         "/api/v1/model/activities/delete", json={"database": fg, "code": a, "force": True}, headers=token
     ).status_code == 200
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    info = client.get(f"/api/v1/model/activities/{fg}/{a}", headers=token).json()["activity"]
+    info = client.get(f"/api/v1/model/activity?database={fg}&code={a}", headers=token).json()["activity"]
     assert info["isic"] == "C" and info["cpc"] == "34240"
 
 
@@ -512,7 +512,7 @@ def test_merging_a_tag_value_retags_and_is_undoable(client, token, project):
     r = client.post("/api/v1/model/tag-groups/values/merge", json={"database": fg, "group": "PhaseV", "value": "Usage Phase", "into": "Use"}, headers=token)
     assert r.status_code == 200, r.text
     assert r.json()["retagged"] == 1
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Use"}]
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Use"}]
     phase = next(g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"] if g["name"] == "PhaseV")
     assert phase["values"] == ["Use"]
     # unknown target is refused by name
@@ -520,7 +520,7 @@ def test_merging_a_tag_value_retags_and_is_undoable(client, token, project):
     assert bad.status_code == 404 and bad.json()["error"]["code"] == "value_not_found"
 
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Usage Phase"}]
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [{"dimension": "PhaseV", "value": "Usage Phase"}]
     phase = next(g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"] if g["name"] == "PhaseV")
     assert phase["values"] == ["Use", "Usage Phase"]
 
@@ -546,16 +546,16 @@ def test_merging_a_tag_group_moves_values_and_tags_and_is_undoable(client, token
     groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert "PhaseG" not in groups
     assert groups["LCP-G"]["values"] == ["Use", "Production"]
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == [{"dimension": "LCP-G", "value": "Production"}]
-    assert client.get(f"/api/v1/model/tags/{fg}/{b}", headers=token).json() == [{"dimension": "LCP-G", "value": "Use"}]
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == [{"dimension": "LCP-G", "value": "Production"}]
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={b}", headers=token).json() == [{"dimension": "LCP-G", "value": "Use"}]
 
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
     groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["PhaseG"]["values"] == ["Production", "Use"]
     assert groups["LCP-G"]["values"] == ["Use"]
-    tags_a = client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json()
+    tags_a = client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json()
     assert tags_a == [{"dimension": "PhaseG", "value": "Production"}]
-    tags_b = {t["dimension"]: t["value"] for t in client.get(f"/api/v1/model/tags/{fg}/{b}", headers=token).json()}
+    tags_b = {t["dimension"]: t["value"] for t in client.get(f"/api/v1/model/tags?database={fg}&code={b}", headers=token).json()}
     assert tags_b == {"PhaseG": "Use", "LCP-G": "Use"}
 
 
@@ -574,15 +574,15 @@ def test_merge_undo_restores_multi_value_tags_exactly_and_redo_rebuilds_its_book
     # two values of one dimension via the plain route, plus the target's own value
     for group, value in (("PhaseM", "a"), ("PhaseM", "b"), ("LCP-M", "x")):
         assert client.post("/api/v1/model/tags", json={"database": fg, "code": p, "dimension": group, "value": value}, headers=token).status_code == 200
-    before = client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()
+    before = client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json()
     assert len(before) == 3
 
     r = client.post("/api/v1/model/tag-groups/merge", json={"database": fg, "name": "PhaseM", "into": "LCP-M"}, headers=token)
     assert r.status_code == 200, r.text
-    merged = client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()
+    merged = client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json()
     assert {(t["dimension"], t["value"]) for t in merged} == {("LCP-M", "x"), ("LCP-M", "a"), ("LCP-M", "b")}
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json() == before
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json() == before
     groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["LCP-M"]["values"] == ["x"]
 
@@ -592,15 +592,15 @@ def test_merge_undo_restores_multi_value_tags_exactly_and_redo_rebuilds_its_book
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
     groups = {g["name"]: g for g in client.get(f"/api/v1/model/tag-groups?database={fg}", headers=token).json()["groups"]}
     assert groups["LCP-M"]["values"] == ["x", "a"]
-    assert client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json() == before
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json() == before
 
     # the value merge keeps sibling values too
     client.post("/api/v1/model/tag-groups/values", json={"database": fg, "group": "PhaseM", "value": "c"}, headers=token)
     r = client.post("/api/v1/model/tag-groups/values/merge", json={"database": fg, "group": "PhaseM", "value": "a", "into": "c"}, headers=token)
     assert r.status_code == 200, r.text
-    assert {(t["dimension"], t["value"]) for t in client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json()} == {("PhaseM", "c"), ("PhaseM", "b"), ("LCP-M", "x")}
+    assert {(t["dimension"], t["value"]) for t in client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json()} == {("PhaseM", "c"), ("PhaseM", "b"), ("LCP-M", "x")}
     assert client.post("/api/v1/model/undo", headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/tags/{fg}/{p}", headers=token).json() == before
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={p}", headers=token).json() == before
 
 
 def test_tagging_an_unknown_code_is_refused(client, token, project):
@@ -618,8 +618,8 @@ def test_tagging_an_unknown_code_is_refused(client, token, project):
     assert r.status_code == 404
     assert "not found" in r.text
     # Nothing was written for the real activity either — the batch is refused as a whole.
-    assert client.get(f"/api/v1/model/tags/{fg}/{a}", headers=token).json() == []
-    assert client.get(f"/api/v1/model/tags/{fg}/{ghost}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={a}", headers=token).json() == []
+    assert client.get(f"/api/v1/model/tags?database={fg}&code={ghost}", headers=token).json() == []
     r = client.post(
         "/api/v1/model/tags/bulk",
         json={"keys": [{"database": fg, "code": ghost}], "dimension": "Phase", "value": "Production"},

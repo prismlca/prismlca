@@ -158,7 +158,7 @@ describe('a dataset read in one turn is still opened in the next', () => {
     path: string,
     body?: any
   ): Promise<{ status: number; body: unknown }> => {
-    const read = /^\/api\/v1\/model\/activities\/M\/([^/?]+)\?/.exec(path)
+    const read = /^\/api\/v1\/model\/activity\?database=M&code=([^&]+)&/.exec(path)
     if (method === 'GET' && read)
       // Neither is in M: the app finds it in the one background and says so.
       return {

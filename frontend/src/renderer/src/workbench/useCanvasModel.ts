@@ -37,7 +37,7 @@ import { layoutWithDagre } from '../lib/layout'
 import { getSettings, fmtSig } from '../lib/settings'
 import { shortUnit } from '../lib/units'
 import type { ConfirmSpec } from '../views/ConfirmDialog'
-import type { BoxData } from '../lib/occurrences'
+import { revealedId, type BoxData } from '../lib/occurrences'
 import { useBoxes } from './useBoxes'
 import { useNodeColors } from './useNodeColors'
 import { useViewHistory } from './useViewHistory'
@@ -567,11 +567,11 @@ export function useCanvasModel(deps: CanvasModelDeps) {
       const ROW = 120 // vertical spacing between the revealed siblings
 
       // Every box expands on its own: an input already on the canvas gets a node of its own under this
-      // parent (`<dataset>#<parent>`), so two boxes of one dataset never share their upstream.
+      // parent (`revealedId`), so two boxes of one dataset never share their upstream.
       const idOf = new Map(
         ex.inputs.map((inp) => {
           const plain = `${inp.database}/${inp.code}`
-          return [plain, have.has(plain) ? `${plain}#${id}` : plain]
+          return [plain, have.has(plain) ? revealedId(plain, id) : plain]
         })
       )
       const fresh = ex.inputs.filter((inp) => !have.has(idOf.get(`${inp.database}/${inp.code}`)!))

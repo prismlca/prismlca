@@ -55,7 +55,8 @@ function app(opts: { suppliersFail?: boolean } = {}): {
         }
       if (path === '/api/v1/calc/contribution') return { tree }
       if (path.startsWith('/api/v1/study')) return {}
-      if (path.includes('/model/activities/ei/')) return { activity: { name: 'a dataset' }, exchanges: [] }
+      if (path.startsWith('/api/v1/model/activity?database=ei&'))
+        return { activity: { name: 'a dataset' }, exchanges: [] }
       return { ok: true }
     }) as ToolCtx['api'],
     ui: async () => ({}),

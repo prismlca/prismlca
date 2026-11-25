@@ -5,6 +5,7 @@
  * comment that was carried over.
  */
 import type { ToolCtx } from '../context'
+import { activityRoute } from '../../../../shared/processRoutes'
 import { IMPL } from '../impl'
 
 type Base = { activity_database: string; activity_code: string }
@@ -36,10 +37,7 @@ function quoted(comment: string): string {
 }
 
 async function exchangesOf(ctx: ToolCtx, db: string, activityCode: string): Promise<any[]> {
-  const detail = await ctx.api(
-    'GET',
-    `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(activityCode)}`
-  )
+  const detail = await ctx.api('GET', activityRoute(db, activityCode))
   return detail?.exchanges ?? []
 }
 

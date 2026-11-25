@@ -20,7 +20,7 @@ def _create(client, token, db, name) -> str:
 def test_view_empty_properties(client, token, project):
     db = _fg(client, token)
     code = _create(client, token, db, "A")
-    r = client.get(f"/api/v1/model/activities/{db}/{code}/properties", headers=token)
+    r = client.get(f"/api/v1/model/activity/properties?database={db}&code={code}", headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["read_only"] is False
@@ -40,7 +40,7 @@ def test_set_properties_consistency_and_undo(client, token, project, monkeypatch
         headers=token,
     )
     assert ok.status_code == 200, ok.text
-    got = client.get(f"/api/v1/model/activities/{db}/{code}/properties", headers=token).json()
+    got = client.get(f"/api/v1/model/activity/properties?database={db}&code={code}", headers=token).json()
     assert got["properties"]["dry mass"]["amount"] == 2.5
 
     # Wrong unit for a known property is rejected.
@@ -61,7 +61,7 @@ def test_set_properties_consistency_and_undo(client, token, project, monkeypatch
 
     # Undo reverts to the previous (empty) properties.
     client.post("/api/v1/model/undo", headers=token)
-    reverted = client.get(f"/api/v1/model/activities/{db}/{code}/properties", headers=token).json()
+    reverted = client.get(f"/api/v1/model/activity/properties?database={db}&code={code}", headers=token).json()
     assert reverted["properties"] == {}
 
 
@@ -109,21 +109,21 @@ def test_input_properties(client, token, project):
     ex["properties"] = {"heating value, net": {"amount": 36.0, "unit": "MJ"}}
     ex.save()
 
-    r = client.get(f"/api/v1/model/activities/{db}/{boiler}/properties", params={"input": "natural gas"}, headers=token)
+    r = client.get("/api/v1/model/activity/properties", params={"database": db, "code": boiler, "input": "natural gas"}, headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["input"]["name"] == "Natural gas" and body["input"]["code"] == gas
     assert body["amount"] == 2.0
     assert body["properties"]["heating value, net"]["amount"] == 36.0
     # A substring works when it is unambiguous; the code works too.
-    assert client.get(f"/api/v1/model/activities/{db}/{boiler}/properties", params={"input": "gas"}, headers=token).status_code == 200
-    assert client.get(f"/api/v1/model/activities/{db}/{boiler}/properties", params={"input": gas}, headers=token).status_code == 200
+    assert client.get("/api/v1/model/activity/properties", params={"database": db, "code": boiler, "input": "gas"}, headers=token).status_code == 200
+    assert client.get("/api/v1/model/activity/properties", params={"database": db, "code": boiler, "input": gas}, headers=token).status_code == 200
     # Nothing matches: the answer names the inputs that exist.
-    miss = client.get(f"/api/v1/model/activities/{db}/{boiler}/properties", params={"input": "coal"}, headers=token)
+    miss = client.get("/api/v1/model/activity/properties", params={"database": db, "code": boiler, "input": "coal"}, headers=token)
     assert miss.status_code == 404, miss.text
     assert "Natural gas" in miss.text
     # Without ``input`` the reference product is read, as before.
-    plain = client.get(f"/api/v1/model/activities/{db}/{boiler}/properties", headers=token).json()
+    plain = client.get(f"/api/v1/model/activity/properties?database={db}&code={boiler}", headers=token).json()
     assert "input" not in plain and plain["properties"] == {}
 
 
@@ -146,11 +146,11 @@ def test_activity_detail_review_fields(client, token, project):
     ex["scale"] = 0.2
     ex.save()
 
-    plain = client.get(f"/api/v1/model/activities/{db}/{a}", headers=token).json()
+    plain = client.get(f"/api/v1/model/activity?database={db}&code={a}", headers=token).json()
     tech = next(e for e in plain["exchanges"] if e["type"] == "technosphere")
     assert "production_volume" not in tech and "review" not in plain["activity"]
 
-    r = client.get(f"/api/v1/model/activities/{db}/{a}", params={"detail": "review"}, headers=token)
+    r = client.get("/api/v1/model/activity", params={"database": db, "code": a, "detail": "review"}, headers=token)
     assert r.status_code == 200, r.text
     d = r.json()
     tech = next(e for e in d["exchanges"] if e["type"] == "technosphere")
@@ -187,7 +187,7 @@ def test_properties_of_an_input_fall_back_to_the_input_dataset(client, token, pr
         json={"activity_database": db, "activity_code": code, "input_database": bg, "input_code": "steel", "amount": 0.25},
         headers=token,
     ).status_code == 200
-    r = client.get(f"/api/v1/model/activities/{db}/{code}/properties", params={"input": "steel"}, headers=token)
+    r = client.get("/api/v1/model/activity/properties", params={"database": db, "code": code, "input": "steel"}, headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["input"]["code"] == "steel"

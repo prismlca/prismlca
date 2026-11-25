@@ -208,10 +208,10 @@ def test_a_purchase_and_a_credit_of_one_input_are_not_netted(project):
 
 def test_the_detail_endpoint_adds_the_rows_only_when_a_summary_asks(client, token, project):
     _coating_world(get_bd())
-    plain = client.get("/api/v1/model/activities/rg/coat-row", headers=token)
+    plain = client.get("/api/v1/model/activity?database=rg&code=coat-row", headers=token)
     assert plain.status_code == 200
     assert "biggest_inputs" not in plain.json()
-    short = client.get("/api/v1/model/activities/rg/coat-row?summary=true", headers=token)
+    short = client.get("/api/v1/model/activity?database=rg&code=coat-row&summary=true", headers=token)
     assert short.status_code == 200
     body = short.json()
     assert body["biggest_inputs"][1]["location"] == "RAS and 2 more"

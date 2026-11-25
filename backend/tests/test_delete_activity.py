@@ -30,7 +30,7 @@ def test_delete_consumed_activity_blocked_then_forced(client, token, project):
     assert r.status_code == 409, r.text
     assert r.json()["error"]["code"] == "delete_blocked"
     # nothing changed
-    det = client.get(f"/api/v1/model/activities/{db}/{b}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={b}", headers=token).json()
     assert len([e for e in det["exchanges"] if e["type"] == "technosphere"]) == 1
 
     # force deletes A AND B's input edge (bw2data cascade)
@@ -38,12 +38,12 @@ def test_delete_consumed_activity_blocked_then_forced(client, token, project):
                     json={"database": db, "code": a, "force": True}, headers=token)
     assert r.status_code == 200, r.text
     assert r.json()["cascaded_inputs"] == 1
-    det = client.get(f"/api/v1/model/activities/{db}/{b}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={b}", headers=token).json()
     assert [e for e in det["exchanges"] if e["type"] == "technosphere"] == []
 
     # undo restores A INCLUDING B's consumer edge (previously lost forever)
     client.post("/api/v1/model/undo", headers=token)
-    det = client.get(f"/api/v1/model/activities/{db}/{b}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={b}", headers=token).json()
     tech = [e for e in det["exchanges"] if e["type"] == "technosphere"]
     assert len(tech) == 1
     assert tech[0]["input"]["code"] == a
@@ -69,7 +69,7 @@ def test_delete_activity_and_undo(client, token, project):
 
     # undo restores B with its exchange to A
     client.post("/api/v1/model/undo", headers=token)
-    det = client.get(f"/api/v1/model/activities/{db}/{b}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={b}", headers=token).json()
     assert det["activity"]["name"] == "B"
     tech = [e for e in det["exchanges"] if e["type"] == "technosphere"]
     assert len(tech) == 1

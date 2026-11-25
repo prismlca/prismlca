@@ -1,4 +1,5 @@
 import type { ToolCtx } from '../context'
+import { activityRoute } from '../../../../shared/processRoutes'
 
 /**
  * Whether an "add" of edit_exchange gives a process a further exchange from an input it already had.
@@ -63,10 +64,7 @@ export function watchSameInput(ctx: ToolCtx, db: string): SameInputWatch {
 
   const read = async (process: string): Promise<Array<{ key: string; row: SameInputRow }>> => {
     try {
-      const detail = await ctx.api(
-        'GET',
-        `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(process)}`
-      )
+      const detail = await ctx.api('GET', activityRoute(db, process))
       return (Array.isArray(detail?.exchanges) ? detail.exchanges : [])
         .filter((e: any) => e?.uid && e?.type !== 'production' && e?.input?.code)
         .map((e: any) => ({ key: keyOf(process, e.input.database, e.input.code), row: row(e) }))
@@ -102,10 +100,7 @@ export function watchSameInput(ctx: ToolCtx, db: string): SameInputWatch {
       for (const process of new Set(hinted.map((h) => h.process))) {
         let now: Map<string, SameInputRow>
         try {
-          const detail = await ctx.api(
-            'GET',
-            `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(process)}`
-          )
+          const detail = await ctx.api('GET', activityRoute(db, process))
           const rows: any[] = Array.isArray(detail?.exchanges) ? detail.exchanges : []
           now = new Map(rows.filter((e) => e?.uid).map((e) => [String(e.uid), row(e)]))
         } catch {

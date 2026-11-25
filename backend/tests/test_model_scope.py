@@ -134,7 +134,7 @@ def _values(client: TestClient, token, db: str, *values: str) -> None:
 
 
 def _tags(client: TestClient, token, db: str, code: str) -> list[dict]:
-    return client.get(f"/api/v1/model/tags/{db}/{code}", headers=token).json()
+    return client.get(f"/api/v1/model/tags?database={db}&code={code}", headers=token).json()
 
 
 def test_a_tag_merge_in_the_fenced_model_leaves_another_model_alone(client, token, project):

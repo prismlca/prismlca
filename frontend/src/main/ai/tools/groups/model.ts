@@ -19,6 +19,7 @@ import { missingInputDatabase } from './inputHolder'
 import { SAME_INPUT_NOTE, watchSameInput } from './sameInput'
 import { watchReachedTwice } from './reachedTwice'
 import { NO_CRITICAL_REVIEW } from './reviewFailure'
+import { activityRoute } from '../../../../shared/processRoutes'
 
 /**
  * The batch list — plus the top-level entry when the model filled BOTH. Both shapes are in the schema
@@ -482,10 +483,7 @@ export const modelTools: Tool[] = [
         if (typeof it.uid === 'string' && it.uid.trim()) return it.uid.trim()
         const code = typeof it.input_code === 'string' ? it.input_code.trim() : ''
         if (!code) throw new Error('Identify the exchange by "uid" or by "input_database"/"input_code".')
-        const detail = await ctx.api(
-          'GET',
-          `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(activityCode)}`
-        )
+        const detail = await ctx.api('GET', activityRoute(db, activityCode))
         const hits = (detail?.exchanges ?? []).filter(
           (e: any) =>
             e?.type !== 'production' &&

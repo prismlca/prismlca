@@ -868,7 +868,7 @@ describe('review_model', () => {
     const ctx: ToolCtx = {
       api: async (_m, path) => {
         if (path === '/api/v1/calc/contribution') return { tree }
-        if (path.includes('/model/activities/ei/batt'))
+        if (path.startsWith('/api/v1/model/activity?database=ei&code=batt'))
           return {
             activity: {
               name: 'market for battery, NiMH, rechargeable',
@@ -919,7 +919,7 @@ describe('review_model', () => {
       {
         api: async (_m, path) => {
           if (path === '/api/v1/calc/contribution') return { tree }
-          if (path.includes('/model/activities/ei/coat'))
+          if (path.startsWith('/api/v1/model/activity?database=ei&code=coat'))
             return {
               activity: {
                 name: 'market for zinc coat, coils',
@@ -1519,7 +1519,7 @@ describe('the wall-paint run findings', () => {
             calls.push([m, path, body])
             if (path === '/api/v1/params/evaluate')
               throw new Error("The following variables aren't defined: no_such_param")
-            if (path.includes('/api/v1/model/activities/') && m === 'GET') return { exchanges: [] }
+            if (path.startsWith('/api/v1/model/activity?') && m === 'GET') return { exchanges: [] }
             return { exchange: { uid: 'u1', amount: body?.amount ?? 1 } }
           },
           ui: async () => ({}),
@@ -1554,7 +1554,7 @@ describe('the wall-paint run findings', () => {
           api: async (m: string, path: string, body: any) => {
             calls.push([m, path, body])
             if (path.includes('/exchange-formula')) throw new Error('result outside the allowed range')
-            if (path.includes('/api/v1/model/activities/') && m === 'GET') return { exchanges: [] }
+            if (path.startsWith('/api/v1/model/activity?') && m === 'GET') return { exchanges: [] }
             if (path === '/api/v1/params/evaluate') return { value: 4 }
             return { exchange: { uid: 'u1', amount: body?.amount ?? 1 } }
           },
@@ -1585,7 +1585,7 @@ describe('the wall-paint run findings', () => {
         {
           api: async (m: string, path: string, body: any) => {
             calls.push([m, path, body])
-            if (path.includes('/api/v1/model/activities/') && m === 'GET') return { exchanges: [] }
+            if (path.startsWith('/api/v1/model/activity?') && m === 'GET') return { exchanges: [] }
             return { exchange: { uid: 'u1', amount: body?.amount ?? 1 } }
           },
           ui: async () => ({}),
@@ -1640,7 +1640,7 @@ describe('the wall-paint run findings', () => {
         },
         {
           api: async (m: string, path: string, body: any) => {
-            if (m === 'GET' && path.includes('/api/v1/model/activities/'))
+            if (m === 'GET' && path.startsWith('/api/v1/model/activity?'))
               return {
                 exchanges: [
                   { uid: 'u-old', type: 'technosphere', amount: 2, input: { database: 'ei', code: 'old' } }
@@ -1917,7 +1917,7 @@ describe('the solar-lamp run findings', () => {
         store.delete(body.uid)
         return { ok: true }
       }
-      if (path.startsWith('/api/v1/model/activities/')) {
+      if (path.startsWith('/api/v1/model/activity?')) {
         return { activity: {}, exchanges: [...store.values()].map((e) => JSON.parse(JSON.stringify(e))) }
       }
       throw new Error(`unexpected ${path}`)
@@ -2709,7 +2709,7 @@ describe('the link-time reminder', () => {
     const ctx = linkCtx(new Set())
     const api = ctx.api
     ctx.api = (async (m: string, path: string, body?: any) =>
-      m === 'GET' && path.includes('/api/v1/model/activities/')
+      m === 'GET' && path.startsWith('/api/v1/model/activity?')
         ? {
             exchanges: [
               { uid: 'u-old', type: 'technosphere', amount: 2, input: { database: 'ei', code: 'old' } }

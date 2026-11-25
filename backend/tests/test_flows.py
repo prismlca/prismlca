@@ -59,6 +59,6 @@ def test_add_product_flow_creates_and_links(client, token, project, monkeypatch)
         headers=token,
     )
     assert r.status_code == 200, r.text
-    det = client.get(f"/api/v1/model/activities/{db}/{host}", headers=token).json()
+    det = client.get(f"/api/v1/model/activity?database={db}&code={host}", headers=token).json()
     tech = [e for e in det["exchanges"] if e["type"] == "technosphere"]
     assert any(e["input"]["name"] == "MyMaterial" and e["amount"] == 3.0 for e in tech)

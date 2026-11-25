@@ -177,7 +177,7 @@ def test_material_markets_and_producers_get_no_supplier_inputs(project):
 
 def test_the_detail_endpoint_carries_the_supplier_inputs_of_a_market_per_square_metre(client, token, project):
     _coating_world(get_bd())
-    r = client.get("/api/v1/model/activities/cg/coat-market", headers=token)
+    r = client.get("/api/v1/model/activity?database=cg&code=coat-market", headers=token)
     assert r.status_code == 200
     block = r.json()["activity"]["main_supplier_inputs"]
     assert block["per"] == "1 square meter"

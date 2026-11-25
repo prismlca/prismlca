@@ -47,7 +47,7 @@ describe('list_tags', () => {
 
   it('answers an activity’s tags beside the session model’s groups', async () => {
     const api = vi.fn(async (_m: string, path: string) =>
-      path.startsWith('/api/v1/model/tags/') ? [{ dimension: 'Component', value: 'Lid' }] : body
+      path.startsWith('/api/v1/model/tags?') ? [{ dimension: 'Component', value: 'Lid' }] : body
     )
     const out = JSON.parse(
       String(

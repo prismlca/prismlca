@@ -8,16 +8,14 @@
  * the backend's own not-found hint says so — it names only databases this caller may see.
  */
 import type { ToolCtx } from '../context'
+import { activityRoute } from '../../../../shared/processRoutes'
 
 export async function missingInputDatabase(ctx: ToolCtx, db: string, code: unknown): Promise<string> {
   const wanted = typeof code === 'string' ? code.trim() : ''
   if (!wanted) return 'action="add" also requires: input_database and input_code.'
   const head = 'action="add" also requires: input_database.'
   try {
-    const hit = await ctx.api(
-      'GET',
-      `/api/v1/model/activities/${encodeURIComponent(db)}/${encodeURIComponent(wanted)}?background_fallback=true`
-    )
+    const hit = await ctx.api('GET', `${activityRoute(db, wanted)}&background_fallback=true`)
     const holder = typeof hit?.found_in === 'string' && hit.found_in ? hit.found_in : db
     const what = holder === db ? `a process of this model, '${db}'` : `a dataset of '${holder}'`
     return `${head} The code ${wanted} is ${what} — send input_database: "${holder}".`

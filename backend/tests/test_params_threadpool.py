@@ -301,7 +301,7 @@ def test_setting_a_parameter_still_writes_the_value_and_the_dependent_amount(cli
     r = _param(client, token, db, "mass", amount=5.0)
     assert r.status_code == 200, r.text
     assert next(p["amount"] for p in r.json()["parameters"] if p["name"] == "mass") == 5.0
-    d = client.get(f"/api/v1/model/activities/{db}/{a}", headers=token).json()
+    d = client.get(f"/api/v1/model/activity?database={db}&code={a}", headers=token).json()
     assert next(e["amount"] for e in d["exchanges"] if e["uid"] == uid) == 15.0
 
 
@@ -332,7 +332,7 @@ def test_clearing_an_exchange_formula_still_detaches_it(client, token, project):
     assert r.status_code == 200, r.text
     assert not r.json()["exchange"].get("formula")
     assert _param(client, token, db, "mass", amount=9.0).status_code == 200
-    d = client.get(f"/api/v1/model/activities/{db}/{a}", headers=token).json()
+    d = client.get(f"/api/v1/model/activity?database={db}&code={a}", headers=token).json()
     assert next(e["amount"] for e in d["exchanges"] if e["uid"] == uid) == 6.0  # no longer driven
 
 

@@ -183,7 +183,11 @@ def graph(database: str) -> dict:
     return model_graph.graph(database)
 
 
-@router.get("/activities/{database}/{code}", summary="Read an activity with its exchanges")
+# One process is named by ``?database=…&code=…``, never by path segments: a code is whatever a spreadsheet
+# or a bundle brought in, slashes included, and the server routes on the decoded path — a code "P1/2" sent
+# as ``P1%2F2`` would still split the segment and answer "Not Found". The write routes take the same pair
+# in their body.
+@router.get("/activity", summary="Read an activity with its exchanges")
 def get_activity(
     database: str, code: str, detail: str | None = None, background_fallback: bool = False, summary: bool = False
 ) -> dict:
@@ -235,7 +239,7 @@ def market_suppliers(body: MarketSuppliersRequest) -> dict:
     return {"markets": suppliers_of([(d.database, d.code) for d in body.datasets])}
 
 
-@router.get("/activities/{database}/{code}/metadata", summary="Comments + metadata of an activity")
+@router.get("/activity/metadata", summary="Comments + metadata of an activity")
 def get_activity_metadata(database: str, code: str) -> dict:
     return model.activity_metadata(database, code)
 
@@ -249,10 +253,7 @@ class SetPropertiesRequest(BaseModel):
     source: str = "user"
 
 
-@router.get(
-    "/activities/{database}/{code}/properties",
-    summary="Flow properties of an activity's reference product",
-)
+@router.get("/activity/properties", summary="Flow properties of an activity's reference product")
 def get_product_properties(database: str, code: str, input: str | None = None) -> dict:
     """``input`` (a name or code of one of the activity's inputs) reads THAT exchange's properties."""
     return model.product_properties(database, code, input)
@@ -530,7 +531,7 @@ async def remove_tag(request: Request, body: TagRequest) -> dict:
     return _bus(request).execute(cmd, source=body.source)
 
 
-@router.get("/tags/{database}/{code}", summary="List an activity's tags")
+@router.get("/tags", summary="List an activity's tags")
 async def list_tags(request: Request, database: str, code: str) -> list[dict]:
     return _tags().list_for(database, code)
 
@@ -889,6 +890,6 @@ async def localize(request: Request, body: LocalizeRequest) -> dict:
     return _bus(request).execute(cmd, source=body.source)
 
 
-@router.get("/delete-preview/{database}/{code}", summary="Dependency cascade before deleting")
+@router.get("/delete-preview", summary="Dependency cascade before deleting")
 def delete_preview(database: str, code: str) -> dict:
     return maintenance.delete_preview(database, code)

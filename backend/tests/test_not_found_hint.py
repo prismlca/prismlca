@@ -168,7 +168,7 @@ def test_a_read_is_answered_from_the_one_background_that_has_the_code(client, to
     """A model whose `database` key arrived mangled read its model by default, was told the code lives in
     the background — and gave up without opening it (V470). The read now answers from there, and says so."""
     _backgrounds(get_bd())
-    r = client.get("/api/v1/model/activities/pet/pet-granulate", params={"background_fallback": "true"},
+    r = client.get("/api/v1/model/activity", params={"database": "pet", "code": "pet-granulate", "background_fallback": "true"},
                    headers=token)
     assert r.status_code == 200, r.text
     body = r.json()
@@ -176,13 +176,13 @@ def test_a_read_is_answered_from_the_one_background_that_has_the_code(client, to
     assert "'pet'" in body["found_in_note"] and "'bg'" in body["found_in_note"]
     # Without the switch — every other caller of the lookup — it stays a refusal: an edit must never land
     # on a dataset other than the one it named.
-    r = client.get("/api/v1/model/activities/pet/pet-granulate", headers=token)
+    r = client.get("/api/v1/model/activity?database=pet&code=pet-granulate", headers=token)
     assert r.status_code == 404 and "found_in" not in r.text
 
 
 def test_a_code_in_two_backgrounds_is_not_guessed_and_the_hint_names_both(client, token, project):
     _backgrounds(get_bd())
-    r = client.get("/api/v1/model/activities/pet/shared", params={"background_fallback": "true"},
+    r = client.get("/api/v1/model/activity", params={"database": "pet", "code": "shared", "background_fallback": "true"},
                    headers=token)
     assert r.status_code == 404
     hint = r.json()["error"]["hint"]
@@ -194,14 +194,14 @@ def test_the_fallback_reads_only_backgrounds_and_only_after_a_miss(client, token
     get_bd().Database("glass").write({("glass", "transport-1"): {"name": "transport", "unit": "tkm"}})
     set_read_only("glass", False)
     # Another model's process is named, never read in its place.
-    r = client.get("/api/v1/model/activities/pet/transport-1", params={"background_fallback": "true"},
+    r = client.get("/api/v1/model/activity", params={"database": "pet", "code": "transport-1", "background_fallback": "true"},
                    headers=token)
     assert r.status_code == 404 and "'glass'" in r.json()["error"]["hint"]
     # A code the named database has is read from there, untouched by the switch.
-    r = client.get("/api/v1/model/activities/pet/bottle", params={"background_fallback": "true"},
+    r = client.get("/api/v1/model/activity", params={"database": "pet", "code": "bottle", "background_fallback": "true"},
                    headers=token)
     assert r.status_code == 200 and "found_in" not in r.json()
     # A database that does not exist stays that refusal.
-    r = client.get("/api/v1/model/activities/nope/pet-granulate", params={"background_fallback": "true"},
+    r = client.get("/api/v1/model/activity", params={"database": "nope", "code": "pet-granulate", "background_fallback": "true"},
                    headers=token)
     assert r.status_code == 404 and r.json()["error"]["code"] == "database_not_found"
