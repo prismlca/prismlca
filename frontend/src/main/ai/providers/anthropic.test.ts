@@ -1244,6 +1244,16 @@ describe('the cost', () => {
     expect(ev.type === 'usage' && ev.usage.server_tool_use).toEqual({ web_fetch_requests: 1 })
   })
 
+  it('reports the size the conversation was sent at apart from the summed passes it is billed for', () => {
+    const searched = { input_tokens: 150_000, output_tokens: 0, server_tool_use: { web_search_requests: 2 } }
+    const ev = usageEvent('claude-sonnet-5-5', searched, 50_000)
+    expect(ev.type === 'usage' && ev.usage).toMatchObject({ prompt_tokens: 150_000, context_tokens: 50_000 })
+    // One pass: the two are the same figure, and only the one is reported.
+    const plain = usageEvent('claude-sonnet-5-5', { input_tokens: 50_000, output_tokens: 10 }, 50_000)
+    expect(plain.type === 'usage' && plain.usage.prompt_tokens).toBe(50_000)
+    expect(plain.type === 'usage' && 'context_tokens' in plain.usage).toBe(false)
+  })
+
   it('adds a cent per web search', () => {
     expect(
       cost('claude-haiku-5-5', {

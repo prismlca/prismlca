@@ -7,6 +7,7 @@
  */
 import { stubForPartText } from './attachments'
 import { aiLog } from './aiLog'
+import { embeddedFileTokens } from './mediaTokens'
 import { lastUserIndex, replayDroppable, type ChatMessage } from './providers/types'
 import { acceptedPlanAnswer } from './tools/groups/plan'
 
@@ -70,16 +71,32 @@ const OMITTED_IMAGE = '[earlier canvas screenshot omitted to fit the context]'
  */
 const PROTECTED_TOOLS = new Set(['get_skill', 'research_web', 'research_bom', 'review_model'])
 
-/** Rough size of the conversation as sent to the model (JSON for multi-part content). */
+/** Rough size of the conversation as sent to the model (JSON for multi-part content), in characters at
+ *  four to a token. An embedded file — an attachment, a screenshot, a PDF the provider opened — counts
+ *  as what it costs (mediaTokens.ts), not as its base64 text, which runs up to 36 times higher. */
 export function estimateChars(messages: ChatMessage[]): number {
   let n = 0
   for (const m of messages) {
-    n += typeof m.content === 'string' ? m.content.length : m.content ? JSON.stringify(m.content).length : 0
+    n += typeof m.content === 'string' ? m.content.length : m.content ? sizeOf(m.content) : 0
     if (m.tool_calls) n += JSON.stringify(m.tool_calls).length
-    // A provider's reasoning blocks travel with their round and count against the window like text.
-    if (m.replay) n += JSON.stringify(m.replay).length
+    // A provider's reasoning blocks travel with their round and count against the window like text, and
+    // so does the turn's text that goes with a closing round's blocks.
+    if (m.replay) n += sizeOf(m.replay) + (m.record?.length ?? 0)
   }
   return n
+}
+
+/** Characters of a value as JSON, with each embedded file replaced by its cost in tokens × 4. */
+function sizeOf(value: unknown): number {
+  let files = 0
+  const json = JSON.stringify(value, function (this: unknown, key: string, v: unknown) {
+    if (typeof v !== 'string') return v
+    const tokens = embeddedFileTokens(this, key, v)
+    if (tokens === null) return v
+    files += tokens * 4
+    return ''
+  })
+  return (json?.length ?? 0) + files
 }
 
 /**
