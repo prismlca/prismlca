@@ -207,13 +207,47 @@ export async function read(page: Page, args: string[]): Promise<string> {
   return JSON.stringify(value, null, 2) ?? 'undefined'
 }
 
+const COLOURS = /\u001b\[[0-9;]*m/g
+
 /** Playwright's messages carry terminal colours and a long call log; one line and a few log lines are enough. */
 export function plainError(message: string, max = 6): string {
   const lines = message
-    .replace(/\u001b\[[0-9;]*m/g, '')
+    .replace(COLOURS, '')
     .split('\n')
     .filter((l) => l.trim() !== '')
   return lines.slice(0, max).join('\n')
+}
+
+/** What each state Playwright waits for before acting means when the target never reached it. */
+const NOT_REACHED: Record<string, string> = {
+  visible: 'it is not visible (hidden, or of no size)',
+  enabled: 'it stayed disabled (its title often says why)',
+  editable: 'it stayed read-only or disabled',
+  stable: 'it kept moving (an animation, or a layout that keeps changing)'
+}
+
+/**
+ * Why Playwright's last attempt did not act on the target, read from its call log. Each attempt adds its
+ * reason to the log, so the last one is the state at the deadline; the first lines `plainError` keeps show
+ * only the first attempt starting, and cut the reason off. Null when the log gives none.
+ */
+export function lastObstacle(message: string): string | null {
+  const lines = message.replace(COLOURS, '').split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim().replace(/^-\s*/, '')
+    const cover = /^(.+) intercepts pointer events\b/.exec(line)
+    if (cover) {
+      return (
+        `${cover[1]} lies on top of it and takes the pointer — mostly the backdrop of an open menu or ` +
+        'dialog. Close that as a person would (press Escape, or click beside the menu), then try again'
+      )
+    }
+    const state = /^element is not (visible|enabled|editable|stable)\b/.exec(line)
+    if (state) return NOT_REACHED[state[1]]
+    if (line.startsWith('element is outside of the viewport'))
+      return 'it lies outside the window and could not be scrolled into view'
+  }
+  return null
 }
 
 /**
@@ -256,5 +290,7 @@ export async function explainFailure(
   if (waiting) return message
   const which =
     raws.length === 1 ? `${raws[0]} is there but` : `each of ${raws.join(' and ')} is there, but one`
+  const obstacle = lastObstacle(error.message)
+  if (obstacle) return `${which} ${obstacle}.\n${message}`
   return `${which} did not become actionable (hidden, covered by a dialog, disabled or still moving) — snapshot or shot shows which.\n${message}`
 }

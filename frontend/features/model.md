@@ -103,6 +103,19 @@ node scripts/control-prism.mjs drag "css=.res >> has-text=Test widget, at plant"
 node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Test widget"
 ```
 
+Tag a box — a tag group with one tag, chosen in the box's tag menu — and close the menu again:
+
+```sh
+node scripts/control-prism.mjs click "css=.react-flow__node >> has-text=bottle >> title=Assign tags"
+node scripts/control-prism.mjs type "placeholder=New group (e.g. \"Life-cycle phase\")…" "Life-cycle phase" --enter
+node scripts/control-prism.mjs click "title~=Add a tag to \"Life-cycle phase\""
+node scripts/control-prism.mjs type "placeholder~=New tag for" Production --enter
+node scripts/control-prism.mjs select "css=.tagmenu-row >> has-text=Life-cycle phase >> role=combobox" Production
+node scripts/control-prism.mjs wait visible "css=.react-flow__node >> has-text=bottle >> has-text=Production"
+node scripts/control-prism.mjs press Escape
+node scripts/control-prism.mjs wait hidden "css=.tagmenu"
+```
+
 - Toolbar: `"Active model"` and `"LCIA method"` are the two choosers; `"Model info"`, `"Export model"`,
   `"Dark mode"` are named buttons; `"role=button:Undo"` and `"role=button:Redo"` carry the step they
   would take back in their title ("Undo: Set amount … (Ctrl+Z)", or "Nothing to undo").
@@ -157,3 +170,8 @@ node scripts/control-prism.mjs wait visible "css=.pnode.external >> has-text=Tes
 - "Export model" and workspace backups open native save dialogs: manual.
 - Delete and Control+Z do nothing while a modal is open or a field has the focus — press Escape or
   click the canvas first.
+- **The tag menu stays open after a choice**, for the next group, and its backdrop takes every click in
+  the window until it closes: a click on the toolbar or the navigation only closes the menu, and
+  `click` waits on such a target until it gives up, naming the backdrop. Press Escape (or click
+  `"css=.ctx-backdrop"`) before the next step. A box of an outside dataset is the exception: its tag
+  gives it a new identity, so its menu closes by itself.

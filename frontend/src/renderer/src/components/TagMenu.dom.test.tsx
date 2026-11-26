@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import TagMenu from './TagMenu'
 
 const GROUPS = [
@@ -29,5 +30,28 @@ describe('the tag menu of a box', () => {
     render(<TagMenu {...props} current={{}} />)
     const names = [...document.querySelectorAll('.tagmenu-group-name')].map((e) => e.textContent)
     expect(names).toEqual(['Life-cycle phase', 'Part'])
+  })
+
+  it('closes on Escape, as the other canvas menus do — its backdrop takes every click until then', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<TagMenu {...props} onClose={onClose} current={{}} />)
+    await user.selectOptions(screen.getAllByRole('combobox')[0], 'Production')
+    // The menu stays open after a choice, for the next group.
+    expect(onClose).not.toHaveBeenCalled()
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets Escape in the "new tag" field abandon only the new tag', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<TagMenu {...props} onClose={onClose} current={{}} />)
+    await user.click(screen.getByTitle('Add a tag to "Part"'))
+    await user.type(screen.getByPlaceholderText('New tag for "Part"…'), 'Bott{Escape}')
+    expect(screen.queryByPlaceholderText('New tag for "Part"…')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

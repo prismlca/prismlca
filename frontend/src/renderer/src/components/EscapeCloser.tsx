@@ -7,6 +7,7 @@ import { useEffect, useRef } from 'react'
  * or on a click beside it, and nothing else. Rendered as the first child of a `.modal-backdrop`, this
  * registers the dialog's close on a module-level stack while it is mounted; one window listener closes
  * whatever is on top. A confirm over a sheet therefore takes the first Escape, the sheet the second.
+ * A popover that covers the window with a backdrop of its own (a box's tag menu) renders it too.
  *
  * A field that gives Escape its own meaning (abandon this edit, close this suggestion list) calls
  * `stopPropagation()` in its handler, and the dialog stays.
