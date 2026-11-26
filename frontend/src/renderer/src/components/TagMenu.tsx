@@ -1,9 +1,14 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import EscapeCloser from './EscapeCloser'
 
 /** Space kept between the menu and the window edge. */
 const EDGE = 8
 
-/** Popover to assign one value per tag group to a process (opened from a node's 🏷 button). */
+/**
+ * Popover to assign one value per tag group to a process (opened from a node's 🏷 button). It stays open
+ * after a choice, for the next group; its backdrop takes every click in the window until it closes — on
+ * a click beside it, or on Escape like the other canvas menus.
+ */
 export default function TagMenu({
   pos,
   groups,
@@ -46,6 +51,7 @@ export default function TagMenu({
   })
   return (
     <>
+      <EscapeCloser onClose={onClose} />
       <div
         className="ctx-backdrop"
         onClick={onClose}
@@ -104,7 +110,11 @@ export default function TagMenu({
                         onNewValue(g.name, newValue.trim())
                         setNewValue('')
                         setAddingFor(null)
-                      } else if (e.key === 'Escape') setAddingFor(null)
+                      } else if (e.key === 'Escape') {
+                        // Abandons the new tag only; the menu stays for the next Escape.
+                        e.stopPropagation()
+                        setAddingFor(null)
+                      }
                     }}
                   />
                   <button
