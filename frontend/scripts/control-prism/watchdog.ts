@@ -22,7 +22,7 @@ export const DRIVING = new Set(['click', 'hover', 'type', 'press', 'select', 'dr
  *  (actions.ts, drag.ts). */
 const ACTION_MS = 10_000
 /** The bound of a command that takes no --timeout and has no tighter one: a whole-window shot (Playwright's own
- *  default), a read. */
+ *  default), a read without --timeout. */
 const OTHER_MS = 30_000
 /** Past its own bound, how long the host still waits for a command before it gives up on it. */
 export const HOST_MARGIN_MS = 20_000
@@ -57,6 +57,10 @@ export function ownBound(cmd: string, flags: Flags): number {
     case 'shot':
       // A shot of one target takes --timeout; one of the whole window has Playwright's default.
       return Math.max(own ?? 0, OTHER_MS)
+    case 'read':
+      // An expression that awaits the app (a calculation) takes --timeout; the default leaves room past
+      // the read's own ten seconds.
+      return own ?? OTHER_MS
     case 'facts':
     case 'console':
       // Questions to the main process and the host's own memory: quick, and doctor should not wait long.
@@ -145,11 +149,28 @@ export class Watchdog {
   private news: string[] = []
   /** Counts the windows: what a command given up on does after a restart no longer concerns the session. */
   private generation = 0
+  /** When a command last came, ended or was given up on. */
+  private lastActivity: number
 
   constructor(
     private readonly say: (line: string) => void,
     private readonly now: () => number = Date.now
-  ) {}
+  ) {
+    this.lastActivity = now()
+  }
+
+  /** A command arrived; it may wait in line before it runs. */
+  touch(): void {
+    this.lastActivity = this.now()
+  }
+
+  /**
+   * How long the session has been idle, for the host's idle stop: nothing while a command runs — a long wait
+   * or read is the session in use — and otherwise the time since a command last came or ended.
+   */
+  idleMs(): number {
+    return this.inFlight.size > 0 ? 0 : this.now() - this.lastActivity
+  }
 
   private pendingDrive(): GivenUp | undefined {
     return [...this.givenUp].find((g) => g.driving)
@@ -176,6 +197,7 @@ export class Watchdog {
     const since = this.now()
     const entry: InFlight = { cmd: req.cmd, what, since, until: ms === null ? null : since + ms }
     this.inFlight.add(entry)
+    this.lastActivity = since
     const task = work()
     const generation = this.generation
     return new Promise<string>((resolve, reject) => {
@@ -186,6 +208,7 @@ export class Watchdog {
           : setTimeout(() => {
               mark = { what, since: this.now(), driving }
               this.inFlight.delete(entry)
+              this.lastActivity = mark.since
               this.givenUp.add(mark)
               this.say(`gave up on ${what} after ${seconds(ms)}`)
               const own = `its own bound is ${seconds(ownBound(req.cmd, req.flags))}`
@@ -203,7 +226,7 @@ export class Watchdog {
             }, ms)
       const settled = (how: () => string): void => {
         clearTimeout(timer)
-        this.inFlight.delete(entry)
+        if (this.inFlight.delete(entry)) this.lastActivity = this.now()
         if (mark === null) return
         const late = how()
         this.say(`${what}, given up on earlier, ${late}`)

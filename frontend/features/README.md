@@ -60,7 +60,8 @@ Several sessions in one checkout take `--session <name>`. A session is invisible
 - **`read` is for looking, never the proof.** It evaluates JavaScript in the window and nothing stops an
   expression from changing what it reads. Look at state after the user's path ran, never instead of it.
   Never loop or wait inside `read`: the renderer has one thread, and a loop there freezes the window and
-  the state it waits for.
+  the state it waits for. Awaiting one request of the app (`window.prism.api`, a calculation) is not such a
+  wait — it leaves the thread free — and `--timeout` gives it longer than the ten seconds a read has.
 - **Wait on states, never on time.** `wait` polls from outside, and every wait has a bound (30 s unless
   `--timeout` says otherwise, at most 15 minutes).
 - **End with `console`.** It lists the window's errors since the launch and fails when there are any.

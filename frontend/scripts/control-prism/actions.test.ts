@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test'
-import { describe, expect, it } from 'vitest'
-import { explainFailure, lastObstacle } from './actions'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { explainFailure, lastObstacle, read } from './actions'
 
 /** A click on a toolbar button while a box's tag menu was open, as Playwright 1.64 logged it. */
 const COVERED = `locator.click: Timeout 10000ms exceeded.
@@ -88,5 +88,31 @@ describe('explainFailure', () => {
   it('leaves a wait to its own expected/received lines', async () => {
     const said = await explainFailure(onePerTarget, 'css=.btn', new Error(COVERED), true)
     expect(said).not.toMatch(/lies on top/)
+  })
+})
+
+describe('read', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /** A window whose expression settles after `ms`, as a request through the app's bridge does. */
+  const settlesAfter = (ms: number): Page =>
+    ({ evaluate: () => new Promise((ok) => setTimeout(() => ok({ score: 1 }), ms)) }) as unknown as Page
+
+  it('gives up after ten seconds and says how to give an awaited request longer', async () => {
+    vi.useFakeTimers()
+    const seen = expect(read(settlesAfter(15_000), ['x'])).rejects.toThrow(
+      /did not settle within 10 s[\s\S]*--timeout/
+    )
+    await vi.advanceTimersByTimeAsync(15_000)
+    await seen
+  })
+
+  it('waits as long as --timeout asks', async () => {
+    vi.useFakeTimers()
+    const answer = read(settlesAfter(15_000), ['x'], { timeout: '60000' })
+    await vi.advanceTimersByTimeAsync(15_000)
+    await expect(answer).resolves.toBe('{\n  "score": 1\n}')
   })
 })

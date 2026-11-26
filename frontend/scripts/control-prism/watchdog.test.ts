@@ -36,6 +36,9 @@ describe('deadlines', () => {
     expect(callerDeadline('shot', {})).toBe(60_000)
     expect(hostDeadline('shot', { target: 'Run', timeout: '120000' })).toBe(140_000)
     expect(callerDeadline('read', {})).toBe(60_000)
+    // A read that awaits the app (a calculation) takes --timeout, capped like a wait.
+    expect(hostDeadline('read', { timeout: '120000' })).toBe(140_000)
+    expect(hostDeadline('read', { timeout: '3600000' })).toBe(920_000)
     expect(callerDeadline('facts', {})).toBe(40_000)
     // --timeout is capped as wait caps it; nonsense falls back to the default.
     expect(hostDeadline('wait', { timeout: '99999999' })).toBe(15 * 60_000 + 20_000)
@@ -86,6 +89,32 @@ describe('Watchdog', () => {
     await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(log).toEqual([])
     expect(dog.state()).toEqual({ busy: [], outstanding: null, overdue: [] })
+  })
+
+  it('counts no idle time while a command runs, and counts from its end afterwards', async () => {
+    // A long read (a calculation) must not run into the host's idle stop, which quits the app and removes
+    // the session's folders.
+    const c = controlled()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(dog.idleMs()).toBe(5_000)
+    dog.touch()
+    const reading = dog.run(req('read', ['x'], { timeout: '600000' }), c.work)
+    await vi.advanceTimersByTimeAsync(9 * 60_000)
+    expect(dog.idleMs()).toBe(0)
+    c.finish('{"score": 1}')
+    await expect(reading).resolves.toBe('{"score": 1}')
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(dog.idleMs()).toBe(2_000)
+  })
+
+  it('counts idle time again from the moment it gives up on a command that never settles', async () => {
+    const stuck = dog.run(req('read', ['while(true){}']), never)
+    const seen = expect(stuck).rejects.toThrow(Overdue)
+    await vi.advanceTimersByTimeAsync(50_000)
+    await seen
+    expect(dog.idleMs()).toBe(0)
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(dog.idleMs()).toBe(3_000)
   })
 
   it('answers for a look that never settles at its deadline, and lets the next command run', async () => {
