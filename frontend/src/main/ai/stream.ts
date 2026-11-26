@@ -68,6 +68,8 @@ export async function collectText(opts: {
   webSearch?: boolean
   /** Allow list for the provider's web tools; see StreamChatOpts.webDomains. */
   webDomains?: string[]
+  /** Hosts the provider's search leaves out; see StreamChatOpts.webSearchExcluded. */
+  webSearchExcluded?: string[]
   /** Ceiling on the provider's web lookups inside this request; see StreamChatOpts.webLookupsCap. */
   webLookupsCap?: number
   /** Pages the provider's web search cited, as they arrive (research legs keep them as evidence). */
@@ -110,6 +112,7 @@ export async function collectText(opts: {
       signal: opts.signal,
       webSearch: opts.webSearch,
       webDomains: opts.webDomains,
+      webSearchExcluded: opts.webSearchExcluded,
       webLookupsCap: opts.webLookupsCap,
       reasoningEffort: opts.reasoningEffort,
       maxTokens: opts.maxTokens,

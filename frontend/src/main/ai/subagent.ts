@@ -19,6 +19,18 @@ import { findModel, modelBelongsTo, providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
 import { collectText } from './stream'
 import { WEB_TEXT_RULE_LEG, evidenceNote } from './webContent'
+import {
+  CHECK_SYSTEM,
+  applyChecks,
+  checkCandidates,
+  checkNote,
+  checkQuestion,
+  excludedHosts,
+  parseChecks,
+  statementOf,
+  type FigureCheck,
+  type WebCheckRecord
+} from './webCheck'
 
 /**
  * Default for the research legs when Settings → AI → Models leaves "Research model" empty.
@@ -51,6 +63,9 @@ const LEG_BUDGET_MS = 360_000
  */
 export const RETRY_BUDGET_MS = 90_000
 
+/** The figure check's ceiling on web lookups per tool: about one search per figure it takes, and one more. */
+const CHECK_LOOKUPS = 4
+
 /** How long a leg's request may keep trying after the provider failed: below both budgets above. */
 const LEG_RETRY = { busyMs: 60_000, offlineMs: 60_000 }
 
@@ -76,6 +91,8 @@ export interface ResearchOpts {
   onProgress?: (note: string) => void
   /** Restrict the provider's web search to these hosts (see StreamChatOpts.webDomains). */
   domains?: string[]
+  /** Keep these hosts out of the provider's search results, never out of its fetch (StreamChatOpts.webSearchExcluded). */
+  excludeHosts?: string[]
   /** Pages the provider's web search cited while this leg ran — the engine's word on what was read. */
   onCitations?: (citations: Citation[]) => void
   /** The tool this leg works for, as its requests are named in the app log (requestLog.ts). */
@@ -141,6 +158,7 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
       messages,
       webSearch: true,
       webDomains: opts.domains,
+      webSearchExcluded: opts.excludeHosts,
       webLookupsCap: opts.webLookups,
       onCitations: opts.onCitations,
       reasoningEffort,
@@ -216,26 +234,6 @@ export function normalizeDomain(raw: string): string | null {
   return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null
 }
 
-/** Whether `host` is `domain` or one of its subdomains — how the providers' allow lists match. */
-function isWithin(host: string, domain: string): boolean {
-  return host === domain || host.endsWith(`.${domain}`)
-}
-
-/**
- * The allow list for a pass that should search where a leg suggested, under the caller's own list. The
- * suggestion can only narrow a caller's list, never widen it: the hosts both admit (a suggested host on a
- * caller's domain, or a caller's host on a suggested domain), and the caller's list unchanged when they
- * share none. Without a caller's list the suggestion is the list.
- */
-export function narrowDomains(caller: string[], suggested: string[]): string[] {
-  if (!caller.length) return suggested
-  const both = normalizeDomains([
-    ...suggested.filter((s) => caller.some((c) => isWithin(s, c))),
-    ...caller.filter((c) => suggested.some((s) => isWithin(c, s)))
-  ])
-  return both.length ? both : caller
-}
-
 /** Normalise, de-duplicate and cap a domain list; the cap is OpenAI's documented ceiling. */
 export function normalizeDomains(raw: unknown, cap = 20): string[] {
   if (!Array.isArray(raw)) return []
@@ -304,6 +302,8 @@ Answer as a short list of findings. Rules:
   (forums, Q&A, reviews). The second is your confidence in the FINDING, and the reason must say why
   ("three independent sources give the same range", "single forum anecdote"). When unsure of the
   class, pick the LOWER one — an unclassifiable source is community, never official.
+- When a finding answers the question itself (the figure that was asked for, not background or a
+  neighbouring figure), put "direct" after the confidence: [media, low, direct: single buying guide].
 - If every finding rests on media or community sources, add ONE last line naming where an official
   or manufacturer confirmation would live, as bare hosts: "authoritative_domains: destatis.de,
   example-manufacturer.com" (up to 5). Name only hosts you have reason to believe hold such a
@@ -323,6 +323,10 @@ export interface WebFinding {
   confidence?: string
   /** The few words behind the confidence ("three independent sources agree", "single forum post"). */
   confidence_note?: string
+  /** The leg marked it as answering the question itself, not background. Orders the figure check, nothing else. */
+  direct?: boolean
+  /** What the figure check found, on the findings it took (webCheck.ts). */
+  check?: FigureCheck
   /** True when at least one of `sources` is a page the search engine returned to the leg; false when
    *  none is — the leg opened them directly or wrote them from memory. Absent when the provider
    *  annotates nothing. */
@@ -334,8 +338,8 @@ const AUTHORITATIVE_RE = /^\s*(?:[-*•]\s*)?authoritative[_ ]domains?\s*:\s*(.+
 
 /**
  * Take the `authoritative_domains:` line out of a leg's answer. It carries no URL, so left in place
- * it would count as an unsourced statement and be dropped — silently losing the one thing the
- * upgrade pass needs. Returns the hosts (normalised) and the text without the line.
+ * it would count as an unsourced statement and be dropped — silently losing the hosts the figure
+ * check and the caller are pointed to. Returns the hosts (normalised) and the text without the line.
  */
 export function splitAuthoritativeDomains(text: string): { domains: string[]; text: string } {
   const m = text.match(AUTHORITATIVE_RE)
@@ -346,13 +350,26 @@ export function splitAuthoritativeDomains(text: string): { domains: string[]; te
 
 const URL_RE = /https?:\/\/[^\s)<>"']+/g
 
-/** The judgement tag WEB_SYSTEM asks for: `[class, confidence: reason]` at the end of a finding. */
+/** The judgement tag WEB_SYSTEM asks for: `[class, confidence(, direct): reason]` at the end of a finding. */
 // Tolerant at the edges on purpose — the first evaluation run (z-ai/glm-5.3) wrote all 22 of
 // its tags as full sentences: "[…, high: reason]." with a trailing period, and once "[official,
 // high; reason]" with a semicolon before the reason. The strict version parsed none of them, so
-// every finding came back "untagged" and the class-gated upgrade pass could never fire.
+// every finding came back "untagged", and an untagged finding is one the figure check takes for weak.
 const TAG_RE =
-  /\[\s*(official|industry|media|community)\s*[,;·|]\s*(high|medium|low)\s*(?:[:;,]\s*([^\]]{1,200}))?\]\s*[.,;:!]*\s*$/i
+  /\[\s*(official|industry|media|community)\s*[,;·|]\s*(high|medium|low)\s*(?:[,;·|]\s*(direct)\b\s*)?(?:[:;,]\s*([^\]]{1,200}))?\]\s*[.,;:!]*\s*$/i
+
+/**
+ * The "direct" mark where the leg put it. Asked for after the confidence, it also arrives as the reason's last
+ * part — "[community, low: one blog; direct]", "[media, low: one table; direct for steel]" (Haiku 5.5 wrote it
+ * there every time). The reason keeps its words unless the part is the bare mark: a reason that merely ends on
+ * "…, direct measurement" may set the mark, which only orders the figure check, but loses nothing.
+ */
+function directMark(reason: string | undefined, marked: boolean): { note?: string; direct: boolean } {
+  const note = reason?.trim()
+  const late = note?.match(/(?:^|[;,])\s*direct\b([^;,]*)$/i)
+  if (!late) return { note, direct: marked }
+  return { note: late[1].trim() ? note : note!.slice(0, late.index).trim() || undefined, direct: true }
+}
 
 /**
  * Split the research answer into findings and pull the URLs out of each. Lines without a source are
@@ -380,6 +397,7 @@ export function parseFindings(
       dropped++
       continue
     }
+    const { note, direct } = directMark(tag?.[4], !!tag?.[3])
     findings.push({
       text: line,
       sources,
@@ -387,47 +405,13 @@ export function parseFindings(
         ? {
             source_class: tag[1].toLowerCase(),
             confidence: tag[2].toLowerCase(),
-            ...(tag[3] ? { confidence_note: tag[3].trim() } : {})
+            ...(note ? { confidence_note: note } : {}),
+            ...(direct ? { direct: true } : {})
           }
         : {})
     })
   }
   return { findings, dropped }
-}
-
-/** Longest statement a figure carries into the upgrade pass. */
-const FIGURE_CHARS = 400
-
-/**
- * A finding as the upgrade pass is asked to confirm it: whole when it is short, otherwise its statement cut
- * and its sources after it in full. The URL is what tells the pass which source it is to replace, and it
- * stands at the end of the line, where a plain cut takes it off first.
- */
-export function figureLine(f: WebFinding): string {
-  if (f.text.length <= FIGURE_CHARS || !f.sources.length) return f.text.slice(0, FIGURE_CHARS)
-  const statement = f.text
-    .replace(URL_RE, '')
-    .replace(/\([\s,;]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  const cut = statement.length > FIGURE_CHARS ? `${statement.slice(0, FIGURE_CHARS).trimEnd()}…` : statement
-  return `${cut} (${f.sources.join(', ')})`
-}
-
-/** Classes that can carry a figure on their own; media/community only corroborate. */
-const STRONG_CLASSES = new Set(['official', 'industry'])
-
-/**
- * Whether a finished web leg has earned one upgrade pass: it found something, the model demonstrably
- * uses the judgement tag, and nothing it found is stronger than media/community. The tag requirement
- * is deliberate — an answer with no tags at all gives no signal to act on, and spending a paid leg on
- * "maybe the sources are weak" would fire on every model that simply does not tag (the upgrade is bounded and
- * class-gated, never free iteration).
- */
-export function needsUpgradePass(findings: WebFinding[]): boolean {
-  const judged = findings.filter((f) => f.source_class)
-  if (!judged.length) return false
-  return !judged.some((f) => STRONG_CLASSES.has(f.source_class as string))
 }
 
 export interface WebResult {
@@ -442,11 +426,13 @@ export interface WebResult {
   /** What the titles and excerpts under `evidence` are, said where the caller reads them (webContent.ts). */
   evidence_note?: string
   /** Hosts the leg itself named as where an official/manufacturer confirmation would live. The
-   *  upgrade pass searched them; the parent can hand them to a follow-up call as `domains`. */
+   *  figure check is pointed to them; the parent can hand them to a follow-up call as `domains`. */
   suggested_domains?: string[]
   /** The host allow list the leg ran under, when the caller set one. */
   domains?: string[]
   note?: string
+  /** The figure check's record for the research log; the tool takes it off before the model reads the result. */
+  web_check?: WebCheckRecord
 }
 
 /**
@@ -478,7 +464,7 @@ export async function researchWeb(opts: {
   /** Ceiling on the provider's web lookups inside one request of this leg (Settings → AI → Limits). */
   webLookups?: number
   /** Restrict the leg's web search to these hosts (bare domains), for a caller that knows where the
-   *  answer lives. Unset = open web; the leg may still name hosts for its own upgrade pass. */
+   *  answer lives. Unset = open web; the leg may still name hosts, which the figure check is pointed to. */
   domains?: string[]
 }): Promise<WebResult> {
   const question =
@@ -529,7 +515,7 @@ export async function researchWeb(opts: {
         domains: domains.length ? domains : undefined,
         onCitations: (c) => book.add(c),
         // Ran out of time with part of an answer: the budget is spent all the same, so what follows is
-        // the short retry (when nothing usable came) and never the upgrade pass.
+        // the short retry (when nothing usable came) and never the figure check.
         onTimeout: () => (timedOut = true)
       })
     } catch (e) {
@@ -554,92 +540,25 @@ export async function researchWeb(opts: {
     fullTries++
     if (fullTries >= 2) break
   }
-  // One bounded upgrade pass: a leg whose entire
-  // evidence base is media/community — blogs, retailer guides, forums — gets exactly one short,
-  // targeted follow-up asking for an official/industry confirmation of what it found. Bounded on
-  // purpose: not after a timeout (that budget is spent), not when unsourced answers were allowed
-  // (no class to upgrade towards), never more than once — a research fan quietly became half a
-  // run's bill, so free iteration is exactly what this must not be. Only findings of the strong
-  // classes are taken from the pass; a "not found" is kept as the note it is, because
-  // "no official source exists" is a finding about the question, not a failure of the leg.
-  let upgradeNote: string | undefined
-  if (
-    findings.length &&
-    !timedOut &&
-    sourcesRequired &&
-    !opts.signal?.aborted &&
-    needsUpgradePass(findings)
-  ) {
-    // Where to look is the leg's own call: the hosts it named at the end of
-    // its first pass become the search engine's allow list for this one — mechanically, so the
-    // engine cannot hand back the same blogs the prompt asks it to ignore. A caller's allow list is a
-    // limit the suggestion may narrow but never widen. Nothing named and no caller's list = the open pass.
-    const upgradeDomains = narrowDomains(domains, suggested)
-    opts.onProgress?.(
-      `${leg}${label}: only media/community sources — one pass for a stronger one` +
-        (upgradeDomains.length ? ` on ${upgradeDomains.join(', ')}` : '')
-    )
-    const figures = findings
-      .slice(0, 3)
-      .map((f) => `- ${figureLine(f)}`)
-      .join('\n')
-    try {
-      const text = await runResearch({
-        logAs: 'research_web',
-        webLookups: opts.webLookups,
-        question:
-          `${question}\n\nA first pass answered this from media/community sources only (blogs, ` +
-          'retailer guides, forums). Find OFFICIAL or INDUSTRY confirmation for the decisive figures ' +
-          'below — statistical offices, standards, EPDs, peer-reviewed studies, or manufacturer ' +
-          'documents. Do not re-cite blogs or forums. If no such source exists, reply with the ' +
-          'single line "not found" — that answer is useful, an invented authority is not.' +
-          (upgradeDomains.length
-            ? `\nThe search is restricted to these hosts: ${upgradeDomains.join(', ')}. If they do not hold it, "not found" is the answer.`
-            : '') +
-          `\n\nFigures to confirm:\n${figures}`,
-        system: WEB_SYSTEM,
-        model: opts.model,
-        signal: opts.signal,
-        onCost: opts.onCost,
-        budgetMs: RETRY_BUDGET_MS,
-        domains: upgradeDomains.length ? upgradeDomains : undefined,
-        onCitations: (c) => book.add(c)
+  // One check of the weakly supported figures (webCheck.ts), bounded like every extra pass: not after a timeout
+  // (that budget is spent), not when unsourced answers were allowed (nothing to hold a figure against), not after
+  // a Stop, at most three figures, once, on its own short clock — a research fan quietly became half a run's bill
+  // once, so free iteration is exactly what this must not be. A strong finding beside a weak one blocks nothing.
+  const picks =
+    findings.length && !timedOut && sourcesRequired && !opts.signal?.aborted ? checkCandidates(findings) : []
+  const check = picks.length
+    ? await checkFigures({
+        question,
+        findings,
+        picks,
+        book,
+        // Under a caller's allow list a suggestion outside it cannot be searched; it is no hint then.
+        suggested: domains.length ? [] : suggested,
+        domains,
+        opts,
+        say: (note) => opts.onProgress?.(`${leg}${label}: ${note}`)
       })
-      // A stronger source is a page the first pass did not cite: the same blog in other words, tagged
-      // "industry" this time, is no upgrade. Pages are compared after the book resolved the provider's
-      // links, and never by host — a manufacturer's PDF on the domain of its shop page is what was asked for.
-      // A provider's link the book could not resolve is no page: it may lead to the very blog of the first
-      // pass, so it cannot make a finding new.
-      const page = (u: string): string | null => {
-        const p = book.canonical(u)
-        return isProviderLink(p) ? null : urlKey(p)
-      }
-      const cited = new Set(findings.flatMap((f) => f.sources.map(page)))
-      const upgrades = parseFindings(splitAuthoritativeDomains(text).text, true).findings.filter(
-        (f) =>
-          f.source_class &&
-          STRONG_CLASSES.has(f.source_class) &&
-          f.sources.some((u) => {
-            const key = page(u)
-            return key !== null && !cited.has(key)
-          })
-      )
-      const where = upgradeDomains.length ? ` (searched on ${upgradeDomains.join(', ')})` : ''
-      if (upgrades.length) {
-        findings = findings.concat(upgrades)
-        upgradeNote = `${upgrades.length} official/industry finding(s) came from an upgrade pass${where} after the first pass returned only media/community sources.`
-      } else {
-        upgradeNote = `All findings rest on media/community sources; one upgrade pass${where} found no official or industry source.`
-      }
-      opts.onProgress?.(
-        `${leg}${label}: ${upgrades.length ? `+${upgrades.length} official/industry` : 'no stronger source found'}`
-      )
-    } catch (e) {
-      // The upgrade is a bonus on top of a finished answer — its failure must not cost it, and the note says
-      // why it failed rather than assuming the clock.
-      upgradeNote = `All findings rest on media/community sources; an upgrade pass failed (${legFailure(e)}).`
-    }
-  }
+    : undefined
   opts.onProgress?.(
     findings.length
       ? `${leg}${label}: ${findings.length} finding${findings.length === 1 ? '' : 's'}`
@@ -648,7 +567,10 @@ export async function researchWeb(opts: {
   // As for the BOM items: a provider's link becomes its page, and one that leads nowhere is no source.
   for (const f of findings)
     f.sources = f.sources.map((u) => book.canonical(u)).filter((u) => !(isProviderLink(u) && !book.has(u)))
-  const sources = [...new Set(findings.flatMap((f) => f.sources))]
+  // The pages the check read on count among the call's sources, with their excerpts under `evidence`.
+  const sources = [
+    ...new Set(findings.flatMap((f) => [...f.sources, ...(f.check?.source ? [f.check.source] : [])]))
+  ]
   // The engine's record against the model's (see BomItem.cited_by_search): marked, never dropped.
   if (book.size)
     for (const f of findings) if (f.sources.length) f.cited_by_search = f.sources.some((u) => book.has(u))
@@ -663,6 +585,7 @@ export async function researchWeb(opts: {
     evidence,
     ...(suggested.length ? { suggested_domains: suggested } : {}),
     ...(domains.length ? { domains } : {}),
+    ...(check ? { web_check: check } : {}),
     note:
       [
         findings.length
@@ -670,7 +593,7 @@ export async function researchWeb(opts: {
             ? `${dropped} statement(s) were discarded for having no source.`
             : ''
           : 'The research produced nothing with a usable source — ask the user, or narrow the question.',
-        upgradeNote ?? '',
+        check ? checkNote(check) : '',
         uncited
           ? `${uncited} finding${uncited === 1 ? '' : 's'} cite${uncited === 1 ? 's' : ''} only URLs the search engine did not return (cited_by_search: false) — opened directly or written from memory; verify before relying on them.`
           : ''
@@ -678,6 +601,94 @@ export async function researchWeb(opts: {
         .filter(Boolean)
         .join(' ') || undefined
   }
+}
+
+/**
+ * Run the figure check on the picked findings and put its verdict on each of them. Its time and money are its
+ * own: a short clock, and a meter of its own beside the call's, so the log can say what the check cost. The
+ * search leaves out the hosts of the weak findings, the fetch never does — a datasheet on such a host may still
+ * be opened by its address. Under a caller's allow list nothing is left out (and Anthropic takes only one list).
+ */
+async function checkFigures(o: {
+  question: string
+  findings: WebFinding[]
+  picks: number[]
+  book: CitationBook
+  suggested: string[]
+  domains: string[]
+  opts: { model?: string; signal?: AbortSignal; onCost?: CostSink; webLookups?: number }
+  say: (note: string) => void
+}): Promise<WebCheckRecord> {
+  // A provider's link the book could not resolve is no page: it may lead to the very page being checked.
+  const page = (u: string): string | null => {
+    const p = o.book.canonical(u)
+    return isProviderLink(p) ? null : p
+  }
+  const excluded = o.domains.length ? [] : excludedHosts(o.findings, o.picks, page)
+  const tally = { usd: 0, requests: 0 }
+  const started = Date.now()
+  let outcome = 'done' as WebCheckRecord['outcome']
+  let error: string | undefined
+  let text = ''
+  o.say(`checking ${o.picks.length} weakly supported figure${o.picks.length === 1 ? '' : 's'}`)
+  try {
+    text = await runResearch({
+      logAs: 'research_web',
+      // Its own ceiling on lookups, below the setting's: in a live run on Anthropic the check took as much as a
+      // first leg, since every search's pages go back into the next request.
+      webLookups: Math.min(o.opts.webLookups || CHECK_LOOKUPS, CHECK_LOOKUPS),
+      question: checkQuestion(o.question, o.findings, o.picks, o.suggested),
+      system: CHECK_SYSTEM,
+      model: o.opts.model,
+      signal: o.opts.signal,
+      onCost: (m, u) => {
+        tally.usd += u.cost ?? 0
+        tally.requests += 1
+        o.opts.onCost?.(m, u)
+      },
+      budgetMs: RETRY_BUDGET_MS,
+      domains: o.domains.length ? o.domains : undefined,
+      excludeHosts: excluded.length ? excluded : undefined,
+      onCitations: (c) => o.book.add(c),
+      onTimeout: () => (outcome = 'timeout')
+    })
+  } catch (e) {
+    // The check is a bonus on a finished answer: its failure costs the answer nothing, and the figures it did
+    // not reach say "not_checked".
+    outcome = o.opts.signal?.aborted ? 'stopped' : e instanceof ResearchTimeout ? 'timeout' : 'failed'
+    error = legFailure(e)
+  }
+  const checks = applyChecks(o.findings, o.picks, parseChecks(text), {
+    page,
+    key: urlKey,
+    // As on the findings: absent when the provider annotates nothing.
+    cited: (u) => (o.book.size ? o.book.has(u) : undefined)
+  })
+  o.picks.forEach((i, n) => (o.findings[i].check = checks[n]))
+  const record: WebCheckRecord = {
+    trigger: {
+      findings: o.findings.length,
+      weak: checkCandidates(o.findings, Infinity).length,
+      direct: o.findings.filter((f) => f.direct).length
+    },
+    figures: o.picks.map((i, n) => ({
+      finding: i + 1,
+      text: statementOf(o.findings[i]).slice(0, 300),
+      ...checks[n]
+    })),
+    ...(excluded.length ? { excluded_hosts: excluded } : {}),
+    usd: Number(tally.usd.toFixed(4)),
+    requests: tally.requests,
+    ms: Date.now() - started,
+    outcome,
+    ...(error ? { error } : {})
+  }
+  const said = (['confirmed', 'differs', 'not_comparable', 'not_found', 'not_checked'] as const)
+    .map((s) => [s, checks.filter((c) => c.status === s).length] as const)
+    .filter(([, n]) => n)
+    .map(([s, n]) => `${n} ${s.replace('_', ' ')}`)
+  o.say(`check: ${said.join(', ')}${outcome === 'done' ? '' : ` (${outcome})`}`)
+  return record
 }
 
 export { AiProviderError }

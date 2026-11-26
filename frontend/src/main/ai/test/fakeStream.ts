@@ -65,6 +65,7 @@ export interface RecordedCall {
   maxTokens?: number
   webLookupsCap?: number
   webDomains?: string[]
+  webSearchExcluded?: string[]
   /** Kept by reference, not copied: a test asks whether the caller's own signal arrived. */
   signal?: AbortSignal
 }
@@ -142,6 +143,7 @@ class ScriptedChat {
       maxTokens: opts.maxTokens,
       webLookupsCap: opts.webLookupsCap,
       webDomains: opts.webDomains,
+      webSearchExcluded: opts.webSearchExcluded,
       signal: opts.signal
     })
     const round = this.rounds.shift() ?? (this.alwaysDelta ? { text: this.fallbackText } : {})

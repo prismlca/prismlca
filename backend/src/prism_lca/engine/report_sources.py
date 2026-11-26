@@ -65,11 +65,21 @@ def researched_sources(data: dict[str, Any], exclude: set[str] | None = None) ->
     for entry in data.get("web_research") or []:
         question = str(entry.get("question") or "").strip()
         for finding in entry.get("findings") or []:
-            for url in finding.get("sources") or []:
+            # The page a figure check read its verdict on was consulted as much as the finding's own.
+            check = finding.get("check") if isinstance(finding.get("check"), dict) else {}
+            checked = [check["source"]] if check.get("source") and check.get("status") != "not_found" else []
+            for url in [*(finding.get("sources") or []), *checked]:
                 url = str(url).rstrip(".,;:")
                 if url and url not in exclude and url not in seen:
                     seen[url] = question[:160]
     return sorted(seen.items())
+
+
+def figure_check_brief(check: dict[str, Any]) -> dict[str, Any]:
+    """A finding's figure check as a report writer reads it beside the finding: the verdict, and where another
+    page stated something, its figure, what that figure refers to and the page — never the leg's whole record."""
+    keys = ("status", "value", "unit", "refers_to", "source", "stronger_source", "independent")
+    return {k: check[k] for k in keys if check.get(k) not in (None, "")}
 
 
 def research_text(data: dict[str, Any]) -> str:
@@ -93,6 +103,10 @@ def research_text(data: dict[str, Any]) -> str:
                 if key in ("text", "excerpt") and isinstance(value, str):
                     if sourced:
                         parts.append(value)
+                elif key == "check" and isinstance(value, dict):
+                    # A figure check's figure, as the page it was read on states it: quotable like a finding.
+                    if value.get("source"):
+                        parts.extend(str(value[k]) for k in ("value", "unit", "refers_to") if value.get(k))
                 elif isinstance(value, (dict, list)):
                     walk(value)
         elif isinstance(node, list):

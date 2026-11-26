@@ -42,6 +42,8 @@ interface Finding {
   cited_by_search?: boolean
   unsourced?: boolean
   unsourced_kg?: number
+  /** What the figure check of research_web found for it (webCheck.ts), as the research log keeps it. */
+  check?: { status: string; value?: string; unit?: string; refers_to?: string; source?: string }
 }
 interface BomCheck {
   summary?: string
@@ -145,12 +147,24 @@ function findingLine(f: Finding): string {
     f.note ? ` Note: ${oneLine(f.note)}` : '',
     ids ? ` — ${ids}` : '',
     f.cited_by_search === false ? ' (source not returned by the search engine)' : '',
+    checkLine(f.check),
     f.unsourced
       ? ' — NO SOURCE'
       : typeof f.unsourced_kg === 'number'
         ? ` — NO SOURCE for ${f.unsourced_kg} kg of it`
         : ''
   ].join('')
+}
+
+/** A figure check's verdict after its finding: the reviewer holds a booked figure against the contradiction too. */
+function checkLine(c: Finding['check']): string {
+  if (!c || c.status === 'not_checked') return ''
+  const figure = [c.value, c.unit].filter(Boolean).join(' ')
+  const about = c.refers_to ? ` (${oneLine(c.refers_to)})` : ''
+  const page = c.source ? ` — ${sourceId(c.source)}` : ''
+  return c.status === 'not_found'
+    ? ' [checked: no other source found]'
+    : ` [checked: ${c.status}${figure ? `, ${figure}` : ''}${about}${page}]`
 }
 
 const strength = (f: Finding): number =>

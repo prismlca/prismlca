@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-27",
+    "title": "Web research checks its weak figures",
+    "details": "When the assistant researches a question on the web, up to three figures that rest only on press, blogs, forums or a low-confidence source are now checked against other pages, even when an official source stands beside them. Each says whether another source confirms it, gives a different value, refers to something else (net or gross, another variant, region or year) or was not found; the model's research log keeps the check."
+  },
+  {
     "date": "2026-11-26",
     "title": "Bill-of-materials research shares its pages",
     "details": "Give the assistant the address of a datasheet, manual, parts list or EPD with a bill-of-materials request, and every researcher now opens it first and searches on when its part is not in it. A page found for one part that also states another part's mass goes to the second look for that part, and the result says where such pages confirm or contradict a figure."

@@ -1236,7 +1236,12 @@ def brief_facts(data: dict[str, Any], kind: str = "") -> dict[str, Any]:
             {
                 "question": _cap(e.get("question"), 200),
                 "findings": [
-                    {"text": _cap(f.get("text"), 300), "sources": (f.get("sources") or [])[:3]}
+                    {
+                        "text": _cap(f.get("text"), 300),
+                        "sources": (f.get("sources") or [])[:3],
+                        # What a figure check found for it: a figure another page contradicts is no plain fact.
+                        **({"check": report_sources.figure_check_brief(f["check"])} if isinstance(f.get("check"), dict) else {}),
+                    }
                     for f in (e.get("findings") or [])[:5]
                 ],
             }

@@ -390,7 +390,7 @@ export async function researchBom(opts: {
     leadsFor(firstFigures, outcomes[g.o].request, g.u.component)
 
   // ONE bounded follow-up pass for the components that came back without a usable mass: the first three
-  // of them, in parallel, on the 90-second narrow question. Bounded like the upgrade pass of the web legs —
+  // of them, in parallel, on the 90-second narrow question. Bounded like the figure check of the web legs —
   // never after a Stop, never more than once — so this is a second look at named gaps, not free iteration.
   // An answer belongs to the gap it was asked for, whatever the leg called the part: matching by name lost
   // a coating the follow-up had found, because it spelt the component differently. A gap another leg's page
