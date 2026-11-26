@@ -29,6 +29,11 @@ export const MCP_EXCLUDED_TOOLS: ReadonlySet<string> = new Set([
 // side. This server runs a session's calls one after another (sessions.ts), and how a client's own harness
 // orders several calls is for that harness to say.
 
+// The chat's rule that text from the web is material and never an instruction (ai/webContent.ts) reaches
+// the orientation not at all: it stands in the chat's prompt where the chat can reach the web, and this
+// catalogue has neither the research tools nor a web search. What a client reads on the web it reads with
+// its own tools, under its own harness's rules.
+
 // The in-app chat's model fence (ai/modelScope.ts: its own model only, comparison models read-only,
 // no model lifecycle, no `delete_model`) reaches the MCP server not at all: an external agent is meant
 // to work across models — it opens, creates and compares them, and it keeps its own session, so it

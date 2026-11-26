@@ -18,6 +18,7 @@ import {
 import { settleSources } from './bomSources'
 import { weighRecipe } from './recipeBalance'
 import { CitationBook, type Evidence } from './citationBook'
+import { evidenceNote } from './webContent'
 import {
   RETRY_BUDGET_MS,
   extractJson,
@@ -111,6 +112,8 @@ export interface BomResult extends BomWeighing {
   /** Pages the search engine cited that the items' `source_url`s point to, with excerpts when the
    *  engine supplied them (Exa). The engine's record of what was read, not the model's. */
   evidence: Evidence[]
+  /** What the titles and excerpts under `evidence` are, said where the caller reads them (webContent.ts). */
+  evidence_note?: string
   /** The host allow list the legs ran under, when the caller set one. */
   domains?: string[]
   /** Whether every figure in `items` names a page it came from; absent when there is no figure. Kept apart from
@@ -448,6 +451,7 @@ export async function researchBom(opts: {
     ...(follow_up ? { follow_up } : {}),
     ...(notResearched.length ? { not_researched: notResearched } : {}),
     sources: sourced.sources,
+    ...evidenceNote(sourced.evidence),
     evidence: sourced.evidence,
     ...(domains.length ? { domains } : {}),
     note: [emptyNote, weighed.note, ...sourced.notes].filter(Boolean).join(' ') || undefined
