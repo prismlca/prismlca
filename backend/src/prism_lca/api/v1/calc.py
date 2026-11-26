@@ -11,6 +11,7 @@ from prism_lca.api.v1.deps import MethodRef, require_token
 from prism_lca.engine import (
     calc_jobs,
     difference,
+    difference_run,
     inventory_per_unit,
     lca,
     method_lookup,
@@ -38,11 +39,12 @@ _gen_lock = threading.Lock()
 _gen: dict[tuple[str, str], int] = {}
 
 
-def _request_key(body) -> str:
-    """The request as a string: identical requests share a generation, different ones do not."""
+def _request_key(body, exclude=None) -> str:
+    """The request as a string: identical requests share a generation, different ones do not. ``exclude`` leaves out
+    what names a request without changing what it asks — a key kept per such name would never be asked again."""
     import json
 
-    return json.dumps(body.model_dump(), sort_keys=True, default=str)
+    return json.dumps(body.model_dump(exclude=exclude), sort_keys=True, default=str)
 
 
 def _next_gen(channel: str, key: str = "") -> int:
@@ -342,6 +344,17 @@ class CompareSubject(BaseModel):
     amount: float = 1.0
 
 
+class CompareDifference(BaseModel):
+    """Split why the subjects differ, read off the comparison's own solves (engine/difference_run.py)."""
+
+    #: A token per run of the page: the sides read in one request are kept for the run's next ones.
+    run: str
+    #: Every subject of the run, in its order — the pairs are planned over all of them.
+    of: list[CompareSubject]
+    #: Where this request's first subject stands in ``of``.
+    at: int = 0
+
+
 class CompareRequest(BaseModel):
     subjects: list[CompareSubject]
     methods: list[list[str]] | None = None
@@ -355,6 +368,8 @@ class CompareRequest(BaseModel):
     partial: bool = False
     #: Add each subject's life cycle inventory (elementary flows) to its row, read in the same pass.
     inventory: bool = False
+    #: Split the difference of each subject to its reference onto the changes, read in the same pass.
+    difference: CompareDifference | None = None
 
 
 @router.post("/compare", summary="Compare n subjects x m methods (matrix)")
@@ -367,7 +382,9 @@ def compare(request: Request, body: CompareRequest) -> dict:
     if not methods:
         raise PrismError("Pass \"methods\" (a list of method tuples) or \"method_family\".",
                          code="invalid_request", hint="Method tuples come from list_methods.")
-    key = _request_key(body)
+    # The run's token is new with every Calculate: in the key, the same comparison asked again would not supersede
+    # the one still running, and every run would leave keys behind.
+    key = _request_key(body, exclude={"difference": {"run"}})
     mine = _next_gen("compare", key)
     try:
         out = compare_engine.compare(
@@ -376,6 +393,7 @@ def compare(request: Request, body: CompareRequest) -> dict:
             stacked_dimensions=body.stacked_dimensions,
             partial=body.partial,
             inventory=body.inventory,
+            difference=body.difference.model_dump() if body.difference else None,
         )
         if note:
             out["family"] = note
@@ -455,6 +473,8 @@ def cancel(body: CancelRequest) -> dict:
     # Bump every request on the channel so any in-flight traversal bails at its next checkpoint.
     if body.channel in _CHANNELS:
         _cancel_channel(body.channel)
+    if body.channel == "compare":
+        difference_run.drop_all()  # the sides a cancelled run kept: nothing asks for its pairs any more
     return {"cancelled": body.channel}
 
 

@@ -69,19 +69,9 @@ def explain(
         results = []
         for sid in variants:
             subject = _read(store, database, code, sid, methods, amount, reference=False)
-            placing = terms.place(reference, subject, pairing.nodes if pairing else None)
-            moved = terms.move(reference, subject, placing)
-            blocks = []
-            for m in methods:
-                part = terms.split(reference, subject, moved, m)
-                blocks.append(_block(part, m, bd, names, reference, moved, top_n, database))
             item = {"subject": _who(act, sid, amount, store)}
-            if placing.set_aside_runs > 0:
-                item["note"] = (
-                    "This model uses processes of the reference model itself, so part of the difference "
-                    "cannot be placed on a change."
-                )
-            item["indicators"] = blocks
+            item.update(split_sides(reference, subject, pairing, methods, names=names, top_n=top_n,
+                                    subject_db=database))
             results.append(item)
     if lca.model_generation() != generation:
         raise PrismError(
@@ -95,6 +85,30 @@ def explain(
     out["results"] = results
     if not_computed:
         out["not_computed"] = not_computed
+    return out
+
+
+def split_sides(reference: terms.Side, subject: terms.Side, pairing, methods: list, *, names: _Names | None = None,
+                top_n: int = TOP_N, subject_db: str, should_cancel=None) -> dict:
+    """The split of ``subject`` against ``reference``, both read already (:class:`terms.Recorder`), for every
+    indicator: ``{"note"?, "indicators": [...]}``. ``pairing`` places a copy's processes on its original's."""
+    bd = get_bd()
+    names = names or _Names(bd)
+    placing = terms.place(reference, subject, pairing.nodes if pairing else None)
+    moved = terms.move(reference, subject, placing)
+    blocks = []
+    for m in methods:
+        if should_cancel and should_cancel():
+            raise lca.CalcCancelled()
+        part = terms.split(reference, subject, moved, m)
+        blocks.append(_block(part, m, bd, names, reference, moved, top_n, subject_db))
+    out: dict = {}
+    if placing.set_aside_runs > 0:
+        out["note"] = (
+            "This model uses processes of the reference model itself, so part of the difference "
+            "cannot be placed on a change."
+        )
+    out["indicators"] = blocks
     return out
 
 
@@ -159,6 +173,7 @@ class _Names:
     def __init__(self, bd) -> None:
         self.bd = bd
         self._nodes: dict[int, object] = {}
+        self._exchanges: dict[tuple[int, int], tuple[str, str | None] | None] = {}
 
     def node(self, node_id: int):
         if node_id not in self._nodes:
@@ -167,6 +182,14 @@ class _Names:
             except Exception:  # noqa: BLE001 - a node gone since the read is named by its id
                 self._nodes[node_id] = None
         return self._nodes[node_id]
+
+    def exchange(self, node_id: int, input_id: int) -> tuple[str, str | None] | None:
+        """:func:`_exchange` of the node, read once per pair: every indicator names the same changes."""
+        key = (node_id, input_id)
+        if key not in self._exchanges:
+            node = self.node(node_id)
+            self._exchanges[key] = _exchange(node, input_id) if node is not None else None
+        return self._exchanges[key]
 
     def name(self, node_id: int) -> str:
         node = self.node(node_id)
@@ -258,13 +281,12 @@ def _change(term: float, row: dict, delta: float, same: bool, names: _Names, sub
             if proc.key[0] != subject_db:
                 out["database"] = proc.key[0]
         out["exchange"] = names.name(row["input"])
-        found = _exchange(proc, row["input"]) if proc is not None else None
+        found = names.exchange(row["process"], row["input"])
         # The reference's own exchange where it is another process (a copy's original): an exchange the subject
         # removed is found only there, and one whose type changed has a type on each side.
         was_found = None
         if row["was"] != (row["process"], row["input"]) and row["was"][0] >= 0:
-            was = names.node(row["was"][0])
-            was_found = _exchange(was, row["was"][1]) if was is not None else None
+            was_found = names.exchange(row["was"][0], row["was"][1])
         guess = "elementary flow" if kind_of == "bio" else "production" if row["process"] == row["input"] else "input"
         kind_after = _KIND.get((found or was_found or ("",))[0], guess)
         kind_before = _KIND.get((was_found or found or ("",))[0], guess)

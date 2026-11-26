@@ -35,6 +35,7 @@ import { familiesOffered, resolveSplit } from './results/splitBy'
 import { comparisonCharts } from './results/comparisonCharts'
 import { resultsWorkbook } from './results/resultsWorkbook'
 import { LciTable } from './results/LciTable'
+import { WhyDifferent, WhyNote } from './results/WhyDifferent'
 import { fmtPct, pngName, ZOOM_SCALE } from './results/chartUtils'
 import { ResultsRailHead, type ResultsTab } from './results/ResultsTabs'
 import { useIndicatorPicking } from './results/useIndicatorPicking'
@@ -117,6 +118,8 @@ export default function Results({
   // Auto by default: a fixed six decimals printed digits the data cannot support.
   const [valueDecimals, setValueDecimals] = usePersisted('prism.ov.decimals', AUTO_DECIMALS)
   const [diffMode, setDiffMode] = usePersisted('prism.ov.diffMode', false)
+  // What makes the difference, under each bar chart: computed with every run, shown unless switched off here.
+  const [showWhy, setShowWhy] = usePersisted('prism.ov.why', true)
   const [refCode, setRefCode] = useViewField(activeDb, 'results', 'refCode', '')
   // Stacked bars: split each subject's bar by a classification. The same switch splits the Excel
   // export — see `exportXlsx`. On/off is app-wide; what to split by is the model's (results/splitBy.ts):
@@ -213,7 +216,7 @@ export default function Results({
   // And the tag families have answered: an unchosen split defaults to one of them, and a run started
   // before would compute the split without the family the chart then switches to.
   const inputsReady = scenariosReady && (!activeDb || tagQuery.data !== undefined || tagQuery.error != null)
-  const { matrix, stackData, busy, stackBusy, stale, progress, lastSecs, calculate, cancelCalc } =
+  const { matrix, why, stackData, busy, stackBusy, stale, progress, lastSecs, calculate, cancelCalc } =
     useCompareRun({
       activeDb,
       subjects,
@@ -630,6 +633,10 @@ export default function Results({
                 </label>
               ) : null}
               <label className="cs-item">
+                <input type="checkbox" checked={showWhy} onChange={(e) => setShowWhy(e.target.checked)} />
+                <span>What makes the difference</span>
+              </label>
+              <label className="cs-item">
                 <input type="checkbox" checked={stacked} onChange={(e) => setStacked(e.target.checked)} />
                 {/* No "slower" warning any more: it still runs a contribution tree per subject ×
                       indicator, but one factorisation now feeds them all and the wait is no longer worth
@@ -928,6 +935,7 @@ export default function Results({
                 </p>
               ) : (
                 <>
+                  {why && showWhy ? <WhyNote why={why} rows={matrix.subjects} /> : null}
                   {groups.map((g) => (
                     <section className="ind-fam-section" key={g.family}>
                       <div className="ind-fam-head">{g.family}</div>
@@ -962,6 +970,14 @@ export default function Results({
                               {useDiff ? <span className="th-unit"> · % vs {refSubject!.label}</span> : null}
                             </div>
                             {indicatorChart(p, false)}
+                            {why && showWhy ? (
+                              <WhyDifferent
+                                why={why}
+                                rows={matrix.subjects}
+                                indicator={p}
+                                color={colorMap.subject}
+                              />
+                            ) : null}
                           </div>
                         ))}
                       </div>

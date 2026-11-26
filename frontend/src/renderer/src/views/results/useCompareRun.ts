@@ -9,14 +9,17 @@ import type {
   MatrixRow,
   Picked,
   StackedData,
-  StackedResp
+  StackedResp,
+  WhyData
 } from './types'
+import { gatherWhy } from './whySplits'
 
 /**
- * The Results page's run machinery: one request per subject (scores with the life cycle inventory, then the
- * stacked split — one for both under a scenario), the generation guard that turns a cancelled or superseded run's answers into
- * no-ops, the stale flag, and the assistant's `setup_results run=true` token. Moved out of Results.tsx verbatim; the effects keep
- * their order because the page calls this hook where the block used to stand.
+ * The Results page's run machinery: one request per subject (scores with the life cycle inventory and what makes
+ * the difference, then the stacked split — one for both under a scenario), the generation guard that turns a
+ * cancelled or superseded run's answers into no-ops, the stale flag, and the assistant's `setup_results run=true`
+ * token. Moved out of Results.tsx verbatim; the effects keep their order because the page calls this hook where
+ * the block used to stand.
  */
 export function useCompareRun({
   activeDb,
@@ -47,6 +50,7 @@ export function useCompareRun({
   setErr: (e: string | null) => void
 }) {
   const [matrix, setMatrix] = useState<Matrix | null>(null)
+  const [why, setWhy] = useState<WhyData | null>(null)
   const [busy, setBusy] = useState(false)
   const [stackData, setStackData] = useState<StackedData | null>(null)
   const [stackBusy, setStackBusy] = useState(false)
@@ -57,6 +61,7 @@ export function useCompareRun({
     if (!subjects.length || !picked.length) {
       runSeq.current++
       setMatrix(null)
+      setWhy(null)
       setStackData(null)
       setBusy(false)
       setStackBusy(false)
@@ -126,6 +131,18 @@ export function useCompareRun({
         // one window instead of two. Processes keep two passes: their scores show before any traversal.
         const together = (s: CompareSubject): boolean => wantStacked && Boolean(s.scenario)
         const splitOf = new Map<number, StackedResp>()
+        // What makes the difference is read off the same solves as the scores: every request names the run and
+        // all its subjects, and the backend keeps each side until its pair is in (engine/difference_run.py). A
+        // scenario alone is asked about too: it has nothing to differ from, and the plan says its baseline is missing.
+        const askWhy = subjects.length > 1 || subjects.some((s) => s.scenario)
+        const of = subjects.map(({ database, code, scenario, amount }) => ({
+          database,
+          code,
+          scenario,
+          amount
+        }))
+        const whyRun = `${Date.now().toString(36)}-${mine}-${Math.random().toString(36).slice(2)}`
+        const answers: NonNullable<CompareResponse['difference']>[] = []
         for (const [i, s] of subjects.entries()) {
           if (runSeq.current !== mine) return
           const label = `${together(s) ? 'Scores and breakdown' : 'Scores'} — ${s.label}`
@@ -136,10 +153,12 @@ export function useCompareRun({
             subjects: [s],
             methods: methodsReq,
             inventory: true,
-            ...(together(s) ? { stacked_dimensions: stackDims } : {})
+            ...(together(s) ? { stacked_dimensions: stackDims } : {}),
+            ...(askWhy ? { difference: { run: whyRun, of, at: i } } : {})
           })
           if (runSeq.current !== mine) return
           methodsOut = r.methods
+          if (r.difference) answers.push(r.difference)
           Object.assign(flows, r.inventory_flows)
           rows.push(
             ...r.subjects.map((row) => ({ ...row, database: s.database, code: s.code, scenario: s.scenario }))
@@ -152,6 +171,7 @@ export function useCompareRun({
           setProgress({ done, total, label })
         }
         setMatrix({ methods: methodsOut, subjects: rows, flows })
+        setWhy(answers.length ? gatherWhy(answers, methodsReq) : null)
         setBusy(false)
         if (wantStacked) {
           const merged: StackedData = { dimensions: [], keys: {}, labels: {}, subjects: [] }
@@ -210,5 +230,5 @@ export function useCompareRun({
     void api('POST', '/api/v1/calc/cancel', { channel: 'stacked' }).catch(() => {})
   }
 
-  return { matrix, stackData, busy, stackBusy, stale, progress, lastSecs, calculate, cancelCalc }
+  return { matrix, why, stackData, busy, stackBusy, stale, progress, lastSecs, calculate, cancelCalc }
 }

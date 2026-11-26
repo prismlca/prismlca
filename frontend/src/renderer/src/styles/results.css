@@ -435,3 +435,51 @@
 .lci-table td.lci-amt { text-align: right; font-variant-numeric: tabular-nums; }
 .res-lci-note { margin: 8px 0 0; font-size: var(--fs-label); color: var(--faint); }
 .res-lci-more { margin: 8px 10px; }
+/* What makes the difference, under each bar chart (views/results/WhyDifferent.tsx): a folding head like the LCI
+   card's, then one entry per scenario or copy — who, against what, by how much — and its largest drivers as chips.
+   Up is red and down green because a higher score is the worse one in every indicator the page draws. */
+.why { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.why-head { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 2px 0; font: inherit;
+  font-size: var(--fs-label); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.why-head:hover { color: var(--green-ink); }
+.why-head .car { display: inline-flex; color: var(--faint); transition: transform .16s; }
+.why-head .car svg { width: 11px; height: 11px; }
+.why.open .why-head .car { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .why-head .car { transition: none; } }
+.why-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.why-who { display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-sec); min-width: 0; }
+.why-dot { flex: none; width: 9px; height: 9px; border-radius: 2px; align-self: center; }
+.why-name { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.why-vs { flex: none; color: var(--faint); }
+.why-delta { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; color: var(--muted); }
+.why-delta.up { color: var(--bad); }
+.why-delta.down { color: var(--ok); }
+.why-drivers { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 3px 0 0 15px; }
+.why-chip { font-size: var(--fs-label); background: var(--surface-3); border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 6px; color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.why-chip b { font-variant-numeric: tabular-nums; }
+.why-all { border: 0; background: none; padding: 1px 2px; font: inherit; font-size: var(--fs-label); color: var(--green-ink); cursor: pointer; }
+.why-all:hover { text-decoration: underline; }
+.why-none, .why-err { font-size: var(--fs-label); color: var(--faint); margin: 2px 0 0 15px; }
+.why-err { color: var(--bad); }
+.why-note { margin: 10px 0 0; font-size: var(--fs-sec); color: var(--faint); }
+/* The whole list of one pair and indicator: a dialog the size of a table, not of the enlarge overlay. */
+.why-dialog { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow-lg); overflow: hidden; display: flex;
+  flex-direction: column; width: min(1100px, 94vw); max-height: 86vh; }
+.why-dialog-body { padding: 12px 18px 14px; overflow: auto; }
+.why-sum { margin: 0 0 6px; font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
+.why-sub, .why-foot { margin: 6px 0 0; font-size: var(--fs-sec); color: var(--muted); }
+.why-foot { color: var(--faint); font-size: var(--fs-label); }
+.why-scroll { margin-top: 8px; overflow: auto; max-height: 56vh; border: 1px solid var(--border); border-radius: 8px; }
+.why-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+.why-table th, .why-table td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+.why-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-3); color: var(--navy); white-space: nowrap; }
+.why-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.why-table .why-what b { display: block; font-weight: 600; }
+.why-table .why-what small { color: var(--faint); }
+.why-table .why-formula { font-family: var(--mono); font-size: var(--fs-label); color: var(--muted); }
+.why-table tbody tr:hover { background: var(--surface-3); }
+/* The sentence under a chart when a scenario was not split for want of its baseline: alone under the chart, or
+ *  closing the list of the pairs that were split. */
+.why-ask { margin: 8px 0 0; font-size: var(--fs-sec); color: var(--faint); }
+.why .why-ask { margin-top: 6px; }

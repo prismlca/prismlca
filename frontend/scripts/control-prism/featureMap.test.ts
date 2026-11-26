@@ -116,7 +116,11 @@ const NOT_LITERAL = new Set([
   // assembled: views/ActivityEditor.tsx, "+ Add {input|output} flow"
   '+ Add output flow',
   // assembled: views/Scenarios.tsx, "{parameter} override"
-  'mass override'
+  'mass override',
+  // assembled: views/results/WhyDifferent(Dialog).tsx, from the subject and the indicator
+  'What makes the difference — climate change / global warming potential (GWP100)',
+  'All changes — heavy — climate change / global warming potential (GWP100)',
+  'heavy vs baseline — climate change / global warming potential (GWP100)'
 ])
 
 /** What of a target is not in the renderer's source, as a list of reasons; empty when everything is. */

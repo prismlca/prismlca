@@ -29,6 +29,66 @@ export interface CompareResponse {
   stacked?: StackedResp
   /** The flows the rows' inventories name, by flow id. */
   inventory_flows?: Record<string, LciFlow>
+  /** Why the subjects differ, when the request asked for it (`difference`): the run's plan, and the pairs this
+   *  request completed. */
+  difference?: { plan: DifferencePlanEntry[]; splits: DifferenceSplit[] }
+}
+/** One subject of a run: the subject it is split against (an index into the run's subjects), or why none —
+ *  `reference` (others are split against it), `no_baseline` (a scenario whose baseline is not among the subjects),
+ *  `dataset` (a database dataset), `independent`. */
+export type DifferencePlanEntry =
+  | { reference: number }
+  | { reason: 'reference' | 'no_baseline' | 'dataset' | 'independent' }
+/** One change behind a difference, as `/calc/difference` names it. */
+export interface DifferenceChange {
+  process?: string
+  exchange?: string
+  /** input, credit, production, elementary flow, functional unit, characterisation factor; "a → b" when its
+   *  type changed */
+  kind: string
+  before: number
+  after: number
+  unit?: string
+  location?: string
+  formula?: string
+  runs?: number
+  contribution: number
+  /** Its share of the difference, in %; absent when the two scores are the same. */
+  share_pct?: number
+}
+/** One indicator of a split: the two scores, the changes largest first, and what they leave over. */
+export interface DifferenceBlock {
+  method: string[]
+  unit: string
+  reference_score: number
+  score: number
+  delta: number
+  delta_pct?: number
+  changes: DifferenceChange[]
+  more?: { count: number; contribution: number }
+  not_explained: number
+  exact: boolean
+  changed_without_effect?: number
+}
+export interface DifferenceSplit {
+  subject: number
+  reference: number
+  indicators?: DifferenceBlock[]
+  /** Why this pair could not be split; the scores stand. */
+  error?: string
+  note?: string
+  pairing?: {
+    paired: number
+    paired_by_name?: number
+    only_in_subject?: string[]
+    only_in_reference?: string[]
+  }
+}
+/** What the page keeps of a run's splits: the plan, and per split subject its pair with the indicators keyed by
+ *  method key (the run's own method order, not the blocks' resolved names). */
+export interface WhyData {
+  plan: DifferencePlanEntry[]
+  splits: Record<number, Omit<DifferenceSplit, 'indicators'> & { blocks: Record<string, DifferenceBlock> }>
 }
 /** A matrix row as the page keeps it: the backend's row plus WHO it is — the subject it was computed
  *  for (database, code, scenario), since code alone repeats across models (see lib/subjectKey). */
