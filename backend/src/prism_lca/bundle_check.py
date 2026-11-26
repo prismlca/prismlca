@@ -36,6 +36,7 @@ from pathlib import Path
 LAZY_IMPORTS: tuple[str, ...] = (
     "asteval",
     "bw2calc",
+    "bw2calc.errors",
     "bw2data",
     "bw2data.backends",
     "bw2data.backends.schema",

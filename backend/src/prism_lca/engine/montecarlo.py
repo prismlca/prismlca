@@ -16,6 +16,7 @@ import statistics
 
 from prism_lca.engine import param_window, params
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.calc_errors import explaining_an_empty_system
 from prism_lca.engine.lca import _LCA_LOCK, _demand_sign, resolve_method
 from prism_lca.engine.model import get_activity
 
@@ -45,8 +46,9 @@ def run(database: str, code: str, method, iterations: int = 1000, amount: float 
     with _LCA_LOCK:
         # Demand-sign normalisation for treatment activities (see engine.lca._demand_sign).
         lca = LCA({act.id: amount * _demand_sign(act)}, method=m, use_distributions=True)
-        lca.lci()
-        lca.lcia()
+        with explaining_an_empty_system():
+            lca.lci()
+            lca.lcia()
         scores = [float(lca.score)]
         for _ in range(iterations - 1):
             next(lca)
@@ -84,8 +86,9 @@ def _mc_scores(act, method_tuple, iterations: int, seed: int, amount: float) -> 
         {act.id: amount * _demand_sign(act)},
         method=method_tuple, use_distributions=True, seed_override=int(seed),
     )
-    lca.lci()
-    lca.lcia()
+    with explaining_an_empty_system():
+        lca.lci()
+        lca.lcia()
     scores = [float(lca.score)]
     for _ in range(iterations - 1):
         next(lca)

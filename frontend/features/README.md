@@ -180,6 +180,9 @@ written on the way goes in a pull request of its own.
   after `launch` and again before `stop` (`stop --keep` keeps the folders but drops the record), with
   `console --all`, `refused` and the logs from `.cache/control-prism/logs/<run>/`. Launching the same session again
   deletes its logs.
+- **Read the backend's side too:** every `Unhandled error` in `.cache/control-prism/logs/<run>/app.log` is a
+  finding, with its traceback. The window shows such an error only as a red banner ("Unexpected server
+  error"), and `console` stays clean.
 - **A finding carries** the `control-prism` commands that reproduce it from `launch --seed`, a
   screenshot, and whether it was reproduced in a new session. About ten per run at most: the ones that
   matter most.

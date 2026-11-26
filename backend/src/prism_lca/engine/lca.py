@@ -13,6 +13,7 @@ from collections import OrderedDict
 
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.calc_errors import explaining_an_empty_system
 from prism_lca.engine.method_lookup import none_resolved, resolve_method, resolve_methods
 from prism_lca.engine.model import get_activity
 from prism_lca.engine.phase_attribution import NOISE_SHARE
@@ -139,8 +140,9 @@ def get_lca(demand: dict, method: tuple):
         # Don't pop the (possibly still hot) entry here: build the replacement first — the
         # assignment below overwrites it only once the rebuild has actually succeeded.
     lca = _LCA()(demand, method=m)
-    lca.lci()   # build + factorise the technosphere (the expensive part)
-    lca.lcia()  # build the characterisation matrix + first score
+    with explaining_an_empty_system():
+        lca.lci()   # build + factorise the technosphere (the expensive part)
+        lca.lcia()  # build the characterisation matrix + first score
     _LCA_CACHE[key] = {"lca": lca, "method": m, "gen": gen}
     while len(_LCA_CACHE) > _LCA_CACHE_MAX:
         _LCA_CACHE.popitem(last=False)
