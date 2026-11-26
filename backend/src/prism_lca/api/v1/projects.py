@@ -176,7 +176,7 @@ def _workspace_opened(request: Request, name: str) -> None:
     # The crash marker lives in the project directory, so this is the first moment anyone could read
     # THIS project's model — the same check the app does at startup. Imported here, not at module
     # level: the app factory imports this router.
-    from prism_lca.app import _ensure_library, _hygiene, recover_param_window
+    from prism_lca.app import _ensure_library, _hygiene, _safe_locations, recover_param_window
 
     with lca._LCA_LOCK, commands.PROJECT_LOCK:
         current = request.app.state.repository.current_project()
@@ -184,6 +184,7 @@ def _workspace_opened(request: Request, name: str) -> None:
             return
         recover_param_window(request.app)
         _ensure_library(request.app)
+        _safe_locations(request.app)
         _hygiene()
         # The same one-time migration the app start runs, for the same reason: a project that was last
         # opened by an older version still keeps its parameters and scenarios project-wide, and the

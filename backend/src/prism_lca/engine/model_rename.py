@@ -38,6 +38,7 @@ from peewee import chunked
 from prism_lca import _log
 from prism_lca.engine import hygiene
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.locations import make_stored_locations_safe
 from prism_lca.engine.params import _group_name
 from prism_lca.engine.step_timing import StepTimer
 from prism_lca.errors import PrismError
@@ -253,6 +254,7 @@ def _after_commit(old: str, new: str, stale: list[Path], index: str | None) -> N
         IndexManager(index).delete_database()
         bd.Database(new).make_searchable(reset=True, signal=False)
     try:
+        make_stored_locations_safe()  # processing evaluates locations with a round bracket
         bd.Database(new).process()
     except Exception as exc:  # noqa: BLE001 - e.g. an input whose process is gone
         # The rename itself is done. The model stays marked dirty, and the calculation that processes it

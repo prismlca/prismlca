@@ -14,6 +14,7 @@ from collections import OrderedDict
 from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.calc_errors import explaining_an_empty_system
+from prism_lca.engine.locations import make_stored_locations_safe
 from prism_lca.engine.method_lookup import none_resolved, resolve_method, resolve_methods
 from prism_lca.engine.model import get_activity
 from prism_lca.engine.phase_attribution import NOISE_SHARE
@@ -139,6 +140,8 @@ def get_lca(demand: dict, method: tuple):
             _log.swallowed(exc, "get_lca")
         # Don't pop the (possibly still hot) entry here: build the replacement first — the
         # assignment below overwrites it only once the rebuild has actually succeeded.
+    # Building an LCA processes every changed database, and processing evaluates locations with a round bracket.
+    make_stored_locations_safe()
     lca = _LCA()(demand, method=m)
     with explaining_an_empty_system():
         lca.lci()   # build + factorise the technosphere (the expensive part)

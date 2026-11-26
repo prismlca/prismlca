@@ -18,6 +18,7 @@ from prism_lca.engine import param_window, params
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.calc_errors import explaining_an_empty_system
 from prism_lca.engine.lca import _LCA_LOCK, _demand_sign, resolve_method
+from prism_lca.engine.locations import make_stored_locations_safe
 from prism_lca.engine.model import get_activity
 
 
@@ -45,6 +46,7 @@ def run(database: str, code: str, method, iterations: int = 1000, amount: float 
     # request's perturbed technosphere mid-run.
     with _LCA_LOCK:
         # Demand-sign normalisation for treatment activities (see engine.lca._demand_sign).
+        make_stored_locations_safe()  # see engine.lca.get_lca
         lca = LCA({act.id: amount * _demand_sign(act)}, method=m, use_distributions=True)
         with explaining_an_empty_system():
             lca.lci()
@@ -82,6 +84,7 @@ def _summary(database, code, m, bd, amount, scores, ordered, mean, std) -> dict:
 def _mc_scores(act, method_tuple, iterations: int, seed: int, amount: float) -> list[float]:
     from bw2calc import LCA
 
+    make_stored_locations_safe()  # see engine.lca.get_lca
     lca = LCA(
         {act.id: amount * _demand_sign(act)},
         method=method_tuple, use_distributions=True, seed_override=int(seed),

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
 from prism_lca.engine import background_reset, ecoinvent
+from prism_lca.errors import PrismError
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,16 @@ async def start_background_import(
     """ecoinvent or BAFU — at most one database per provider. ecoinvent is the
     master: a BAFU import maps onto it when present, and an ecoinvent import after BAFU rewrites
     the existing BAFU database onto ecoinvent's flow list."""
+    from prism_lca.engine.backgrounds.common import BIOSPHERE_DB
+    from prism_lca.engine.library import LIBRARY_DB
+
+    if body.database in (LIBRARY_DB, BIOSPHERE_DB):
+        raise PrismError(
+            f"'{body.database}' is the name of a database PrismLCA keeps itself; a background cannot take it.",
+            code="reserved_name",
+            status_code=400,
+            hint="Leave the name empty for the default, or choose another one.",
+        )
     if body.source == "bafu":
         st = ecoinvent.start_bafu_import(
             body.path, database=body.database, on_done=_index_after(request)

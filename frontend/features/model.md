@@ -137,6 +137,9 @@ node scripts/control-prism.mjs wait hidden "css=.tagmenu"
 
 ## Gotchas
 
+- **A location keeps no round brackets:** "Russia (Asia)" is stored as "Russia [Asia]", and a note under the
+  Location field says so. Imports of models and of datasets into "My processes" do the same and say so in the
+  log; background databases keep their own locations.
 - **Calculate needs exactly one selected process** and at least one method; otherwise it is disabled and
   its title says why ("Select one process as the functional unit"). After a restart nothing is selected:
   click the box first.

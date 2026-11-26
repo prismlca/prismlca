@@ -217,10 +217,13 @@ function BackgroundDescription({ text, onOpen }: { text: string; onOpen?: () => 
 function LocationField({
   value,
   readOnly,
+  notice,
   onSave
 }: {
   value: string | null
   readOnly: boolean
+  /** What the backend said about the value it stored, when that differs from what was typed. */
+  notice: string | null
   onSave: (v: string) => void
 }): JSX.Element {
   const [v, setV] = useDraft(value ?? '')
@@ -244,6 +247,7 @@ function LocationField({
           }}
         />
       )}
+      {notice ? <p className="settings-hint warn">{notice}</p> : null}
     </div>
   )
 }
@@ -358,6 +362,7 @@ export default function ActivityEditor({
   const [addFlow, setAddFlow] = useState<'input' | 'output' | null>(null)
   // The backend's warning after a unit change, with the unit it was about: shown while that unit stands.
   const [unitNote, setUnitNote] = useState<{ unit: string; text: string } | null>(null)
+  const [locationNote, setLocationNote] = useState<{ location: string; text: string } | null>(null)
   // One sort for both tabs; null = exchange order.
   const [sortBy, setSortBy] = useState<FlowSort>(null)
   // ISIC section names for the read-only display ("C — Manufacturing" instead of a bare letter).
@@ -468,7 +473,11 @@ export default function ActivityEditor({
 
   const saveField = (field: string, value: string): void =>
     void run(async () => {
-      const r = await api<{ warning?: string }>('POST', '/api/v1/model/activities/fields', {
+      const r = await api<{
+        warning?: string
+        location_note?: string
+        activity?: { location?: string | null }
+      }>('POST', '/api/v1/model/activities/fields', {
         database,
         code,
         [field]: value
@@ -477,6 +486,11 @@ export default function ActivityEditor({
       // means. The backend counts those consumers and warns; the warning used to end in a discarded
       // return value, so the one change that silently rescales a model said nothing.
       if (field === 'unit') setUnitNote(r?.warning ? { unit: value, text: r.warning } : null)
+      // A location is stored without round brackets; the backend says what it stored instead.
+      if (field === 'location')
+        setLocationNote(
+          r?.location_note ? { location: r.activity?.location ?? value, text: r.location_note } : null
+        )
     })
   // Classification sets all three override fields at once, so merge the patch with the current
   // values (a missing field would otherwise be cleared server-side).
@@ -587,7 +601,12 @@ export default function ActivityEditor({
       )}
       {/* Half width, as it was beside the unit: the unit went to the reference product it belongs to. */}
       <div className="efield-row">
-        <LocationField value={a.location} readOnly={ro} onSave={(v) => saveField('location', v)} />
+        <LocationField
+          value={a.location}
+          readOnly={ro}
+          notice={locationNote && locationNote.location === a.location ? locationNote.text : null}
+          onSave={(v) => saveField('location', v)}
+        />
       </div>
       {ro ? (
         <div className="efield-row">

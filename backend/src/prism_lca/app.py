@@ -190,6 +190,18 @@ def _ensure_library(app: FastAPI) -> None:
         _log.swallowed(exc, "ensure_library")
 
 
+def _safe_locations(app: FastAPI) -> None:
+    """Locations stored before they were made safe on the way in (engine/locations.py): rewritten once when a
+    workspace opens, each changed model noted in the log. Never blocks the start: the pass before every
+    calculation does the same."""
+    try:
+        from prism_lca.engine.locations import make_stored_locations_safe
+
+        make_stored_locations_safe(getattr(app.state, "command_bus", None))
+    except Exception as exc:  # noqa: BLE001 - never block startup; the pass before a calculation retries
+        _log.swallowed(exc, "safe_locations")
+
+
 def _migrate_study_files(*, prefer_legacy: bool = False) -> None:
     """Legacy study-metadata file names to the per-model ones (engine/study.py). At startup before the
     first request, and inside the project lock wherever a workspace becomes active — before any model can
@@ -295,6 +307,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     recover_param_window(app)
     _migrate_study_files()
     _ensure_library(app)
+    _safe_locations(app)
     _hygiene()
     # One-time: migrate legacy project-global parameters/groups/scenarios to per-model scope.
     # No-op (and un-marked, so it retries) until at least one foreground model exists.

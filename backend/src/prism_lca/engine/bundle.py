@@ -70,6 +70,7 @@ from prism_lca.engine.library import (
     new_batch,
     stamp,
 )
+from prism_lca.engine.locations import safe_location
 from prism_lca.errors import PrismError
 
 #: Format version of the bundle as a whole. Sections carry their own; this one changes only if the
@@ -248,6 +249,8 @@ def _write_graph_rows(db: Any, database: str, data: Any) -> None:
     for row in data.get("activities") or []:
         fields = {k: v for k, v in row.items() if k != "code"}
         fields.setdefault("type", "process")
+        if "location" in fields:
+            fields["location"] = safe_location(fields["location"])
         db.new_activity(code=row["code"], **fields).save()
 
     from prism_lca.engine.tags import TagStore
@@ -487,6 +490,8 @@ def _land_library(
     for fresh, ds in to_create:
         fields = {k: v for k, v in ds.items() if k in _ACT_FIELDS or k in _IMPORT_NOTES}
         fields.setdefault("type", "process")
+        if "location" in fields:
+            fields["location"] = safe_location(fields["location"])
         origin = {k: ds[k] for k in _LIBRARY_PROVENANCE if ds.get(k)}
         act = lib.new_activity(code=fresh, **fields, **provenance)
         if origin:

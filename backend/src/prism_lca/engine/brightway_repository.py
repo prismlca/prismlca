@@ -9,6 +9,7 @@ from prism_lca import _log
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import is_read_only, set_read_only
 from prism_lca.engine.library import is_library
+from prism_lca.engine.locations import safe_location
 from prism_lca.errors import PrismError
 from prism_lca.repository.base import BackendInfo, DatabaseInfo, LcaRepository, ProjectInfo
 
@@ -368,7 +369,7 @@ class BrightwayRepository(LcaRepository):
             new_code = code_map[act.key[1]]
             new = target.new_activity(
                 code=new_code, name=act.get("name"),
-                unit=act.get("unit") or "unit", location=act.get("location") or "GLO",
+                unit=act.get("unit") or "unit", location=safe_location(act.get("location")) or "GLO",
             )
             # Full copy of the remaining stored fields — comment, ISO documentation
             # (prism_doc), classifications, reference product … — not just the basics.

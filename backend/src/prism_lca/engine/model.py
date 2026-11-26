@@ -19,6 +19,7 @@ from prism_lca.engine import left_workspace
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, is_read_only
 from prism_lca.engine.library import LIBRARY_DB
+from prism_lca.engine.locations import location_note, safe_location
 from prism_lca.engine.market_suppliers import (
     market_main_supplier_comment,
     market_main_supplier_inputs,
@@ -1206,9 +1207,10 @@ def set_activity_fields(database: str, code: str, fields: dict) -> dict:
     old_unit = act.get("unit")
     mapping = {"name": "name", "location": "location", "unit": "unit",
                "product": "reference product", "comment": "comment"}
+    location = fields.get("location")
     for key, bw_key in mapping.items():
         if fields.get(key) is not None:
-            act[bw_key] = fields[key]
+            act[bw_key] = safe_location(fields[key]) if key == "location" else fields[key]
     doc = fields.get("doc")
     if doc is not None:
         current = dict(act.get(_DOC_KEY) or {})
@@ -1227,6 +1229,9 @@ def set_activity_fields(database: str, code: str, fields: dict) -> dict:
                 f"Unit changed from '{old_unit}' to '{new_unit}': {consumers} consuming "
                 f"exchange amount(s) keep their numbers but now mean the new unit — review them."
             )
+    note = location_note(location, act.get("location"))
+    if note:
+        result["location_note"] = note
     return result
 
 
@@ -1240,7 +1245,7 @@ def restore_activity_fields(database: str, code: str, snap: dict) -> None:
             except Exception as exc:  # noqa: BLE001
                 _log.swallowed(exc, "restore_activity_fields")
         else:
-            act[k] = v
+            act[k] = safe_location(v) if k == "location" else v
     act.save()
 
 
@@ -1267,7 +1272,7 @@ def create_activity(database: str, code: str, name: str, product: str | None,
     database = _db_or_404(bd, database)
     assert_writable(database)
     db = bd.Database(database)
-    act = db.new_activity(code=code, name=name, unit=unit or "unit", location=location or "GLO")
+    act = db.new_activity(code=code, name=name, unit=unit or "unit", location=safe_location(location) or "GLO")
     if product:
         act["reference product"] = product
     act["type"] = "process"
@@ -1316,7 +1321,7 @@ def restore_activity(database: str, code: str, snap: dict) -> None:
     db = bd.Database(database)
     f = snap["fields"]
     new = db.new_activity(code=code, name=f.get("name"), unit=f.get("unit") or "unit",
-                          location=f.get("location") or "GLO")
+                          location=safe_location(f.get("location")) or "GLO")
     for k in _SNAP_FIELDS:
         if k in ("name", "unit", "location"):
             continue  # given to new_activity above

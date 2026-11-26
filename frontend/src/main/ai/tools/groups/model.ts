@@ -112,7 +112,9 @@ export const modelTools: Tool[] = [
         if (comment && code) {
           await ctx.api('POST', '/api/v1/model/activities/fields', { database: db, code, comment, ...AI })
         }
-        return { code, name: it?.name, described: Boolean(comment) }
+        // A location is stored without round brackets; the backend's sentence says what it stored instead.
+        const note = made?.location_note ? { location_note: made.location_note } : {}
+        return { code, name: it?.name, described: Boolean(comment), ...note }
       }
       if (items.length === 1) {
         const r = await create(items[0])
