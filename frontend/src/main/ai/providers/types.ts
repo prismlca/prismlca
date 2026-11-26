@@ -294,8 +294,9 @@ export interface StreamChatOpts {
   webLookupsCap?: number
   /** Restrict the provider-side web search (and fetch) to these domains — bare hosts, no scheme.
    *  OpenRouter: `parameters.allowed_domains` on both server tools (Exa and most native engines;
-   *  Google-native has no filter and falls back to Exa); OpenAI: `filters.allowed_domains`; Google
-   *  direct has no filter either, so its transport names the hosts in the instructions instead.
+   *  Google-native has no filter and falls back to Exa); OpenAI: `filters.allowed_domains`; Anthropic:
+   *  `allowed_domains` on both tools plus the hosts in the instructions, because its search still mixes in
+   *  pages from other hosts; Google direct has no filter, so the instructions are all it gets (domainHint.ts).
    *  Undefined/empty = unrestricted. Set by the research legs only: the model that saw the first
    *  pass names where the authoritative confirmation lives, and the upgrade pass searches there. */
   webDomains?: string[]

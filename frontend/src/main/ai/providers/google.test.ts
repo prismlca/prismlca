@@ -17,6 +17,7 @@ const { streamChat, transcribeAudio } = await import('../client')
 const { setActiveProvider } = await import('./state')
 const { googleTransport, SKIP_SIGNATURE, thinkingLevel, toInteractionsInput } = await import('./google')
 const { DEFAULT_GOOGLE_MODEL_ID } = await import('../../../shared/aiDefaults')
+import { domainHint } from './domainHint'
 import type { ChatMessage, StreamEvent } from './types'
 
 const API = 'https://generativelanguage.googleapis.com/v1beta/interactions'
@@ -169,7 +170,7 @@ describe('the request', () => {
     })
     const body = JSON.parse(String(calls[0].init.body))
     expect(body.tools).toEqual([{ type: 'google_search' }, { type: 'url_context' }])
-    expect(body.system_instruction).toContain('plasticseurope.org, iso.org')
+    expect(body.system_instruction).toContain(domainHint(['plasticseurope.org', 'iso.org']))
   })
 
   it('never combines Google Search with function tools (a preview on this API)', async () => {
