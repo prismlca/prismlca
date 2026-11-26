@@ -14,6 +14,7 @@ import { parseArgs, UsageError, type Parsed } from './args'
 import { backendFingerprint, build, outFingerprint, readStamp, sourceFingerprint } from './build'
 import { Exit, HostTimeout, out, requireSession, send } from './client'
 import { changedSince, judge, realDirs } from './doctor'
+import { explore } from './explore'
 import type { AppFacts } from './facts'
 import { hostAlive, runHost } from './host'
 import { launch, restart, stop } from './lifecycle'
@@ -44,6 +45,18 @@ session
   stop [--keep]      quit the app, end what it started, remove its folders (--keep keeps them,
                      without stored keys)
   build              build out/ and stamp it (launch does this when needed)
+
+exploring                            (Linux, and macOS on Apple silicon)
+  explore [--minutes <n>] [--runs <k>]
+                     Bombadil explores the app at random before a release: k runs (default 6) of n minutes
+                     (default 5), each in a fresh sealed, seeded session prepared with the model recipe of
+                     features/model.md. Findings come from the spec's properties (features/explore/), every
+                     "Unhandled error" in the session's backend log, and a visible "Unexpected server error".
+                     Report: .cache/control-prism/explore/<time>/report.md; exit 1 on a finding or on a run
+                     that broke off. Fetches the pinned Bombadil release on first use
+  explore --control <name|all>
+                     the spec's positive controls: each property must go red where its condition is known
+                     to happen (features/explore/controls/). Run them all after every change to the spec
 
 driving                              (<target>: see "targets" below)
   click <target> [--right] [--double]
@@ -202,6 +215,9 @@ async function main(argv: string[]): Promise<void> {
       return
     case 'launch':
       return launch(name, bundlePath(), p.flags)
+    case 'explore':
+      bundlePath()
+      return explore(p.flags)
     case 'status': {
       const r = requireSession(name)
       out(JSON.stringify({ ...r, token: undefined, hostAlive: hostAlive(r, listProcesses()) }, null, 2))

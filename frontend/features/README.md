@@ -164,6 +164,10 @@ with `control-prism` and these pages, looking for what is broken rather than pro
 reports and changes nothing — no fix, no merge. Each finding becomes an issue of its own; a map page
 written on the way goes in a pull request of its own.
 
+- **Bombadil explores too, beside the agent:** `node scripts/control-prism.mjs explore` drives the app at
+  random in fresh sealed sessions and reports what went red, what the backend log did not expect, and where
+  it went ([explore/README.md](explore/README.md)). It finds what breaks under unusual input and order; the
+  agent finds wrong meaning. Each of its findings becomes an issue like the agent's.
 - **Sealed:** `launch --seed --sealed`, and `doctor` says the seal is in place. An unsealed session is
   not for exploring: a block list of controls by name missed links, a switch and a file dialog before.
 - **Order:** the pages with neither a map page nor an end-to-end test first, then the partly tested

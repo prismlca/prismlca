@@ -1,0 +1,12 @@
+diff --git a/backend/src/prism_lca/engine/calc_errors.py b/backend/src/prism_lca/engine/calc_errors.py
+index 53ca6799..1344a819 100644
+--- a/backend/src/prism_lca/engine/calc_errors.py
++++ b/backend/src/prism_lca/engine/calc_errors.py
+@@ -20,6 +20,7 @@ def explaining_an_empty_system():
+     try:
+         yield
+     except EmptyBiosphere as exc:
++        raise  # brought back for the positive control: Brightway's error reaches the window again
+         raise PrismError(
+             "Nothing to calculate yet: none of the processes in this calculation has an elementary flow "
+             "(an emission or a resource), so there is nothing for an impact method to count.",

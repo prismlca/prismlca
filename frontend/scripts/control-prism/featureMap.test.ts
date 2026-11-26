@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseArgs } from './args'
+import { COMMAND, shellWords } from './recipe'
 import { parseTarget, type Step } from './targets'
 
 /**
@@ -17,7 +18,6 @@ import { parseTarget, type Step } from './targets'
 const FRONTEND = join(__dirname, '..', '..')
 const FEATURES = join(FRONTEND, 'features')
 const SECTIONS = ['Sub-features', 'How to get there', 'Driving it with control-prism', 'Gotchas']
-const COMMAND = 'node scripts/control-prism.mjs '
 
 const pages = readdirSync(FEATURES)
   .filter((f) => f.endsWith('.md'))
@@ -31,31 +31,6 @@ function rendererSource(): string {
     parts.push(readFileSync(join(e.parentPath, e.name), 'utf8'))
   }
   return parts.join('\n')
-}
-
-/** Splits a command line the way a POSIX shell does for "…" and '…' quoting (no expansions). */
-export function shellWords(line: string): string[] {
-  const words: string[] = []
-  let word: string | null = null
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i]
-    if (c === "'") {
-      const end = line.indexOf("'", i + 1)
-      word = (word ?? '') + line.slice(i + 1, end)
-      i = end
-    } else if (c === '"') {
-      let j = i + 1
-      let s = ''
-      for (; line[j] !== '"'; j++) s += line[j] === '\\' && /["\\$`]/.test(line[j + 1]) ? line[++j] : line[j]
-      word = (word ?? '') + s
-      i = j
-    } else if (/\s/.test(c)) {
-      if (word !== null) words.push(word)
-      word = null
-    } else word = (word ?? '') + c
-  }
-  if (word !== null) words.push(word)
-  return words
 }
 
 /** The targets a parsed command names. */
@@ -205,23 +180,5 @@ describe('missingFrom', () => {
     expect(check('LCIA method')).toEqual(['no aria-label="LCIA method"'])
     expect(check('title=Close')).toEqual(['no title="Close"'])
     expect(check('role=button:+ Add input flow')).toEqual(['no name "+ Add input flow"'])
-  })
-})
-
-describe('shellWords', () => {
-  it('splits like a shell', () => {
-    expect(shellWords(`type "label=Name" bottle --enter`)).toEqual([
-      'type',
-      'label=Name',
-      'bottle',
-      '--enter'
-    ])
-    expect(shellWords(`wait text "css=.a b" "/^2(\\.0+)? kg/"`)).toEqual([
-      'wait',
-      'text',
-      'css=.a b',
-      '/^2(\\.0+)? kg/'
-    ])
-    expect(shellWords(`read 'document.title'`)).toEqual(['read', 'document.title'])
   })
 })

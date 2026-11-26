@@ -1,0 +1,22 @@
+diff --git a/frontend/src/renderer/src/workbench/useCanvasModel.ts b/frontend/src/renderer/src/workbench/useCanvasModel.ts
+index d1ff8ea8..cd1355ae 100644
+--- a/frontend/src/renderer/src/workbench/useCanvasModel.ts
++++ b/frontend/src/renderer/src/workbench/useCanvasModel.ts
+@@ -16,7 +16,7 @@ import { useEdgesState, useNodesState, type Edge, type Node } from '@xyflow/reac
+ import { api, ApiError, type Graph } from '../lib/api'
+ import { fetchQuery, invalidate, latestOnly } from '../lib/server/useQuery'
+ import { graphRoute } from '../lib/server/routes'
+-import { useIdListState } from '../lib/useIdListState'
++// import { useIdListState } from '../lib/useIdListState'
+ import { flushViews, SAVE_NOW_EVENT, viewFetch, viewSet, viewSync } from '../lib/modelView'
+ import { ARROW_COLOR, arrowMarker, splitId } from '../lib/canvas'
+ import {
+@@ -70,7 +70,7 @@ export function useCanvasModel(deps: CanvasModelDeps) {
+   const { run, activeDb, setConfirm, reloadAudit, edgeDigits } = deps
+   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[])
+   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[])
+-  const [selected, setSelected] = useIdListState()
++  const [selected, setSelected] = useState<string[]>([])
+   // Which model the colour writers should write to. A ref, not the state: `setNodeColor` is passed
+   // down through refs and must not be rebuilt whenever the active model changes.
+   const activeDbRef = useRef<string | null>(null)
