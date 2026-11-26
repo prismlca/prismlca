@@ -1,0 +1,22 @@
+diff --git a/frontend/src/renderer/src/views/report/useChapterWriter.ts b/frontend/src/renderer/src/views/report/useChapterWriter.ts
+index 575f655e..cd40b3c6 100644
+--- a/frontend/src/renderer/src/views/report/useChapterWriter.ts
++++ b/frontend/src/renderer/src/views/report/useChapterWriter.ts
+@@ -178,7 +178,7 @@ export default function useChapterWriter({
+     void aiCancel('report:ai')
+   }, [])
+ 
+-  const reset = useCallback((): void => {
++  const reset = (): void => {
+     setNote(null)
+     // The report now open brings its own drafts and their reasons back from the cache (V424a); the
+     // previous report's stay in theirs.
+@@ -186,7 +186,7 @@ export default function useChapterWriter({
+     setFindings(cached.findings)
+     setDrafts(cached.drafts)
+     setPlan(null)
+-  }, [])
++  }
+ 
+   const storeDraft = useCallback(
+     async (sectionId: string) => {

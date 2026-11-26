@@ -29,7 +29,10 @@ export const VALUED = new Set([
   'idle',
   'from-offset',
   'to-offset',
-  'steps'
+  'steps',
+  'minutes',
+  'runs',
+  'control'
 ])
 
 export interface Parsed {

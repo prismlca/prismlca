@@ -1,0 +1,10 @@
+{
+  "bombadil": "0.8.0",
+  "spec": "5d0d027c03ef35d8726da8c2bbc3889bd9babc952d63f8bea1b978f1ad01da44",
+  "controls": {
+    "rest": "restAfterInput red with canvas-loop.patch, nothing red without",
+    "load": "loadEnds red with report-loop.patch, nothing red without",
+    "server-error": "noServerErrorBanner, backendLog red with empty-biosphere.patch, nothing red without",
+    "synthetic": "noConsoleErrors, noUncaughtExceptions, noUnhandledPromiseRejections, restWasMeasured, startEnds, calculationEnds, busyEnds red"
+  }
+}

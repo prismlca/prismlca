@@ -1,0 +1,53 @@
+{
+  "about": "The positive controls of the exploring spec: each property of ../explore.ts goes red in at least one of them. A control with a patch runs on a throwaway build of this checkout with the patch applied (expected: every property under red goes red) and on this checkout as it is (expected: nothing red). One without a patch causes its conditions itself. 'backendLog' stands for an Unhandled error in the session's backend log. prep: control-prism commands run after the model recipe, before Bombadil starts. Run them with: node scripts/control-prism.mjs explore --control all",
+  "controls": [
+    {
+      "name": "rest",
+      "about": "the canvas selection render loop brought back: the Model page never comes to rest",
+      "spec": "rest.ts",
+      "patch": "canvas-loop.patch",
+      "seconds": 75,
+      "red": ["restAfterInput"]
+    },
+    {
+      "name": "load",
+      "about": "the report writer's reset made fresh in every render: a new full report stays on Loading…",
+      "spec": "load.ts",
+      "patch": "report-loop.patch",
+      "seconds": 90,
+      "red": ["loadEnds"]
+    },
+    {
+      "name": "server-error",
+      "about": "Brightway's EmptyBiosphere let through again: calculating a model without flows fails unexpectedly",
+      "spec": "server-error.ts",
+      "patch": "empty-biosphere.patch",
+      "seconds": 60,
+      "prep": [
+        "click \"title=Create another model, or duplicate an existing one >> nth=0\"",
+        "type \"label=Model name (e.g. pet-bottle-2025)\" empty --enter",
+        "wait hidden \"role=dialog:New model\"",
+        "click \"title=Add a new process to the model\"",
+        "type \"label=Name\" empty --enter",
+        "wait hidden \"role=dialog:New process\"",
+        "wait visible \"css=.react-flow__node >> has-text=empty\""
+      ],
+      "red": ["noServerErrorBanner", "backendLog"]
+    },
+    {
+      "name": "synthetic",
+      "about": "each remaining condition caused by hand: an error logged, an exception thrown, a promise rejected, the commit counter removed, a spinner, Busy dots and \"Starting backend…\" that stay",
+      "spec": "synthetic.ts",
+      "seconds": 160,
+      "red": [
+        "noConsoleErrors",
+        "noUncaughtExceptions",
+        "noUnhandledPromiseRejections",
+        "restWasMeasured",
+        "startEnds",
+        "calculationEnds",
+        "busyEnds"
+      ]
+    }
+  ]
+}
