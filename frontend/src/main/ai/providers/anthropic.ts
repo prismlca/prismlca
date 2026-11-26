@@ -46,6 +46,7 @@ import { clampMaxTokens, type ReasoningEffort } from '../../../shared/aiDefaults
 import { ANTHROPIC_CACHE_WRITE_FACTOR, ANTHROPIC_WEB_SEARCH_USD_PER_SEARCH, priceFor } from '../directModels'
 import { getModels } from '../models'
 import { contextOverflow } from './contextOverflow'
+import { domainHint } from './domainHint'
 import { askedBefore, citationsOf, fetchesOf, searchesOf } from './anthropicSearch'
 import { searchNote } from './searchNote'
 import {
@@ -582,6 +583,12 @@ export const anthropicTransport: ChatTransport<AnthropicState> = {
 
   buildRequest(opts: StreamChatOpts, key: string) {
     const { system, messages } = toMessages(opts.messages)
+    // The allow list on the web tools keeps out most foreign pages, not all: with it set, the search adds
+    // scholarly articles and patents from other hosts when the listed sites hold little for a query. The
+    // same hosts in the instructions make the model write site: into its queries, which keeps most of
+    // those out too.
+    const hint = opts.webSearch ? domainHint(opts.webDomains) : undefined
+    if (hint) system.push({ type: 'text', text: hint })
     const tools: Record<string, unknown>[] = (opts.tools ?? []).map((t) => ({
       name: t.function.name,
       description: t.function.description,

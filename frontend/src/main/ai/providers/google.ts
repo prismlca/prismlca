@@ -48,6 +48,7 @@ import {
   type TranscribeOpts
 } from './types'
 import { contextOverflow } from './contextOverflow'
+import { withDomainHint } from './domainHint'
 import { searchNote } from './searchNote'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
@@ -325,15 +326,6 @@ export function toInteractionsInput(messages: ChatMessage[]): { system?: string;
     if (content.length) input.push({ type: 'user_input', content })
   }
   return { system, input }
-}
-
-/** The research legs' allow list, as words: Google Search on this API takes no domain filter. */
-function withDomainHint(system: string | undefined, domains: string[] | undefined): string | undefined {
-  if (!domains?.length) return system
-  const hint =
-    `Search only on these sites (use site: in your queries) and cite pages from them: ${domains.join(', ')}. ` +
-    'If they do not hold the answer, say so instead of citing another site.'
-  return system ? `${system}\n\n${hint}` : hint
 }
 
 // --- stream ---------------------------------------------------------------------------------------
