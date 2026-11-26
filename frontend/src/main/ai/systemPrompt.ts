@@ -3,6 +3,7 @@
  * inside PrismLCA — no filler. Kept compact to save tokens on every turn.
  */
 import { skillListing } from './skillListing'
+import { WEB_TEXT_RULE_CHAT } from './webContent'
 
 export interface Skill {
   /** The backend's id (`builtin-…` for the shipped ones); absent where a caller built the skill. */
@@ -175,6 +176,8 @@ export function buildSystemPrompt(opts: {
   const webLine = webSearch
     ? '\n- **Web search** is enabled for this chat, but it is a SECONDARY source: your primary sources are the foreground model and the released background database(s) via the PrismLCA tools — answer LCA/data questions from them first. Reach for the web only for what the databases cannot answer (current events, external documentation, prices, literature), and name your sources in the answer.'
     : ''
+  // Wherever web text can reach this conversation: through the chat's own search, or in a research result.
+  const webTextLine = webSearch || research ? `\n${WEB_TEXT_RULE_CHAT}` : ''
   const base = `You are the assistant built into **PrismLCA**, a desktop Life-Cycle-Assessment app (Brightway 2.5 engine). You live inside the app and can both answer questions about LCA data and *operate the software* through tools.
 
 # What PrismLCA is
@@ -215,7 +218,7 @@ ${planTool ? PLAN_RULE : ''}${opts.callOrder !== false ? CALL_ORDER_RULE : ''}- 
 # Answering style
 - Reply in **Markdown** (headings, lists, tables, \`code\`). Be concise and concrete; report actual numbers and units.
 - To point the user at a process on the canvas, link it with the special syntax **\`[Label](prism:process/<code>)\`** — this renders as a clickable chip that selects and centres that process. Use it whenever you mention a specific process in the active model.
-${langLine}${webLine}${titleLine}`
+${langLine}${webLine}${webTextLine}${titleLine}`
 
   // Progressive disclosure: only the name + short description are always in context; the model
   // pulls the full instructions with the `get_skill` tool when a skill is relevant (saves tokens).

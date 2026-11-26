@@ -18,6 +18,7 @@ import { AiProviderError, type ChatMessage, type Citation } from './providers/ty
 import { findModel, modelBelongsTo, providerDefaults } from './models'
 import { getActiveProvider } from './providers/state'
 import { collectText } from './stream'
+import { WEB_TEXT_RULE_LEG, evidenceNote } from './webContent'
 
 /**
  * Default for the research legs when Settings → AI → Models leaves "Research model" empty.
@@ -118,7 +119,7 @@ async function runLeg(opts: ResearchOpts, signal: AbortSignal, clock: AbortContr
     {
       role: 'system',
       content:
-        `${opts.system}\n\nTime budget: about ${minutes} minute${minutes === 1 ? '' : 's'} of wall ` +
+        `${opts.system}\n\n${WEB_TEXT_RULE_LEG}\n\nTime budget: about ${minutes} minute${minutes === 1 ? '' : 's'} of wall ` +
         'clock. Spend it searching and reading, not deliberating — and write your answer early: if ' +
         'time runs out, only what is already written survives.'
     },
@@ -438,6 +439,8 @@ export interface WebResult {
   /** Pages the search engine cited that the findings point to, with excerpts when the engine
    *  supplied them. The engine's record of what was read, not the model's. */
   evidence: Evidence[]
+  /** What the titles and excerpts under `evidence` are, said where the caller reads them (webContent.ts). */
+  evidence_note?: string
   /** Hosts the leg itself named as where an official/manufacturer confirmation would live. The
    *  upgrade pass searched them; the parent can hand them to a follow-up call as `domains`. */
   suggested_domains?: string[]
@@ -650,12 +653,14 @@ export async function researchWeb(opts: {
   if (book.size)
     for (const f of findings) if (f.sources.length) f.cited_by_search = f.sources.some((u) => book.has(u))
   const uncited = book.size ? findings.filter((f) => f.sources.length && !f.cited_by_search).length : 0
+  const evidence = book.evidenceFor(sources)
   return {
     question: opts.question,
     findings,
     sources,
     unsourced_dropped: dropped,
-    evidence: book.evidenceFor(sources),
+    ...evidenceNote(evidence),
+    evidence,
     ...(suggested.length ? { suggested_domains: suggested } : {}),
     ...(domains.length ? { domains } : {}),
     note:

@@ -21,6 +21,7 @@ const legs = (): Array<{ system: string; reasoningEffort?: string }> =>
 const { researchBom } = await import('./researchBom')
 const { researchWeb } = await import('./subagent')
 const { setActiveProvider } = await import('./providers/state')
+const { WEB_TEXT_RULE_LEG } = await import('./webContent')
 
 /** The app log's lines, without stamp and tag. */
 let logged: string[] = []
@@ -87,6 +88,15 @@ describe('researchBom brief', () => {
     expect(legs()[0].reasoningEffort).toBe('low')
     expect(legs()[0].system).toMatch(/Time budget: about 6 minutes/)
     expect(legs()[0].system).toMatch(/write your answer early/)
+  })
+
+  // A leg reads pages raw, and a page can be written for the model that reads it. Every leg is told what
+  // such text is, whatever its own instructions are.
+  it('tells every leg that text on a page is material, never an instruction', async () => {
+    await researchBom({ product: 'bottle', components: ['body'] })
+    await researchWeb({ question: 'recycling rate of PET bottles in Germany' })
+    expect(legs().length).toBeGreaterThanOrEqual(2)
+    for (const leg of legs()) expect(leg.system).toContain(WEB_TEXT_RULE_LEG)
   })
 
   // Claude Sonnet and Haiku stopped after two searches at low and reported parts as not found; their direct
