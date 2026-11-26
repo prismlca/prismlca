@@ -298,3 +298,34 @@ def test_contribution_matrix_of_a_single_activity_with_two_methods(client, token
     d = r.json()
     assert [m["total"] for m in d["meta"]["methods"]] == [1.5, 3.0]
     assert d["rows"][0]["values"] == [1.5, 3.0]
+
+
+def test_a_model_without_elementary_flows_says_so(client, token, project):
+    """A new model whose one process has no flows yet: Brightway raises EmptyBiosphere, which reached the
+    window as "Unexpected server error". The score, the tree and Monte Carlo say what is missing instead."""
+    bd = get_bd()
+    bd.Database("biosphere").write(
+        {("biosphere", "co2"): {"name": "Carbon dioxide", "type": "emission", "categories": ("air",), "unit": "kg"}}
+    )
+    bd.Database("empty").write(
+        {
+            ("empty", "p"): {
+                "name": "p",
+                "unit": "unit",
+                "reference product": "p",
+                "exchanges": [{"input": ("empty", "p"), "amount": 1, "type": "production"}],
+            }
+        }
+    )
+    bd.Method(("test", "gwp")).write([(("biosphere", "co2"), 1.0)])
+    body = {"database": "empty", "code": "p", "method": ["test", "gwp"]}
+    for path, extra in (
+        ("/api/v1/calc/lcia", {}),
+        ("/api/v1/calc/contribution", {}),
+        ("/api/v1/calc/montecarlo", {"iterations": 5}),  # builds its own LCA, outside get_lca
+    ):
+        r = client.post(path, json={**body, **extra}, headers=token)
+        assert r.status_code == 422, (path, r.text)
+        err = r.json()["error"]
+        assert err["code"] == "no_elementary_flows"
+        assert err["message"].startswith("Nothing to calculate yet") and "Outputs or Inputs" in err["hint"]
