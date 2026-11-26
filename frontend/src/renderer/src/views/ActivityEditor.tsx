@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
+import { useDraft } from '../lib/useDraft'
 import { fetchQuery } from '../lib/server/useQuery'
 import { useSettings, fmtSig } from '../lib/settings'
 import { LockIcon } from '../components/icons'
@@ -105,8 +106,7 @@ function Classification({
   const [sections, setSections] = useState<ClassCode[]>(ISIC_SECTIONS ?? [])
   const [cpcVocab, setCpcVocab] = useState<ClassCode[]>(CPC_VOCAB ?? [])
   const cpcDisplay = cpc ? `${cpc}${cpcName ? ` — ${cpcName}` : ''}` : ''
-  const [cpcText, setCpcText] = useState(cpcDisplay)
-  useEffect(() => setCpcText(cpcDisplay), [cpcDisplay])
+  const [cpcText, setCpcText] = useDraft(cpcDisplay)
   useEffect(() => {
     let alive = true
     void loadClassVocab()
@@ -223,8 +223,7 @@ function LocationField({
   readOnly: boolean
   onSave: (v: string) => void
 }): JSX.Element {
-  const [v, setV] = useState(value ?? '')
-  useEffect(() => setV(value ?? ''), [value])
+  const [v, setV] = useDraft(value ?? '')
   const { codes, describe, load } = useLocationSuggestions()
   return (
     <div className="efield">

@@ -11,8 +11,9 @@
  * semicolons are a syntax, and a syntax you cannot see the result of is a syntax you get wrong. They are only
  * a drawing of the numbers — no relation to the model's tags, which are a different thing entirely.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { parseAmount } from '../lib/numberFormat'
+import { useDraft } from '../lib/useDraft'
 
 export type ParamRule =
   | Record<string, never>
@@ -98,10 +99,8 @@ export default function ParamRuleEditor({
   // a list rule with no values accepts nothing, and the backend refuses it — but the kind has to be chosen
   // before the values can be typed. Writing on every keystroke of the select was the first version: picking
   // "From a list" put an error on the page and left the select back on "Any number".
-  const [kind, setKindLocal] = useState<string>(r.kind ?? '')
+  const [kind, setKindLocal] = useDraft<string>(r.kind ?? '')
   const abandoned = useRef(false) // Escape beats the blur it triggers; see `commitList`
-  // Follow the rule when it changes from outside (another edit, a reload) without fighting the local choice.
-  useEffect(() => setKindLocal(r.kind ?? ''), [r.kind])
   // What the list field holds while it is being typed. Outside the committed rule, so a half-written
   // "0.25; 0." is not a rule anybody is enforcing yet.
   const [draft, setDraft] = useState<string | null>(null)

@@ -32,6 +32,7 @@ import {
 } from '../../../shared/distanceDefaults'
 import type { KeyStatus } from '../../../shared/ipc'
 import { getAS, setAS, useAppSettings } from '../lib/appSettings'
+import { useDraft } from '../lib/useDraft'
 import {
   distanceAvailability,
   distanceClearKey,
@@ -325,8 +326,7 @@ function KeysTab(): JSX.Element {
 
 function AdjustmentsTab(): JSX.Element {
   const t = useTransport()
-  const [railDraft, setRailDraft] = useState<string>(String(t.railFactor))
-  useEffect(() => setRailDraft(String(t.railFactor)), [t.railFactor])
+  const [railDraft, setRailDraft] = useDraft(String(t.railFactor))
   const toggle = (mode: 'road' | 'air' | 'rail' | 'sea', on: boolean): void =>
     patchTransport({ glec: { ...t.glec, [mode]: on } })
 

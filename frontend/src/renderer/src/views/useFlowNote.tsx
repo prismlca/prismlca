@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useDraft } from '../lib/useDraft'
 import { CommentIcon } from '../components/icons'
 
 /**
@@ -20,8 +21,7 @@ export function useFlowNote({
   onSave: (comment: string) => void
 }): { button: JSX.Element | null; body: JSX.Element | null } {
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState(comment ?? '')
-  useEffect(() => setText(comment ?? ''), [comment])
+  const [text, setText] = useDraft(comment ?? '')
   const field = useRef<HTMLTextAreaElement>(null)
   // Escape puts the stored comment back and leaves the field; the blur that follows still sees the typed
   // text in its render, so this flag keeps it from writing what was just abandoned.

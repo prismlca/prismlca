@@ -9,6 +9,7 @@ import {
   type KeyboardEvent
 } from 'react'
 import { api, AUDIT_LIMIT, type AuditEntry } from '../lib/api'
+import { useDraft } from '../lib/useDraft'
 import {
   AddIcon,
   ChevronIcon,
@@ -98,7 +99,7 @@ function CellInput({
   /** The id of that sentence, which describes the field while it is shown. */
   refusalId?: string
 }): JSX.Element {
-  const [v, setV] = useState(initial)
+  const [v, setV] = useDraft(initial)
   // A refusal is on screen under the row — the next keystroke takes it away.
   const [told, setTold] = useState(false)
   // Escape has to beat the blur it triggers. `setV(initial)` does not reach `commit` before the browser
@@ -106,8 +107,6 @@ function CellInput({
   // typing 9.99 into a parameter and pressing Escape posted 9.99. A ref is the only thing that crosses
   // that gap; state is one render too late by construction.
   const abandoned = useRef(false)
-  // Keep in sync when the underlying value changes (e.g. a recalculated amount).
-  useEffect(() => setV(initial), [initial])
   const commit = (): void => {
     if (abandoned.current) {
       abandoned.current = false
@@ -208,8 +207,7 @@ function FormulaCell({
   self: string
   onCommit: (v: string) => void
 }): JSX.Element {
-  const [v, setV] = useState(initial)
-  useEffect(() => setV(initial), [initial])
+  const [v, setV] = useDraft(initial)
   return (
     <FormulaInput
       className="pmulti mono"
