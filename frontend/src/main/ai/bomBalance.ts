@@ -8,8 +8,9 @@
  * by total, by version — and the verdict stays null until the caller has settled it.
  */
 import type { BomItem, BomLeg, ProductMass, UnresolvedComponent, VersionSeen } from './bomAnswer'
-import { alternativesNote, onePerName, severalEntries } from './bomEntries'
-import { gtinsIn, sameReference, versionsContradict, versionsOf, type Versions } from './bomVersions'
+import { alternativesNote, onePerName, sameNameEntries, severalEntries } from './bomEntries'
+import { heavierThanWhole, massWords, researchedTotal, totalsOf, type TotalUsed } from './bomTotals'
+import { versionsOf, type Versions } from './bomVersions'
 import type { RecipeBlock, RecipeWeighing } from './recipeBalance'
 
 /** How one requested component came back. */
@@ -21,16 +22,6 @@ export interface LegOutcome {
   request: string | null
   leg?: BomLeg
   error?: string
-}
-
-/** The whole-product mass the balance was checked against, and where it came from. */
-export interface TotalUsed {
-  mass_kg: number
-  basis: 'net' | 'gross' | 'unknown'
-  /** `given`: the caller passed it (declared as the product without packaging); `researched`: a leg found it. */
-  source: 'given' | 'researched'
-  source_url?: string
-  version?: string
 }
 
 export interface Overlap {
@@ -64,8 +55,6 @@ export interface BomWeighing {
 
 /** Default tolerance of the balance verdict. Coarse on purpose — and the residual goes out with it. */
 const TOLERANCE = 0.15
-/** Whole-product masses this close count as one figure (rounding, 13 vs 13.0), never as confirmation. */
-const SAME_TOTAL = 0.01
 /** A part this close to a whole-product mass is suspected of being that mass. */
 const WHOLE_SHARE = 0.98
 /** Parts this much heavier than the total are named first even when the verdict is locked for other reasons. */
@@ -75,16 +64,6 @@ const SAME_FIGURE = 0.005
 
 const r6 = (n: number): number => Number(n.toFixed(6))
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim()
-const host = (url?: string): string | undefined => {
-  try {
-    return url ? new URL(url).hostname.replace(/^www\./, '') : undefined
-  } catch {
-    return undefined
-  }
-}
-
-const close = (a: number, b: number): boolean => Math.abs(a - b) <= SAME_TOTAL * Math.max(a, b)
-
 /** "frame (no mass found)" — the words a reason is named by in notes. */
 const REASON_WORDS: Record<UnresolvedComponent['reason'], string> = {
   no_mass: 'no mass found',
@@ -109,22 +88,6 @@ export interface BalanceInput {
   mixtureKg?: number
   tolerance?: number
 }
-
-/** A total's scope in words a reader does not have to decode. */
-const SCOPE: Record<TotalUsed['basis'], string> = {
-  net: 'without packaging',
-  gross: 'with sales packaging',
-  unknown: 'packaging not stated'
-}
-
-/** "13 kg (packaging not stated, praxis.nl, EAN …)" — a whole-product mass with its reference. */
-const massWords = (t: {
-  mass_kg: number
-  basis: TotalUsed['basis']
-  source_url?: string
-  version?: string
-}): string =>
-  `${t.mass_kg} kg (${[SCOPE[t.basis], host(t.source_url), t.version].filter(Boolean).join(', ')})`
 
 const totalWords = (t: TotalUsed): string =>
   t.source === 'given'
@@ -275,26 +238,81 @@ export function massBalance(
   }
 }
 
-/** Which listed name an `includes` entry points at: exact, or one name containing the other. */
+/** The words of a name, for matching whole words: "Furnierklebstoff" is one word, "inner tube" two. */
+const wordsOf = (s: string): string[] =>
+  norm(s)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+
+/** Endings a plural or a case adds: "screw" and "screws", "Schraube" and "Schrauben", "Achse" and "Achsen". */
+const ENDINGS = ['s', 'es', 'e', 'n', 'en', 'er', 'nen']
+const formsOf = (w: string): string[] => [
+  w,
+  ...ENDINGS.map((e) => w + e),
+  ...ENDINGS.filter((e) => w.endsWith(e) && w.length - e.length >= 3).map((e) => w.slice(0, -e.length))
+]
+
+/**
+ * One word for another: the same word in another number or case, or the head that ends a compound — a
+ * "Massivachse" is an "Achse", "Massivachsen" are "Achsen".
+ */
+const sameWord = (inName: string, wanted: string): boolean => {
+  const forms = formsOf(wanted)
+  if (formsOf(inName).some((f) => forms.includes(f))) return true
+  return (
+    /^\p{L}{3,}$/u.test(wanted) &&
+    forms.some((f) => f.length >= 3 && inName.length > f.length && inName.endsWith(f))
+  )
+}
+
+/**
+ * Which listed name an `includes` entry points at: exact, or one name holding the other as a run of words ("inner
+ * tube" and "tube"), the last of them in any number ("screw" and "screws") or as the head of a compound ("Achse" and
+ * "Massivachse").
+ * Never the start or middle of a word: "Furnierklebstoff" (veneer adhesive) is no veneer, and reading it as one
+ * locked a door's balance on an overlap that was not there.
+ */
 function resolveName(wanted: string, names: string[]): string | undefined {
-  const w = norm(wanted)
-  if (!w) return undefined
-  return names.find((n) => norm(n) === w) ?? names.find((n) => norm(n).includes(w) || w.includes(norm(n)))
+  const w = wordsOf(wanted)
+  if (!w.length) return undefined
+  const holds = (long: string[], short: string[]): boolean =>
+    short.length <= long.length &&
+    long.some((_, i) =>
+      short.every((x, k) =>
+        k === short.length - 1 ? long[i + k] !== undefined && sameWord(long[i + k], x) : long[i + k] === x
+      )
+    )
+  return (
+    names.find((n) => norm(n) === norm(wanted)) ??
+    names.find((n) => holds(wordsOf(n), w) || holds(w, wordsOf(n)))
+  )
+}
+
+/** A request and the entries that answered it; the leg says which answer they came in (the recipe is one of its own). */
+interface Group {
+  name: string
+  items: BomItem[]
+  leg: number
 }
 
 /**
  * Overlaps the legs reported, kept only where they point at another listed entry that has a mass — another entry
  * of the same request (a tyre that includes the tube listed beside it) or another request's entries. An unknown
- * name, or an entry naming itself or its own request, says nothing checkable and is ignored; but nothing is ever
- * removed from the sum on the strength of a hint: a valid overlap locks the verdict instead.
+ * name, or an entry naming itself or its own request, says nothing checkable and is ignored — so are the entries of
+ * its own name in its own leg: parts told apart only by material (packaging as cardboard and film) share the words an
+ * entry lists its own pieces by, and whether one is a figure of another is the question the side-by-side note on
+ * them already asks. But nothing is ever removed from the sum on the strength of a hint: a valid overlap locks the
+ * verdict instead.
  */
-function overlapsOf(groups: Array<{ name: string; items: BomItem[] }>): Overlap[] {
+function overlapsOf(groups: Group[]): Overlap[] {
   const out: Overlap[] = []
   const all = groups.flatMap((g) => g.items.map((item) => ({ item, group: g })))
   for (const { item, group } of all) {
     const inside: string[] = []
+    const sibling = (g: Group, name: string): boolean =>
+      g.leg === group.leg && norm(name) === norm(item.component)
     for (const wanted of item.includes ?? []) {
-      const others = all.filter((x) => x.item !== item)
+      const others = all.filter((x) => x.item !== item && !sibling(x.group, x.item.component))
       const asItem = resolveName(
         wanted,
         others.map((x) => x.item.component)
@@ -303,7 +321,7 @@ function overlapsOf(groups: Array<{ name: string; items: BomItem[] }>): Overlap[
         ? undefined
         : resolveName(
             wanted,
-            groups.filter((g) => g !== group && g.items.length).map((g) => g.name)
+            groups.filter((g) => g !== group && g.items.length && !sibling(g, g.name)).map((g) => g.name)
           )
       const name = asItem ?? asRequest
       if (name && !inside.includes(name)) inside.push(name)
@@ -315,75 +333,6 @@ function overlapsOf(groups: Array<{ name: string; items: BomItem[] }>): Overlap[
     item.contains_listed = inside
   }
   return out
-}
-
-/** Whole-product masses as one list: the same figure for the same reference, reported by several legs, is kept
- *  once. */
-function totalsOf(found: ProductMass[]): ProductMass[] {
-  const out: ProductMass[] = []
-  for (const p of found)
-    if (
-      !out.some(
-        (o) =>
-          o.basis === p.basis &&
-          close(o.mass_kg, p.mass_kg) &&
-          // A reference on one side only, from the same page's host, is the same figure reported again; two
-          // different references never merge, whatever the host.
-          (sameReference(o.version, p.version) ||
-            ((!o.version?.trim() || !p.version?.trim()) &&
-              !!host(o.source_url) &&
-              host(o.source_url) === host(p.source_url)))
-      )
-    )
-      out.push(p)
-  return out
-}
-
-/**
- * The researched total the balance may use: only when every whole-product mass found shares one reference and
- * one scope and the figures agree. Grouping comes first and agreement second — two equally heavy versions, or a
- * net and a gross weight, are not one figure because their numbers happen to match.
- */
-function researchedTotal(totals: ProductMass[]): TotalUsed | string | undefined {
-  if (!totals.length) return undefined
-  // One figure for one product: the masses agree, no two references contradict each other, and no source calls
-  // it net while another calls it gross. A source that does not say (unknown) contradicts neither — three legs
-  // read 20.7 kg for the same EAN off two shop pages, once "net" and twice unstated, and that is one figure.
-  const bases = new Set(totals.map((p) => p.basis).filter((b) => b !== 'unknown'))
-  const one =
-    bases.size <= 1 &&
-    totals.every((p, i) =>
-      totals
-        .slice(i + 1)
-        .every(
-          (q) =>
-            close(p.mass_kg, q.mass_kg) &&
-            !(p.version && q.version && versionsContradict(p.version, q.version))
-        )
-    )
-  if (one) {
-    // The reference the total is named by: an EAN where one is given. Only figures that name that same reference
-    // may lend it their scope — a net weight from a page that names no product says nothing about this EAN's.
-    const ref =
-      totals.find((p) => p.version && gtinsIn(p.version).length) ?? totals.find((p) => p.version?.trim())
-    const attributed = ref
-      ? totals.filter((p) => p.version?.trim() && sameReference(p.version, ref.version))
-      : totals
-    const known = attributed.find((p) => p.basis !== 'unknown')
-    const best = known ?? ref ?? totals[0]
-    return {
-      mass_kg: best.mass_kg,
-      basis: known ? known.basis : 'unknown',
-      source: 'researched',
-      ...(best.source_url ? { source_url: best.source_url } : {}),
-      ...(ref?.version ? { version: ref.version } : {})
-    }
-  }
-  const listed = totals.map(massWords).join(', ')
-  return (
-    `the whole-product masses the research found do not share one reference: ${listed} — settle which one ` +
-    "is the user's product (ask, or open the sources) and pass it as total_mass_kg"
-  )
 }
 
 const statusOf = (leg: BomLeg | undefined): RequestStatus =>
@@ -464,7 +413,7 @@ export function weighBom(
     }
   })
   const requests: Array<{ component: string; status: RequestStatus }> = []
-  const groups: Array<{ name: string; items: BomItem[] }> = []
+  const groups: Group[] = []
   let items: BomItem[] = []
   const unresolved: UnresolvedComponent[] = []
   const found: ProductMass[] = []
@@ -472,13 +421,18 @@ export function weighBom(
   const productOnly: string[] = []
   const repeats: string[] = []
   const several: string[] = []
+  let legNo = -1
   for (let o of outcomes) {
+    legNo++
     if (o.leg) {
       const read = onePerName(o.leg)
       repeats.push(...read.repeats)
       o = { ...o, leg: read.leg }
-      const many = o.request !== null ? severalEntries(o.request, read.leg) : undefined
-      if (many) several.push(many)
+      if (o.request === null) several.push(...sameNameEntries(read.leg))
+      else {
+        const many = severalEntries(o.request, read.leg)
+        if (many) several.push(many)
+      }
     }
     const status = statusOf(o.leg)
     const name = o.request ?? 'the component list'
@@ -494,8 +448,8 @@ export function weighBom(
     }
     const leg = o.leg as BomLeg
     if (status === 'product_mass_only' && o.request !== null) productOnly.push(o.request)
-    if (o.request !== null) groups.push({ name: o.request, items: leg.items })
-    else for (const i of leg.items) groups.push({ name: i.component, items: [i] })
+    if (o.request !== null) groups.push({ name: o.request, items: leg.items, leg: legNo })
+    else for (const i of leg.items) groups.push({ name: i.component, items: [i], leg: legNo })
     items = items.concat(leg.items)
     unresolved.push(...leg.unresolved)
     found.push(...leg.product_masses.map((p) => ({ ...p, from: name })))
@@ -536,7 +490,7 @@ export function weighBom(
   const mixtureKg = recipe?.block.mass_kg
   if (recipe) {
     items = items.concat(recipe.items)
-    groups.push({ name: recipe.block.of, items: recipe.items })
+    groups.push({ name: recipe.block.of, items: recipe.items, leg: -1 })
     seen.push(...recipe.versions_seen)
     notes.push(...recipe.notes)
     if (recipe.lock) locks.push(recipe.lock)
@@ -585,6 +539,8 @@ export function weighBom(
       if (partsSum > total.mass_kg) locks.push(`${words}; the parts overshoot the total`)
       else notes.push(`${words}.`)
     }
+  const heavier = heavierThanWhole(parts, totals, total)
+  if (heavier) notes.push(heavier)
   const versions = versionsOf(items, found, seen, [
     ...(recipe?.version ? [{ version: recipe.version, entry: `recipe of ${recipe.block.of}` }] : []),
     ...(recipe?.contents_version
@@ -596,12 +552,27 @@ export function weighBom(
         ]
       : [])
   ])
-  if (versions?.conflict && versions.used)
+  if (versions?.conflict && versions.used) {
+    // An EAN only part entries name may be the part's own article number. The lock stays — the tool cannot tell, and
+    // the leg was asked for the whole product's version there — but when nothing else conflicts, it is the question
+    // the lock asks, with the step that answers it.
+    const parts = (versions.unattested ?? [])
+      .map((u) => `"${u.version}" (on ${u.entries.join(', ')})`)
+      .join('; ')
     locks.push(
-      "figures that claim to be this product's own name different versions: " +
-        versions.used.map((u) => `${u.version} (${u.entries.join(', ')})`).join('; ') +
-        ' — the list may mix versions; settle which one the user means, or that these are one version'
+      versions.only_part_eans
+        ? `an EAN is named only on a part entry, never on a whole-product figure, and differs from the product's: ${parts} ` +
+            "— open that entry's source: if it is the part's own article number (a spare part sold on its own), it " +
+            'names no other version and the figures rest on one; if it is another version of the product, that figure ' +
+            'may not fit'
+        : "figures that claim to be this product's own name different versions: " +
+            versions.used.map((u) => `${u.version} (${u.entries.join(', ')})`).join('; ') +
+            (parts
+              ? ` (only part entries name ${parts}: if that is the part's own article number, it names no other version)`
+              : '') +
+            ' — the list may mix versions; settle which one the user means, or that these are one version'
     )
+  }
   if (versions?.seen)
     notes.push(
       `The sources also show other versions of this product: ${versions.seen
@@ -725,11 +696,13 @@ function summarise(s: {
             ? `not judged; residual ${s.balance.residual_kg} kg.`
             : 'not judged.'
   const next = [
-    s.open.length ? `open: ${s.open.join(', ')}` : '',
+    s.open.length ? `Still open: ${s.open.join(', ')}` : '',
     s.versions?.conflict ? 'the figures rest on different versions of the product' : ''
-  ].filter(Boolean)
+  ]
+    .filter(Boolean)
+    .join('; ')
   return (
     `${s.recipe ? `${s.recipe.sentence} ` : ''}${parts}${sum ? `; ${sum}` : ''}. ${against} — ${verdict}` +
-    (next.length ? ` Still ${next.join('; ')} — see note.` : '')
+    (next ? ` ${next[0].toUpperCase()}${next.slice(1)} — see note.` : '')
   )
 }
