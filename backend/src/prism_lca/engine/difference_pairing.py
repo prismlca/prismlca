@@ -3,7 +3,8 @@
 A copy of a model gives every process a new code (``duplicate_foreground_database``), so the codes of a copy
 say nothing about where its processes came from. The copy therefore records it: each copied process carries
 :data:`COPIED_FROM`, the code of the process it was copied from. That pairs a copy with its original either
-way round. Processes the record does not cover — a model copied before it was written, or a process rebuilt
+way round, and through copies of copies: the record is followed back, process by process, to the model asked
+about, however many copies lie between. Processes the record does not cover — a model copied before it was written, or a process rebuilt
 by hand — are paired by what a person would compare: name, reference product, location and unit, and only
 where that is unambiguous on both sides. Whatever stays unpaired is new in the subject or gone from it.
 """
@@ -14,6 +15,8 @@ from dataclasses import dataclass, field
 
 #: The field a copied process keeps the code of its original in.
 COPIED_FROM = "prism_copied_from"
+#: How many copies back a process's record is followed.
+LINEAGE_DEPTH = 32
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,41 @@ def _nodes(database: str) -> list[_Node]:
     return out
 
 
+def copied_from(codes: set[str]) -> dict[str, str]:
+    """For each of ``codes`` whose process was copied from another, in any model of the workspace: that one's code."""
+    from bw2data.backends.schema import ActivityDataset
+
+    out: dict[str, str] = {}
+    for code, data in (ActivityDataset.select(ActivityDataset.code, ActivityDataset.data)
+                       .where(ActivityDataset.code.in_(list(codes))).tuples()):
+        origin = data.get(COPIED_FROM) if isinstance(data, dict) else None
+        if origin:
+            out[str(code)] = str(origin)
+    return out
+
+
+def _reaching(nodes: list[_Node], targets: dict[str, _Node]) -> dict[int, str]:
+    """For each of ``nodes`` copied from one of ``targets`` — directly, or through copies of copies — that one's
+    code."""
+    out: dict[int, str] = {}
+    walking: dict[int, str] = {}
+    for n in nodes:
+        if n.origin in targets:
+            out[n.id] = n.origin
+        elif n.origin:
+            walking[n.id] = n.origin
+    for _ in range(LINEAGE_DEPTH):
+        if not walking:
+            break
+        up = copied_from(set(walking.values()))
+        walking = {node: up[code] for node, code in walking.items() if code in up}
+        for node, code in list(walking.items()):
+            if code in targets:
+                out[node] = code
+                del walking[node]
+    return out
+
+
 def pair(subject: str, reference: str) -> Pairing:
     """Pair the processes of model ``subject`` with those of model ``reference``."""
     sub, ref = _nodes(subject), _nodes(reference)
@@ -79,16 +117,21 @@ def pair(subject: str, reference: str) -> Pairing:
         result.nodes[s.id] = r.id
         done_ref.add(r.id)
 
-    # The record, either way round — the subject copied from the reference, or the reference from the subject.
-    # A record two processes share (one of them duplicated after the copy) pairs neither.
-    claims = Counter(n.origin for n in sub if n.origin)
+    # The record, either way round — the subject copied from the reference, or the reference from the subject,
+    # directly or through copies between. A record two processes share (one of them duplicated after the copy)
+    # pairs neither.
+    up = _reaching(sub, ref_by_code)
+    claims = Counter(up.values())
     for s in sub:
-        r = ref_by_code.get(s.origin) if s.origin and claims[s.origin] == 1 else None
+        code = up.get(s.id)
+        r = ref_by_code.get(code) if code and claims[code] == 1 else None
         if r is not None and r.id not in done_ref:
             link(s, r)
-    back = Counter(n.origin for n in ref if n.origin)
+    down = _reaching(ref, sub_by_code)
+    back = Counter(down.values())
     for r in ref:
-        s = sub_by_code.get(r.origin) if r.origin and back[r.origin] == 1 else None
+        code = down.get(r.id)
+        s = sub_by_code.get(code) if code and back[code] == 1 else None
         if s is not None and s.id not in result.nodes and r.id not in done_ref:
             link(s, r)
     result.by_record = len(result.nodes)

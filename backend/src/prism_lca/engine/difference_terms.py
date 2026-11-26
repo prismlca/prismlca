@@ -60,11 +60,12 @@ class Side:
     @classmethod
     def read(cls, system) -> Side:
         """Copies, not references: the cached system is solved again for the next demand, and nothing
-        may change what was read before the split is done."""
+        may change what was read before the split is done. The supply is given its shape: the solver
+        squeezes a one-process system's to a 0-d scalar, which the split could not index."""
         return cls(
             technosphere=system.technosphere_matrix.tocsc(copy=True),
             biosphere=system.biosphere_matrix.tocsc(copy=True),
-            supply=np.array(system.supply_array, dtype=np.float64),
+            supply=np.array(system.supply_array, dtype=np.float64).reshape(system.technosphere_matrix.shape[1]),
             demand={int(k): float(v) for k, v in dict(system.demand).items()},
             activity={int(k): int(v) for k, v in dict(system.dicts.activity).items()},
             product={int(k): int(v) for k, v in dict(system.dicts.product).items()},

@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-25",
+    "title": "What makes the difference, under each chart",
+    "details": "After Calculate, each bar chart on the Results page shows what makes the difference: for every scenario against its baseline and every copied model against its original, the difference in % and its three largest drivers with their share. \"all changes…\" lists every changed input, credit and emission with amounts, formula and contribution. \"What makes the difference\" under Chart display hides it."
+  },
+  {
+    "date": "2026-11-25",
     "title": "Life cycle inventory on the Results page",
     "details": "Under the charts on the Results page, \"Life cycle inventory (LCI)\" opens a table of every elementary flow, with one column per subject, so the baseline and each scenario stand side by side. Click a header to sort, double-click an amount to copy it, or export the table to Excel. \"Export Excel\" now adds the inventory as a second sheet."
   },

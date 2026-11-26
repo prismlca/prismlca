@@ -1,11 +1,5 @@
-"""Why two results differ: the split of the difference onto the changes (engine/difference*.py).
-
-The model holds every shape the split has to get right, each a place where a sign or an index could go wrong
-without a simple model noticing: a production amount bound to a parameter (``part``); a pair of processes with
-one fixed and two bound exchanges on the same pair, summed in the matrix (``product`` → steel); a credit
-(``substitution``); a loop through the model (``recycle`` takes a little ``product`` back); an emission bound
-to a parameter; a parameter computed by a formula (``d``) that a scenario replaces; a treatment scored with the
-demand turned round (``waste``).
+"""Why two results differ: the split of the difference onto the changes (engine/difference*.py), on the model of
+``difference_model`` — every shape the split has to get right.
 
 Every split is held to the difference of two calculations made apart from it — each on a fresh bw2calc LCA,
 never the cache the split reads — to 1e-9 of the larger score.
@@ -13,16 +7,23 @@ never the cache the split reads — to 1e-9 of the larger score.
 from __future__ import annotations
 
 import pytest
+from difference_model import (
+    CH4,
+    DB,
+    GWP,
+    add_scenario,
+    build_model,
+    copy_model,
+    edit_copy,
+    fresh_score,
+)
 
-from prism_lca.engine import difference, lca, param_window, params, scenarios
+from prism_lca.engine import difference, lca, param_window, scenarios
 from prism_lca.engine import difference_terms as terms
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.difference_pairing import COPIED_FROM
 from prism_lca.engine.scenarios import ScenarioStore
 
-DB = "fx"
-GWP = ("t", "gwp")
-CH4 = ("t", "ch4")
 RTOL = 1e-9
 
 
@@ -30,97 +31,6 @@ RTOL = 1e-9
 def _clean():
     yield
     param_window.reset_for_tests()
-
-
-def _model(client, token) -> None:
-    bd = get_bd()
-    bd.Database("bio").write({
-        ("bio", "co2"): {"name": "CO2", "type": "emission", "categories": ("air",), "unit": "kg"},
-        ("bio", "ch4"): {"name": "CH4", "type": "emission", "categories": ("air",), "unit": "kg"},
-        # Characterised, but emitted by nothing of the model: only a copy's edit brings it into an inventory.
-        ("bio", "n2o"): {"name": "N2O", "type": "emission", "categories": ("air",), "unit": "kg"},
-    })
-    bd.Database("bg").write({
-        ("bg", "steel"): {"name": "steel", "unit": "kg", "exchanges": [
-            {"input": ("bg", "steel"), "amount": 1, "type": "production"},
-            {"input": ("bio", "co2"), "amount": 2.0, "type": "biosphere"},
-        ]},
-        ("bg", "power"): {"name": "power", "unit": "kWh", "exchanges": [
-            {"input": ("bg", "power"), "amount": 1, "type": "production"},
-            {"input": ("bg", "steel"), "amount": 0.01, "type": "technosphere"},
-            {"input": ("bio", "co2"), "amount": 0.4, "type": "biosphere"},
-        ]},
-    })
-
-    def ex(source, amount, kind, formula=None, uid=None):
-        out = {"input": source, "amount": amount, "type": kind}
-        if formula:
-            out["formula"] = formula
-        if uid:
-            out["prism_uid"] = uid
-        return out
-
-    bd.Database(DB).write({
-        (DB, "part"): {"name": "part", "unit": "unit", "reference product": "part", "exchanges": [
-            ex((DB, "part"), 1.0, "production", "yield_part"),
-            ex(("bg", "power"), 3.0, "technosphere", "kwh_part"),
-            ex(("bio", "ch4"), 0.002, "biosphere", "leak"),
-        ]},
-        (DB, "product"): {"name": "product", "unit": "unit", "reference product": "product", "exchanges": [
-            ex((DB, "product"), 1.0, "production"),
-            ex((DB, "part"), 4.0, "technosphere", "n_parts"),
-            ex(("bg", "steel"), 0.1, "technosphere", uid="steel-fixed"),
-            ex(("bg", "steel"), 0.5, "technosphere", "steel_kg"),
-            ex(("bg", "steel"), 0.2, "technosphere", "steel_extra"),
-            ex(("bg", "power"), 0.3, "substitution", "credit_kwh"),
-            ex((DB, "recycle"), 0.25, "technosphere", "r_share"),
-            ex(("bio", "co2"), 6.0, "biosphere", "d"),
-        ]},
-        (DB, "recycle"): {"name": "recycle", "unit": "unit", "reference product": "recycle", "exchanges": [
-            ex((DB, "recycle"), 1.0, "production"),
-            ex((DB, "product"), 0.01, "technosphere"),
-            ex(("bio", "co2"), 0.05, "biosphere"),
-        ]},
-        (DB, "waste"): {"name": "waste", "unit": "kg", "reference product": "waste", "exchanges": [
-            ex((DB, "waste"), -1.0, "production"),
-            ex(("bio", "co2"), 2.5, "biosphere", "burn_co2"),
-        ]},
-    })
-    bd.databases[DB]["prism_read_only"] = False
-    bd.databases.flush()
-    bd.Method(GWP).write([(("bio", "co2"), 1.0), (("bio", "ch4"), 28.0), (("bio", "n2o"), 273.0)])
-    bd.Method(CH4).write([(("bio", "ch4"), 1.0)])
-
-    def p(**kw):
-        r = client.post("/api/v1/params", json={"database": DB, **kw}, headers=token)
-        assert r.status_code == 200, r.text
-
-    for name, amount in (("yield_part", 1.0), ("kwh_part", 3.0), ("leak", 0.002), ("n_parts", 4.0), ("steel_kg", 0.5),
-                         ("steel_extra", 0.2), ("credit_kwh", 0.3), ("r_share", 0.25), ("burn_co2", 2.5)):
-        p(name=name, amount=amount)
-    p(name="d", formula="2 * kwh_part")
-    for code in ("part", "product", "waste"):
-        params.register_activity_group(bd.get_node(database=DB, code=code))
-    params.recalc_database(DB)
-    lca.invalidate_lca_cache()
-
-
-def _scenario(client, token, name: str, overrides: dict, database: str = DB) -> str:
-    r = client.post("/api/v1/scenarios", json={"database": database, "name": name, "overrides": overrides},
-                    headers=token)
-    assert r.status_code == 200, r.text
-    return r.json()["scenario"]["id"]
-
-
-def _fresh(database: str, code: str, method: tuple, amount: float = 1.0) -> float:
-    """A score on a bw2calc LCA of its own, not the cached factorisation the split reads."""
-    from bw2calc import LCA
-
-    act = get_bd().get_node(database=database, code=code)
-    calc = LCA({act.id: amount * lca._demand_sign(act)}, method=method)
-    calc.lci()
-    calc.lcia()
-    return float(calc.score)
 
 
 def _split(database: str, code: str, method: tuple, scenario: str | None = None, *, against: dict | None = None,
@@ -160,30 +70,30 @@ SCENARIOS = {
 @pytest.mark.parametrize("name", sorted(SCENARIOS))
 @pytest.mark.parametrize("method", [GWP, CH4])
 def test_a_scenario_split_adds_up_to_two_calculations_made_apart(client, token, project, name, method):
-    _model(client, token)
-    sid = _scenario(client, token, name, SCENARIOS[name])
-    before = _fresh(DB, "product", method)
+    build_model(client, token)
+    sid = add_scenario(client, token, name, SCENARIOS[name])
+    before = fresh_score(DB, "product", method)
     with scenarios.applied(ScenarioStore(), DB, sid):
-        after = _fresh(DB, "product", method)
+        after = fresh_score(DB, "product", method)
     if method == GWP:  # some variants move only CO2, and the methane indicator stays put — split to nothing
         assert after != before
     _held_to(_split(DB, "product", method, sid), before, after)
 
 
 def test_a_treatment_scored_with_the_demand_turned_round_splits_too(client, token, project):
-    _model(client, token)
-    sid = _scenario(client, token, "burn", {"burn_co2": 3.5})
-    before = _fresh(DB, "waste", GWP, amount=2.0)
+    build_model(client, token)
+    sid = add_scenario(client, token, "burn", {"burn_co2": 3.5})
+    before = fresh_score(DB, "waste", GWP, amount=2.0)
     with scenarios.applied(ScenarioStore(), DB, sid):
-        after = _fresh(DB, "waste", GWP, amount=2.0)
+        after = fresh_score(DB, "waste", GWP, amount=2.0)
     part = _split(DB, "waste", GWP, sid, amount=2.0)
     _held_to(part, before, after)
     assert after - before == pytest.approx(2.0 * 1.0)  # two kg treated, one more kg of CO2 each
 
 
 def test_one_bound_emission_is_named_with_its_formula_and_carries_the_whole_difference(client, token, project):
-    _model(client, token)
-    sid = _scenario(client, token, "leaky", {"leak": 0.012})
+    build_model(client, token)
+    sid = add_scenario(client, token, "leaky", {"leak": 0.012})
     r = client.post("/api/v1/calc/difference",
                     json={"database": DB, "code": "product", "method": list(GWP), "scenario": sid}, headers=token)
     assert r.status_code == 200, r.text
@@ -206,8 +116,8 @@ def test_one_bound_emission_is_named_with_its_formula_and_carries_the_whole_diff
 
 
 def test_exchanges_summed_on_one_pair_are_one_change_with_the_sum_before_and_after(client, token, project):
-    _model(client, token)
-    sid = _scenario(client, token, "steel", {"steel_kg": 0.9})
+    build_model(client, token)
+    sid = add_scenario(client, token, "steel", {"steel_kg": 0.9})
     r = client.post("/api/v1/calc/difference",
                     json={"database": DB, "code": "product", "method": list(GWP), "scenario": sid}, headers=token)
     (block,) = r.json()["results"][0]["indicators"]
@@ -218,8 +128,8 @@ def test_exchanges_summed_on_one_pair_are_one_change_with_the_sum_before_and_aft
 
 
 def test_a_credit_is_named_as_one_with_its_amount_as_the_exchange_states_it(client, token, project):
-    _model(client, token)
-    sid = _scenario(client, token, "credit", {"credit_kwh": 0.9})
+    build_model(client, token)
+    sid = add_scenario(client, token, "credit", {"credit_kwh": 0.9})
     r = client.post("/api/v1/calc/difference",
                     json={"database": DB, "code": "product", "method": list(GWP), "scenario": sid}, headers=token)
     (block,) = r.json()["results"][0]["indicators"]
@@ -230,9 +140,9 @@ def test_a_credit_is_named_as_one_with_its_amount_as_the_exchange_states_it(clie
 
 
 def test_several_scenarios_and_indicators_in_one_request(client, token, project):
-    _model(client, token)
-    a = _scenario(client, token, "a", {"leak": 0.004})
-    b = _scenario(client, token, "b", {"n_parts": 5.0, "r_share": 0.3})
+    build_model(client, token)
+    a = add_scenario(client, token, "a", {"leak": 0.004})
+    b = add_scenario(client, token, "b", {"n_parts": 5.0, "r_share": 0.3})
     r = client.post("/api/v1/calc/difference", json={
         "database": DB, "code": "product", "methods": [list(GWP), list(CH4), ["no", "such"]],
         "scenarios": [a, b], "partial": True, "top_n": 1,
@@ -249,11 +159,11 @@ def test_several_scenarios_and_indicators_in_one_request(client, token, project)
 
 
 def test_the_same_result_twice_is_refused_and_so_is_another_process_of_the_model(client, token, project):
-    _model(client, token)
+    build_model(client, token)
     r = client.post("/api/v1/calc/difference",
                     json={"database": DB, "code": "product", "method": list(GWP)}, headers=token)
     assert r.status_code == 400 and r.json()["error"]["code"] == "difference_same"
-    sid = _scenario(client, token, "x", {"leak": 0.01})
+    sid = add_scenario(client, token, "x", {"leak": 0.01})
     r = client.post("/api/v1/calc/difference", json={
         "database": DB, "code": "product", "method": list(GWP), "scenario": sid,
         "against": {"code": "part"},
@@ -262,55 +172,24 @@ def test_the_same_result_twice_is_refused_and_so_is_another_process_of_the_model
 
 
 def test_a_scenario_against_another_scenario(client, token, project):
-    _model(client, token)
-    a = _scenario(client, token, "a", {"leak": 0.004, "n_parts": 5.0})
-    b = _scenario(client, token, "b", {"leak": 0.02})
+    build_model(client, token)
+    a = add_scenario(client, token, "a", {"leak": 0.004, "n_parts": 5.0})
+    b = add_scenario(client, token, "b", {"leak": 0.02})
     with scenarios.applied(ScenarioStore(), DB, a):
-        before = _fresh(DB, "product", GWP)
+        before = fresh_score(DB, "product", GWP)
     with scenarios.applied(ScenarioStore(), DB, b):
-        after = _fresh(DB, "product", GWP)
+        after = fresh_score(DB, "product", GWP)
     _held_to(_split(DB, "product", GWP, b, against={"scenario": a}), before, after)
 
 
 # --- a copy against its original --------------------------------------------------------------------- #
 
-def _copy(client, token, name: str = "fx copy") -> dict[str, str]:
-    """Copy the model; original code → the copy's code, read from the record the copy keeps."""
-    r = client.post("/api/v1/databases/foreground/duplicate", json={"source": DB, "name": name}, headers=token)
-    assert r.status_code == 200, r.text
-    return {act[COPIED_FROM]: act.key[1] for act in get_bd().Database(name)}
-
-
-def _edit_copy(client, token, codes: dict[str, str], name: str = "fx copy") -> None:
-    """Three kinds of edit: an amount, a new process linked in, a process deleted (with its link)."""
-    bd = get_bd()
-    product = bd.get_node(database=name, code=codes["product"])
-    fixed = next(ex for ex in product.technosphere() if ex.input.key == ("bg", "steel") and not ex.get("formula"))
-    r = client.post("/api/v1/model/exchanges/amount", json={
-        "activity_database": name, "activity_code": codes["product"], "uid": fixed["prism_uid"], "amount": 0.3,
-    }, headers=token)
-    assert r.status_code == 200, r.text
-    r = client.post("/api/v1/model/activities", json={"database": name, "name": "paint", "unit": "kg"}, headers=token)
-    assert r.status_code == 200, r.text
-    paint = next(a for a in bd.Database(name) if a.get("name") == "paint").key[1]
-    for body in (
-        {"activity_code": paint, "input_database": "bio", "input_code": "co2", "amount": 3.0, "type": "biosphere"},
-        {"activity_code": paint, "input_database": "bg", "input_code": "power", "amount": 0.5},
-        {"activity_code": codes["product"], "input_database": name, "input_code": paint, "amount": 0.2},
-    ):
-        r = client.post("/api/v1/model/exchanges", json={"activity_database": name, **body}, headers=token)
-        assert r.status_code == 200, r.text
-    r = client.post("/api/v1/model/activities/delete",
-                    json={"database": name, "code": codes["recycle"], "force": True}, headers=token)
-    assert r.status_code == 200, r.text
-
-
 def test_a_copy_against_its_original_adds_up_and_names_what_is_new_and_gone(client, token, project):
-    _model(client, token)
-    codes = _copy(client, token)
-    _edit_copy(client, token, codes)
-    before = _fresh(DB, "product", GWP)
-    after = _fresh("fx copy", codes["product"], GWP)
+    build_model(client, token)
+    codes = copy_model(client, token)
+    edit_copy(client, token, codes)
+    before = fresh_score(DB, "product", GWP)
+    after = fresh_score("fx copy", codes["product"], GWP)
     _held_to(_split("fx copy", codes["product"], GWP, against={"database": DB}), before, after)
 
     r = client.post("/api/v1/calc/difference", json={
@@ -330,14 +209,14 @@ def test_a_copy_against_its_original_adds_up_and_names_what_is_new_and_gone(clie
 
 
 def test_a_copy_without_the_record_is_paired_by_name(client, token, project):
-    _model(client, token)
-    codes = _copy(client, token)
+    build_model(client, token)
+    codes = copy_model(client, token)
     for act in get_bd().Database("fx copy"):
         del act[COPIED_FROM]
         act.save()
-    _edit_copy(client, token, codes)
+    edit_copy(client, token, codes)
     part = _split("fx copy", codes["product"], GWP, against={"database": DB})
-    _held_to(part, _fresh(DB, "product", GWP), _fresh("fx copy", codes["product"], GWP))
+    _held_to(part, fresh_score(DB, "product", GWP), fresh_score("fx copy", codes["product"], GWP))
     r = client.post("/api/v1/calc/difference", json={
         "database": "fx copy", "code": codes["product"], "method": list(GWP), "against": {"database": DB},
     }, headers=token)
@@ -346,9 +225,9 @@ def test_a_copy_without_the_record_is_paired_by_name(client, token, project):
 
 
 def test_the_original_against_its_copy_reads_the_record_the_other_way_round(client, token, project):
-    _model(client, token)
-    codes = _copy(client, token)
-    _edit_copy(client, token, codes)
+    build_model(client, token)
+    codes = copy_model(client, token)
+    edit_copy(client, token, codes)
     r = client.post("/api/v1/calc/difference", json={
         "database": DB, "code": "product", "method": list(GWP), "against": {"database": "fx copy"},
     }, headers=token)
@@ -357,16 +236,16 @@ def test_the_original_against_its_copy_reads_the_record_the_other_way_round(clie
     assert body["reference"]["code"] == codes["product"]
     assert body["pairing"]["paired"] == 3 and "paired_by_name" not in body["pairing"]
     _held_to(_split(DB, "product", GWP, against={"database": "fx copy"}),
-             _fresh("fx copy", codes["product"], GWP), _fresh(DB, "product", GWP))
+             fresh_score("fx copy", codes["product"], GWP), fresh_score(DB, "product", GWP))
 
 
 def test_a_scenario_of_the_copy_against_the_original(client, token, project):
-    _model(client, token)
-    codes = _copy(client, token)
-    sid = _scenario(client, token, "lean", {"n_parts": 2.0, "leak": 0.05}, database="fx copy")
-    before = _fresh(DB, "product", GWP)
+    build_model(client, token)
+    codes = copy_model(client, token)
+    sid = add_scenario(client, token, "lean", {"n_parts": 2.0, "leak": 0.05}, database="fx copy")
+    before = fresh_score(DB, "product", GWP)
     with scenarios.applied(ScenarioStore(), "fx copy", sid):
-        after = _fresh("fx copy", codes["product"], GWP)
+        after = fresh_score("fx copy", codes["product"], GWP)
     _held_to(_split("fx copy", codes["product"], GWP, sid, against={"database": DB}), before, after)
     # A change on an input from another process of the copy is named by the copy's own exchange, formula and all —
     # not by the original's process that stands on the same place.
@@ -381,9 +260,9 @@ def test_a_scenario_of_the_copy_against_the_original(client, token, project):
 
 
 def test_a_process_without_counterpart_needs_its_reference_named(client, token, project):
-    _model(client, token)
-    codes = _copy(client, token)
-    _edit_copy(client, token, codes)
+    build_model(client, token)
+    codes = copy_model(client, token)
+    edit_copy(client, token, codes)
     paint = next(a for a in get_bd().Database("fx copy") if a.get("name") == "paint").key[1]
     r = client.post("/api/v1/calc/difference", json={
         "database": "fx copy", "code": paint, "method": list(GWP), "against": {"database": DB},
@@ -415,8 +294,8 @@ def test_a_flow_only_the_copy_emits_and_a_credit_it_dropped_are_named_as_what_th
     """A copy that emits a flow nothing in the original emits: the original's inventory has no row for it, and its
     impact used to fall into "not explained". A credit the copy deleted is found on the original's side, so it is
     named a credit, with the amount it had."""
-    _model(client, token)
-    codes = _copy(client, token)
+    build_model(client, token)
+    codes = copy_model(client, token)
     name = "fx copy"
     r = client.post("/api/v1/model/exchanges", json={
         "activity_database": name, "activity_code": codes["product"], "input_database": "bio", "input_code": "n2o",
@@ -427,7 +306,7 @@ def test_a_flow_only_the_copy_emits_and_a_credit_it_dropped_are_named_as_what_th
     r = client.post("/api/v1/model/exchanges/remove", json={
         "activity_database": name, "activity_code": codes["product"], "uid": credit["prism_uid"]}, headers=token)
     assert r.status_code == 200, r.text
-    before, after = _fresh(DB, "product", GWP), _fresh(name, codes["product"], GWP)
+    before, after = fresh_score(DB, "product", GWP), fresh_score(name, codes["product"], GWP)
     _held_to(_split(name, codes["product"], GWP, against={"database": DB}), before, after)
 
     r = client.post("/api/v1/calc/difference", json={
