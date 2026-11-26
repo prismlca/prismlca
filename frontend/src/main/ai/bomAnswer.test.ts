@@ -340,3 +340,24 @@ describe('parseBomAnswer — other figures for the same part', () => {
     expect(cap.note).toMatch(/left out: 0\.0025 kg per piece \(no count of pieces\)/)
   })
 })
+
+describe('parseBomAnswer — figures for other parts', () => {
+  it('reads them like an entry, a piece mass times its count, and drops one without a page or a figure', () => {
+    const leg = parseBomAnswer({
+      items: [{ component: 'frame', mass_kg: null }],
+      for_others: [
+        { component: 'axle', mass_kg: 0.18, source_url: 'https://e.org/sheet' },
+        { component: 'handles', mass_each_kg: 0.1, count: 2, source_url: 'https://e.org/sheet' },
+        { component: 'screws', mass_each_kg: 0.01, source_url: 'https://e.org/sheet' },
+        { component: 'tub', mass_kg: 9.8 },
+        { component: 'rim', mass_kg: null, source_url: 'https://e.org/sheet' }
+      ]
+    })
+    expect(leg.for_others).toEqual([
+      { component: 'axle', mass_kg: 0.18, source_url: 'https://e.org/sheet' },
+      { component: 'handles', mass_kg: 0.2, source_url: 'https://e.org/sheet' }
+    ])
+    expect(leg.items).toEqual([])
+    expect(parseBomAnswer({ items: [] }).for_others).toBeUndefined()
+  })
+})

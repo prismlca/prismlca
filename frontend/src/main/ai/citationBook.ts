@@ -80,6 +80,13 @@ export class CitationBook {
     const page = this.canonical(url)
     return isProviderLink(page) && !this.has(page) ? null : page
   }
+  /**
+   * The address as the engine delivered it, for a URL that stands for a page in the book, or null. The comparable
+   * key ignores case and the scheme; an address handed to someone else must be the one that was delivered.
+   */
+  delivered(url: string): string | null {
+    return this.byKey.get(this.keyOf(url))?.url ?? null
+  }
   private keyOf(url: string): string {
     const key = urlKey(url)
     return this.byKey.has(key) ? key : (this.aliases.get(key) ?? key)

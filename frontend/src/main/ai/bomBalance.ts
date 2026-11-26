@@ -266,13 +266,13 @@ const sameWord = (inName: string, wanted: string): boolean => {
 }
 
 /**
- * Which listed name an `includes` entry points at: exact, or one name holding the other as a run of words ("inner
- * tube" and "tube"), the last of them in any number ("screw" and "screws") or as the head of a compound ("Achse" and
- * "Massivachse").
+ * Which listed name a leg's word for another part points at — an `includes` entry, a figure for another leg's part:
+ * exact, or one name holding the other as a run of words ("inner tube" and "tube"), the last of them in any number
+ * ("screw" and "screws") or as the head of a compound ("Achse" and "Massivachse").
  * Never the start or middle of a word: "Furnierklebstoff" (veneer adhesive) is no veneer, and reading it as one
  * locked a door's balance on an overlap that was not there.
  */
-function resolveName(wanted: string, names: string[]): string | undefined {
+export function resolveName(wanted: string, names: string[]): string | undefined {
   const w = wordsOf(wanted)
   if (!w.length) return undefined
   const holds = (long: string[], short: string[]): boolean =>
