@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-26",
+    "title": "Bill-of-materials research shares its pages",
+    "details": "Give the assistant the address of a datasheet, manual, parts list or EPD with a bill-of-materials request, and every researcher now opens it first and searches on when its part is not in it. A page found for one part that also states another part's mass goes to the second look for that part, and the result says where such pages confirm or contradict a figure."
+  },
+  {
     "date": "2026-11-25",
     "title": "What makes the difference, under each chart",
     "details": "After Calculate, each bar chart on the Results page shows what makes the difference: for every scenario against its baseline and every copied model against its original, the difference in % and its three largest drivers with their share. \"all changes…\" lists every changed input, credit and emission with amounts, formula and contribution. \"What makes the difference\" under Chart display hides it."

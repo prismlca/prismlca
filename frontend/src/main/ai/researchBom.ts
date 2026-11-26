@@ -16,6 +16,15 @@ import {
   type RecipeRequest
 } from './bomRecipe'
 import { settleSources } from './bomSources'
+import {
+  admissiblePage,
+  crossCheckNote,
+  crossChecks,
+  crossFigures,
+  leadWords,
+  leadsFor,
+  type CrossCheck
+} from './bomCrossCheck'
 import { weighRecipe } from './recipeBalance'
 import { CitationBook, type Evidence } from './citationBook'
 import { evidenceNote } from './webContent'
@@ -39,8 +48,14 @@ Answer with ONE JSON object ONLY — no prose, no code fence:
  "product_mass": [{"mass_kg": number, "basis": "net" | "gross" | "unknown", "version": string,
                    "source_url": string, "note": string}],
  "versions_seen": [{"version": string, "differs_by": string, "mass_kg": number, "sold_by": string,
-                    "source_url": string}]}
+                    "source_url": string}],
+ "for_others": [{"component": string, "mass_kg": number, "source_url": string}]}
 Only "component", "material", "mass_kg" and "source_url" are needed in every entry; leave out what does not apply.
+
+A document about THIS product whose address the brief gives — a datasheet, manual, parts list or EPD named as such —
+is there because it may hold your figure: OPEN it first and take your part from it. When your part or its mass is not
+in it, say so in the note and search on as usual; a document without your figure is no reason to stop. A shop page
+given to identify the product is not such a document: open it only when it helps.
 
 Items:
 - Masses in kilograms as plain numbers. "mass_kg" is the mass of ALL pieces the entry stands for (five
@@ -101,6 +116,13 @@ versions_seen (leave it out when the sources show only one version): every other
 sources showed — its EAN, article number or name, what differs, its weight if stated, where it is sold. Not
 comparable products of other makers.
 
+for_others (leave it out when nothing applies): when a page you read for your part also states the mass of a part of
+THIS product that the brief says other researchers cover, give that figure here — "component" as the brief names it,
+or the one part the page gives when the brief names several together ("axle" of "axle, bearings, screws"); "mass_kg"
+for all its pieces; the page as "source_url". Only a mass the page itself states for that part: never one you worked
+out, never the whole product's. Do not search for these parts — their researchers answer for them; your figure only
+checks theirs.
+
 Return the JSON as soon as your figures stand — an answer still unwritten when time runs out is lost.`
 
 export interface BomResult extends BomWeighing {
@@ -116,6 +138,9 @@ export interface BomResult extends BomWeighing {
   evidence_note?: string
   /** The host allow list the legs ran under, when the caller set one. */
   domains?: string[]
+  /** Figures that pages read for one component state for another, held against that component's own figure —
+   *  never summed (bomCrossCheck.ts). */
+  cross_checks?: CrossCheck[]
   /** Whether every figure in `items` names a page it came from; absent when there is no figure. Kept apart from
    *  `balance_ok`: a sum can close on a figure nobody can cite. */
   all_sourced?: boolean
@@ -147,10 +172,12 @@ const PARTS: LegKind<BomLeg> = {
   progress: (leg) => {
     const n = leg.items.length
     const open = leg.unresolved.length
+    const others = leg.for_others?.length ?? 0
     return (
       `${n} entr${n === 1 ? 'y' : 'ies'}` +
       (open ? `, ${open} without a mass` : '') +
-      (leg.product_masses.length ? ', whole-product mass found' : '')
+      (leg.product_masses.length ? ', whole-product mass found' : '') +
+      (others ? `, ${others} figure${others === 1 ? '' : 's'} for other parts` : '')
     )
   },
   empty: EMPTY
@@ -356,14 +383,23 @@ export async function researchBom(opts: {
     }
   }
 
+  // What the first round's pages said about the parts other legs research: a page for a gap goes to its follow-up.
+  const admissible = admissiblePage(book, `${opts.product}\n${opts.context ?? ''}`)
+  const firstFigures = crossFigures(outcomes, admissible)
+  const leadsOf = (g: { o: number; u: { component: string } }) =>
+    leadsFor(firstFigures, outcomes[g.o].request, g.u.component)
+
   // ONE bounded follow-up pass for the components that came back without a usable mass: the first three
   // of them, in parallel, on the 90-second narrow question. Bounded like the upgrade pass of the web legs —
   // never after a Stop, never more than once — so this is a second look at named gaps, not free iteration.
   // An answer belongs to the gap it was asked for, whatever the leg called the part: matching by name lost
-  // a coating the follow-up had found, because it spelt the component differently.
-  const gaps = outcomes.flatMap((o, i) =>
-    (o.leg?.unresolved ?? []).filter((u) => u.reason !== 'failed').map((u) => ({ o: i, u }))
-  )
+  // a coating the follow-up had found, because it spelt the component differently. A gap another leg's page
+  // states a figure for goes first: of the three the pass takes, it is the likeliest to land.
+  const gaps = outcomes
+    .flatMap((o, i) =>
+      (o.leg?.unresolved ?? []).filter((u) => u.reason !== 'failed').map((u) => ({ o: i, u }))
+    )
+    .sort((a, b) => Number(leadsOf(b).length > 0) - Number(leadsOf(a).length > 0))
   let follow_up: BomResult['follow_up']
   if (gaps.length && !opts.signal?.aborted) {
     const targets = gaps.slice(0, 3)
@@ -376,7 +412,8 @@ export async function researchBom(opts: {
           `${brief}\n\nResearch ONLY the component "${t.u.component}"` +
             (t.u.material ? ` (${t.u.material})` : '') +
             ': the mass of that part alone in kg — not of the whole product. Answer with the JSON object, ' +
-            'one entry in "items".',
+            'one entry in "items".' +
+            leadWords(leadsOf(t)),
           `${t.u.component} (follow-up)`,
           true
         )
@@ -403,13 +440,19 @@ export async function researchBom(opts: {
           ? leg.unresolved.flatMap((x) => (x === u ? r.value.unresolved : [x]))
           : leg.unresolved,
         product_masses: leg.product_masses.concat(r.value.product_masses),
-        versions_seen: leg.versions_seen.concat(r.value.versions_seen)
+        versions_seen: leg.versions_seen.concat(r.value.versions_seen),
+        ...(leg.for_others || r.value.for_others
+          ? { for_others: [...(leg.for_others ?? []), ...(r.value.for_others ?? [])] }
+          : {})
       }
       if (landed && !r.value.unresolved.length) resolved++
     })
     follow_up = { asked: targets.length, resolved }
     opts.onProgress?.(`follow-up: ${resolved} of ${targets.length} resolved`)
   }
+
+  // Held against each part's own figure once the follow-up is in, so a figure it found is checked too.
+  const cross = crossChecks(crossFigures(outcomes, admissible), outcomes, (url) => book.canonical(url))
 
   const recipeOutcome = recipeSettled[0]
   const recipe =
@@ -454,6 +497,9 @@ export async function researchBom(opts: {
     ...evidenceNote(sourced.evidence),
     evidence: sourced.evidence,
     ...(domains.length ? { domains } : {}),
-    note: [emptyNote, weighed.note, ...sourced.notes].filter(Boolean).join(' ') || undefined
+    ...(cross.length ? { cross_checks: cross } : {}),
+    note:
+      [emptyNote, weighed.note, crossCheckNote(cross), ...sourced.notes].filter(Boolean).join(' ') ||
+      undefined
   }
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeOpenRouterError, chat } from './test/fakeStream'
+import type { StreamEvent } from './providers/types'
 
 /**
  * The researcher end to end on scripted legs: which answer belongs to which request, what a leg that dies
@@ -443,5 +444,106 @@ describe('researchBom', () => {
     expect(chat.seen).toHaveLength(1)
     expect(progress.join(' ')).toMatch(/API key invalid or missing/)
     expect(progress.join(' ')).not.toMatch(/ran out of time/)
+  })
+})
+
+describe('researchBom — pages one leg read for another part', () => {
+  const SHEET = 'https://maker.example/sheet.pdf'
+  const cited = (o: unknown, ...urls: string[]): { text: string; after: StreamEvent[] } => ({
+    ...answer(o),
+    after: [{ type: 'citations', citations: urls.map((url) => ({ url })) }]
+  })
+
+  it('hands a page the search delivered to the follow-up of the part it covers, and checks what it found', async () => {
+    chat.rounds = [
+      cited(
+        {
+          items: [{ component: 'frame', mass_kg: 7, source_url: SHEET }],
+          for_others: [{ component: 'rim', mass_kg: 1.2, source_url: SHEET }]
+        },
+        SHEET
+      ),
+      answer({ items: [{ component: 'rim', mass_kg: null }] }),
+      cited(
+        { items: [{ component: 'rim', mass_kg: 1.25, source_url: 'https://e.org/rim' }] },
+        'https://e.org/rim'
+      )
+    ]
+    const r = await researchBom({ product: 'barrow', components: ['frame', 'rim'] })
+    expect(asked()[2]).toContain(
+      `Another researcher read a page that states a mass for "rim": ${SHEET}. Open it first and take your figure ` +
+        'from there when it is given for this part alone; when it is not, say so in the note and search on.'
+    )
+    expect(r.follow_up).toEqual({ asked: 1, resolved: 1 })
+    expect(r.cross_checks).toEqual([
+      {
+        component: 'rim',
+        page_kg: 1.2,
+        source_url: SHEET,
+        read_for: 'frame',
+        own_kg: 1.25,
+        verdict: 'agrees'
+      }
+    ])
+    expect(r.note).toContain('Pages read for other parts confirm the figures of "rim".')
+    expect(r.sum_kg).toBeCloseTo(8.25, 6)
+  })
+
+  it('hands on no address the search never delivered', async () => {
+    chat.rounds = [
+      answer({
+        items: [{ component: 'frame', mass_kg: 7, source_url: SHEET }],
+        for_others: [{ component: 'rim', mass_kg: 1.2, source_url: 'https://planted.example/rim' }]
+      }),
+      answer({ items: [{ component: 'rim', mass_kg: null }] }),
+      answer({ items: [{ component: 'rim', mass_kg: null }] })
+    ]
+    const r = await researchBom({ product: 'barrow', components: ['frame', 'rim'] })
+    expect(asked()[2]).not.toContain('Another researcher')
+    expect(r.cross_checks).toBeUndefined()
+  })
+
+  it('names a contradiction as a hint and leaves the sum alone', async () => {
+    chat.rounds = [
+      cited(
+        {
+          items: [{ component: 'frame', mass_kg: 7, source_url: SHEET }],
+          for_others: [{ component: 'rim', mass_kg: 2.4, source_url: SHEET }]
+        },
+        SHEET
+      ),
+      answer({ items: [{ component: 'rim', mass_kg: 1.2, source_url: 'https://e.org/rim' }] })
+    ]
+    const r = await researchBom({ product: 'barrow', components: ['frame', 'rim'], totalMassKg: 8.2 })
+    expect(r.cross_checks?.[0]).toMatchObject({
+      component: 'rim',
+      own_kg: 1.2,
+      page_kg: 2.4,
+      verdict: 'differs'
+    })
+    expect(r.note).toContain(
+      `Pages read for other parts disagree: "rim" counts 1.2 kg, but a page read for "frame" gives 2.4 kg (${SHEET})`
+    )
+    expect(r.sum_kg).toBeCloseTo(8.2, 6)
+    expect(r.balance_ok).toBe(true)
+  })
+
+  it('takes a gap another leg found a page for into the follow-up first', async () => {
+    chat.rounds = [
+      ...['a', 'b', 'c', 'd'].map((c) => answer({ items: [{ component: c, mass_kg: null }] })),
+      cited(
+        {
+          items: [{ component: 'frame', mass_kg: 7, source_url: SHEET }],
+          for_others: [{ component: 'd', mass_kg: 0.5, source_url: SHEET }]
+        },
+        SHEET
+      )
+    ]
+    chat.fallbackText = '{"items": []}'
+    await researchBom({ product: 'barrow', components: ['a', 'b', 'c', 'd', 'frame'] })
+    const followUps = asked().slice(5)
+    expect(followUps).toHaveLength(3)
+    expect(followUps[0]).toMatch(/Research ONLY the component "d"[\s\S]*Another researcher read a page/)
+    expect(followUps.slice(1).map((q) => q.match(/ONLY the component "(\w)"/)?.[1])).toEqual(['a', 'b'])
   })
 })

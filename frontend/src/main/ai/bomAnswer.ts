@@ -117,11 +117,25 @@ export interface VersionSeen {
   source_url?: string
 }
 
+/**
+ * A mass a page the leg read states for a part ANOTHER leg researches. A cross-check on that leg's figure and a
+ * page to hand its follow-up, never a figure of the list: the other leg answers for its part (bomCrossCheck.ts).
+ */
+export interface OtherPartFigure {
+  /** The other requested component, as the leg named it. */
+  component: string
+  /** For all the pieces of that component, like an entry's `mass_kg`. */
+  mass_kg: number
+  source_url: string
+}
+
 export interface BomLeg {
   items: BomItem[]
   unresolved: UnresolvedComponent[]
   product_masses: ProductMass[]
   versions_seen: VersionSeen[]
+  /** Figures the leg's pages state for the parts other legs research. */
+  for_others?: OtherPartFigure[]
 }
 
 const CLASSES = ['official', 'industry', 'media', 'community']
@@ -258,6 +272,34 @@ function parseVersions(raw: unknown): VersionSeen[] {
   return out
 }
 
+/** Figures for other parts kept per leg; a page that lists more is a parts list, and a handful checks it. */
+const MAX_FOR_OTHERS = 8
+
+/**
+ * Read the figures a leg's pages give for other legs' parts. Like an entry: a set mass, or a piece mass with its
+ * count — and a page, since a figure for another part without one is nothing to check or hand on.
+ */
+function parseForOthers(raw: unknown): OtherPartFigure[] {
+  const out: OtherPartFigure[] = []
+  for (const f of listOf(raw)) {
+    if (!f || typeof f !== 'object' || out.length >= MAX_FOR_OTHERS) continue
+    const r = f as Record<string, unknown>
+    const component = text(r.component ?? r.part ?? r.name)
+    const url = sourceOf(r)
+    const each = num(r.mass_each_kg)
+    const count = num(r.count ?? r.quantity)
+    const mass =
+      Number.isFinite(each) && each > 0
+        ? Number.isInteger(count) && count >= 1
+          ? Number((each * count).toFixed(6))
+          : NaN
+        : num(r.mass_kg ?? r.mass)
+    if (component && url && Number.isFinite(mass) && mass > 0)
+      out.push({ component, mass_kg: mass, source_url: url })
+  }
+  return out
+}
+
 /**
  * Split a leg's answer into entries with a mass and components without one, and lift out what it found for the
  * whole product and the other versions it saw. A named part with no figure — `mass_kg` null, missing,
@@ -355,11 +397,13 @@ export function parseBomAnswer(parsed: unknown): BomLeg {
       note: [r.note ? String(r.note) : '', unreadWords].filter(Boolean).join(' ') || undefined
     })
   }
+  const forOthers = parseForOthers(obj.for_others)
   return {
     items,
     unresolved,
     product_masses: parseProductMasses(obj.product_mass ?? obj.product_masses ?? obj.total_mass),
-    versions_seen: parseVersions(obj.versions_seen ?? obj.versions)
+    versions_seen: parseVersions(obj.versions_seen ?? obj.versions),
+    ...(forOthers.length ? { for_others: forOthers } : {})
   }
 }
 
