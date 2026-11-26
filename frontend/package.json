@@ -28,7 +28,7 @@
     "e2e": "electron-vite build && playwright test",
     "control-prism": "node scripts/control-prism.mjs",
     "eval:live": "PRISM_EVAL_LIVE=1 vitest run src/main/ai/live-eval.test.ts",
-    "eval:research": "PRISM_EVAL_LIVE=1 vitest run src/main/ai/research-eval.test.ts",
+    "eval:research": "PRISM_EVAL_LIVE=1 vitest run --reporter=verbose src/main/ai/research-eval.test.ts",
     "tools:manifest": "esbuild scripts/dump-tool-manifest.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/prism-tool-manifest.cjs --log-level=warning && node node_modules/.cache/prism-tool-manifest.cjs",
     "release": "node scripts/release/prepare.mjs",
     "dist": "electron-vite build && electron-builder",
