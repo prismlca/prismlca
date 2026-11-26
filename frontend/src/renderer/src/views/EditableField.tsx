@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import UnitCombo from '../components/UnitCombo'
+import { useDraft } from '../lib/useDraft'
 
 /**
  * One field of a process in the inspector: read-only text, or an input that saves on blur (Enter
@@ -31,12 +32,8 @@ export default function EditableField({
   placeholder?: string // single-line text field: what belongs in it
   ariaLabel?: string // the field's name when it has no visible label
 }): JSX.Element {
-  const [v, setV] = useState(value ?? '')
   const [err, setErr] = useState(false)
-  useEffect(() => {
-    setV(value ?? '')
-    setErr(false)
-  }, [value])
+  const [v, setV] = useDraft(value ?? '', () => setErr(false))
   const commit = (): void => {
     if (v === (value ?? '')) return
     if (restrict && suggestions?.length && v.trim() && !suggestions.includes(v.trim())) {
