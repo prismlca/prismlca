@@ -182,14 +182,27 @@ interface KnownName {
   reading: Reading
 }
 
+/**
+ * The names a recipe line is read by, beside the name as printed: a blend dosed as one line names its ingredients
+ * with "(and)" ("Sodium Laureth Sulfate (and) Cocamidopropyl Betaine"), and its INCI field lists them at commas — a
+ * line of three surfactants read whole covered none of the three. Its "may contain" names cover nothing.
+ */
+const blendNames = (printed: string, commas: boolean): string[] => [
+  printed,
+  // A name behind "may contain" is no ingredient the line is sure to hold ("Mica, May contain: CI 77491").
+  ...listNames(commas ? inciEntries([printed]) : [printed])
+    .filter((n) => !n.may)
+    .flatMap((n) => n.name.split(/\s*\(and\)\s*/i))
+]
+
 /** Known ingredients the recipe does not name — by its lines, their INCI names and their trade forms' constituents. */
 function missingIngredients(known: KnownName[], lines: RecipeLine[]): string[] {
   const read = lines
     .flatMap((l) => [
-      l.name,
-      l.inci ?? '',
+      ...blendNames(l.name, false),
+      ...blendNames(l.inci ?? '', true),
       l.trade_form?.name ?? '',
-      ...(l.trade_form?.constituents ?? []).flatMap((c) => [c.name, c.inci ?? ''])
+      ...(l.trade_form?.constituents ?? []).flatMap((c) => [c.name, ...blendNames(c.inci ?? '', true)])
     ])
     .map((n) => namesOf(n))
   const wholes = new Set(read.flatMap((n) => n.whole))

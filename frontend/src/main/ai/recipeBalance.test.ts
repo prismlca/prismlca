@@ -259,6 +259,64 @@ describe('weighRecipe', () => {
     expect(r.sentence).toMatch(/Shares only, no kg: pass recipe.mass_kg/)
   })
 
+  // B-W7 of PL-137 (Haiku, PCC frame formulation): a surfactant blend dosed as one line covered none of its three
+  // ingredients, nor a preservative line of two.
+  it('reads a blend line by the ingredients its INCI field and its "(and)" name list', () => {
+    const r = weigh(
+      {
+        formulation: { name: 'Economic Liquid Hand Soap [KD-103]', kind: 'frame', source_url: PCC },
+        lines: [
+          { name: 'Aqua', inci: 'Aqua', amount: 91.35, unit: '%' },
+          {
+            name: 'Sodium Laureth Sulfate (and) Cocamidopropyl Betaine (and) Coco-Glucoside (EXOcare PC60)',
+            inci: 'Sodium Laureth Sulfate, Cocamidopropyl Betaine, Coco-Glucoside',
+            amount: 8,
+            unit: '%'
+          },
+          { name: 'Preservative blend', inci: 'Sodium Benzoate, Potassium Sorbate', amount: 0.5, unit: '%' },
+          { name: 'Lactic Acid (and) Water', amount: 0.15, unit: '%' }
+        ],
+        declared_ingredients: {
+          names: [
+            'AQUA, SODIUM LAURETH SULFATE, SODIUM CHLORIDE, COCAMIDOPROPYL BETAINE, COCO GLUCOSIDE, SODIUM BENZOATE, ' +
+              'POTASSIUM SORBATE, LACTIC ACID, GLYCERIN'
+          ]
+        }
+      },
+      { of: 'liquid soap' }
+    )
+    expect(r.block.missing_ingredients).toEqual(['SODIUM CHLORIDE', 'GLYCERIN'])
+    // The blend's name alone, without its INCI field, still names its three.
+    const byName = weigh({
+      formulation: { name: 'x', kind: 'frame', source_url: PCC },
+      lines: [
+        { name: 'Sodium Laureth Sulfate (and) Cocamidopropyl Betaine', amount: 10, unit: '%' },
+        { name: 'water', amount: 90, unit: '%' }
+      ],
+      declared_ingredients: { names: ['Aqua', 'Sodium Laureth Sulfate', 'Cocamidopropyl Betaine'] }
+    })
+    expect(byName.block.missing_ingredients).toBeUndefined()
+    // What a line only "may contain" it is not sure to hold.
+    const shades = weigh({
+      formulation: { name: 'x', kind: 'frame', source_url: PCC },
+      lines: [
+        { name: 'Pigment blend', inci: 'Mica, May contain: CI 77491, CI 77492', amount: 2, unit: '%' },
+        { name: 'water', amount: 98, unit: '%' }
+      ],
+      declared_ingredients: { names: ['Aqua', 'Mica', 'CI 77492'] }
+    })
+    expect(shades.block.missing_ingredients).toEqual(['CI 77492'])
+    const named = weigh({
+      formulation: { name: 'x', kind: 'frame', source_url: PCC },
+      lines: [
+        { name: 'May contain: Mica (and) CI 77492', amount: 2, unit: '%' },
+        { name: 'water', amount: 98, unit: '%' }
+      ],
+      declared_ingredients: { names: ['Aqua', 'CI 77492'] }
+    })
+    expect(named.block.missing_ingredients).toEqual(['CI 77492'])
+  })
+
   it('closes a concrete in kg per m3 against its stated density, and does not close one without it', () => {
     const lines = [
       { name: 'cement CEM II', amount: 320, unit: 'kg/m3' },

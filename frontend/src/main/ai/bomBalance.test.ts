@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BomItem, BomLeg } from './bomAnswer'
-import { massBalance, weighBom, type LegOutcome, type TotalUsed } from './bomBalance'
+import { massBalance, weighBom, type LegOutcome } from './bomBalance'
+import type { TotalUsed } from './bomTotals'
 import { gtinsIn, sameReference, versionsContradict } from './bomVersions'
 
 /**
@@ -315,7 +316,7 @@ describe('weighBom — T4 when the legs can say what their figures are', () => {
     expect(r.totals_found?.map((t) => t.mass_kg)).toEqual([14.1, 13, 24])
     expect(r.total_used).toBeUndefined()
     expect(r.note).toMatch(
-      /do not share one reference: 14\.1 kg \(packaging not stated, EAN 5400431601459\), 13 kg \(without packaging, praxis\.nl, EAN 5400431601480\)/
+      /belong to different versions of the product: 14\.1 kg \(packaging not stated, EAN 5400431601459\), 13 kg \(without packaging, praxis\.nl, EAN 5400431601480\)/
     )
   })
 
@@ -326,7 +327,9 @@ describe('weighBom — T4 when the legs can say what their figures are', () => {
       ['whole product (13 kg)'],
       ['whole product (24 kg)']
     ])
-    expect(r.summary).toMatch(/the figures rest on different versions of the product/)
+    expect(r.summary).toMatch(
+      /Still open: .*; the figures rest on different versions of the product — see note\.$/
+    )
   })
 
   it('names the steel as open and the total request as answered with the whole product', () => {
@@ -802,5 +805,124 @@ describe('weighBom — limits and the enumerating leg', () => {
     expect(r.summary).toMatch(/Checked against the total you passed \(0\.022 kg\) — the parts add up/)
     // The share goes with the kilograms, so a small residual does not read as a gap to close first.
     expect(r.summary).toMatch(/residual 0 kg, 0 % of the total, within the 15 % tolerance/)
+  })
+})
+
+// O-W4 of PL-137 (GLM, the Forza door with its EPD): the parts add up to the EPD's 61.6 kg, but "Furnierklebstoff"
+// (veneer adhesive) read as containing the veneer, and the EPD's number, edition and dates written four ways read as
+// four versions, kept the verdict back.
+describe('weighBom — names that are parts of words, references that are ways of writing one', () => {
+  const EPD = 'https://www.forza-doors.com/x/forza-fd30-epd.pdf'
+  const door = (version: string, part: BomItem): LegOutcome => ({
+    request: part.component,
+    leg: leg({
+      items: [{ ...part, version }],
+      product_masses: [{ mass_kg: 61.6, basis: 'net', version, source_url: EPD }]
+    })
+  })
+  const outcomes: LegOutcome[] = [
+    door('FD30 Flush Solid Core Timber Door 2040x926x44 mm (EPD S-P-11102)', item('Türblatt-Kern', 56.2)),
+    door('Forza FD30 Flush Solid Core Timber Door 2040x926x44mm (EPD S-P-11102)', item('Furnier', 1.7)),
+    door('EPD v2 (2025-06-23), S-P-11102', item('Umleimer (Eiche)', 2.6)),
+    door('EPD S-P-11102, 2023-12-15', item('Brandschutzstreifen', 0.6)),
+    {
+      request: 'Klebstoff und Versiegelung',
+      leg: leg({
+        items: [
+          item('Klebstoff und Versiegelung', 0.5, { includes: ['Umleimer-Klebstoff', 'Furnierklebstoff'] })
+        ]
+      })
+    }
+  ]
+
+  it('gives the door its verdict', () => {
+    const r = weighBom(outcomes)
+    expect(r.overlaps).toBeUndefined()
+    expect(r.versions).toBeUndefined()
+    expect(r.total_used).toMatchObject({ mass_kg: 61.6, basis: 'net' })
+    expect(r.balance_ok).toBe(true)
+  })
+
+  it('still reads a whole word, and the head of a compound, as the part it names', () => {
+    const tube = weighBom(
+      [
+        { request: 'tyre', leg: leg({ items: [item('tyre', 1.2, { includes: ['tube'] })] }) },
+        { request: 'inner tube', leg: leg({ items: [item('inner tube', 0.3)] }) }
+      ],
+      { totalMassKg: 1.5 }
+    )
+    expect(tube.overlaps).toEqual([{ entry: 'tyre', includes: ['inner tube'] }])
+    // O-W2: the complete wheel "with axle" beside the axle delivered in the accessory bag.
+    const axle = weighBom(
+      [
+        { request: 'Luftrad', leg: leg({ items: [item('Luftrad komplett', 3.6, { includes: ['Achse'] })] }) },
+        { request: 'Achse', leg: leg({ items: [item('Massivachse 17×101 mm', 0.18)] }) }
+      ],
+      { totalMassKg: 3.8 }
+    )
+    expect(axle.overlaps).toEqual([{ entry: 'Luftrad komplett', includes: ['Massivachse 17×101 mm'] }])
+    expect(axle.balance_ok).toBeNull()
+    // One screw or several: a containment claim does not get lost to a plural.
+    const screws = weighBom(
+      [
+        { request: 'housing', leg: leg({ items: [item('housing', 8, { includes: ['screw'] })] }) },
+        { request: 'motor', leg: leg({ items: [item('motor', 2)] }) },
+        { request: 'screws', leg: leg({ items: [item('screws', 0.1)] }) }
+      ],
+      { totalMassKg: 10 }
+    )
+    expect(screws.overlaps).toEqual([{ entry: 'housing', includes: ['screws'] }])
+    expect(screws.balance_ok).toBeNull()
+  })
+})
+
+// B-W1c of PL-137 (Haiku, total passed): two shops' article numbers for one wheelbarrow kept the verdict back even
+// with the total the caller passed. A spare grip's EAN beside the wheelbarrow's still locks — the leg was asked for the
+// whole product's version — but the lock says it may be the grip's own article number.
+describe('weighBom — shop numbers and a part’s own EAN', () => {
+  const legs = (gripVersion?: string): LegOutcome[] => [
+    {
+      request: 'Mulde',
+      leg: leg({
+        items: [item('Mulde', 11, { version: 'Luftrad mit Rillenprofil und Stahlfelge, Art. 5691696' })]
+      })
+    },
+    {
+      request: 'Rahmen',
+      leg: leg({
+        items: [
+          item('Rahmen', 7, {
+            version: 'PRAKTICA 150 l, Luftrad mit Stahlfelge, Buchenholzgriffe (Hornbach)'
+          })
+        ]
+      })
+    },
+    {
+      request: 'Griffe',
+      leg: leg({
+        items: [item('Griffe', 0.46, gripVersion ? { version: gripVersion } : {})],
+        product_masses: [{ mass_kg: 20.7, basis: 'unknown', version: 'PRAKTICA 150 (EAN 4027972127043)' }]
+      })
+    },
+    { request: 'Rad', leg: leg({ items: [item('Rad', 2.6)] }) }
+  ]
+
+  it('checks against the total passed', () => {
+    const r = weighBom(legs(), { totalMassKg: 20.7 })
+    expect(r.versions).toBeUndefined()
+    expect(r.balance_ok).toBe(true)
+  })
+
+  it('locks on a part’s EAN, naming it as perhaps the part’s own', () => {
+    const r = weighBom(legs('Capito Holzgriff 410801 (EAN 4027972108011)'), { totalMassKg: 20.7 })
+    expect(r.versions?.conflict).toBe(true)
+    expect(r.balance_ok).toBeNull()
+    expect(r.versions?.only_part_eans).toBe(true)
+    expect(r.summary).toMatch(
+      /residual -0\.36 kg\. The figures rest on different versions of the product — see note\.$/
+    )
+    expect(r.note).toMatch(
+      /an EAN is named only on a part entry, never on a whole-product figure, and differs from the product's: "Capito Holzgriff 410801 \(EAN 4027972108011\)" \(on Griffe\) — open that entry's source: if it is the part's own article number/
+    )
   })
 })
