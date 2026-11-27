@@ -116,6 +116,9 @@ export async function runHost(frontend: string, name: string): Promise<void> {
       sealed: record.seal ?? undefined
     })
     const proc = app.app.process()
+    // What the app said while launch() waited for its window — its start — and from here on everything it says.
+    // Taken and wired in one step, so no line falls between the two or lands twice.
+    appLog.write(app.output.join(''))
     proc.stdout?.on('data', (b: Buffer) => appLog.write(b))
     proc.stderr?.on('data', (b: Buffer) => appLog.write(b))
     app.page.on('console', (m) => note(m.type(), m.text()))
@@ -159,7 +162,6 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   // The host inherits the caller's environment unchanged, so these are the caller's real folders.
   const real = realDirs()
-  let lastCommand = Date.now()
   let queue: Promise<unknown> = Promise.resolve()
 
   // Every quit here goes by identity (byPath: false): a program someone runs on the session's files is not
@@ -224,7 +226,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
       case 'shot':
         return shot(page, req.args[0], req.flags)
       case 'read':
-        return read(page, req.args)
+        return read(page, req.args, req.flags)
       case 'console': {
         const since = req.flags.since === undefined ? 0 : Number(req.flags.since)
         if (!Number.isInteger(since) || since < 0)
@@ -317,7 +319,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         reply(400, { ok: false, error: 'malformed request' })
         return
       }
-      lastCommand = Date.now()
+      watchdog.touch()
       let gone = false
       res.on('close', () => {
         if (!res.writableEnded) gone = true
@@ -375,7 +377,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   const idleMs = record.idleMinutes * 60_000
   setInterval(() => {
-    if (ending || Date.now() - lastCommand < idleMs) return
+    if (ending || watchdog.idleMs() < idleMs) return
     say(`no command for ${record.idleMinutes} min; quitting the app`)
     void stop(false).then(
       () => process.exit(0),

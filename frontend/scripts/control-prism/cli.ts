@@ -73,7 +73,9 @@ driving                              (<target>: see "targets" below)
   refused [--since <n>]              what a --sealed instance refused or cancelled since launch (or since line n)
   snapshot [--target <target>] [--options]   the accessibility tree: roles and names, as targets use them
   shot [<file.png>] [--target <target>] [--full]
-  read '<expression>'                look at state in the window; never the proof, never a wait loop
+  read '<expression>' [--timeout <ms>]   look at state in the window; never the proof, never a wait loop.
+                     Bounded by 10 s; --timeout for one that awaits the app (window.prism.api, a
+                     calculation), at most as long as a wait
 
 targets, strongest first:  Run (exact aria-label) · role=button:Calculate · title=Settings ·
   label=Workspace name · placeholder=… · text=… · css=.chat-send.stop
