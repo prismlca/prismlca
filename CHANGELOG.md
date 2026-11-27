@@ -3,6 +3,51 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.17 — 2026-11-27
+
+Changes since v0.9.16: https://github.com/prismlca/prismlca/compare/v0.9.16...v0.9.17
+
+### New
+
+- **What makes the difference, under each chart.** After Calculate, each bar chart on the Results page shows, for every
+  scenario against its baseline and every copied model against its original, the difference in % and its three largest
+  drivers; "all changes…" lists every changed input, credit and emission. Asked why two results differ, the assistant
+  splits the difference exactly onto what changed, and agents connected over MCP get the same answer (#143, #154).
+- **Life cycle inventory on the Results page.** A table of every elementary flow, one column per subject, sortable,
+  with amounts to copy; "Export Excel" adds the inventory as a second sheet (#147).
+- **Bill-of-materials research shares its pages and checks your figures.** A datasheet, manual, parts list or EPD given
+  with the request is opened by every researcher first, and a page found for one part that states another part's mass
+  goes to that part's second look. Masses the assistant reads in a datasheet, works out from dimensions or gets from
+  you go through the same check and into the research log, marked by where they came from (#156, #161).
+- **Web research checks its weak figures.** Up to three figures that rest only on press, blogs, forums or a
+  low-confidence source are checked against other pages, and the research log keeps the outcome. Text from the web is
+  treated as material, never as an instruction; a host restriction holds, and research stops at its time limit
+  (#121, #152, #160).
+- **Linked pages with Anthropic and Google.** With web search on, the assistant opens a page whose address is in the
+  chat, and lists the pages it opened under the answer. Research with Claude Sonnet and Haiku searches deeper, and the
+  settings say how Anthropic counts web lookups (#125, #139, #145).
+- **Keyboard and screen readers.** Tab reaches the pages in the navigation; every dialog takes the focus when it
+  opens, is announced by its title and gives the focus back when it closes (#119).
+
+### Fixes
+
+- Minor security fixes and hardening.
+- Models and workspaces: a slash in a model name or a process code no longer breaks pages; a model whose processes have
+  no flows yet says so instead of "Unexpected server error"; deleting the workspace you are in opens one with data;
+  switching workspace pauses the search index of the workspace left; the Overview counts processes at once.
+- Editing: dialogs keep what was typed when a name is empty or refused, and text typed right after a field appears is
+  no longer put back; Add parameter refuses a name the model already has; the scenario editor stores one edit as one
+  undo step, and Undo names a Model-info edit made from the Overview; New process accepts its default unit "unit" on
+  every background; the tag menu closes on Escape.
+- Results: the Model page keeps each model's LCIA method and says when it is gone; a bar chart of very small scores
+  shows its axis exponent again; the Duplicate indicators dialog names indicators as the Compare tab does.
+- Import progress no longer freezes when a status request fails, and shows wherever the import is opened.
+- Assistant: large PDFs and web searches no longer make it compact its conversation early; messages say what a person
+  can act on; the chat names the provider whose key is missing and says when the web lookup cap was reached; a
+  researched part without a usable source is kept in the sum and named; the bill-of-materials check no longer locks
+  on shop numbers, dates and parts of one name; the chat's web switch says it covers the chat only.
+- Electron 44.11.6.
+
 ## 0.9.16 — 2026-11-19
 
 Changes since v0.9.15: https://github.com/prismlca/prismlca/compare/v0.9.15...v0.9.16
