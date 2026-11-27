@@ -25,8 +25,8 @@ export const DRIVERS_SHOWN = 3
  * with the scores, in the same run (`useCompareRun`), so it describes exactly the bars above it. A scenario is
  * split only against its baseline: without the baseline ticked, one sentence asks for it.
  *
- * Folds per chart: sixteen indicators with three scenarios each is a long page, and the switch in "Chart display"
- * hides them all at once.
+ * Folded until its head is clicked, per chart: sixteen indicators with three scenarios each is a long page, and the
+ * charts are what it is read for; the switch in "Chart display" hides the sections altogether.
  */
 export function WhyDifferent({
   why,
@@ -39,7 +39,7 @@ export function WhyDifferent({
   indicator: Picked
   color: (s: MatrixRow) => string
 }): JSX.Element | null {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [shown, setShown] = useState<WhyPair | null>(null)
   const { round } = useSettings()
   const digits = round.results
