@@ -567,7 +567,7 @@ describe('Settings → About', () => {
             phase: 'available',
             current: '1.2.0',
             version: '1.3.0',
-            notes: 'A long text.'
+            notes: { blocks: [{ kind: 'paragraph', spans: [{ text: 'A long text.' }] }] }
           }),
           check: vi.fn(),
           onEvent: () => () => {}
