@@ -1,36 +1,45 @@
 /**
- * Reading the previous release: the update feed names the installer and its SHA-512, and the app archive is found
- * inside the installer only where exactly one place has the 7z signature, a valid start header and the NSIS length
- * in front of it. The download and 7-Zip run on the release VM; these are the parts that decide.
+ * Reading the previous release: GitHub's record of the latest release names the installer and its SHA-256, and the
+ * app archive is found inside the installer only where exactly one place has the 7z signature, a valid start header
+ * and the NSIS length in front of it. The download and 7-Zip run on the release VM; these are the parts that decide.
  */
 import { crc32 } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 
-import { feedEntry, findAppArchive } from './previous-release.mjs'
+import { findAppArchive, installerOf } from './previous-release.mjs'
 
-const SHA = `${'A'.repeat(86)}==`
+const TARGET = { owner: 'prismlca', repo: 'prismlca' }
+const DIGEST = `sha256:${'ab'.repeat(32)}`
+const asset = (name: string, digest: string | null = DIGEST) => ({ name, digest })
+const release = (tag: string, assets: unknown[]) => ({ tag_name: tag, assets })
 
-describe('update feed', () => {
-  it('names version, installer and SHA-512 as electron-builder writes them', () => {
-    const text = [
-      'version: 0.9.12',
-      'files:',
-      '  - url: PrismLCA-Setup-0.9.12.exe',
-      `    sha512: ${SHA}`,
-      '    size: 587396424',
-      'path: PrismLCA-Setup-0.9.12.exe',
-      `sha512: ${SHA}`,
-      "releaseDate: '2026-11-13T18:02:11.188Z'"
-    ].join('\n')
-    expect(feedEntry(text)).toEqual({ version: '0.9.12', path: 'PrismLCA-Setup-0.9.12.exe', sha512: SHA })
+describe("the latest release's record", () => {
+  it('names version, installer, its address and SHA-256 as the GitHub API writes them', () => {
+    const record = release('v0.9.17', [
+      asset('latest.yml'),
+      asset('PrismLCA-Setup-0.9.17.exe'),
+      asset('PrismLCA-Setup-0.9.17.exe.blockmap'),
+      asset('PrismLCA-0.9.17.AppImage')
+    ])
+    expect(installerOf(record, TARGET)).toEqual({
+      version: '0.9.17',
+      name: 'PrismLCA-Setup-0.9.17.exe',
+      url: 'https://github.com/prismlca/prismlca/releases/download/v0.9.17/PrismLCA-Setup-0.9.17.exe',
+      sha256: 'ab'.repeat(32)
+    })
   })
 
-  it('refuses a feed that could point anywhere else', () => {
-    const feed = (version: string, path: string, sha512: string) => `version: ${version}\npath: ${path}\nsha512: '${sha512}'\n`
-    expect(() => feedEntry(feed('0.9.12', '../other.exe', SHA))).toThrow(/installer/)
-    expect(() => feedEntry(feed('0.9.12', 'evil/PrismLCA-Setup-1.exe', SHA))).toThrow(/installer/)
-    expect(() => feedEntry(feed('0.9', 'PrismLCA-Setup-0.9.exe', SHA))).toThrow(/version/)
-    expect(() => feedEntry(feed('0.9.12', 'PrismLCA-Setup-0.9.12.exe', 'abc'))).toThrow(/SHA-512/)
+  it('refuses a record that could point anywhere else or cannot be checked', () => {
+    const one = (tag: string, a: unknown) => () => installerOf(release(tag, [a]), TARGET)
+    expect(one('v0.9', asset('PrismLCA-Setup-0.9.exe'))).toThrow(/version tag/)
+    expect(one('0.9.17', asset('PrismLCA-Setup-0.9.17.exe'))).toThrow(/version tag/)
+    expect(one('v0.9.17', asset('../PrismLCA-Setup-0.9.17.exe'))).toThrow(/0 Windows installers/)
+    expect(one('v0.9.17', asset('evil/PrismLCA-Setup-0.9.17.exe'))).toThrow(/0 Windows installers/)
+    expect(one('v0.9.17', asset('PrismLCA-Setup-0.9.17.exe', null))).toThrow(/SHA-256/)
+    expect(one('v0.9.17', asset('PrismLCA-Setup-0.9.17.exe', 'sha512:abc'))).toThrow(/SHA-256/)
+    const two = release('v0.9.17', [asset('PrismLCA-Setup-0.9.17.exe'), asset('PrismLCA-Setup-0.9.17-x.exe')])
+    expect(() => installerOf(two, TARGET)).toThrow(/2 Windows installers/)
+    expect(() => installerOf({}, TARGET)).toThrow(/version tag/)
   })
 })
 
