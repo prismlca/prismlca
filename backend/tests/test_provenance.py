@@ -69,6 +69,18 @@ def test_clean_entry_stores_a_mass_range_validated_or_not_at_all():
     assert "mass_range_kg" not in entry["findings"][2]
 
 
+def test_clean_entry_keeps_who_gave_a_figure_only_in_its_own_words():
+    entry = clean_entry({
+        "question": "Bill of materials: barrow",
+        "findings": [
+            {"text": "tub: 11 kg", "sources": ["https://e.org/t"], "origin": "assistant"},
+            {"text": "wheel: 2.5 kg", "sources": [], "origin": "USER"},
+            {"text": "frame: 6 kg", "sources": ["https://e.org/f"], "origin": "the internet"},
+        ],
+    })
+    assert [f.get("origin") for f in entry["findings"]] == ["assistant", "user", None]
+
+
 def test_clean_entry_keeps_the_engine_excerpt_bounded():
     entry = clean_entry({
         "question": "q",
@@ -542,6 +554,66 @@ def test_review_endpoint_records_the_chat(client, token, project):
 
 
 # --- what the report makes of them -------------------------------------------
+
+
+def test_a_figure_the_user_confirms_is_marked_so_without_its_page_turning_backed(project):
+    store = ResearchLogStore()
+    q = "Bill of materials: barrow"
+    store.record("m", [{"question": q, "findings": [
+        {"text": "frame: 6.4 kg", "sources": [], "unsourced": True, "origin": "assistant",
+         "component": "frame", "mass_kg": 6.4},
+        {"text": "tub: 11 kg", "sources": ["https://x.example/tub"], "cited_by_search": False, "origin": "assistant",
+         "component": "tub", "mass_kg": 11},
+    ]}])
+    store.record("m", [{"question": q, "findings": [
+        {"text": "frame: 6.4 kg", "sources": [], "origin": "user", "component": "frame", "mass_kg": 6.4},
+        {"text": "tub: 11 kg", "sources": ["https://x.example/tub"], "origin": "user", "component": "tub", "mass_kg": 11},
+    ]}])
+    rows = {f["text"]: f for e in store.list("m") for f in e["findings"]}
+    assert len(rows) == 2
+    assert rows["frame: 6.4 kg"]["origin"] == "user" and "unsourced" not in rows["frame: 6.4 kg"]
+    # The confirmation is the user's; it does not make the page one a lookup returned.
+    assert rows["tub: 11 kg"]["origin"] == "user" and rows["tub: 11 kg"]["cited_by_search"] is False
+    # A later assistant repeat does not take the user's word back.
+    store.record("m", [{"question": q, "findings": [
+        {"text": "frame: 6.4 kg", "sources": [], "unsourced": True, "origin": "assistant"}]}])
+    assert {f["text"]: f for e in store.list("m") for f in e["findings"]}["frame: 6.4 kg"]["origin"] == "user"
+
+
+def test_a_figure_given_to_a_bill_of_materials_is_no_quotation_and_an_unbacked_page_no_bibliography_entry(project):
+    data = {"web_research": [{"question": "Bill of materials: shelf", "findings": [
+        {"text": "boards: 5.76 kg", "sources": ["https://praxis.example/b"], "cited_by_search": False,
+         "origin": "assistant"},
+        {"text": "beams: 2.6 kg", "sources": ["https://shop.example/beam"], "cited_by_search": True,
+         "origin": "assistant"},
+        {"text": "feet: 0.04 kg", "sources": ["https://shop.example/feet"], "cited_by_search": True},
+    ]}]}
+    assert research_text(data) == "feet: 0.04 kg"
+    assert [u for u, _ in researched_sources(data)] == ["https://shop.example/beam", "https://shop.example/feet"]
+    # A given figure's page whose status is unknown (a provider that names no pages) is no consulted source either.
+    unknown = {"web_research": [{"question": "Bill of materials: shelf", "findings": [
+        {"text": "boards: 5.76 kg", "sources": ["https://praxis.example/b"], "origin": "assistant"}]}]}
+    assert researched_sources(unknown) == []
+
+
+def test_a_page_opened_since_turns_a_logged_part_backed_and_never_the_other_way(project):
+    store = ResearchLogStore()
+    q = "Bill of materials: shelf"
+    part = {"text": "boards: 5.76 kg", "sources": ["https://praxis.example/b"], "origin": "assistant",
+            "component": "boards", "mass_kg": 5.76}
+    store.record("m", [{"question": q, "findings": [part | {"cited_by_search": False}]}])
+    store.record("m", [{"question": q, "findings": [part | {"cited_by_search": True}]}])
+    rows = [f for e in store.list("m") for f in e["findings"]]
+    assert len(rows) == 1 and rows[0]["cited_by_search"] is True
+    store.record("m", [{"question": q, "findings": [part | {"cited_by_search": False}]}])
+    assert [f for e in store.list("m") for f in e["findings"]][0]["cited_by_search"] is True
+    # Another page backed says nothing about this one.
+    store.record("m", [{"question": q, "findings": [
+        {"text": "beams: 2 kg", "sources": ["https://a.example"], "cited_by_search": False, "origin": "assistant"}]}])
+    store.record("m", [{"question": q, "findings": [
+        {"text": "beams: 2 kg", "sources": ["https://b.example"], "cited_by_search": True, "origin": "assistant"}]}])
+    beams = [f for e in store.list("m") for f in e["findings"] if f["text"] == "beams: 2 kg"]
+    assert beams[0]["cited_by_search"] is False
 
 
 def test_researched_sources_dedupe_against_cited(project):

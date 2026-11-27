@@ -59,6 +59,10 @@ export interface BomItem {
   /** Set once the sources are settled (bomSources.ts): no page is left behind the figure — the leg named none,
    *  or its link leads to no page. The figure stays in the sums; this says nothing backs it. */
   unsourced?: boolean
+  /** Set on a part the caller already had (bomKnownParts.ts): `assistant` when the chat found or worked it out itself,
+   *  `user` when the user stated it — then the user is its source and no page is needed. Absent: researched. For a
+   *  known part, `cited_by_search` says whether its page is on the chat's own record rather than the researchers'. */
+  origin?: 'assistant' | 'user'
 }
 
 /** Another figure for the same part, on the entry's basis: the mass of all the pieces the entry stands for. */

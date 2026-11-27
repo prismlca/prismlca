@@ -21,6 +21,7 @@ import type { ChatPlan } from '../../../shared/plan'
 import type { ModelScope } from '../modelScope'
 import type { ScoredRecord } from './advice/scored'
 import type { WebRecord } from '../providers/types'
+import type { LegOutcome } from '../bomBalance'
 
 export interface ToolCtx {
   /** Authenticated backend call; resolves the JSON body or throws a readable error. */
@@ -144,6 +145,10 @@ export interface ToolCtx {
     maxComponents?: number
     domains?: string[]
     recipe?: { of?: string; mass_kg?: number; ingredients?: string[] }
+    /** Parts the chat already has a mass for, one outcome each (bomKnownParts.ts). */
+    known?: LegOutcome[]
+    /** Whether a known part's page is on the chat's own record. */
+    onChatRecord?: (url: string) => boolean | undefined
   }) => Promise<unknown>
   /** Run the generic web-research sub-agent (injected, same reasoning as `research`). */
   researchWeb?: (opts: {
@@ -181,6 +186,9 @@ export interface ToolCtx {
    *  hold them (webLookups.ts) — the review dossier lists them. Absent in an MCP session, whose client
    *  runs its own searches. */
   webLookups?: () => WebRecord[]
+  /** The research tools' answers in this chat, parsed, as far as its carried rounds hold them: the pages they vouch
+   *  for back a known part of a bill of materials (bomChatRecord.ts). Absent in an MCP session. */
+  researchAnswers?: () => unknown[]
 }
 
 export interface Tool {

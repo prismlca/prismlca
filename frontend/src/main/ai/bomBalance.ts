@@ -22,6 +22,9 @@ export interface LegOutcome {
   request: string | null
   leg?: BomLeg
   error?: string
+  /** A part the caller already had a mass for (bomKnownParts.ts): weighed like a researched one, but not a request —
+   *  it was never researched, so it counts in no coverage and has no status of its own. */
+  known?: true
 }
 
 export interface Overlap {
@@ -32,7 +35,9 @@ export interface Overlap {
 export interface BomWeighing {
   summary: string
   requests?: Array<{ component: string; status: RequestStatus }>
-  coverage: { requested: number; with_mass: number } | { listed: number; with_mass: number }
+  coverage:
+    | { requested: number; with_mass: number; known?: number }
+    | { listed: number; with_mass: number; known?: number }
   items: BomItem[]
   unresolved: UnresolvedComponent[]
   totals_found?: ProductMass[]
@@ -436,7 +441,7 @@ export function weighBom(
     }
     const status = statusOf(o.leg)
     const name = o.request ?? 'the component list'
-    if (o.request !== null) requests.push({ component: o.request, status })
+    if (o.request !== null && !o.known) requests.push({ component: o.request, status })
     if (status === 'failed') {
       if (o.request !== null)
         unresolved.push({
@@ -605,8 +610,13 @@ export function weighBom(
         }
       : weighed
   const withMass = requests.filter((r) => r.status === 'with_mass').length
+  const known = outcomes.filter((o) => o.known).length
   const coverage = componentMode
-    ? { requested: requests.length + (opts.notResearched?.length ?? 0), with_mass: withMass }
+    ? {
+        requested: requests.length + (opts.notResearched?.length ?? 0),
+        with_mass: withMass,
+        ...(known ? { known } : {})
+      }
     : { listed: items.length + unresolved.length, with_mass: items.length }
   const summary = summarise({
     componentMode,
@@ -649,12 +659,17 @@ function summarise(s: {
   recipe?: RecipeWeighing
   recipeOnly: boolean
 }): string {
-  const c = s.coverage as { requested?: number; listed?: number; with_mass: number }
+  const c = s.coverage as { requested?: number; listed?: number; with_mass: number; known?: number }
   const mixture = s.recipe?.block.mass_kg
+  // Known parts are named apart from the requested ones: they were given, not researched.
+  const given = c.known ? `${c.known} known part${c.known === 1 ? '' : 's'} given` : ''
   const parts = s.recipeOnly
     ? 'Only the recipe was researched, no other part of the product (a container or packaging would go in components)'
     : s.componentMode
-      ? `${c.with_mass} of ${c.requested} requested components came back with a mass of their own`
+      ? c.requested || !given
+        ? `${c.with_mass} of ${c.requested} requested components came back with a mass of their own` +
+          (given ? `, beside ${given}` : '')
+        : `${given[0].toUpperCase()}${given.slice(1)}${s.recipe ? '' : ', nothing researched'}`
       : `${c.with_mass} of ${c.listed} listed components have a mass`
   const packs = [
     s.balance.packaging_kg ? `sales packaging ${s.balance.packaging_kg} kg` : '',

@@ -44,6 +44,7 @@ interface Finding {
   unsourced_kg?: number
   /** What the figure check of research_web found for it (webCheck.ts), as the research log keeps it. */
   check?: { status: string; value?: string; unit?: string; refers_to?: string; source?: string }
+  origin?: 'assistant' | 'user'
 }
 interface BomCheck {
   summary?: string
@@ -146,7 +147,15 @@ function findingLine(f: Finding): string {
     f.confidence_note ? ` (${oneLine(f.confidence_note)})` : '',
     f.note ? ` Note: ${oneLine(f.note)}` : '',
     ids ? ` — ${ids}` : '',
-    f.cited_by_search === false ? ' (source not returned by the search engine)' : '',
+    // Who passed the figure in, when it came with the call: the assistant (also a researched figure weighed again) or
+    // the user, who is then its source.
+    f.origin === 'assistant' ? ' (given by the assistant)' : '',
+    f.origin === 'user' ? ' (stated by the user)' : '',
+    f.cited_by_search === false
+      ? f.origin
+        ? ' (source on no record of the chat)'
+        : ' (source not returned by the search engine)'
+      : '',
     checkLine(f.check),
     f.unsourced
       ? ' — NO SOURCE'

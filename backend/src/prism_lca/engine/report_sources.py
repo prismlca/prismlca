@@ -65,6 +65,10 @@ def researched_sources(data: dict[str, Any], exclude: set[str] | None = None) ->
     for entry in data.get("web_research") or []:
         question = str(entry.get("question") or "").strip()
         for finding in entry.get("findings") or []:
+            # A page the assistant or the user gave for a bill-of-materials figure is demonstrably consulted only when
+            # a lookup returned or opened it; unbacked or unknown, it stays in the log and out of the bibliography.
+            if finding.get("origin") and finding.get("cited_by_search") is not True:
+                continue
             # The page a figure check read its verdict on was consulted as much as the finding's own.
             check = finding.get("check") if isinstance(finding.get("check"), dict) else {}
             checked = [check["source"]] if check.get("source") and check.get("status") != "not_found" else []
@@ -90,7 +94,8 @@ def research_text(data: dict[str, Any]) -> str:
     `research_web` call sits even when recording it in the log failed. Only the findings' text and the
     engine's excerpt of the cited page are taken — never a URL, whose digits are no figure anybody
     stated — and only from a finding that names its source: research may be run allowing unsourced
-    statements, and a figure nobody can be cited for is no quotation.
+    statements, and a figure nobody can be cited for is no quotation. A figure the assistant or the user gave a bill
+    of materials is no research finding and is not taken.
     """
     import json
 
@@ -98,7 +103,9 @@ def research_text(data: dict[str, Any]) -> str:
 
     def walk(node: Any) -> None:
         if isinstance(node, dict):
-            sourced = bool(node.get("sources")) or bool(node.get("url"))
+            # A figure the assistant or the user gave a bill of materials (``origin``) is no research finding, whatever
+            # page stands beside it: a derivation from dimensions names the page of the dimensions, not of the figure.
+            sourced = (bool(node.get("sources")) or bool(node.get("url"))) and not node.get("origin")
             for key, value in node.items():
                 if key in ("text", "excerpt") and isinstance(value, str):
                     if sourced:

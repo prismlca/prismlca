@@ -149,6 +149,44 @@ def test_a_row_counted_without_a_source_says_so():
     assert _rows(merged) == ["- water: 0.4595 kg — s.example/sles — NO SOURCE for 0.35 kg of it"]
 
 
+def test_a_row_the_chat_or_the_user_gave_says_who_gave_it():
+    record = _run([_bom("barrow",
+                        _part("tub", 11, sources=["https://shop.example/tub"], origin="assistant"),
+                        _part("frame", 6.4, sources=[], unsourced=True, origin="assistant"),
+                        _part("wheel", 2.5, sources=[], origin="user"))], [], [])
+    assert _rows(record) == [
+        "- tub: 11 kg — shop.example/tub — given by the assistant",
+        "- frame: 6.4 kg — given by the assistant — NO SOURCE: the assistant counted this mass without a page behind it",
+        "- wheel: 2.5 kg — stated by the user",
+    ]
+
+
+def test_a_row_whose_page_no_lookup_backs_says_so():
+    record = _run([_bom("shelf",
+                        _part("boards", 5.76, sources=["https://www.praxis.example/10322182"], cited_by_search=False,
+                              origin="assistant"),
+                        _part("beams", 2, sources=["https://shop.example/beam"], cited_by_search=False),
+                        _part("feet", 0.04, sources=["https://shop.example/feet"], cited_by_search=True))], [], [])
+    assert _rows(record) == [
+        "- boards: 5.76 kg — praxis.example/10322182 — given by the assistant (source on no record of the chat)",
+        "- beams: 2 kg — shop.example/beam (source not returned by the search engine)",
+        "- feet: 0.04 kg — shop.example/feet",
+    ]
+
+
+def test_a_given_row_says_how_it_was_got_and_a_page_beside_a_users_figure_is_not_its_check():
+    record = _run([_bom("door",
+                        _part("strip", 0.65, sources=["https://forza.example/epd.pdf"], cited_by_search=True,
+                              origin="user", note="Re-weighed by the user: 0.65 kg (the EPD states 0.6 kg)"),
+                        _part("core", 56.2, sources=["https://forza.example/epd.pdf"], cited_by_search=True,
+                              origin="assistant", note="EPD table 4"))], [], [])
+    assert _rows(record) == [
+        "- strip: 0.65 kg — forza.example/epd.pdf — stated by the user (the page beside it is not checked against "
+        "this figure) — how: Re-weighed by the user: 0.65 kg (the EPD states 0.6 kg)",
+        "- core: 56.2 kg — forza.example/epd.pdf — given by the assistant — how: EPD table 4",
+    ]
+
+
 def test_the_pegs_case_is_a_remark_on_its_row():
     """The parameter holds the researched mass and reaches the shipping weight and a switched-off end-of-life
     amount, and no production input. The 0.2 kg of paint beside it is nobody's answer any more."""

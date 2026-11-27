@@ -35,6 +35,7 @@ import { stallNudge } from './toolGuards'
 import { planReminderDue } from './planReminder'
 import { getActiveProvider } from './providers/state'
 import { researchBom } from './researchBom'
+import { researchAnswers } from './bomChatRecord'
 import { researchWeb } from './subagent'
 import { reviewDossier, reviewerModel } from './critic'
 import { scoredForTranscript, seedScored, type ScoredEntry } from './tools/advice/scored'
@@ -882,6 +883,8 @@ export async function runAgent(req: AgentRequest, deps: AgentDeps): Promise<Agen
   ctx.reviewModel = reviewerModel(req.reviewModel)
   // The provider's web lookups this chat's carried rounds and this turn's recorded, for the review dossier.
   ctx.webLookups = () => messages.flatMap((m) => (m.web ? [m.web] : []))
+  // The research tools' answers, for the pages that back a known part of a bill of materials.
+  ctx.researchAnswers = () => researchAnswers(messages)
   if (req.chatTitle) ctx.chatTitle = req.chatTitle
 
   // The chat's plan: the tool reads and writes it here, the IPC persists it, the renderer draws it.

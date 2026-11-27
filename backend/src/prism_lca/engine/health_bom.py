@@ -58,6 +58,8 @@ MAX_ROWS = 60
 _NAMED_PARAMETERS = 3
 
 _LABEL_CHARS = 110
+#: Characters of a given figure's note a row shows.
+_NOTE_CHARS = 140
 _PRODUCT_CHARS = 90
 
 
@@ -143,6 +145,13 @@ def _source_id(url: str) -> str:
     return f"{host}/{unquote(last[-1])[:40]}" if last else host
 
 
+#: How a row says who had its figure when the research did not find it.
+_ORIGIN_WORDS = {
+    "assistant": " — given by the assistant",
+    "user": " — stated by the user",
+}
+
+
 def _row_line(row: _Row) -> str:
     f = row.finding
     rng = f.get("mass_range_kg")
@@ -159,8 +168,25 @@ def _row_line(row: _Row) -> str:
             f" (alternatives found: {', '.join(f'{v:g} kg' for v in others)})" if others else "",
             f" [{judged}]" if judged else "",
             f" — {', '.join(sources)}" if sources else "",
-            # Counted by the research with no page behind it: a row like the others, but none to check it against.
-            " — NO SOURCE: the research counted this mass without a page behind it" if f.get("unsourced") else "",
+            # A figure the assistant passed in (a page it opened, its own search or derivation, or the research's own
+            # figure weighed again), or one the user stated — then the user is its source.
+            _ORIGIN_WORDS.get(str(f.get("origin") or ""), ""),
+            # A page no lookup backs: the research's leg wrote it without the engine returning it, or the assistant
+            # gave it and no lookup of its chat returned it. The row keeps it, marked.
+            (
+                " (source on no record of the chat)" if f.get("origin") else " (source not returned by the search engine)"
+            )
+            if f.get("cited_by_search") is False and sources
+            else "",
+            # A page beside a figure the user stated was named, perhaps opened — never checked against the figure.
+            " (the page beside it is not checked against this figure)" if f.get("origin") == "user" and sources else "",
+            # How the assistant or the user got the figure: a derivation, a re-weighing, where in a document it stands.
+            f" — how: {_cap(str(f['note']), _NOTE_CHARS)}" if f.get("origin") and f.get("note") else "",
+            # Counted with no page behind it: a row like the others, but none to check it against.
+            f" — NO SOURCE: {'the assistant' if f.get('origin') == 'assistant' else 'the research'} counted this "
+            "mass without a page behind it"
+            if f.get("unsourced")
+            else "",
             # A mass merged from several contributions (one substance of a recipe) of which only some have a page.
             f" — NO SOURCE for {f['unsourced_kg']:g} kg of it"
             if isinstance(f.get("unsourced_kg"), (int, float)) and not f.get("unsourced")
