@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterLciRows, lciExport, lciRows, sortLciRows } from './lciRows'
+import { compartmentPaths, filterLciRows, lciExport, lciRows, sortLciRows } from './lciRows'
 import { resultsWorkbook, splitLabel } from './resultsWorkbook'
 import type { Matrix, Picked, StackedData } from './types'
 
@@ -53,11 +53,36 @@ describe('the rows of the LCI table', () => {
     expect(lciRows({ ...MATRIX, flows: undefined })).toEqual([])
   })
 
-  it('filter by flow name or compartment, ignoring case', () => {
+  it('filter by part of the flow name, ignoring case, and by compartment', () => {
     const rows = lciRows(MATRIX)
-    expect(filterLciRows(rows, 'WATER').map((r) => r.flow)).toEqual(['water'])
-    expect(filterLciRows(rows, 'urban').map((r) => r.amounts)).toEqual([[1.1, 0.6]])
-    expect(filterLciRows(rows, '  ')).toBe(rows)
+    const by = (flow: string, compartment: string[] | null = null): number[][] =>
+      filterLciRows(rows, { flow, compartment }).map((r) => r.amounts)
+    expect(by('WATER')).toEqual([[4, 0]])
+    // The name only: the compartment has a filter of its own.
+    expect(by('urban')).toEqual([])
+    // A compartment holds its sub-compartments; a sub-compartment only itself.
+    expect(by('', ['air'])).toEqual([
+      [0, -0.25],
+      [1.1, 0.6]
+    ])
+    expect(by('', ['air', 'urban air close to ground'])).toEqual([[1.1, 0.6]])
+    expect(by('water', ['air'])).toEqual([])
+    expect(filterLciRows(rows, { flow: '  ', compartment: null })).toBe(rows)
+  })
+
+  it('offer every compartment and the ones above it, each before its sub-compartments', () => {
+    const rows = lciRows(MATRIX)
+    expect(compartmentPaths(rows)).toEqual([
+      ['air'],
+      ['air', 'urban air close to ground'],
+      ['natural resource'],
+      ['natural resource', 'in water']
+    ])
+    // "natural resource" is offered although no row lies in it alone.
+    expect(compartmentPaths(rows.filter((r) => r.categories[0] !== 'air'))).toEqual([
+      ['natural resource'],
+      ['natural resource', 'in water']
+    ])
   })
 
   it('sort by a subject amount with its sign, and by text', () => {

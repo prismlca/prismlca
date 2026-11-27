@@ -129,6 +129,7 @@ describe('the LCI table on the Results page', () => {
     await user.click(screen.getByRole('button', { name: /^efficient/ }))
     expect(bodyRows().map((r) => r[4])).toEqual(['0.6', '0.002', '0'])
 
+    await user.click(screen.getByRole('button', { name: 'Filter by flow' }))
     await user.type(screen.getByPlaceholderText('Filter flows…'), 'carbon')
     expect(bodyRows()).toHaveLength(1)
     expect(screen.getByText('1 of 3')).toBeInTheDocument()
@@ -141,10 +142,56 @@ describe('the LCI table on the Results page', () => {
     expect(String((writeText.mock.calls[0] as unknown as [string])[0]).replace(',', '.')).toBe('1.123456789')
   })
 
+  it('keeps its filters behind a funnel beside the Flow and Compartment titles', async () => {
+    const { user, head } = await calculated('fg-lci-filter')
+    await user.click(head)
+    // No field until asked for.
+    expect(screen.queryByPlaceholderText('Filter flows…')).toBeNull()
+    expect(screen.queryByRole('combobox', { name: 'Compartment filter' })).toBeNull()
+
+    const byFlow = screen.getByRole('button', { name: 'Filter by flow' })
+    expect(byFlow).toHaveAttribute('aria-pressed', 'false')
+    await user.click(byFlow)
+    expect(byFlow).toHaveAttribute('aria-pressed', 'true')
+    const field = screen.getByRole('textbox', { name: 'Flow filter' })
+    expect(field).toHaveFocus()
+    // The name only: "air" is a compartment, and no flow is called so.
+    await user.type(field, 'air')
+    expect(bodyRows()).toEqual([['No flow matches the filters.']])
+    // Escape clears and closes the field and gives the focus back to its funnel.
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('textbox', { name: 'Flow filter' })).toBeNull()
+    expect(byFlow).toHaveFocus()
+    expect(bodyRows()).toHaveLength(3)
+
+    await user.click(screen.getByRole('button', { name: 'Filter by compartment' }))
+    const list = screen.getByRole('combobox', { name: 'Compartment filter' })
+    expect(list).toHaveFocus()
+    expect([...(list as HTMLSelectElement).options].map((o) => o.text)).toEqual([
+      'All compartments',
+      'air',
+      'natural resource',
+      'natural resource / in water',
+      'soil'
+    ])
+    await user.selectOptions(list, 'natural resource')
+    expect(bodyRows().map((r) => r[0])).toEqual(['Water'])
+    expect(screen.getByRole('button', { name: 'Filter by compartment' })).toHaveClass('active')
+
+    // Both filters at once narrow together; closing a funnel lifts its filter.
+    await user.click(byFlow)
+    await user.type(screen.getByRole('textbox', { name: 'Flow filter' }), 'carbon')
+    expect(bodyRows()).toEqual([['No flow matches the filters.']])
+    await user.click(screen.getByRole('button', { name: 'Filter by compartment' }))
+    expect(screen.queryByRole('combobox', { name: 'Compartment filter' })).toBeNull()
+    expect(bodyRows().map((r) => r[0])).toEqual(['Carbon dioxide, fossil'])
+  })
+
   it('exports the rows as shown, and the page export carries the whole inventory', async () => {
     const { user, head, prism } = await calculated('fg-lci-export')
     await user.click(head)
-    await user.type(screen.getByPlaceholderText('Filter flows…'), 'c') // all but "Lead" (soil)
+    await user.click(screen.getByRole('button', { name: 'Filter by flow' }))
+    await user.type(screen.getByPlaceholderText('Filter flows…'), 'r') // all but "Lead"
     await user.click(screen.getByRole('button', { name: 'Export LCI' }))
     await waitFor(() => expect(prism.calls.some((c) => c.path === '/api/v1/export/lci')).toBe(true))
     const lci = prism.calls.find((c) => c.path === '/api/v1/export/lci')!.body as {
