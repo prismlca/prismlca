@@ -187,7 +187,7 @@ describe('what makes the difference on the Results page', () => {
     const { prism } = renderWithPrism(<Results activeDb={db} methods={[GWP, AP]} databases={DBS} />, {
       routes: routes(db)
     })
-    await calculate(3)
+    const user = await calculate(3)
     const asked = prism.calls
       .filter((c) => c.path === '/api/v1/calc/compare')
       .map((c) => (c.body as { difference: { run: string; of: unknown[]; at: number } }).difference)
@@ -199,7 +199,12 @@ describe('what makes the difference on the Results page', () => {
       { database: db, code: 'root', scenario: 's2' }
     ])
 
+    // Folded under every chart until its head is clicked.
     const section = await screen.findByRole('button', { name: 'What makes the difference — climate change' })
+    expect(section.getAttribute('aria-expanded')).toBe('false')
+    expect(document.querySelector('.why-list')).toBeNull()
+    await user.click(section)
+    expect(section.getAttribute('aria-expanded')).toBe('true')
     const why = section.closest('.why') as HTMLElement
     const items = within(why).getAllByRole('listitem')
     expect(items.map((li) => li.querySelector('.why-who')?.textContent)).toEqual([
@@ -215,10 +220,12 @@ describe('what makes the difference on the Results page', () => {
     expect(document.querySelector('.why-note')).toBeNull()
   })
 
-  it('lists every change of a pair on a click, and folds per chart', async () => {
+  it('lists every change of a pair on a click, and opens and folds per chart', async () => {
     const db = 'fg-why-all'
     renderWithPrism(<Results activeDb={db} methods={[GWP, AP]} databases={DBS} />, { routes: routes(db) })
     const user = await calculate(3)
+    const head = await screen.findByRole('button', { name: 'What makes the difference — climate change' })
+    await user.click(head)
     await user.click(
       await screen.findByRole('button', { name: 'All changes — Replacement hose — climate change' })
     )
@@ -232,13 +239,13 @@ describe('what makes the difference on the Results page', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog')).toBeNull()
 
-    const head = screen.getByRole('button', { name: 'What makes the difference — acidification' })
+    // The other chart's stays folded, and the opened one folds again on a second click.
+    const other = screen.getByRole('button', { name: 'What makes the difference — acidification' })
+    expect(other.getAttribute('aria-expanded')).toBe('false')
+    expect(other.closest('.why')?.querySelector('.why-list')).toBeNull()
     await user.click(head)
     expect(head.getAttribute('aria-expanded')).toBe('false')
     expect(head.closest('.why')?.querySelector('.why-list')).toBeNull()
-    // The other chart's stays open.
-    const other = screen.getByRole('button', { name: 'What makes the difference — climate change' })
-    expect(other.getAttribute('aria-expanded')).toBe('true')
   })
 
   it('says why a pair could not be split, and the scores stand', async () => {
@@ -246,10 +253,10 @@ describe('what makes the difference on the Results page', () => {
     renderWithPrism(<Results activeDb={db} methods={[GWP, AP]} databases={DBS} />, {
       routes: routes(db, {}, [2])
     })
-    await calculate(3)
-    const why = (
-      await screen.findByRole('button', { name: 'What makes the difference — climate change' })
-    ).closest('.why') as HTMLElement
+    const user = await calculate(3)
+    const head = await screen.findByRole('button', { name: 'What makes the difference — climate change' })
+    await user.click(head)
+    const why = head.closest('.why') as HTMLElement
     expect(within(why).getByText('The model changed while the results were computed.')).toBeTruthy()
     expect(within(why).getAllByRole('listitem')).toHaveLength(2)
   })

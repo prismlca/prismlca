@@ -18,8 +18,8 @@ subject and one indicator, broken down), and "Sensitivity analysis" (tornado and
 - "What makes the difference", under each bar chart and computed with the scores: for every scenario
   against its baseline and every copy against its original, the difference in % and its three largest
   drivers with their share; "all changes…" opens the whole list (before/after, unit, location, formula,
-  contribution, share). It folds per chart, and the "What makes the difference" switch in Chart display hides
-  it everywhere. A scenario is split only against its baseline: with "Baseline — no overrides" unticked, the
+  contribution, share). It is folded under each chart until its heading is clicked, and the "What makes the
+  difference" switch in Chart display hides it everywhere. A scenario is split only against its baseline: with "Baseline — no overrides" unticked, the
   charts say "Tick the baseline to see what makes each scenario differ from it." instead. Subjects it does not
   hold for (independent processes, database datasets) are named in one sentence above the charts.
 - "Save charts" (PNG files) and "Export Excel" (a "Results" sheet, and the inventory as a second sheet "LCI").
@@ -85,14 +85,15 @@ baseline):
 
 ```sh
 node scripts/control-prism.mjs wait visible "role=button:What makes the difference — climate change / global warming potential (GWP100)"
+node scripts/control-prism.mjs click "role=button:What makes the difference — climate change / global warming potential (GWP100)"
 node scripts/control-prism.mjs wait text "css=.why-item >> has-text=heavy" "/vs baseline\+100%Carbon dioxide, fossil \(air\) 100 %/"
 node scripts/control-prism.mjs click "role=button:All changes — heavy — climate change / global warming potential (GWP100)"
 node scripts/control-prism.mjs snapshot --target "role=table:All changes"
 node scripts/control-prism.mjs click "role=dialog:heavy vs baseline — climate change / global warming potential (GWP100) >> role=button:Close"
 ```
 
-- The head of each chart's section is a button named "What makes the difference — <indicator>"; it folds
-  that chart's section (`aria-expanded`). "all changes…" is named "All changes — <subject> — <indicator>" and
+- The head of each chart's section is a button named "What makes the difference — <indicator>"; it opens and
+  folds that chart's section (`aria-expanded`), which starts folded. "all changes…" is named "All changes — <subject> — <indicator>" and
   opens a dialog named "<subject> vs <reference> — <indicator>" with the table "All changes".
 
 - Tabs: `"role=tab:Results"`, `"role=tab:Decomposition tree"`, `"role=tab:Sensitivity analysis"`.
@@ -136,7 +137,7 @@ node scripts/control-prism.mjs click "role=dialog:heavy vs baseline — climate 
 - Clicking the Results row in the navigation always opens the "Results" tab, whichever tab was open.
 - What makes the difference is shown only after a run that had a pair to split: with one subject, or with
   only independent processes, there is no section (with several independent subjects, one sentence above the
-  charts says why); with scenarios whose baseline is unticked, only the sentence asking for it (`css=.why-ask`). Its chips are drawn per chart, so `has-text` on `.ind-chart` narrows to one indicator.
+  charts says why); with scenarios whose baseline is unticked, only the sentence asking for it (`css=.why-ask`). Each section starts folded and its chips are in the page only once its head is clicked; they are drawn per chart, so `has-text` on `.ind-chart` narrows to one indicator.
 - The LCI section is there only once a run has finished and remembers whether it was left open; its rows are
   not in the page while it is folded. A subject's label is also a column head, so `"role=button:<label>"` can
   match its row in the Subjects group too: narrow with `"role=table:Life cycle inventory >> role=button:…"`.
