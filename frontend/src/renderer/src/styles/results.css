@@ -492,7 +492,7 @@
 .lci-table .lci-filter-btn:hover, .lci-table .lci-filter-btn.open { color: var(--green-ink); }
 .lci-table .lci-filter-btn.active { color: var(--green-ink); background: var(--green-soft); }
 .lci-table .lci-filter-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
-.lci-table .lci-filter-row td { background: var(--surface-3); padding-top: 0; padding-bottom: 6px; }
+.lci-table .lci-filter-row td { background: var(--surface-3); padding-top: 2px; padding-bottom: 6px; }
 .lci-table .lci-filter-field { width: 100%; min-width: 160px; box-sizing: border-box; height: 28px; padding: 0 8px;
   border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
 .lci-table .lci-filter-field:focus { outline: none; border-color: var(--green); }
