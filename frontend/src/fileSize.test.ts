@@ -41,7 +41,7 @@ const CEILINGS: Record<string, number> = {
   'renderer/src/views/DetailedResults.tsx': 1237, // 1212
   'renderer/src/views/Report.tsx': 1187, // 1162, after the default indicators moved to lib/methods.ts
   'renderer/src/views/ImportWizard.tsx': 1208, // 1183
-  'renderer/src/views/Parameters.tsx': 1070, // 1045, after the add form moved out (views/NewParameterPanel.tsx)
+  'renderer/src/views/Parameters.tsx': 1056, // 1031, after the "Used by" cell moved out (views/ParamUsedBy.tsx)
   'main/ai/reportWriter.ts': 882, // after the conversation (writer/dialogue.ts), the messages (writer/messages.ts), the continuation (writer/answers.ts) and the lookup context (writer/lookupCtx.ts) moved out
   'renderer/src/views/Results.tsx': 1068, // 1043
   'renderer/src/views/Overview.tsx': 889 // 864

@@ -259,9 +259,6 @@
 .pc-use:hover:not(:disabled) { background: var(--surface-3); color: var(--green-ink); }
 .pc-use:hover:not(:disabled) svg { opacity: 1; }
 .pc-use:disabled { cursor: default; }
-/* A dependent parameter, not a process: nowhere to jump to, so it is a label with the same metrics
-   as the buttons beside it, set in the code face that names a parameter everywhere else. */
-.pc-use-param { cursor: default; font-family: var(--mono); padding-left: 5px; }
 .pc-use-none { padding: 2px 3px; font-size: var(--fs-sec); font-style: italic; color: var(--wait); }
 
 .pc-act { display: flex; gap: 2px; padding-top: 1px; opacity: 0; transition: opacity .12s; }
@@ -521,3 +518,11 @@
    at the right edge on the new line instead of starting it at the left. On an unwrapped bar the spacer
    has already taken the free room, so this margin is zero there. */
 .topbar .darkmode { margin-left: auto; }
+
+/* A parameter a "Used by" link was followed to: lit until the next click elsewhere, so the eye finds the row
+   the page scrolled to. The row takes the focus with it, and the light is its focus mark. It arrives a shade
+   stronger and settles, which catches the eye also when the row was in view and nothing scrolled. */
+.prow-item.spot { background: var(--green-soft); box-shadow: inset 3px 0 0 var(--green); outline: none;
+  animation: pspot-in .9s ease-out; }
+@keyframes pspot-in { from { background: color-mix(in srgb, var(--green) 32%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .prow-item.spot { animation: none; } }

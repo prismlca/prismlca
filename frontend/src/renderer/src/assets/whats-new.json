@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-27",
+    "title": "Jump between parameters that use each other",
+    "details": "On the Parameters page, a parameter whose formula uses another one now appears under \"Used by\" as a link with the Parameters icon, like the processes beside it. Click it to bring that parameter into view: its group unfolds, a search that hides it is cleared, and its row stays highlighted until you click somewhere else."
+  },
+  {
+    "date": "2026-11-27",
     "title": "Your own bill-of-materials figures are checked and recorded",
     "details": "Masses the assistant reads in a datasheet or EPD, works out from dimensions or gets from you now go through the same bill-of-materials check as researched parts and into the research log, each marked as given by the assistant or stated by you. A page counts as a source only once a search returned it or the assistant opened it, and the health check says when one did not."
   },
