@@ -228,8 +228,12 @@ export const researchTools: Tool[] = [
       const contextOf = (q: RQ): string | undefined =>
         [a.context ? String(a.context) : '', q.context ? String(q.context) : ''].filter(Boolean).join('\n') ||
         undefined
-      const one = (q: RQ, index?: number): Promise<unknown> =>
-        researchWeb({
+      /** Each leg's figure check, by the question it was asked for: it goes to the log, not to the model, which
+       *  reads the verdicts on the findings themselves. By the object, not its text: two detailed questions may
+       *  share a text and differ in their context. */
+      const checks = new Map<RQ, unknown>()
+      const one = async (q: RQ, index?: number): Promise<unknown> => {
+        const r = (await researchWeb({
           question: q.question,
           context: contextOf(q),
           allowUnsourced: a.allow_unsourced === true,
@@ -238,7 +242,12 @@ export const researchTools: Tool[] = [
           // parallel and each note replaces the last, which read as one question at a time.
           index,
           total: asked.length
-        })
+        })) as { web_check?: unknown } | undefined
+        if (!r || typeof r !== 'object' || !('web_check' in r)) return r
+        const { web_check, ...shown } = r
+        checks.set(q, web_check)
+        return shown
+      }
       // Persist what came back, per model. The full answer lives only in this conversation's context
       // and dies with it; the log (questions + sourced findings) is what lets the report print a
       // researched-sources bibliography and lets a chapter writer say where a figure came from. A
@@ -249,6 +258,8 @@ export const researchTools: Tool[] = [
         context?: string
         findings: unknown
         evidence?: Array<{ url: string; excerpt?: string }>
+        /** The figure check: why it ran, what it found, what it cost (webCheck.ts). */
+        web_check?: unknown
       }
       const record = async (entries: Logged[]): Promise<void> => {
         const db = ctx.activeDb
@@ -258,6 +269,7 @@ export const researchTools: Tool[] = [
           .map((e) => ({
             question: e.question,
             ...(e.context ? { context: e.context } : {}),
+            ...(e.web_check ? { web_check: e.web_check } : {}),
             findings: (e.findings as Array<Record<string, unknown>>).map((f) => {
               const first = Array.isArray(f.sources) ? f.sources[0] : undefined
               const ex = (e.evidence ?? []).find((v) => v.url === first && v.excerpt)?.excerpt
@@ -278,7 +290,8 @@ export const researchTools: Tool[] = [
             question: asked[0].question,
             context: contextOf(asked[0]),
             findings: result?.findings,
-            evidence: result?.evidence
+            evidence: result?.evidence,
+            web_check: checks.get(asked[0])
           }
         ])
         return S(result)
@@ -294,7 +307,8 @@ export const researchTools: Tool[] = [
             question: String(r.item),
             context: contextOf(q),
             findings: (r.result as { findings?: unknown })?.findings,
-            evidence: (r.result as { evidence?: Logged['evidence'] })?.evidence
+            evidence: (r.result as { evidence?: Logged['evidence'] })?.evidence,
+            web_check: checks.get(q)
           }))
       )
       // What THIS call cost, legs and web-search fees included. The monthly ledger books it per

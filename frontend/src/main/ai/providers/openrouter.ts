@@ -304,8 +304,10 @@ export const openrouterTransport: ChatTransport<OrState> = {
     // `parameters`: on tool level the API accepts it silently and ignores it — measured
     // with three identical requests on the Exa engine (top level: 3 searches, 0.022 $; under
     // parameters: 1 search, 0.008 $; no cap: 3 searches).
-    // `allowed_domains` sits beside it — the same nesting, documented for both tools (web_fetch spells
-    // its block list `blocked_domains`, web_search `excluded_domains`; only the allow list is sent).
+    // `allowed_domains` sits beside it — the same nesting, documented for both tools. The block lists differ:
+    // web_search spells it `excluded_domains`, web_fetch `blocked_domains`. Only the search's is sent, and only
+    // without an allow list (several engines take one or the other): a host kept out of the results may
+    // still hold the document, and the fetch must be able to open it.
     const tools: Array<ToolSpec | { type: string; parameters?: Record<string, unknown> }> = [
       ...(opts.tools ?? [])
     ]
@@ -314,7 +316,10 @@ export const openrouterTransport: ChatTransport<OrState> = {
       if (opts.webLookupsCap && opts.webLookupsCap > 0) params.max_uses = opts.webLookupsCap
       if (opts.webDomains?.length) params.allowed_domains = opts.webDomains
       const cap = Object.keys(params).length ? { parameters: params } : {}
-      tools.push({ type: 'openrouter:web_search', ...cap }, { type: 'openrouter:web_fetch', ...cap })
+      const excluded =
+        !opts.webDomains?.length && opts.webSearchExcluded?.length ? opts.webSearchExcluded : undefined
+      const search = excluded ? { parameters: { ...params, excluded_domains: excluded } } : cap
+      tools.push({ type: 'openrouter:web_search', ...search }, { type: 'openrouter:web_fetch', ...cap })
     }
 
     // An attached PDF rides in the messages as a `file` part. Models that read PDFs natively get it

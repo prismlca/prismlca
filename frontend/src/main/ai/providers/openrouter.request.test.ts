@@ -79,6 +79,29 @@ describe('openrouter buildRequest — web lookups', () => {
     ])
   })
 
+  it('keeps hosts out of the search only, never the fetch, and only without an allow list', () => {
+    expect(
+      toolsOf({ ...base, webSearch: true, webLookupsCap: 2, webSearchExcluded: ['blog.example'] })
+    ).toEqual([
+      {
+        type: 'openrouter:web_search',
+        parameters: { max_uses: 2, excluded_domains: ['blog.example'] }
+      },
+      { type: 'openrouter:web_fetch', parameters: { max_uses: 2 } }
+    ])
+    expect(toolsOf({ ...base, webSearch: true, webSearchExcluded: ['blog.example'] })).toEqual([
+      { type: 'openrouter:web_search', parameters: { excluded_domains: ['blog.example'] } },
+      { type: 'openrouter:web_fetch' }
+    ])
+    // Several engines take one list or the other: the allow list wins.
+    expect(
+      toolsOf({ ...base, webSearch: true, webDomains: ['destatis.de'], webSearchExcluded: ['blog.example'] })
+    ).toEqual([
+      { type: 'openrouter:web_search', parameters: { allowed_domains: ['destatis.de'] } },
+      { type: 'openrouter:web_fetch', parameters: { allowed_domains: ['destatis.de'] } }
+    ])
+  })
+
   it('keeps the function tools in front of the server tools', () => {
     const fn = {
       type: 'function' as const,

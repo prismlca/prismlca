@@ -460,6 +460,11 @@ process that entered the result at 42 % of its mass — both invisible without t
    - A dominant figure that is not a parameter yet becomes one first (section 6) — a number typed into an
      exchange, or a constant you derived by hand, cannot be varied. Details: the *Parameters & formulas*
      skill; ranges worth using for end-of-life: the *End-of-life & what-if scenarios* skill.
+<!-- if web -->
+   - **Does a figure that carries the result rest only on media or community sources** (press, blogs,
+     buying guides, forums)? Have it checked specifically for support and contradiction before you vary or
+     report it — hand over the figure, what it refers to and the source it came from.
+<!-- endif -->
 6. **Get a second opinion: `review_model`, with `code` and `method`**, once a product system (several
    processes or life-cycle phases) is built, whatever the request — and again before it goes into a report
    or a comparison; not after single-value edits, and not for a quick figure from a one- or two-process

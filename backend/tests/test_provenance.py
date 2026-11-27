@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from prism_lca.engine.report_checks import limitations_blocks
 from prism_lca.engine.report_prompts import brief_facts, build_brief, placeholder_paths
-from prism_lca.engine.report_sources import researched_sources
+from prism_lca.engine.report_sources import research_text, researched_sources
 from prism_lca.engine.research_log import ResearchLogStore, clean_bom_check, clean_entry
 from prism_lca.engine.review_log import ReviewLogStore, tagged_findings
 
@@ -145,6 +145,106 @@ def test_a_bom_call_repeated_with_the_same_findings_is_a_second_dated_entry(proj
     # A web question asked again with nothing new is still not a second row.
     assert store.record("bom2", [ENTRY])["added"] == 1
     assert store.record("bom2", [ENTRY])["added"] == 0
+
+
+#: A web question with its figure check, as research.ts logs it.
+WEB_CHECKED = {
+    "question": "Welcher Anteil des Stahlschrotts aus Gartengeräten wird recycelt?",
+    "findings": [
+        {"text": "Garden tools: 60 % recycled (https://blog.example/b)", "sources": ["https://blog.example/b"],
+         "source_class": "media", "confidence": "low"},
+    ],
+    "web_check": {
+        "trigger": {"findings": 1, "weak": 1, "direct": 0},
+        "figures": [
+            {"finding": 1, "text": "Garden tools: 60 % recycled", "status": "differs", "value": 52.2, "unit": "%",
+             "refers_to": "steel, Germany, 2021", "source": "https://gov.example/t", "source_class": "official",
+             "stronger_source": True, "independent": "yes", "note": "n" * 300},
+            {"finding": 2, "text": "Lifetime 8 years", "status": "guessed"},  # not a status: dropped
+            {"finding": 3, "text": "", "status": "not_found"},  # no statement: dropped
+            {"finding": 4, "text": "Mass 12 kg", "status": "not_checked"},
+        ],
+        "excluded_hosts": ["blog.example", 7],
+        "usd": 0.0123,
+        "requests": 1,
+        "ms": 41000,
+        "outcome": "sideways",
+        "error": None,
+    },
+}
+
+
+def test_a_web_question_keeps_its_figure_check(project):
+    store = ResearchLogStore()
+    assert store.record("web1", [WEB_CHECKED])["added"] == 1
+    (entry,) = store.list("web1")
+    check = entry["web_check"]
+    assert [f["status"] for f in check["figures"]] == ["differs", "not_checked"]
+    first = check["figures"][0]
+    assert first["value"] == "52.2" and first["refers_to"] == "steel, Germany, 2021"
+    assert first["source_class"] == "official" and first["stronger_source"] is True
+    # Only a real yes or no is kept; the leg's word is turned into one before it is logged.
+    assert "independent" not in first
+    assert len(first["note"]) == 200 and first["note"].endswith("…")
+    assert check["trigger"] == {"findings": 1, "weak": 1, "direct": 0}
+    assert check["excluded_hosts"] == ["blog.example"]
+    assert (check["usd"], check["requests"], check["ms"]) == (0.0123, 1, 41000)
+    assert check["outcome"] == "done" and "error" not in check
+    # Asked again, the same finding is not stored twice; the check is — it is that call's own result.
+    assert store.record("web1", [WEB_CHECKED])["added"] == 1
+    second = store.list("web1")[1]
+    assert second["findings"] == [] and second["web_check"]["figures"][0]["status"] == "differs"
+
+
+#: A finding as research_web logs it after the figure check contradicted it.
+CONTRADICTED = {
+    "question": "Textiles reused or recycled?",
+    "findings": [
+        {"text": "Over 90 % of collected textiles are reused or recycled (https://verband.example/info)",
+         "sources": ["https://verband.example/info"], "source_class": "industry", "confidence": "low",
+         "check": {"status": "differs", "value": "88", "unit": "%", "refers_to": "collected textiles, Germany, 2023",
+                   "source": "https://www.bmuv.de/faq", "source_class": "official", "stronger_source": True,
+                   "independent": True, "cited_by_search": True, "extra": "dropped"}},
+    ],
+}
+
+
+def test_a_finding_keeps_its_check_and_a_repeat_hands_one_over(project):
+    store = ResearchLogStore()
+    store.record("chk", [CONTRADICTED])
+    (entry,) = store.list("chk")
+    check = entry["findings"][0]["check"]
+    assert check["status"] == "differs" and check["source"] == "https://www.bmuv.de/faq" and "extra" not in check
+    assert clean_entry({**CONTRADICTED, "findings": [{**CONTRADICTED["findings"][0],
+                                                        "check": {"status": "maybe"}}]})["findings"][0].get("check") is None
+    # Logged first without a check, then asked again and checked: the stored finding takes the check.
+    plain = {**CONTRADICTED, "findings": [{k: v for k, v in CONTRADICTED["findings"][0].items() if k != "check"}]}
+    store.record("chk2", [plain])
+    store.record("chk2", [CONTRADICTED])
+    stored = store.list("chk2")
+    assert len(stored) == 1 and stored[0]["findings"][0]["check"]["status"] == "differs"
+
+
+def test_the_report_reads_a_check_beside_its_finding(project):
+    data = {"web_research": [clean_entry(CONTRADICTED)]}
+    # The page the check read on is a consulted source like the finding's own.
+    assert [u for u, _ in researched_sources(data)] == ["https://verband.example/info", "https://www.bmuv.de/faq"]
+    finding = brief_facts(data)["web_research"][0]["findings"][0]
+    assert finding["check"] == {"status": "differs", "value": "88", "unit": "%",
+                                "refers_to": "collected textiles, Germany, 2023", "source": "https://www.bmuv.de/faq",
+                                "stronger_source": True, "independent": True}
+    # Its figure may be quoted like the finding's own.
+    assert "88" in research_text(data) and "collected textiles, Germany, 2023" in research_text(data)
+    # A check that found nothing adds no source.
+    nothing = {"web_research": [{**CONTRADICTED, "findings": [{**CONTRADICTED["findings"][0],
+                                                               "check": {"status": "not_found", "source": "https://x.example"}}]}]}
+    assert [u for u, _ in researched_sources(nothing)] == ["https://verband.example/info"]
+
+
+def test_a_figure_check_without_a_valid_figure_is_no_check(project):
+    entry = clean_entry({**WEB_CHECKED, "web_check": {"figures": [{"text": "x", "status": "maybe"}]}})
+    assert entry is not None and "web_check" not in entry
+    assert clean_entry({"question": "q", "findings": [], "web_check": {"figures": []}}) is None
 
 
 def test_a_repeat_keeps_its_finding_when_the_full_log_evicts_the_first_record(project):

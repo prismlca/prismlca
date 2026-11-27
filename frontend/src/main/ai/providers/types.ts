@@ -298,8 +298,15 @@ export interface StreamChatOpts {
    *  `allowed_domains` on both tools plus the hosts in the instructions, because its search still mixes in
    *  pages from other hosts; Google direct has no filter, so the instructions are all it gets (domainHint.ts).
    *  Undefined/empty = unrestricted. Set by the research legs only: the model that saw the first
-   *  pass names where the authoritative confirmation lives, and the upgrade pass searches there. */
+   *  pass names where the authoritative confirmation lives, and a caller may restrict a call to it. */
   webDomains?: string[]
+  /** Hosts the provider's web SEARCH leaves out of its results — never its fetch: a page on such a host may
+   *  still be opened by its address (a manufacturer's datasheet on a shop's domain). Set by the research legs'
+   *  figure check, for the hosts of the findings it checks. OpenRouter: `parameters.excluded_domains` on
+   *  web_search; Anthropic: `blocked_domains` on web_search (subdomains included). Both only without an allow
+   *  list: Anthropic takes one list or the other, and so do several of OpenRouter's engines. OpenAI's and
+   *  Google's search take no block list here and ignore it. */
+  webSearchExcluded?: string[]
   /** Cap or raise the model's thinking. Research legs pass 'low': retrieval work needs searching and
    *  transcribing, not deliberation — measured: GLM 5.3 defaults to effort "max" and
    *  spent a full 5-minute leg budget reasoning without writing one visible line. The chat passes the

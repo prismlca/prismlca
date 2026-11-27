@@ -16,15 +16,9 @@ process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
 
 const { streamChat, transcribeAudio } = await import('../client')
 const { setActiveProvider } = await import('./state')
-const {
-  anthropicTransport,
-  API_VERSION,
-  BETA_THINKING_BINDING,
-  effortFor,
-  FETCH_MAX_CONTENT_TOKENS,
-  toMessages,
-  usageEvent
-} = await import('./anthropic')
+const { anthropicTransport, API_VERSION, BETA_THINKING_BINDING, effortFor, toMessages, usageEvent } =
+  await import('./anthropic')
+const { FETCH_MAX_CONTENT_TOKENS } = await import('./anthropicWebTools')
 import { assistantToolTurn, type ChatMessage, type StreamEvent } from './types'
 
 const API = 'https://api.anthropic.com/v1/messages'
@@ -181,6 +175,20 @@ describe('the request', () => {
     ])
     // No beta header for either: both tools are generally available.
     expect(fetchMock.mock.calls[0][1].headers['anthropic-beta']).toBe(BETA_THINKING_BINDING)
+  })
+
+  it('keeps hosts out of the search only, and only without an allow list (the API takes one or the other)', async () => {
+    fetchMock.mockResolvedValueOnce(sse(toolRound)).mockResolvedValueOnce(sse(toolRound))
+    await collect({ webSearch: true, webSearchExcluded: ['blog.example'] })
+    expect(sentBody(0).tools).toEqual([
+      { type: 'web_search_20250305', name: 'web_search', blocked_domains: ['blog.example'] },
+      { type: 'web_fetch_20250910', name: 'web_fetch', max_content_tokens: FETCH_MAX_CONTENT_TOKENS }
+    ])
+    await collect({ webSearch: true, webDomains: ['destatis.de'], webSearchExcluded: ['blog.example'] })
+    expect(sentBody(1).tools.map((t: Record<string, unknown>) => t.blocked_domains)).toEqual([
+      undefined,
+      undefined
+    ])
   })
 
   it('sends neither web tool without web search, and no limits it was not given', async () => {

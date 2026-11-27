@@ -323,7 +323,8 @@ export const openaiTransport: ChatTransport<OaiState> = {
     if (opts.webSearch)
       tools.push({
         type: 'web_search',
-        // Only the allow list is sent (up to 100 hosts), as under OpenRouter; the tool's block list is not.
+        // Only the allow list is sent (up to 100 hosts). The tool has no block list, so the figure check's
+        // excluded hosts (webSearchExcluded) are dropped here.
         ...(opts.webDomains?.length ? { filters: { allowed_domains: opts.webDomains } } : {})
       })
 

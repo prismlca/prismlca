@@ -60,7 +60,7 @@ import { RESEARCH_MODEL, researchWeb, retryCanHelp, type WebFinding } from './su
  *   - `web-eol-steel`   — a question that IS answerable from official sources (Destatis/UBA/Eurostat). A run
  *                         that comes back without one has regressed on source steering, whatever else it found.
  *   - `web-lifespan`    — a question that is NOT (no test institute covers folding gazebos). What matters
- *                         here is honest tagging and, when everything is media/community, the upgrade pass.
+ *                         here is honest tagging and the figure check of its weak figures.
  *   - `web-domains-set` — the caller names the hosts; every source must sit on them.
  *   - `bom-pet-bottle`, `bom-enumerate`, `bom-hard-part` — known mass ranges, the enumerating leg, and a part
  *                         that is hard to put a mass on.
@@ -515,7 +515,8 @@ const SCENARIOS: Scenario[] = [
       const all = r.findings.map((f) => f.text).join('\n')
       return {
         // The class VALUES are the finding, not a gate: no test institute covers these, so media/community
-        // plus an upgrade-pass note is the honest outcome. That the tag is used at all is the gate.
+        // plus a figure check that finds no stronger source is the honest outcome. That the tag is used at all
+        // is the gate.
         gates: [
           gate('fact', 'findings', 'came back with findings', r.findings.length > 0),
           gate(
@@ -538,7 +539,8 @@ const SCENARIOS: Scenario[] = [
         detail: {
           suggested_domains: r.suggested_domains,
           evidence: r.evidence.length,
-          cited_by_search: r.findings.map((f) => f.cited_by_search)
+          cited_by_search: r.findings.map((f) => f.cited_by_search),
+          web_check: r.web_check
         }
       }
     }

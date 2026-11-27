@@ -3,27 +3,23 @@ import { AiProviderError } from './providers/types'
 import {
   ResearchTimeout,
   extractJson,
-  figureLine,
   legFailure,
-  narrowDomains,
   retryCanHelp,
-  needsUpgradePass,
   normalizeDomain,
   normalizeDomains,
   parseFindings,
   researchWeb,
-  splitAuthoritativeDomains,
-  type WebFinding
+  splitAuthoritativeDomains
 } from './subagent'
 import { chat } from './test/fakeStream'
 
-// Only the upgrade-pass block at the end runs legs; every other test here is pure parsing.
+// Only the figure-check block at the end runs legs; every other test here is pure parsing.
 vi.mock('./client', async () => (await import('./test/fakeStream')).clientModuleMock())
 
 /**
  * The research sub-agent's fragile part is not the LLM call but what comes back: models wrap JSON in
  * prose or fences and leave statements unsourced. These tests pin the shared JSON extraction, the
- * web researcher's parsing and its upgrade pass; the bill of materials has its own (bomAnswer.test.ts,
+ * web researcher's parsing and its figure check; the bill of materials has its own (bomAnswer.test.ts,
  * bomBalance.test.ts).
  * (The live end-to-end run is in live-eval.test.ts.)
  */
@@ -49,37 +45,6 @@ describe('extractJson', () => {
   it('throws on answers with no JSON at all', () => {
     expect(() => extractJson('I could not find reliable data.')).toThrow()
     expect(() => extractJson('[{"component": "unterminated"')).toThrow()
-  })
-})
-
-/**
- * The upgrade pass must stay bounded: it fires only when the leg found something, the model
- * demonstrably uses the judgement tag, and nothing found is stronger than media/community —
- * otherwise every untagging model would buy an extra paid leg per question.
- */
-describe('needsUpgradePass', () => {
-  const f = (source_class?: string): WebFinding => ({
-    text: 'x',
-    sources: ['https://e.org/a'],
-    ...(source_class ? { source_class } : {})
-  })
-
-  it('fires when everything judged is media/community', () => {
-    expect(needsUpgradePass([f('media'), f('community')])).toBe(true)
-  })
-
-  it('stays quiet once one finding is official or industry', () => {
-    expect(needsUpgradePass([f('media'), f('industry')])).toBe(false)
-    expect(needsUpgradePass([f('official')])).toBe(false)
-  })
-
-  it('stays quiet when the model never tagged — no signal, no paid leg', () => {
-    expect(needsUpgradePass([f(), f()])).toBe(false)
-    expect(needsUpgradePass([])).toBe(false)
-  })
-
-  it('an untagged finding beside a weak tagged one does not block the pass', () => {
-    expect(needsUpgradePass([f(), f('media')])).toBe(true)
   })
 })
 
@@ -137,6 +102,33 @@ describe('parseFindings', () => {
     expect(findings[0].sources).toEqual(['https://example.org/a'])
     // A missing tag stays missing — nothing is guessed on this side of the model.
     expect(findings[1].source_class).toBeUndefined()
+  })
+
+  it('reads the mark of a finding that answers the question itself, and only there', () => {
+    const { findings } = parseFindings(
+      '- The 3x3 pavilion lasts 1-3 years (https://example.org/a) [media, low, direct: one buying guide]\n' +
+        '- Steel frames rust after 2 years (https://example.org/b) [community, low; direct]\n' +
+        '- Pavilions in general last 2-5 years (https://example.org/c) [media, medium, directly from a forum]\n' +
+        '- Polyester roofs fade (https://example.org/d) [media, medium: one guide]'
+    )
+    expect(findings.map((f) => f.direct)).toEqual([true, true, undefined, undefined])
+    expect(findings[0].confidence_note).toBe('one buying guide')
+    // A reason that merely begins with the word stays the reason.
+    expect(findings[2].confidence_note).toBe('directly from a forum')
+    for (const f of findings) expect(f.text).not.toContain('[')
+  })
+
+  // Where Haiku 5.5 put the mark in every leg of a live run: as the reason's last part.
+  it('reads the mark at the end of the reason too, and keeps the reason', () => {
+    const { findings } = parseFindings(
+      '- Budget models last 2-5 seasons (https://example.org/a) [community, low: single blog, no test; direct]\n' +
+        '- Steel 5-10, aluminium 20-30 years (https://example.org/b) [media, low: one table; direct for steel/alu]\n' +
+        '- Tubs last 3 years (https://example.org/c) [media, low: indirect evidence only]'
+    )
+    expect(findings.map((f) => f.direct)).toEqual([true, true, undefined])
+    expect(findings[0].confidence_note).toBe('single blog, no test')
+    expect(findings[1].confidence_note).toBe('one table; direct for steel/alu')
+    expect(findings[2].confidence_note).toBe('indirect evidence only')
   })
 
   // The three shapes the first evaluation run actually produced (z-ai/glm-5.3) — a tag inside
@@ -197,18 +189,6 @@ describe('domains the model names', () => {
     expect(normalizeDomains('a.de')).toEqual([])
   })
 
-  it("narrows a caller's allow list by the hosts a leg suggests, and never widens it", () => {
-    expect(narrowDomains([], ['destatis.de'])).toEqual(['destatis.de'])
-    expect(narrowDomains(['meffert.de'], [])).toEqual(['meffert.de'])
-    expect(narrowDomains(['meffert.de'], ['destatis.de'])).toEqual(['meffert.de'])
-    expect(narrowDomains(['meffert.de', 'hornbach.de'], ['shop.meffert.de', 'destatis.de'])).toEqual([
-      'shop.meffert.de'
-    ])
-    expect(narrowDomains(['shop.meffert.de'], ['meffert.de'])).toEqual(['shop.meffert.de'])
-    // Ending in the same letters does not make a host part of a domain.
-    expect(narrowDomains(['meffert.de'], ['notmeffert.de'])).toEqual(['meffert.de'])
-  })
-
   it('takes the authoritative_domains line off the answer so it is not dropped as unsourced', () => {
     const text =
       'Gazebos last 2–5 seasons (https://blog.example/x) [media, low: one buying guide]\n' +
@@ -256,18 +236,24 @@ describe('a failed research leg', () => {
 })
 
 /**
- * The upgrade pass on scripted legs: where it searches, when it stays out, what it is asked to confirm,
- * and what counts as the stronger source it went for.
+ * The figure check on scripted legs: that a strong finding beside a weak one no longer blocks it, what the check
+ * leg is asked and where it searches, what counts as a new source, and that the answer survives a failed check.
  */
-describe('the upgrade pass', () => {
+describe('the figure check', () => {
   const blog = 'https://pavilion-blog.example/guide'
-  const weak = (url = blog, text = 'Garden pavilions last 1-3 years'): string =>
-    `- ${text} (${url}) [media, medium: two retailer blogs agree]`
-  const strong = (url: string, text = 'A steel pavilion is rated for 5 years'): string =>
-    `- ${text} (${url}) [industry, high: the manufacturer's datasheet]`
+  const weak = (url = blog, text = 'Garden pavilions last 1-3 years', tag = 'media, medium'): string =>
+    `- ${text} (${url}) [${tag}: two retailer blogs agree]`
+  const strong = (url: string, text = 'A steel pavilion frame is rated for 5 years'): string =>
+    `- ${text} (${url}) [official, high: the standard]`
+  const line = (o: Record<string, unknown>): string => JSON.stringify(o)
   /** The question each leg was asked, and the system brief it ran under. */
   const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.content ?? ''))
   const system = (i: number): string => String(chat.seen[i]?.messages[0]?.content ?? '')
+  /** The figures the check leg was handed, as data. */
+  const handed = (i = 1): Array<Record<string, unknown>> => {
+    const q = asked()[i]
+    return JSON.parse(q.slice(q.indexOf('['), q.lastIndexOf(']') + 1))
+  }
   const question = 'How long does a garden pavilion last?'
 
   beforeEach(() => {
@@ -275,44 +261,148 @@ describe('the upgrade pass', () => {
     chat.rounds = []
   })
 
-  it('searches only inside the hosts the caller restricted the call to', async () => {
-    // A suggestion on the caller's domain narrows the search to it; the foreign one is left out.
+  it('checks a weak figure that stands beside an official one, and puts the verdict on it', async () => {
+    const costs: number[] = []
     chat.rounds = [
-      { text: `${weak()}\nauthoritative_domains: shop.meffert.de, destatis.de` },
+      { text: `${strong('https://norm.example/en-1234')}\n${weak()}`, usage: { cost: 0.03 } as never },
+      {
+        text: line({
+          id: 2,
+          status: 'differs',
+          value: '3-5',
+          unit: 'years',
+          refers_to: 'steel-frame pavilions, EU',
+          url: 'https://maker.example/pavilion-datasheet.pdf',
+          source_class: 'industry',
+          independent: 'yes',
+          note: 'manufacturer rates longer'
+        }),
+        usage: { cost: 0.01 } as never
+      }
+    ]
+    const r = await researchWeb({ question, onCost: (_m, u) => costs.push(u.cost ?? 0) })
+    expect(chat.seen).toHaveLength(2)
+    expect(system(1)).toMatch(/^You check figures that an earlier web search found/)
+    expect(system(1)).toMatch(/Time budget: about 2 minutes/)
+    expect(handed()).toEqual([
+      {
+        id: 2,
+        statement: 'Garden pavilions last 1-3 years',
+        sources: [blog],
+        source_class: 'media',
+        confidence: 'medium'
+      }
+    ])
+    expect(r.findings[0].check).toBeUndefined()
+    expect(r.findings[1].check).toEqual({
+      status: 'differs',
+      value: '3-5',
+      unit: 'years',
+      refers_to: 'steel-frame pavilions, EU',
+      source: 'https://maker.example/pavilion-datasheet.pdf',
+      source_class: 'industry',
+      stronger_source: true,
+      independent: true,
+      note: 'manufacturer rates longer'
+    })
+    expect(r.sources).toContain('https://maker.example/pavilion-datasheet.pdf')
+    expect(r.note).toMatch(/1 weakly supported figure\(s\) — finding\(s\) 2 — were checked once/)
+    // The log's record: why it ran, what it found, what it cost on its own.
+    expect(r.web_check).toMatchObject({
+      trigger: { findings: 2, weak: 1, direct: 0 },
+      figures: [{ finding: 2, text: 'Garden pavilions last 1-3 years', status: 'differs' }],
+      excluded_hosts: ['pavilion-blog.example'],
+      usd: 0.01,
+      requests: 1,
+      outcome: 'done'
+    })
+    expect(costs).toEqual([0.03, 0.01])
+  })
+
+  it('leaves the weak hosts out of the search only, and only without an allow list', async () => {
+    chat.rounds = [{ text: `${weak()}\nauthoritative_domains: destatis.de` }, { text: 'not found' }]
+    await researchWeb({ question })
+    expect(chat.seen.map((c) => c.webSearchExcluded)).toEqual([undefined, ['pavilion-blog.example']])
+    expect(chat.seen.map((c) => c.webDomains)).toEqual([undefined, undefined])
+    // The hosts the leg named are where to look, not a fence around the check.
+    expect(asked()[1]).toMatch(/official or manufacturer source may be: destatis\.de\.$/)
+
+    // Under the caller's allow list the check searches inside it, leaves nothing out, and gets no hint
+    // it could not follow.
+    chat.seen.length = 0
+    chat.rounds = [
+      { text: `${weak('https://shop.meffert.de/p')}\nauthoritative_domains: destatis.de` },
       { text: 'not found' }
     ]
     await researchWeb({ question, domains: ['meffert.de'] })
-    expect(chat.seen.map((c) => c.webDomains)).toEqual([['meffert.de'], ['shop.meffert.de']])
-
-    // Suggestions all elsewhere: the caller's hosts alone.
-    chat.seen.length = 0
-    chat.rounds = [{ text: `${weak()}\nauthoritative_domains: destatis.de` }, { text: 'not found' }]
-    const r = await researchWeb({ question, domains: ['meffert.de'] })
-    expect(chat.seen[1].webDomains).toEqual(['meffert.de'])
-    expect(asked()[1]).toContain('restricted to these hosts: meffert.de.')
-    expect(r.note).toContain('(searched on meffert.de)')
-    expect(r.suggested_domains).toEqual(['destatis.de'])
-
-    // No list from the caller: the leg's own suggestion is the list.
-    chat.seen.length = 0
-    chat.rounds = [{ text: `${weak()}\nauthoritative_domains: destatis.de` }, { text: 'not found' }]
-    await researchWeb({ question })
-    expect(chat.seen.map((c) => c.webDomains)).toEqual([undefined, ['destatis.de']])
+    expect(chat.seen.map((c) => c.webDomains)).toEqual([['meffert.de'], ['meffert.de']])
+    expect(chat.seen[1].webSearchExcluded).toBeUndefined()
+    expect(asked()[1]).not.toMatch(/destatis/)
   })
 
-  it('stays out when the clock ended the first pass, whatever that pass had written', async () => {
+  it('runs on a lookup ceiling of its own, below the setting', async () => {
+    chat.rounds = [{ text: weak() }, { text: 'not found' }]
+    await researchWeb({ question, webLookups: 8 })
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual([8, 4])
+    chat.seen.length = 0
+    chat.rounds = [{ text: weak() }, { text: 'not found' }]
+    await researchWeb({ question, webLookups: 2 })
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual([2, 2])
+    chat.seen.length = 0
+    chat.rounds = [{ text: weak() }, { text: 'not found' }]
+    await researchWeb({ question })
+    expect(chat.seen.map((c) => c.webLookupsCap)).toEqual([undefined, 4])
+  })
+
+  it('takes the marked figures first and at most three, also untagged and low-confidence ones', async () => {
+    chat.rounds = [
+      {
+        text: [
+          weak('https://a.example/1', 'Budget pavilions last 1 season', 'media, high'),
+          `- Pavilions are popular in Germany (https://b.example/2) [community, low: one forum]`,
+          `- Frames rust after 2 years (https://c.example/3)`,
+          weak('https://d.example/4', 'A 3x3 pavilion lasts 2 years', 'community, low, direct'),
+          weak('https://e.example/5', 'Roofs last 3 years', 'official, low')
+        ].join('\n')
+      },
+      { text: 'not found' }
+    ]
+    const r = await researchWeb({ question })
+    expect(handed().map((f) => f.id)).toEqual([4, 1, 3])
+    // An answer with no line the check can read leaves every figure unchecked; nothing is lost.
+    expect(r.findings).toHaveLength(5)
+    expect(r.findings.map((f) => f.check?.status)).toEqual([
+      'not_checked',
+      undefined,
+      'not_checked',
+      'not_checked',
+      undefined
+    ])
+    expect(r.web_check?.trigger).toEqual({ findings: 5, weak: 4, direct: 1 })
+  })
+
+  it('stays out when nothing is weak, when unsourced answers were allowed, and after a timeout', async () => {
+    chat.rounds = [{ text: strong('https://norm.example/en-1234') }]
+    let r = await researchWeb({ question })
+    expect(chat.seen).toHaveLength(1)
+    expect(r.web_check).toBeUndefined()
+
+    chat.seen.length = 0
+    chat.rounds = [{ text: weak() }]
+    r = await researchWeb({ question, allowUnsourced: true })
+    expect(chat.seen).toHaveLength(1)
+
     vi.useFakeTimers()
     try {
-      chat.rounds = [{ text: weak(), stall: true }, { text: strong('https://maker.example/sheet.pdf') }]
+      chat.seen.length = 0
+      chat.rounds = [{ text: weak(), stall: true }, { text: line({ id: 1, status: 'not_found' }) }]
       const run = researchWeb({ question })
       await vi.advanceTimersByTimeAsync(360_000)
-      const r = await run
+      r = await run
       expect(chat.seen).toHaveLength(1)
-      expect(r.findings.map((f) => f.source_class)).toEqual(['media'])
-      expect(r.note ?? '').not.toMatch(/upgrade/)
+      expect(r.findings[0].check).toBeUndefined()
 
-      // Cut off before anything sourced was written: the short retry follows, not the long pass again,
-      // and no upgrade after it either.
+      // Cut off before anything sourced was written: the short retry follows, and no check after it either.
       chat.seen.length = 0
       chat.rounds = [
         { text: 'Garden pavilions usually last a few years, according to', stall: true },
@@ -323,89 +413,135 @@ describe('the upgrade pass', () => {
       const r2 = await retried
       expect(chat.seen).toHaveLength(2)
       expect(asked()[1]).toMatch(/BE BRIEF: the three most decisive findings/)
-      expect(system(1)).toMatch(/Time budget: about 2 minutes/)
       expect(r2.findings).toHaveLength(1)
+      expect(r2.web_check).toBeUndefined()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('is handed every figure with its URL, also a long one', async () => {
-    const long = `A 3 x 3 m garden pavilion with a powder-coated steel frame ${'and a polyester roof '.repeat(20)}lasts 1-3 years`
-    // Google's redirect links run to a couple of hundred characters on their own.
-    const redirect = `https://vertexaisearch.cloud.google.com/grounding-api-redirect/${'A'.repeat(180)}`
-    chat.rounds = [
-      { text: `${weak(blog, long)}\n${weak(redirect, 'Cheap pavilions last one season')}` },
-      { text: 'not found' }
-    ]
-    await researchWeb({ question })
-    const figures = asked()[1].split('Figures to confirm:\n')[1].split('\n')
-    expect(figures).toHaveLength(2)
-    expect(figures[0]).toMatch(
-      /^- A 3 x 3 m garden pavilion .*… \(https:\/\/pavilion-blog\.example\/guide\)$/
-    )
-    expect(figures[0].length).toBeLessThan(long.length)
-    expect(figures[1]).toBe(`- Cheap pavilions last one season (${redirect})`)
+  it('keeps what a check cut off by its clock had written, and the rest says not checked', async () => {
+    vi.useFakeTimers()
+    try {
+      chat.rounds = [
+        { text: `${weak()}\n${weak('https://f.example/2', 'Pavilions last 4 years')}` },
+        {
+          text: line({ id: 1, status: 'confirmed', url: 'https://g.example/test', source_class: 'media' }),
+          stall: true
+        }
+      ]
+      const run = researchWeb({ question })
+      await vi.advanceTimersByTimeAsync(90_000)
+      const r = await run
+      expect(r.findings.map((f) => f.check?.status)).toEqual(['confirmed', 'not_checked'])
+      expect(r.web_check?.outcome).toBe('timeout')
+      expect(r.note).toMatch(/\(the check ran out of time\)/)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  it('cuts the statement of a long figure, never its sources', () => {
-    const a = 'https://a.example/1'
-    const b = 'https://b.example/2'
-    expect(figureLine({ text: `${'x'.repeat(390)} (${a}; ${b}) more`, sources: [a, b] })).toBe(
-      `${'x'.repeat(390)} more (${a}, ${b})`
-    )
-    expect(figureLine({ text: `${'y'.repeat(500)} (${a})`, sources: [a] })).toBe(`${'y'.repeat(400)}… (${a})`)
-    expect(figureLine({ text: `short (${a})`, sources: [a] })).toBe(`short (${a})`)
-  })
-
-  it('counts only a page the first pass did not cite as the stronger source', async () => {
-    // The same blog in other words, tagged "industry" this time, is no upgrade.
+  it('costs the answer nothing when the check fails', async () => {
     chat.rounds = [
       { text: weak() },
-      { text: strong('http://www.pavilion-blog.example/guide/', 'Pavilions are rated for 1-3 years') }
+      { throws: new AiProviderError('The provider refused the request.', 'auth') }
+    ]
+    const r = await researchWeb({ question })
+    expect(r.findings).toHaveLength(1)
+    expect(r.findings[0].check).toEqual({ status: 'not_checked' })
+    expect(r.web_check).toMatchObject({ outcome: 'failed', error: 'The provider refused the request' })
+    expect(r.note).toMatch(/\(the check failed: The provider refused the request\)/)
+  })
+
+  it("counts a new page, not a new host — and never the provider's link to the original", async () => {
+    const redirect = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9xyz'
+    // The same blog, its address spelt differently.
+    chat.rounds = [
+      { text: weak() },
+      {
+        text: line({
+          id: 1,
+          status: 'confirmed',
+          url: 'http://www.pavilion-blog.example/guide/',
+          source_class: 'industry'
+        })
+      }
     ]
     let r = await researchWeb({ question })
-    expect(r.findings).toHaveLength(1)
-    expect(r.note).toMatch(/found no official or industry source/)
+    expect(r.findings[0].check).toEqual({ status: 'not_found', note: 'cited only the original page' })
 
-    // Nor when the pass quotes the provider's link to that page.
-    const redirect = 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZ9xyz'
+    // The provider's link to that blog.
     chat.seen.length = 0
     chat.rounds = [
       { text: weak() },
-      { text: strong(redirect), after: [{ type: 'citations', citations: [{ url: blog, via: [redirect] }] }] }
+      {
+        text: line({ id: 1, status: 'confirmed', url: redirect, source_class: 'official' }),
+        after: [{ type: 'citations', citations: [{ url: blog, via: [redirect] }] }]
+      }
     ]
     r = await researchWeb({ question })
-    expect(r.findings).toHaveLength(1)
+    expect(r.findings[0].check?.status).toBe('not_found')
 
-    // Nor when it quotes a provider's link whose resolution failed: it may lead to that same blog.
+    // A link whose resolution failed: it may lead to that very blog.
     chat.seen.length = 0
     chat.rounds = [
       { text: weak() },
-      { text: strong(redirect), after: [{ type: 'citations', citations: [{ url: redirect }] }] }
+      {
+        text: line({ id: 1, status: 'confirmed', url: redirect, source_class: 'official' }),
+        after: [{ type: 'citations', citations: [{ url: redirect }] }]
+      }
     ]
     r = await researchWeb({ question })
-    expect(r.findings).toHaveLength(1)
+    expect(r.findings[0].check).toEqual({ status: 'not_found', note: 'named no page that could be opened' })
 
-    // Nor when the first pass quoted a link it could not resolve and the upgrade pass, resolving it,
-    // finds the page behind it.
+    // A page the search never returned while it did return others: possibly made up, no verdict.
     chat.seen.length = 0
     chat.rounds = [
-      { text: weak(redirect), after: [{ type: 'citations', citations: [{ url: redirect }] }] },
-      { text: strong(blog), after: [{ type: 'citations', citations: [{ url: blog, via: [redirect] }] }] }
+      { text: weak() },
+      {
+        text: line({
+          id: 1,
+          status: 'confirmed',
+          url: 'https://stats.example/made-up',
+          source_class: 'official'
+        }),
+        after: [{ type: 'citations', citations: [{ url: 'https://other.example/real' }] }]
+      }
     ]
     r = await researchWeb({ question })
-    expect(r.findings).toHaveLength(1)
-    expect(r.findings[0].sources).toEqual([blog])
+    expect(r.findings[0].check).toEqual({
+      status: 'not_found',
+      note: 'named a page the search did not return'
+    })
 
-    // The manufacturer's datasheet on the host of its shop page is a new page, and it counts.
+    // The manufacturer's datasheet on the host of its shop page is a new page: it counts, as a stronger source,
+    // and as no independent one.
     chat.seen.length = 0
     chat.rounds = [
       { text: weak('https://maker.example/shop/pavilion-3x3', 'The 3x3 pavilion lasts 1-3 years') },
-      { text: strong('https://maker.example/downloads/pavilion-3x3-datasheet.pdf') }
+      {
+        text: line({
+          id: 1,
+          status: 'confirmed',
+          url: 'https://maker.example/downloads/pavilion-3x3-datasheet.pdf',
+          source_class: 'industry',
+          independent: 'yes'
+        }),
+        after: [
+          {
+            type: 'citations',
+            citations: [{ url: 'https://maker.example/downloads/pavilion-3x3-datasheet.pdf' }]
+          }
+        ]
+      }
     ]
     r = await researchWeb({ question })
-    expect(r.findings.map((f) => f.source_class)).toEqual(['media', 'industry'])
-    expect(r.note).toMatch(/1 official\/industry finding\(s\) came from an upgrade pass/)
+    expect(r.findings[0].check).toMatchObject({
+      status: 'confirmed',
+      source: 'https://maker.example/downloads/pavilion-3x3-datasheet.pdf',
+      stronger_source: true,
+      independent: false,
+      cited_by_search: true
+    })
   })
 })

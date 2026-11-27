@@ -12,12 +12,14 @@ figure came from.
 It also keeps what the research could NOT settle. A bill-of-materials call writes its check — which
 requested parts came back without a mass, the whole-product masses found, the versions the figures
 rest on — even when it found no mass at all: the reviewer compares a booked figure against that, and
-a check that left the frame open is as much a fact about the study as a mass that was found.
+a check that left the frame open is as much a fact about the study as a mass that was found. A web
+question writes its figure check the same way: why it ran, which weakly supported figures it took,
+what it found for each, and what it cost.
 
 Stored as one JSON file in the active project's ``prism_meta`` dir, keyed by foreground database —
 the same pattern as chats and scenarios. Recording is idempotent per (question, finding text), so
-a re-run of the same research does not double the list; a bill-of-materials check is the exception
-and is appended every time, dated, because the log is a history of what was asked and found, not a
+a re-run of the same research does not double the list; a bill-of-materials check and a web figure
+check are the exception and are appended every time, dated, because the log is a history of what was asked and found, not a
 current state of knowledge. Not undoable on purpose: this is a log of what was looked up, like the
 chat itself, not a piece of the model.
 """
@@ -64,6 +66,11 @@ MAX_CHECK_ROWS = 12
 #: A recipe's check: what it is of, which formulation, whether it closed — and the ingredients known from the
 #: product that it lacks, and the trade forms split into their constituents.
 RECIPE_KINDS = {"product", "frame", "unknown"}
+#: The web research's figure check (research_web): a status per checked figure, how the pass ended, and how
+#: many figures one check takes.
+CHECK_STATUSES = {"confirmed", "differs", "not_comparable", "not_found", "not_checked"}
+CHECK_OUTCOMES = {"done", "timeout", "failed", "stopped"}
+MAX_CHECKED = 3
 MASS_SOURCES = {"given", "researched"}
 MAX_RECIPE_NAMES = 12
 
@@ -139,6 +146,80 @@ def clean_bom_check(raw: object) -> dict | None:
     return check or None
 
 
+def _count(value: object) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
+
+
+def clean_figure_check(raw: object) -> dict | None:
+    """What the figure check found for one finding, or ``None``: its ``status`` and, where a new page stated
+    something, the figure as it stands there (``value``, ``unit``, ``refers_to``) with its ``source``, the page's
+    class and whether it is a stronger or an independent source. Kept on the finding as ``check`` too, so whoever
+    reads a finding — the reviewer, a report writer, the bibliography — reads its verdict with it.
+    """
+    if not isinstance(raw, dict) or raw.get("status") not in CHECK_STATUSES:
+        return None
+    row: dict = {"status": raw["status"]}
+    for key, limit in (("value", 80), ("unit", 40), ("refers_to", 200), ("source", 300), ("note", 200)):
+        value = _cut(raw.get(key), limit)
+        if value:
+            row[key] = value
+    klass = str(raw.get("source_class") or "").strip().lower()
+    if klass in SOURCE_CLASSES:
+        row["source_class"] = klass
+    for key in ("stronger_source", "independent", "cited_by_search"):
+        if isinstance(raw.get(key), bool):
+            row[key] = raw[key]
+    return row
+
+
+def clean_web_check(raw: object) -> dict | None:
+    """Normalise a web question's figure check, or ``None``.
+
+    ``figures`` (each checked statement with its ``status`` and, where a new page stated something, the
+    figure as it stands there — ``value``, ``unit``, ``refers_to`` — with its ``source``, the page's class and
+    whether it is a stronger or an independent source), ``trigger`` (findings, weak ones, ones marked direct),
+    ``excluded_hosts`` (kept out of the check's search), ``usd``, ``requests``, ``ms`` and ``outcome``.
+    A check without a single valid figure is no check.
+    """
+    if not isinstance(raw, dict):
+        return None
+    figures = []
+    for f in raw.get("figures") or []:
+        row = clean_figure_check(f)
+        text = _cut(f.get("text"), 300) if isinstance(f, dict) else ""
+        if row is None or not text:
+            continue
+        number = _count(f.get("finding"))
+        figures.append({"text": text, **({"finding": number} if number else {}), **row})
+    if not figures:
+        return None
+    check: dict = {
+        "figures": figures[:MAX_CHECKED],
+        "outcome": raw.get("outcome") if raw.get("outcome") in CHECK_OUTCOMES else "done",
+    }
+    trigger = raw.get("trigger")
+    if isinstance(trigger, dict):
+        counts = {k: _count(trigger.get(k)) for k in ("findings", "weak", "direct")}
+        if all(v is not None for v in counts.values()):
+            check["trigger"] = counts
+    hosts = [_cut(h, 120) for h in (raw.get("excluded_hosts") or []) if isinstance(h, str) and h.strip()]
+    if hosts:
+        check["excluded_hosts"] = hosts[:10]
+    usd = _number(raw.get("usd"))
+    if usd is not None and usd >= 0:
+        check["usd"] = usd
+    for key in ("requests", "ms"):
+        value = _count(raw.get(key))
+        if value is not None:
+            check[key] = value
+    error = _cut(raw.get("error"), 120)
+    if error:
+        check["error"] = error
+    return check
+
+
 def _number(value: object) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and abs(value) != float("inf"):
         return float(value)
@@ -212,6 +293,90 @@ def _clean_versions(raw: object) -> dict | None:
     return kept if kept["conflict"] or used or seen else None
 
 
+def _clean_finding(raw: object) -> dict | None:
+    """Normalise one finding of a research entry, or ``None`` when it has no text (see ``clean_entry``)."""
+    if isinstance(raw, str):
+        raw = {"text": raw}
+    if not isinstance(raw, dict):
+        return None
+    text = str(raw.get("text") or "").strip()
+    if not text:
+        return None
+    sources = [str(s).strip()[:300] for s in (raw.get("sources") or []) if str(s).strip()]
+    finding: dict = {"text": text[:400], "sources": sources[:MAX_SOURCES]}
+    klass = str(raw.get("source_class") or "").strip().lower()
+    if klass in SOURCE_CLASSES:
+        finding["source_class"] = klass
+    conf = str(raw.get("confidence") or "").strip().lower()
+    if conf in CONFIDENCES:
+        finding["confidence"] = conf
+    note = str(raw.get("confidence_note") or "").strip()
+    if note:
+        finding["confidence_note"] = note[:160]
+    # The search engine's excerpt of the cited page (Exa highlights), when the leg's provider
+    # supplied one: the row a figure was read from, kept beside it. Text only, bounded.
+    excerpt = str(raw.get("excerpt") or "").strip()
+    if excerpt:
+        finding["excerpt"] = excerpt[:400]
+    component = str(raw.get("component") or "").strip()
+    if component:
+        finding["component"] = component[:120]
+    mass = raw.get("mass_kg")
+    if isinstance(mass, (int, float)) and not isinstance(mass, bool) and mass > 0:
+        finding["mass_kg"] = float(mass)
+    # Same stance as the vocabularies: a range is stored validated or not at all — it must be a
+    # real [min, max] with room in it, or downstream scenario spreads would build on nonsense.
+    rng = raw.get("mass_range_kg")
+    if (
+        isinstance(rng, (list, tuple))
+        and len(rng) == 2
+        and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in rng)
+        and 0 < float(rng[0]) < float(rng[1])
+    ):
+        finding["mass_range_kg"] = [float(rng[0]), float(rng[1])]
+    # Other figures the research found for the same part (another variant, another source): never summed, but
+    # the model may rightly book one of them, so the health check names them on the part's row. Only beside
+    # a figure of its own.
+    alternatives = raw.get("alternatives_kg")
+    if "mass_kg" in finding and isinstance(alternatives, (list, tuple)):
+        kept = [
+            float(v)
+            for v in alternatives
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+        ]
+        if kept:
+            finding["alternatives_kg"] = kept[:MAX_ALTERNATIVES]
+    derivation = _cut(raw.get("note"), NOTE_CHARS)
+    if derivation:
+        finding["note"] = derivation
+    # Which version of the product a bill-of-materials figure belongs to (an EAN, a board thickness).
+    version = _cut(raw.get("version"), 120)
+    if version:
+        finding["version"] = version
+    if isinstance(raw.get("cited_by_search"), bool):
+        finding["cited_by_search"] = raw["cited_by_search"]
+    # A bill-of-materials figure the research counted with no page behind it. Only where no source is kept:
+    # a finding that has one is not unsourced, whatever the flag says.
+    if raw.get("unsourced") is True and not sources:
+        finding["unsourced"] = True
+    # Of a mass merged from several contributions (one substance of a recipe), the kilograms no page backs —
+    # only beside a source and below the whole mass, or it would say something else than it means.
+    unbacked = raw.get("unsourced_kg")
+    if (
+        sources
+        and "mass_kg" in finding
+        and isinstance(unbacked, (int, float))
+        and not isinstance(unbacked, bool)
+        and 0 < unbacked < finding["mass_kg"]
+    ):
+        finding["unsourced_kg"] = float(unbacked)
+    # What the figure check found for this finding (research_web), validated like the check in the entry's log.
+    check = clean_figure_check(raw.get("check"))
+    if check is not None:
+        finding["check"] = check
+    return finding
+
+
 def clean_entry(item: object) -> dict | None:
     """Normalise one research entry into ``{question, findings: [{text, sources}], asked}``.
 
@@ -224,8 +389,9 @@ def clean_entry(item: object) -> dict | None:
     mass), which is what lets the health check list the
     researched masses for whoever holds them against the model. The entry may carry the ``context`` the
     research was given and, for a bill-of-materials call, its ``bom_check`` — with a valid check an entry
-    without findings is kept: a call that found no mass at all still says what it could not settle. All
-    optional, all validated, none invented here.
+    without findings is kept: a call that found no mass at all still says what it could not settle. A web
+    question may carry its figure check (``web_check``, see ``clean_web_check``). All optional, all
+    validated, none invented here.
     """
     if not isinstance(item, dict):
         return None
@@ -234,86 +400,15 @@ def clean_entry(item: object) -> dict | None:
         return None
     findings: list[dict] = []
     for raw in (item.get("findings") or [])[: MAX_FINDINGS * 2]:
-        if isinstance(raw, str):
-            raw = {"text": raw}
-        if not isinstance(raw, dict):
+        finding = _clean_finding(raw)
+        if finding is None:
             continue
-        text = str(raw.get("text") or "").strip()
-        if not text:
-            continue
-        sources = [str(s).strip()[:300] for s in (raw.get("sources") or []) if str(s).strip()]
-        finding: dict = {"text": text[:400], "sources": sources[:MAX_SOURCES]}
-        klass = str(raw.get("source_class") or "").strip().lower()
-        if klass in SOURCE_CLASSES:
-            finding["source_class"] = klass
-        conf = str(raw.get("confidence") or "").strip().lower()
-        if conf in CONFIDENCES:
-            finding["confidence"] = conf
-        note = str(raw.get("confidence_note") or "").strip()
-        if note:
-            finding["confidence_note"] = note[:160]
-        # The search engine's excerpt of the cited page (Exa highlights), when the leg's provider
-        # supplied one: the row a figure was read from, kept beside it. Text only, bounded.
-        excerpt = str(raw.get("excerpt") or "").strip()
-        if excerpt:
-            finding["excerpt"] = excerpt[:400]
-        component = str(raw.get("component") or "").strip()
-        if component:
-            finding["component"] = component[:120]
-        mass = raw.get("mass_kg")
-        if isinstance(mass, (int, float)) and not isinstance(mass, bool) and mass > 0:
-            finding["mass_kg"] = float(mass)
-        # Same stance as the vocabularies: a range is stored validated or not at all — it must be a
-        # real [min, max] with room in it, or downstream scenario spreads would build on nonsense.
-        rng = raw.get("mass_range_kg")
-        if (
-            isinstance(rng, (list, tuple))
-            and len(rng) == 2
-            and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in rng)
-            and 0 < float(rng[0]) < float(rng[1])
-        ):
-            finding["mass_range_kg"] = [float(rng[0]), float(rng[1])]
-        # Other figures the research found for the same part (another variant, another source): never summed, but
-        # the model may rightly book one of them, so the health check names them on the part's row. Only beside
-        # a figure of its own.
-        alternatives = raw.get("alternatives_kg")
-        if "mass_kg" in finding and isinstance(alternatives, (list, tuple)):
-            kept = [
-                float(v)
-                for v in alternatives
-                if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v > 0
-            ]
-            if kept:
-                finding["alternatives_kg"] = kept[:MAX_ALTERNATIVES]
-        derivation = _cut(raw.get("note"), NOTE_CHARS)
-        if derivation:
-            finding["note"] = derivation
-        # Which version of the product a bill-of-materials figure belongs to (an EAN, a board thickness).
-        version = _cut(raw.get("version"), 120)
-        if version:
-            finding["version"] = version
-        if isinstance(raw.get("cited_by_search"), bool):
-            finding["cited_by_search"] = raw["cited_by_search"]
-        # A bill-of-materials figure the research counted with no page behind it. Only where no source is kept:
-        # a finding that has one is not unsourced, whatever the flag says.
-        if raw.get("unsourced") is True and not sources:
-            finding["unsourced"] = True
-        # Of a mass merged from several contributions (one substance of a recipe), the kilograms no page backs —
-        # only beside a source and below the whole mass, or it would say something else than it means.
-        unbacked = raw.get("unsourced_kg")
-        if (
-            sources
-            and "mass_kg" in finding
-            and isinstance(unbacked, (int, float))
-            and not isinstance(unbacked, bool)
-            and 0 < unbacked < finding["mass_kg"]
-        ):
-            finding["unsourced_kg"] = float(unbacked)
         findings.append(finding)
         if len(findings) >= MAX_FINDINGS:
             break
     check = clean_bom_check(item.get("bom_check"))
-    if not findings and check is None:
+    web_check = clean_web_check(item.get("web_check"))
+    if not findings and check is None and web_check is None:
         return None
     entry: dict = {"question": question[:300], "findings": findings, "asked": now_z()}
     context = _cut(item.get("context"), CONTEXT_CHARS)
@@ -321,6 +416,8 @@ def clean_entry(item: object) -> dict | None:
         entry["context"] = context
     if check is not None:
         entry["bom_check"] = check
+    if web_check is not None:
+        entry["web_check"] = web_check
     return entry
 
 
@@ -340,6 +437,18 @@ def _add_alternatives(stored: dict, repeat: dict) -> bool:
     if not new or room <= 0:
         return False
     stored["alternatives_kg"] = have + new[:room]
+    return True
+
+
+def _add_check(stored: dict, repeat: dict) -> bool:
+    """Give a stored finding the figure check a repeat of it brings, when it has none; True when it took it.
+
+    The repeat is the same statement and is not stored again, but its check is new: without this, a figure checked
+    on its second asking would keep reaching the reviewer and the report unchecked.
+    """
+    if "check" in stored or "check" not in repeat:
+        return False
+    stored["check"] = repeat["check"]
     return True
 
 
@@ -399,8 +508,8 @@ class ResearchLogStore(JsonFileStore):
     def record(self, database: str, entries: list) -> dict:
         """Append what is new, skip what is already there; returns ``{added, total}``.
 
-        An entry with a bill-of-materials check is appended every time, with only its new findings:
-        the check is that call's own result, and a repeat that found the same masses may still have
+        An entry with a bill-of-materials or a web figure check is appended every time, with only its new
+        findings: the check is that call's own result, and a repeat that found the same masses may still have
         settled a part or met another version. A repeated part that brings other figures for it the
         stored one lacks hands them to the stored one (``_add_alternatives``), and one that brings a page
         for a part stored without any hands that over too (``_add_sources``).
@@ -428,7 +537,8 @@ class ResearchLogStore(JsonFileStore):
                         held = known[(entry["question"], f["text"])]
                         widened |= _add_sources(held, f)
                         widened |= _add_alternatives(held, f)
-                if not fresh and "bom_check" not in entry:
+                        widened |= _add_check(held, f)
+                if not fresh and "bom_check" not in entry and "web_check" not in entry:
                     continue
                 repeated.append((entry, [f for f in entry["findings"] if f not in fresh]))
                 entry["findings"] = fresh

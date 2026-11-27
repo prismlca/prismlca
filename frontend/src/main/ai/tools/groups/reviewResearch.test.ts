@@ -226,7 +226,7 @@ describe('the dossier’s research on record', () => {
     const text = researchSection(questions)
     expect(text.length).toBeLessThanOrEqual(14_900)
     for (let q = 0; q < 6; q++) expect(text).toContain(`question ${q}?`)
-    // The official finding, logged last by an upgrade pass, is the one shown first.
+    // The official finding, logged last, is the one shown first.
     const first = text.split('Q (2026-11-15): question 0?\n')[1].split('\n')[0]
     expect(first).toMatch(/^- official finding 0/)
     expect(text).toMatch(/\(\+\d+ more: (\d+ media, )?\d+ community\)/)
@@ -318,6 +318,32 @@ describe('the dossier’s research on record', () => {
     expect(sourceId('https://www.praxis.nl/meubels/stellingkast/10119671')).toBe('praxis.nl/10119671')
     expect(sourceId('https://example.org/')).toBe('example.org')
     expect(sourceId('not a url')).toBe('not a url')
+  })
+})
+
+describe('a figure check on record', () => {
+  it('stands beside its finding, so a contradicted figure does not reach the reviewer as a plain fact', () => {
+    const text = researchSection([
+      web('Textiles reused or recycled?', [
+        {
+          ...finding('Over 90 % of collected textiles are reused or recycled', 'industry', 'low'),
+          check: {
+            status: 'differs',
+            value: '88',
+            unit: '%',
+            refers_to: 'collected textiles, Germany, 2023',
+            source: 'https://www.bmuv.de/faq-textilien'
+          }
+        },
+        { ...finding('Collection rate 45 %', 'media', 'low'), check: { status: 'not_found' } },
+        { ...finding('Reuse 62 %', 'official', 'high'), check: { status: 'not_checked' } }
+      ])
+    ])
+    expect(text).toContain(
+      '[checked: differs, 88 % (collected textiles, Germany, 2023) — bmuv.de/faq-textilien]'
+    )
+    expect(text).toContain('Collection rate 45 % [media/low] — e.org/p [checked: no other source found]')
+    expect(text).not.toMatch(/Reuse 62 %[^\n]*checked/)
   })
 })
 

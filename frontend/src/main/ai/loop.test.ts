@@ -640,7 +640,7 @@ describe('runAgent — long-run robustness', () => {
   })
 
   it('starts no research request once the spend has reached the limit', async () => {
-    // Every leg answers from media sources only, which earns it one upgrade pass; legs bill 0.3 each.
+    // Every leg answers with a figure from a media source, which earns it one figure check; legs bill 0.3 each.
     let booked = 0
     const startedAt: number[] = []
     const summariser = chat.toolless
