@@ -5,11 +5,6 @@
     "details": "Masses the assistant reads in a datasheet or EPD, works out from dimensions or gets from you now go through the same bill-of-materials check as researched parts and into the research log, each marked as given by the assistant or stated by you. A page counts as a source only once a search returned it or the assistant opened it, and the health check says when one did not."
   },
   {
-    "date": "2026-11-27",
-    "title": "Web research checks its weak figures",
-    "details": "When the assistant researches a question on the web, up to three figures that rest only on press, blogs, forums or a low-confidence source are now checked against other pages, even when an official source stands beside them. Each says whether another source confirms it, gives a different value, refers to something else (net or gross, another variant, region or year) or was not found; the model's research log keeps the check."
-  },
-  {
     "date": "2026-11-26",
     "title": "Bill-of-materials research shares its pages",
     "details": "Give the assistant the address of a datasheet, manual, parts list or EPD with a bill-of-materials request, and every researcher now opens it first and searches on when its part is not in it. A page found for one part that also states another part's mass goes to the second look for that part, and the result says where such pages confirm or contradict a figure."
