@@ -120,8 +120,11 @@ export interface DriverState {
   busy: { what: string; ms: number; leftMs: number | null }[]
   /** The driving command given up on that has not settled (at most one: driving waits for it). */
   outstanding: { what: string; ms: number } | null
-  /** Other commands given up on that have not settled. */
+  /** Other commands given up on at their deadline that have not settled. */
   overdue: { what: string; ms: number }[]
+  /** Looks given up on because their caller stopped waiting, still looking in the background. They hold
+   *  nothing up and say nothing about the driver. Absent from a host started before they were kept apart. */
+  left?: { what: string; ms: number }[]
 }
 
 /** Commands that ask about the session rather than the window. */
@@ -138,6 +141,8 @@ interface GivenUp {
   what: string
   since: number
   driving: boolean
+  /** Given up on because its caller left, not because its deadline passed. */
+  left: boolean
 }
 
 export class Watchdog {
@@ -179,8 +184,13 @@ export class Watchdog {
   /**
    * Runs `work` for `req` under its deadline. Past it, the answer is an Overdue error and the host moves on;
    * `work` keeps running, and a driving command blocks further driving until it settles.
+   *
+   * `callerLeft` fires when the caller stops waiting for the answer (its process was ended). A look is then
+   * given up on at once: nobody reads its answer, and a fifteen-minute wait left behind by a stopped script
+   * would otherwise hold the line for every later command, which then fails as if the host had hung. A
+   * driving command keeps its deadline: it may still act on the window, and that has to be known.
    */
-  run(req: Command, work: () => Promise<string>): Promise<string> {
+  run(req: Command, work: () => Promise<string>, callerLeft?: AbortSignal): Promise<string> {
     const driving = DRIVING.has(req.cmd)
     const pending = driving ? this.pendingDrive() : undefined
     if (pending) {
@@ -202,17 +212,24 @@ export class Watchdog {
     const generation = this.generation
     return new Promise<string>((resolve, reject) => {
       let mark: GivenUp | null = null
+      const giveUp = (said: string, error: Overdue, callerGone: boolean): void => {
+        if (mark !== null || !this.inFlight.has(entry)) return
+        clearTimeout(timer)
+        callerLeft?.removeEventListener('abort', left)
+        mark = { what, since: this.now(), driving, left: callerGone }
+        this.inFlight.delete(entry)
+        this.lastActivity = mark.since
+        this.givenUp.add(mark)
+        this.say(said)
+        reject(error)
+      }
       const timer =
         ms === null
           ? undefined
           : setTimeout(() => {
-              mark = { what, since: this.now(), driving }
-              this.inFlight.delete(entry)
-              this.lastActivity = mark.since
-              this.givenUp.add(mark)
-              this.say(`gave up on ${what} after ${seconds(ms)}`)
               const own = `its own bound is ${seconds(ownBound(req.cmd, req.flags))}`
-              reject(
+              giveUp(
+                `gave up on ${what} after ${seconds(ms)}`,
                 new Overdue(
                   `${what} did not finish within ${seconds(ms)} (${own}): the driver is stuck, not necessarily ` +
                     'the window. ' +
@@ -221,11 +238,25 @@ export class Watchdog {
                         'session restarts; looking goes on. '
                       : 'The session takes the next command. ') +
                     'doctor says whether the window itself answers.'
-                )
+                ),
+                false
               )
             }, ms)
+      // Only for what the host may give up on at all: stop and restart are never left half done.
+      const left = (): void => {
+        giveUp(
+          `gave up on ${what} after ${seconds(this.now() - since)}: its caller stopped waiting`,
+          new Overdue(`${what} was given up on: its caller stopped waiting for the answer`),
+          true
+        )
+      }
+      if (callerLeft && !driving && ms !== null) {
+        if (callerLeft.aborted) queueMicrotask(left)
+        else callerLeft.addEventListener('abort', left, { once: true })
+      }
       const settled = (how: () => string): void => {
         clearTimeout(timer)
+        callerLeft?.removeEventListener('abort', left)
         if (this.inFlight.delete(entry)) this.lastActivity = this.now()
         if (mark === null) return
         const late = how()
@@ -272,7 +303,8 @@ export class Watchdog {
         .filter((e) => !QUESTIONS.has(e.cmd))
         .map((e) => ({ what: e.what, ms: now - e.since, leftMs: e.until === null ? null : e.until - now })),
       outstanding: drive ? { what: drive.what, ms: now - drive.since } : null,
-      overdue: given.filter((g) => !g.driving).map((g) => ({ what: g.what, ms: now - g.since }))
+      overdue: given.filter((g) => !g.driving && !g.left).map((g) => ({ what: g.what, ms: now - g.since })),
+      left: given.filter((g) => g.left).map((g) => ({ what: g.what, ms: now - g.since }))
     }
   }
 }

@@ -320,23 +320,23 @@ export async function runHost(frontend: string, name: string): Promise<void> {
         return
       }
       watchdog.touch()
-      let gone = false
+      const gone = new AbortController()
       res.on('close', () => {
-        if (!res.writableEnded) gone = true
+        if (!res.writableEnded) gone.abort()
       })
       // One command at a time, in the order they came: a click must not land in the middle of a wait. A
       // command whose caller gave up while it waited in line is dropped: run late, it would act unseen. Each
-      // holds the line until it settles or its deadline passes, whichever comes first. Questions about the
-      // session — its console, the app's facts — touch no window and do not wait in line: doctor answers
-      // also while a long wait holds it.
+      // holds the line until it settles or its deadline passes, whichever comes first — or, for a look, until
+      // its caller leaves (watchdog.ts). Questions about the session — its console, the app's facts — touch
+      // no window and do not wait in line: doctor answers also while a long wait holds it.
       const outOfLine = QUESTIONS.has(parsed.cmd)
       const run = outOfLine
-        ? watchdog.run(parsed, () => handle(parsed))
+        ? watchdog.run(parsed, () => handle(parsed), gone.signal)
         : queue.then(() => {
-            if (gone || (parsed.expires !== undefined && Date.now() > parsed.expires)) {
+            if (gone.signal.aborted || (parsed.expires !== undefined && Date.now() > parsed.expires)) {
               throw new Error(`dropped: its caller stopped waiting before its turn came, so it did not run`)
             }
-            return watchdog.run(parsed, () => handle(parsed))
+            return watchdog.run(parsed, () => handle(parsed), gone.signal)
           })
       if (!outOfLine) queue = run.catch(() => undefined)
       run.then(

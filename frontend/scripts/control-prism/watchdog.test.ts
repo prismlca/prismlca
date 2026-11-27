@@ -88,7 +88,7 @@ describe('Watchdog', () => {
     ).rejects.toThrow('Timeout 10000ms exceeded')
     await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(log).toEqual([])
-    expect(dog.state()).toEqual({ busy: [], outstanding: null, overdue: [] })
+    expect(dog.state()).toEqual({ busy: [], outstanding: null, overdue: [], left: [] })
   })
 
   it('counts no idle time while a command runs, and counts from its end afterwards', async () => {
@@ -131,7 +131,12 @@ describe('Watchdog', () => {
     // A look cannot act late: driving goes on. doctor still sees the call Playwright never answered.
     await expect(dog.run(req('click', ['Run']), async () => 'clicked Run')).resolves.toBe('clicked Run')
     await vi.advanceTimersByTimeAsync(4_000)
-    expect(dog.state()).toEqual({ busy: [], outstanding: null, overdue: [{ what: 'shot', ms: 4_000 }] })
+    expect(dog.state()).toEqual({
+      busy: [],
+      outstanding: null,
+      overdue: [{ what: 'shot', ms: 4_000 }],
+      left: []
+    })
     // Until a restart retires the old window.
     dog.reset()
     expect(dog.state().overdue).toEqual([])
@@ -225,7 +230,8 @@ describe('Watchdog', () => {
         { what: 'restart', ms: 12_000, leftMs: null }
       ],
       outstanding: null,
-      overdue: []
+      overdue: [],
+      left: []
     })
     wait.finish('Run is visible')
     restart.finish('started again')
@@ -233,6 +239,68 @@ describe('Watchdog', () => {
     await expect(waiting).resolves.toBe('Run is visible')
     await expect(restarting).resolves.toBe('started again')
     await expect(asking).resolves.toBe('{}')
+    expect(dog.state().busy).toEqual([])
+  })
+
+  it('gives up on a look at once when its caller leaves, so the next command does not wait behind it', async () => {
+    // A script stopped in the middle of a fifteen-minute wait: nobody reads the answer any more, and every
+    // command after it timed out in line as if the host had hung.
+    const wait = controlled()
+    const left = new AbortController()
+    const waiting = dog.run(req('wait', ['chat-idle'], { timeout: '900000' }), wait.work, left.signal)
+    const seen = expect(waiting).rejects.toThrow(
+      /^wait chat-idle was given up on: its caller stopped waiting for the answer/
+    )
+    await vi.advanceTimersByTimeAsync(60_000)
+    left.abort()
+    await seen
+    expect(log).toEqual(['gave up on wait chat-idle after 60 s: its caller stopped waiting'])
+    // Kept apart from what the driver gave up on at a deadline: it says nothing about a stuck driver.
+    expect(dog.state()).toEqual({
+      busy: [],
+      outstanding: null,
+      overdue: [],
+      left: [{ what: 'wait chat-idle', ms: 0 }]
+    })
+    // Driving goes on: a look left behind cannot act.
+    await expect(dog.run(req('click', ['Send']), async () => 'clicked Send')).resolves.toBe('clicked Send')
+    // Its deadline no longer counts, and its end is said once in the log, without news for anyone.
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    wait.finish('no run in the shown chat')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(log).toHaveLength(2)
+    expect(log[1]).toMatch(/^wait chat-idle, given up on earlier, finished after all/)
+    expect(dog.state().left).toEqual([])
+    expect(dog.takeNews()).toBeUndefined()
+  })
+
+  it('keeps a driving command, a stop and a restart when their caller leaves', async () => {
+    // A click may still land: it holds the line to its deadline, as before.
+    const click = controlled()
+    const left = new AbortController()
+    const clicking = dog.run(req('click', ['Run']), click.work, left.signal)
+    left.abort()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(dog.state().busy).toEqual([{ what: 'click "Run"', ms: 1_000, leftMs: 29_000 }])
+    click.finish('clicked Run')
+    await expect(clicking).resolves.toBe('clicked Run')
+    // Stop and restart are never left half done.
+    const restart = controlled()
+    const gone = new AbortController()
+    gone.abort()
+    const restarting = dog.run(req('restart'), restart.work, gone.signal)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(dog.state().busy).toEqual([{ what: 'restart', ms: 60_000, leftMs: null }])
+    restart.finish('started again')
+    await expect(restarting).resolves.toBe('started again')
+    expect(log).toEqual([])
+  })
+
+  it('gives up on a look whose caller had already left when it began', async () => {
+    const left = new AbortController()
+    left.abort()
+    const reading = dog.run(req('read', ['document.title']), never, left.signal)
+    await expect(reading).rejects.toThrow(Overdue)
     expect(dog.state().busy).toEqual([])
   })
 
