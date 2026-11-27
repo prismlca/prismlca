@@ -33,6 +33,7 @@ from prism_lca.engine._store import now_iso
 from prism_lca.engine.bootstrap import get_bd
 from prism_lca.engine.guardrails import assert_writable, set_read_only
 from prism_lca.engine.library import LIBRARY_DB, ensure_library, is_library
+from prism_lca.engine.locations import location_note, safe_location
 from prism_lca.engine.tag_groups import TagGroupStore
 from prism_lca.engine.tags import TagStore
 from prism_lca.errors import PrismError
@@ -408,9 +409,10 @@ class CreateActivityCommand(Command):
 
     def execute(self) -> dict:
         act = model.create_activity(
-            self.database, self._code, self.name, self.product, self.unit, self.location
+            self.database, self._code, self.name, self.product, self.unit, safe_location(self.location)
         )
-        return model.activity_detail(act)
+        note = location_note(self.location, act.get("location"))
+        return {**model.activity_detail(act), **({"location_note": note} if note else {})}
 
     def undo(self) -> None:
         model.get_activity(self.database, self._code).delete()
@@ -590,7 +592,7 @@ class MoveToLibraryCommand(Command):
             code=self._new_code,
             name=act.get("name"),
             unit=act.get("unit") or "unit",
-            location=act.get("location") or "GLO",
+            location=safe_location(act.get("location")) or "GLO",
         )
         if act.get("reference product"):
             new["reference product"] = act.get("reference product")
@@ -674,7 +676,7 @@ def _blank_copy(bd, target_database: str, src, code: str):
         code=code,
         name=src.get("name"),
         unit=src.get("unit") or "unit",
-        location=src.get("location") or "GLO",
+        location=safe_location(src.get("location")) or "GLO",
     )
     if src.get("reference product"):
         new["reference product"] = src.get("reference product")
@@ -785,6 +787,9 @@ class CopyToForegroundCommand(Command):
         detail["relinked"] = len(self._consumers)
         if self.depth == 2:
             detail["suppliers"] = [dict(s) for s in self._suppliers]
+        note = location_note(src.get("location"), new.get("location"))
+        if note:
+            detail["location_note"] = note
         return detail
 
     def scope_suppliers(self) -> list[str]:
@@ -938,7 +943,7 @@ class DuplicateActivityCommand(Command):
             code=self._code,
             name=f"{src.get('name')} (copy)",
             unit=src.get("unit") or "unit",
-            location=src.get("location") or "GLO",
+            location=safe_location(src.get("location")) or "GLO",
         )
         if src.get("reference product"):
             new["reference product"] = src.get("reference product")
@@ -990,7 +995,7 @@ class LocalizePathCommand(Command):
             code=new_code,
             name=src.get("name"),
             unit=src.get("unit") or "unit",
-            location=src.get("location") or "GLO",
+            location=safe_location(src.get("location")) or "GLO",
         )
         if src.get("reference product"):
             new["reference product"] = src.get("reference product")

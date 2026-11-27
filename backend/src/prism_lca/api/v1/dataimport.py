@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from prism_lca import _log
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import lca, library
+from prism_lca.engine import lca, library, locations
 from prism_lca.engine.dataimport import session
 from prism_lca.engine.dataimport.detect import FORMAT_LABELS, detect
 from prism_lca.engine.dataimport.session import Unmatched
@@ -276,7 +276,9 @@ def decide(body: DecideRequest) -> dict[str, Any]:
 
 @router.post("/commit", summary="Write the import into the project's library")
 def commit(request: Request, body: CommitRequest) -> dict[str, Any]:
-    result = session.commit(body.label.strip(), unmatched=body.unmatched)
+    with locations.recording() as rewritten:
+        result = session.commit(body.label.strip(), unmatched=body.unmatched)
+    locations.note_rewrites(request.app.state.command_bus, rewritten, result.get("database"))
     # A library write is a technosphere change like any other, only it does not go through the
     # command bus: a foreground model that draws on a replaced dataset would otherwise answer its
     # next calculation from the factorisation built before the import — the fast reuse path checks

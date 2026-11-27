@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from prism_lca.api.v1.deps import require_token
-from prism_lca.engine import commands, interop, lca, model_names, model_scope
+from prism_lca.engine import commands, interop, lca, locations, model_names, model_scope
 from prism_lca.errors import PrismError
 
 router = APIRouter(prefix="/interop", tags=["interop"], dependencies=[Depends(require_token)])
@@ -99,7 +99,10 @@ async def import_model(
         # request meanwhile.
         parsed = await run_in_threadpool(interop.read_model_workbook, content)
         cmd = commands.ImportModelCommand(target_database, parsed["activities"], parsed["exchanges"])
-        return request.app.state.command_bus.execute(cmd, source=source)
+        with locations.recording() as rewritten:
+            result = request.app.state.command_bus.execute(cmd, source=source)
+        locations.note_rewrites(request.app.state.command_bus, rewritten, target_database)
+        return result
 
 
 class ImportAsModelRequest(BaseModel):
@@ -153,11 +156,13 @@ async def _import_as_model(request: Request, name: str, encoded: str) -> dict:
         repo.create_foreground_database(name)
         bus.note("user", "create_model", f"Create model '{name}' from a spreadsheet", database=name)
         try:
-            result = bus.execute(
-                commands.ImportModelCommand(name, parsed["activities"], parsed["exchanges"]), source="user"
-            )
+            with locations.recording() as rewritten:
+                result = bus.execute(
+                    commands.ImportModelCommand(name, parsed["activities"], parsed["exchanges"]), source="user"
+                )
         except Exception:
             repo.delete_foreground_database(name)
             bus.note("user", "delete_model", f"Delete model '{name}' (spreadsheet refused)", database=name)
             raise
+    locations.note_rewrites(bus, rewritten, name)
     return {"database": name, **(result if isinstance(result, dict) else {})}

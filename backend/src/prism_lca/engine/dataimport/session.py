@@ -57,6 +57,7 @@ from prism_lca.engine.library import (
     new_batch,
     stamp,
 )
+from prism_lca.engine.locations import safe_location
 from prism_lca.errors import PrismError
 
 #: Where parked flows are kept. Not a Database: a process with no exchanges
@@ -1183,7 +1184,7 @@ def _commit(session: Session, frozen: _Frozen, label: str, unmatched: Unmatched)
             code=code,
             name=dataset.name,
             unit=dataset.unit,
-            location=dataset.location,
+            location=safe_location(dataset.location),
             type="process",
             comment=dataset.comment,
             **{"reference product": dataset.reference_product},

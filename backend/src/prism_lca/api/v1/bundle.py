@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from prism_lca.api.v1.deps import require_token
 from prism_lca.engine import bundle as _bundle
-from prism_lca.engine import lca, model_names, model_scope
+from prism_lca.engine import lca, locations, model_names, model_scope
 from prism_lca.engine.bundle_backgrounds import installed_backgrounds
 from prism_lca.engine.bundle_resolve import Verdict, resolve, summary
 from prism_lca.errors import PrismError
@@ -235,6 +235,8 @@ async def import_bundle(request: Request, payload: ImportRequest) -> dict:
         name=payload.name,
         include=payload.include,
     )
-    result = request.app.state.command_bus.execute(command, source=payload.source)
+    with locations.recording() as rewritten:
+        result = request.app.state.command_bus.execute(command, source=payload.source)
+    locations.note_rewrites(request.app.state.command_bus, rewritten, result.get("database"))
     request.app.state.search.invalidate(result.get("database", ""))
     return result

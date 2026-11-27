@@ -45,6 +45,7 @@ from prism_lca.engine.backgrounds.flow_mapping import (
     _norm_cas,
 )
 from prism_lca.engine.bootstrap import get_bd
+from prism_lca.engine.locations import make_stored_locations_safe
 
 #: ecoinvent categories → the ecoSpold-1 pair the ladder expects (first spelling wins).
 _REVERSE_COMPARTMENTS: dict[tuple[str, ...], tuple[str, str]] = {}
@@ -170,6 +171,7 @@ def remap_database(
         pending.append((row, data, src.key))
     if not pending:
         if reprocess:
+            make_stored_locations_safe()  # processing evaluates locations with a round bracket; this is a model
             bd.Database(name).process()
         return {"database": name, "exchanges_checked": len(rows), "moved": 0, "new_flows": 0}
 
@@ -230,6 +232,7 @@ def remap_database(
             moved += 1
             rungs[rung] += 1
     if moved or reprocess:
+        make_stored_locations_safe()  # see above
         bd.Database(name).process()
     return {
         "database": name,
