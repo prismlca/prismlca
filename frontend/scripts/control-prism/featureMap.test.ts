@@ -92,6 +92,9 @@ const NOT_LITERAL = new Set([
   '+ Add output flow',
   // assembled: views/Scenarios.tsx, "{parameter} override"
   'mass override',
+  // assembled: views/Parameters.tsx, "{Collapse|Expand} {group}", and views/ParamUsedBy.tsx, "Show parameter {name}"
+  'Collapse Ungrouped',
+  'Show parameter co2',
   // assembled: views/results/WhyDifferent(Dialog).tsx, from the subject and the indicator
   'What makes the difference — climate change / global warming potential (GWP100)',
   'All changes — heavy — climate change / global warming potential (GWP100)',

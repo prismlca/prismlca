@@ -13,6 +13,9 @@ a group; "Used by" lists the processes and parameters that read it.
   values), "Delete parameter" (with a confirmation; refused while a formula or scenario uses it — the
   refusal names the page where that use is changed),
   "Add a comment…", and the "Used by" links.
+- "Used by" lists the processes whose exchanges use the parameter (a click opens the process on the
+  Model page) and the parameters whose formula uses it (a click shows that parameter on this page: its
+  group unfolds, a search that hides it is cleared, and its row stays lit until the next click elsewhere).
 - Allowed values: any number, only positive, only negative, a range, or a list. A value outside is
   refused at the field.
 - Groups: "Group" creates one; a group's heading folds it, adds a parameter to it, renames or deletes it
@@ -78,6 +81,17 @@ node scripts/control-prism.mjs drag "css=.pc-name[title=mass]" "css=.pgrp >> has
 node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Move parameter 'mass' to group 'Transport'/"
 ```
 
+Follow a "Used by" link from `mass` to `co2`, which sits in a folded group:
+
+```sh
+node scripts/control-prism.mjs click "role=button:Collapse Ungrouped"
+node scripts/control-prism.mjs wait hidden "css=.pc-name[title=co2]"
+node scripts/control-prism.mjs click "role=button:Show parameter co2"
+node scripts/control-prism.mjs wait visible "css=.prow-item.spot .pc-name[title=co2]"
+node scripts/control-prism.mjs click "placeholder=Search parameters…"
+node scripts/control-prism.mjs wait hidden "css=.prow-item.spot"
+```
+
 - The value field in a row has no name: `"css=.prow input.num"`, narrowed with `has-text=` once
   there are several (`"css=.prow >> has-text=kg >> css=input.num"`). A formula parameter shows its value
   and "ƒ = …" as text, with no field.
@@ -91,6 +105,10 @@ node scripts/control-prism.mjs wait attr "role=button:Undo" title "/Move paramet
 
 ## Gotchas
 
+- A "Used by" link to a parameter is named "Show parameter" and the parameter's name
+  (`"role=button:Show parameter co2"`); one to a process by the process's name. A link to a parameter this page does not have is disabled.
+- The lit row (`.prow-item.spot`) goes out at the next click or focus outside it — the search field
+  counts — and stays lit while you click inside it. The group it unfolded stays open.
 - After a refused value the field shows the stored value again, and the note under the row stays until
   the next edit.
 - Undo's title is the backend's confirmation of a stored value, as on the Model page: wait for it.

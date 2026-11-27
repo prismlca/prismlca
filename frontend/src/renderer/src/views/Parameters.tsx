@@ -14,7 +14,6 @@ import {
   AddIcon,
   ChevronIcon,
   InfoIcon,
-  ModelIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
@@ -23,6 +22,8 @@ import {
 import ConfirmDialog, { type ConfirmSpec } from './ConfirmDialog'
 import NewParameterPanel from './NewParameterPanel'
 import { deleteRefusal } from './paramInUse'
+import ParamUsedBy, { type ExchangeUse, type ParamUse } from './ParamUsedBy'
+import { useParamSpotlight } from './useParamSpotlight'
 import AuditLog from '../components/AuditLog'
 import { IdleRoundedInput } from '../components/IdleRoundedInput'
 import ParamRuleEditor, {
@@ -52,9 +53,9 @@ interface Param {
    *  refuses one where it is typed, with the field still on screen. */
   rule?: ParamRule
   /** Exchanges whose formula names this parameter — `?with_usage=true`, computed by the backend. */
-  used_by?: { activity_code: string; activity_name: string; input: string; formula: string }[]
+  used_by?: ExchangeUse[]
   /** And the other parameters that name it — a volume and a density drive a mass, not an exchange. */
-  used_by_parameters?: { name: string; formula: string }[]
+  used_by_parameters?: ParamUse[]
 }
 interface Group {
   id: string
@@ -521,6 +522,19 @@ export default function Parameters({
       return base.includes(key(gid)) ? base.filter((k) => k !== key(gid)) : [...base, key(gid)]
     })
 
+  // A "Used by" link to another parameter: its row has to be on screen before it can be lit — its group
+  // unfolded (and left open, as if unfolded by hand: it would fold away under you when the light goes),
+  // and a search that hides it cleared.
+  const spotlight = useParamSpotlight(activeDb)
+  const showParam = (name: string): void => {
+    const p = rows.find((r) => r.name === name)
+    if (!p) return
+    if (q && !hit(p)) setQuery('')
+    const k = key(p.group_id ?? null)
+    setShut((prev) => (prev ?? sectionKeys.split('|').slice(1)).filter((x) => x !== k))
+    spotlight.show(name)
+  }
+
   const onDrop = (gid: string | null): void => {
     const name = dragName
     setDragName(null)
@@ -766,7 +780,9 @@ export default function Parameters({
                         {secRows.map((p) => (
                           <div
                             key={p.name}
-                            className={`prow-item${editing === p.name ? ' editing' : ''}`}
+                            ref={spotlight.spot === p.name ? spotlight.spotRef : undefined}
+                            tabIndex={spotlight.spot === p.name ? -1 : undefined}
+                            className={`prow-item${editing === p.name ? ' editing' : ''}${spotlight.spot === p.name ? ' spot' : ''}`}
                             draggable={editing !== p.name}
                             // Where the pointer went down, which is the only way to know: `dragstart` fires
                             // on the element carrying `draggable` — the row — so its target is never the
@@ -908,55 +924,13 @@ export default function Parameters({
                                   </button>
                                 )}
                               </span>
-                              {/* Who depends on this number. Without it, changing a parameter is a blind
-                                  edit and deciding whether one is still needed means reading every formula
-                                  in the model by hand — and an unused parameter is worth seeing, because it
-                                  is usually a leftover. One row per process, however many of its exchanges
-                                  the formula drives. */}
-                              <span className="pc-uses">
-                                {p.used_by?.length
-                                  ? [...new Map(p.used_by.map((u) => [u.activity_code, u])).values()].map(
-                                      (u) => {
-                                        const n = p.used_by!.filter(
-                                          (x) => x.activity_code === u.activity_code
-                                        ).length
-                                        return (
-                                          <button
-                                            key={u.activity_code}
-                                            className="pc-use"
-                                            title={`Jump to “${u.activity_name}” on the canvas — drives ${n} ${n === 1 ? 'input' : 'inputs'} (${u.formula})`}
-                                            disabled={!onJumpToProcess}
-                                            onClick={() => onJumpToProcess?.(u.activity_code)}
-                                          >
-                                            <ModelIcon />
-                                            <span className="t">{u.activity_name}</span>
-                                            {n > 1 ? <span className="n">{n}×</span> : null}
-                                          </button>
-                                        )
-                                      }
-                                    )
-                                  : null}
-                                {/* A parameter behind another parameter drives no exchange of its own —
-                                    a volume and a density behind a mass. Saying "No process" about it
-                                    was true and read as "delete me". */}
-                                {p.used_by_parameters?.map((u) => (
-                                  <span
-                                    key={u.name}
-                                    className="pc-use pc-use-param"
-                                    title={`${u.name} = ${u.formula}`}
-                                  >
-                                    <span className="t">{u.name}</span>
-                                  </span>
-                                ))}
-                                {!p.used_by?.length && !p.used_by_parameters?.length ? (
-                                  <span
-                                    className="pc-use-none"
-                                    title="No formula in this model references it"
-                                  >
-                                    Nothing
-                                  </span>
-                                ) : null}
-                              </span>
+                              <ParamUsedBy
+                                exchanges={p.used_by}
+                                params={p.used_by_parameters}
+                                onJumpToProcess={onJumpToProcess}
+                                onShowParam={showParam}
+                                shown={(n) => rows.some((r) => r.name === n)}
+                              />
                               {/* Under the field and across the rest of the row: a refusal is a sentence, and
                                   a sentence does not fit a value column. Below the rule's own phrase, which
                                   is where you look to find out what would have been allowed. */}
