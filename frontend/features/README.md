@@ -63,7 +63,8 @@ Several sessions in one checkout take `--session <name>`. A session is invisible
   the state it waits for. Awaiting one request of the app (`window.prism.api`, a calculation) is not such a
   wait — it leaves the thread free — and `--timeout` gives it longer than the ten seconds a read has.
 - **Wait on states, never on time.** `wait` polls from outside, and every wait has a bound (30 s unless
-  `--timeout` says otherwise, at most 15 minutes).
+  `--timeout` says otherwise, at most 15 minutes). A running wait holds the line: commands from other shells
+  wait their turn behind it. Ending the shell that waits (a stopped background script) frees the line.
 - **End with `console`.** It lists the window's errors since the launch and fails when there are any.
 - **The seed is preparation, not evidence.** It answers the setup sheet's folder dialog in the main
   process. A change to setup or import is proven by driving those, with a fixture chosen by hand.

@@ -395,6 +395,20 @@ export function judgeDriving(w: WindowProbe | null, driver: DriverState | undefi
         'and Playwright has not answered since: when more commands are given up on, the driver is stuck — restart'
     })
   }
+  // Left behind by a caller that stopped waiting (a stopped script): it still looks, holds nothing up, and
+  // says nothing about the driver — no reason to restart.
+  const left = driver?.left ?? []
+  if (left.length > 0) {
+    const named = left.slice(0, 3).map((o) => `${o.what} (${secs(o.ms)} ago)`)
+    checks.push({
+      status: 'note',
+      text:
+        `${named.join(', ')}${left.length > 3 ? ` and ${left.length - 3} more` : ''} lost ` +
+        `${left.length === 1 ? 'its caller' : 'their callers'} and still ` +
+        `${left.length === 1 ? 'runs' : 'run'} in the background; nothing waits behind ` +
+        `${left.length === 1 ? 'it' : 'them'}`
+    })
+  }
   for (const b of driver?.busy ?? []) {
     checks.push({
       status: 'note',

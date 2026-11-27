@@ -226,6 +226,24 @@ describe('judge', () => {
     })
   })
 
+  it('tells a look whose caller left from a stuck driver, and does not advise a restart for it', () => {
+    // A script stopped in the middle of a long wait: the host lets the wait go on in the background and
+    // takes the next command. Nothing about it says the driver is stuck.
+    const driver = {
+      busy: [],
+      outstanding: null,
+      overdue: [],
+      left: [{ what: 'wait chat-idle', ms: 5_000 }]
+    }
+    const checks = judge(input({ app: app({ driver }) }))
+    expect(failures(input({ app: app({ driver }) }))).toEqual([])
+    expect(checks).toContainEqual({
+      status: 'note',
+      text: 'wait chat-idle (5 s ago) lost its caller and still runs in the background; nothing waits behind it'
+    })
+    expect(checks.map((c) => c.text).join('\n')).not.toMatch(/stuck|restart/)
+  })
+
   it('refuses a dev-server renderer or a renderer from elsewhere', () => {
     const env = { ...app().env, ELECTRON_RENDERER_URL: 'http://localhost:5173' }
     expect(failures(input({ app: app({ env, rendererUrl: 'http://localhost:5173/' }) }))).toHaveLength(1)
