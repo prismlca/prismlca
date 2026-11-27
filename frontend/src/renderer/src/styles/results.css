@@ -421,7 +421,10 @@
 .res-lci-count { color: var(--muted); font-size: var(--fs-sec); white-space: nowrap; }
 .res-lci-export { margin-left: auto; }
 .res-lci-scroll { overflow: auto; max-height: min(70vh, 720px); border: 1px solid var(--border); border-radius: 8px; }
-.lci-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
+/* Separate borders: each line belongs to its cell and stays with the sticky head; a collapsed border belongs to the
+ *  table and scrolls away, leaving a see-through gap between the head's rows. Cells only have bottom borders, so
+ *  nothing doubles. */
+.lci-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: var(--fs-sec); }
 .lci-table th, .lci-table td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
 /* The whole head stays in sight, the filter row under the titles included. */
 .lci-table thead { position: sticky; top: 0; z-index: 1; }
