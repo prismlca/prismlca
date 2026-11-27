@@ -3,6 +3,27 @@
 Every PrismLCA release, newest first. Sections are drafted by `npm run release` (in `frontend/`) from the
 What's-new entries since the previous release and finished by hand before the release is tagged.
 
+## 0.9.18 — 2026-11-27
+
+Changes since v0.9.17: https://github.com/prismlca/prismlca/compare/v0.9.17...v0.9.18
+
+### New
+
+- **Filter the inventory by flow and compartment.** In the life cycle inventory under the Results charts, the funnel
+  beside Flow searches the flow names and the one beside Compartment picks a compartment, such as air, or one of its
+  sub-compartments. Both filters combine, a second click on a funnel clears it, and Export LCI writes the rows they
+  leave (#169).
+- **Jump between parameters that use each other.** On the Parameters page, a parameter whose formula uses another one
+  appears under "Used by" as a link; a click brings it into view, unfolds its group and highlights its row (#172).
+
+### Changes and fixes
+
+- "What makes the difference" now starts folded under each bar chart, so the charts come first; a click on its
+  heading opens it for that chart (#167).
+- Settings → About shows a newer version's release notes with their headings, lists and links instead of one run of
+  plain text (#168).
+- The head of the inventory table no longer lets rows show through while they scroll under it.
+
 ## 0.9.17 — 2026-11-27
 
 Changes since v0.9.16: https://github.com/prismlca/prismlca/compare/v0.9.16...v0.9.17
