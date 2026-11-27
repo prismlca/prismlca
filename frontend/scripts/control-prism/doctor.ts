@@ -34,6 +34,9 @@ export interface DoctorInput {
   app: AppFacts | null
   /** Why the host did not answer, when it did not. */
   hostError?: string
+  /** When the host is gone and the session ran on a copy that is still there: what to do with it
+   *  (session.ts keptCopyNotice) — restart or stop, never stop-then-launch. */
+  keptCopy?: string | null
   /** What the window said when asked past the driver; null when it was not asked. */
   window: WindowProbe | null
   /** The seal log of a sealed session (sealed.ts), read after the app's facts; absent when not read. */
@@ -309,6 +312,7 @@ function answered(w: Extract<WindowProbe, { outcome: 'answers' }>): string {
 
 /** The host did not answer: whether the window does says whether the driver or the app is stuck. */
 export function hostSilent(input: DoctorInput): string {
+  if (input.keptCopy) return input.keptCopy
   const host = `the host does not answer${input.hostError ? ` (${input.hostError})` : ''}`
   const w = input.window
   const logs = `the window's console so far is in ${input.record.logs}/console.log`

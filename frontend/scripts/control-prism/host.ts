@@ -29,6 +29,7 @@ import {
 } from './actions'
 import { realDirs } from './doctor'
 import { drag, InputBroken } from './drag'
+import { consoleLine, readConsoleFile, type ConsoleEntry } from './consoleLog'
 import { gatherAppFacts, type AppFacts } from './facts'
 import { forgetKeys } from './keys'
 import { seed } from './seed'
@@ -55,13 +56,6 @@ function codePrint(): string | null {
   } catch {
     return null
   }
-}
-
-interface ConsoleEntry {
-  n: number
-  type: string
-  text: string
-  at: string
 }
 
 export async function runHost(frontend: string, name: string): Promise<void> {
@@ -94,13 +88,15 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   const appLog = createWriteStream(join(record.logs, 'app.log'), { flags: 'a' })
   // The window's console is kept on disk too: a session ended from outside (stop on a host that does not
-  // answer) takes the host's memory with it.
-  const consoleFile = createWriteStream(join(record.logs, 'console.log'), { flags: 'a' })
-  const consoleLog: ConsoleEntry[] = []
+  // answer) takes the host's memory with it. A host that starts the app again on a kept copy goes on from
+  // what the one before kept, so "since launch" and the numbers of --since still hold.
+  const consolePath = join(record.logs, 'console.log')
+  const consoleLog: ConsoleEntry[] = readConsoleFile(consolePath)
+  const consoleFile = createWriteStream(consolePath, { flags: 'a' })
   const note = (type: string, text: string): void => {
     const entry = { n: consoleLog.length + 1, type, text, at: new Date().toISOString() }
     consoleLog.push(entry)
-    consoleFile.write(`#${entry.n} ${entry.at} ${type}: ${text}\n`)
+    consoleFile.write(consoleLine(entry))
   }
   /** Set while the host itself ends the app (stop, restart, idle): that close is not the app going away. */
   let ending = false
@@ -166,7 +162,10 @@ export async function runHost(frontend: string, name: string): Promise<void> {
 
   // Every quit here goes by identity (byPath: false): a program someone runs on the session's files is not
   // the session's to end.
-  const stop = async (keep: boolean): Promise<string> => {
+  const stop = async (
+    keep: boolean,
+    ended: Partial<SessionRecord> = { detail: 'stopped' }
+  ): Promise<string> => {
     ending = true
     const lines: string[] = []
     try {
@@ -183,7 +182,7 @@ export async function runHost(frontend: string, name: string): Promise<void> {
       removeInstall(record.install)
       lines.push(`removed ${record.install.root}`)
     }
-    update({ status: 'exited', detail: 'stopped' })
+    update({ status: 'exited', ...ended })
     return lines.join('\n')
   }
 
@@ -376,10 +375,19 @@ export async function runHost(frontend: string, name: string): Promise<void> {
   say(`ready on 127.0.0.1:${port}`)
 
   const idleMs = record.idleMinutes * 60_000
+  // A copy keeps its folders (without the stored keys): what was built in it — models of a practice run
+  // nobody has decided about yet — goes only with an explicit stop, and restart starts the app on it again.
+  // A fresh install is a throwaway in the temp folder, where kept folders would only pile up.
+  const keepOnIdle = record.mode === 'copy'
   setInterval(() => {
     if (ending || watchdog.idleMs() < idleMs) return
-    say(`no command for ${record.idleMinutes} min; quitting the app`)
-    void stop(false).then(
+    say(
+      `no command for ${record.idleMinutes} min; quitting the app${keepOnIdle ? ' and keeping the copy' : ''}`
+    )
+    void stop(keepOnIdle, {
+      detail: `stopped after ${record.idleMinutes} min without a command`,
+      ...(keepOnIdle ? { idleKept: true } : {})
+    }).then(
       () => process.exit(0),
       (e: Error) => {
         // The record stays as it is: the next command finds the host gone and cleans up again.

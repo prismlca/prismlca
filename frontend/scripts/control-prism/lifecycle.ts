@@ -26,11 +26,13 @@ import {
   takeCopy,
   type CopyReport
 } from './copy'
+import { readConsoleFile } from './consoleLog'
 import { hostAlive } from './host'
 import { SEAL_LOG } from './sealed'
 import { copyKeys, forgetKeys } from './keys'
 import {
   controlDir,
+  keptCopyNotice,
   lockSession,
   newToken,
   NO_PATH_RULE,
@@ -182,6 +184,8 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
           `session "${name}" is running already — drive it, or stop it first (or use --session <other>)`
         )
       }
+      const kept = keptCopyNotice(existing)
+      if (kept) throw new Exit(1, `${kept} — or launch with --session <other> for a new one`)
       out(`session "${name}" ended without stop; cleaning up first`)
       cleanUpDead(existing, false).forEach(out)
     }
@@ -227,60 +231,134 @@ export function launch(name: string, bundle: string, flags: Parsed['flags']): Pr
       throw e
     }
     if (plan.warning) out(`warning: ${plan.warning}`)
-    // The host inherits this environment unchanged; launch() strips what must not reach the app.
-    const logFd = openSync(join(logs, 'host.out'), 'a')
-    const child = spawn(process.execPath, [bundle, '__host', name], {
-      cwd: FRONTEND,
-      detached: true,
-      windowsHide: true,
-      stdio: ['ignore', logFd, logFd]
-    })
-    child.unref()
-    const host = listProcesses().find((p) => p.pid === child.pid) ?? null
-    // The host waits for this before its first write, so the two never overwrite each other.
-    updateSession(FRONTEND, name, record.token, { host, hostRecorded: true })
-
     out(
       `launching ${flags.sealed ? 'sealed ' : ''}session "${name}" in ${install.root}` +
         `${flags.seed ? ' (with seed — about a minute)' : ''}` +
         `${mode === 'copy' ? ' (your data: the backend loads it and its search model — up to a minute)' : ''} …`
     )
-    const limit = Date.now() + (flags.seed ? 600_000 : 300_000)
-    for (;;) {
-      const now = readSession(FRONTEND, name)
-      if (now?.token !== record.token)
-        throw new Exit(1, `the record of session "${name}" was replaced meanwhile`)
-      if (now.status === 'ready') {
-        out(`ready: session "${name}", backend via ${plan.detail}`)
-        if (record.seal) out(`sealed: what it refuses goes to ${record.seal} (refused lists it)`)
-        out(`next: doctor, then drive (help lists the commands; frontend/features/ maps the pages)`)
-        return
-      }
-      if (
-        now.status === 'failed' ||
-        now.status === 'exited' ||
-        child.exitCode !== null ||
-        Date.now() > limit
-      ) {
-        const why =
-          now.status === 'failed' || now.status === 'exited'
-            ? (now.detail ?? now.status)
-            : child.exitCode !== null
-              ? `the host exited (${child.exitCode})`
-              : 'the launch took too long'
-        cleanUpDead(now, true)
-        throw new Exit(1, `the launch failed: ${why}\nlogs: ${logs} (host.log, host.out, app.log)`)
-      }
-      await new Promise((r) => setTimeout(r, 500))
+    try {
+      await startHost(record, bundle, flags.seed ? 600_000 : 300_000)
+    } catch (e) {
+      if (!(e instanceof HostFailed)) throw e
+      cleanUpDead(e.record, true)
+      throw new Exit(1, `the launch failed: ${e.message}\nlogs: ${logs} (host.log, host.out, app.log)`)
     }
+    out(`ready: session "${name}", backend via ${plan.detail}`)
+    if (record.seal) out(`sealed: what it refuses goes to ${record.seal} (refused lists it)`)
+    out(`next: doctor, then drive (help lists the commands; frontend/features/ maps the pages)`)
   })
 }
 
-export function restart(record: SessionRecord, flags: Parsed['flags']): Promise<string> {
-  return locked(record.name, async () => {
-    const started = { build: currentBuild(flags), backendSrc: backendFingerprint(FRONTEND) }
-    return send(record, 'restart', [JSON.stringify(started)], {})
+/** The host did not get the app's window; what it started is ended, the record is the caller's to settle. */
+class HostFailed extends Error {
+  constructor(
+    readonly record: SessionRecord,
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+/** Starts the host of the written `record` and waits until it has the window, at most `ms`. */
+async function startHost(record: SessionRecord, bundle: string, ms: number): Promise<void> {
+  // The host inherits this environment unchanged; launch() strips what must not reach the app.
+  const logFd = openSync(join(record.logs, 'host.out'), 'a')
+  const child = spawn(process.execPath, [bundle, '__host', record.name], {
+    cwd: FRONTEND,
+    detached: true,
+    windowsHide: true,
+    stdio: ['ignore', logFd, logFd]
   })
+  child.unref()
+  const host = listProcesses().find((p) => p.pid === child.pid) ?? null
+  // The host waits for this before its first write, so the two never overwrite each other.
+  updateSession(FRONTEND, record.name, record.token, { host, hostRecorded: true })
+  const limit = Date.now() + ms
+  for (;;) {
+    const now = readSession(FRONTEND, record.name)
+    if (now?.token !== record.token)
+      throw new Exit(1, `the record of session "${record.name}" was replaced meanwhile`)
+    if (now.status === 'ready') return
+    if (now.status === 'failed' || now.status === 'exited' || child.exitCode !== null || Date.now() > limit) {
+      const why =
+        now.status === 'failed' || now.status === 'exited'
+          ? (now.detail ?? now.status)
+          : child.exitCode !== null
+            ? `the host exited (${child.exitCode})`
+            : 'it took too long'
+      const left = sessionProcesses(now)
+      if (left.length > 0) endAll(left)
+      throw new HostFailed(now, why)
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
+export function restart(record: SessionRecord, bundle: string, flags: Parsed['flags']): Promise<string> {
+  return locked(record.name, async () => {
+    const now = readSession(FRONTEND, record.name)
+    if (now?.token !== record.token)
+      throw new Exit(1, `the record of session "${record.name}" was replaced meanwhile; ask again`)
+    if (!hostAlive(now, listProcesses()) && keptCopyNotice(now)) return revive(now, bundle, flags)
+    const started = { build: currentBuild(flags), backendSrc: backendFingerprint(FRONTEND) }
+    return send(now, 'restart', [JSON.stringify(started)], {})
+  })
+}
+
+/**
+ * Starts the app again on the copy a session kept when it ended without stop (keptCopyNotice) — the idle
+ * stop, the app closing, the host dying: the same session, launched at the same time, on the same folders
+ * and logs, so what was built there can be driven again (and the run tools that know the session by its
+ * launch time still know it). It starts without the stored keys, which left the copy with the idle stop.
+ */
+async function revive(record: SessionRecord, bundle: string, flags: Parsed['flags']): Promise<string> {
+  const lines: string[] = []
+  const left = sessionProcesses(record)
+  if (left.length > 0) {
+    endAll(left)
+    lines.push(`ended what was still running of it:${listed(left)}`)
+  }
+  if (forgetKeys(record.install.userData)) lines.push('removed the stored keys it still had')
+  const build = currentBuild(flags)
+  const plan = planBackend(FRONTEND)
+  const next: SessionRecord = {
+    ...record,
+    token: newToken(),
+    status: 'starting',
+    detail: undefined,
+    port: undefined,
+    host: null,
+    hostRecorded: false,
+    keys: null,
+    build,
+    backendSrc: backendFingerprint(FRONTEND),
+    backend: { via: plan.via, detail: plan.detail },
+    processes: [],
+    idleKept: undefined
+  }
+  // Counted before the new host starts: what it logs from here on is this start's.
+  const seen = readConsoleFile(join(record.logs, 'console.log')).length
+  writeSession(next)
+  if (plan.warning) lines.push(`warning: ${plan.warning}`)
+  lines.forEach(out)
+  out(
+    `starting session "${record.name}" again on its copy in ${record.install.root} (the backend loads it ` +
+      'and its search model — up to a minute) …'
+  )
+  try {
+    await startHost(next, bundle, 300_000)
+  } catch (e) {
+    if (!(e instanceof HostFailed)) throw e
+    // The copy and the record stay: restart can try again, stop removes them.
+    const detail = `the app did not start again on the copy: ${e.message}`
+    updateSession(FRONTEND, next.name, next.token, { status: 'failed', detail })
+    throw new Exit(1, `${detail}\nlogs: ${record.logs} (host.log, host.out, app.log)`)
+  }
+  return (
+    `the app runs again on the copy of session "${record.name}", without stored keys; backend via ` +
+    `${plan.detail}\nthe console counts on from before: console --since ${seen} shows only this start's ` +
+    'messages\nnext: doctor, then drive'
+  )
 }
 
 /** Stops through the host when it answers, and by identity when it does not. */
