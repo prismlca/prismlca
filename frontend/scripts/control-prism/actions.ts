@@ -16,6 +16,8 @@ import { waitTimeout, withDeadline } from './waits'
 export type Flags = Record<string, string | true>
 
 const ACTION_MS = 10_000
+/** How long a read may take when no --timeout is given. */
+const READ_MS = 10_000
 
 function target(page: Page, raw: string | undefined, usage: string): Locator {
   if (!raw) throw new Error(`usage: ${usage}`)
@@ -193,16 +195,19 @@ export async function shot(page: Page, file: string, flags: Flags): Promise<stri
  * Evaluates a JavaScript expression in the window and prints the result as JSON. For looking at state
  * after the user's path ran — never as the path itself, and never as the proof: nothing stops an
  * expression from changing what it reads. Bounded, because an expression that loops would hold the
- * renderer's only thread and freeze the window.
+ * renderer's only thread and freeze the window. An expression that awaits the app — a request through
+ * `window.prism.api`, a calculation among them — leaves the thread free while it waits and may take
+ * longer: `--timeout` gives it up to the bound of a wait.
  */
-export async function read(page: Page, args: string[]): Promise<string> {
-  if (args.length !== 1) throw new Error("usage: read '<expression>'   e.g. read 'document.title'")
-  const READ_MS = 10_000
+export async function read(page: Page, args: string[], flags: Flags = {}): Promise<string> {
+  if (args.length !== 1)
+    throw new Error("usage: read '<expression>' [--timeout <ms>]   e.g. read 'document.title'")
+  const ms = flags.timeout === undefined ? READ_MS : waitTimeout(flags.timeout)
   const value = await withDeadline(
     page.evaluate(args[0]),
-    READ_MS,
-    `the window did not answer within ${READ_MS / 1000} s. If the expression loops or waits, the renderer ` +
-      'is stuck in it: stop and launch again, and wait from outside with `wait` instead.'
+    ms,
+    `the expression did not settle within ${ms / 1000} s. A loop in it holds the renderer: stop and ` +
+      'launch again, and wait from outside with `wait` instead. A request it awaits may need longer: --timeout <ms>.'
   )
   return JSON.stringify(value, null, 2) ?? 'undefined'
 }
