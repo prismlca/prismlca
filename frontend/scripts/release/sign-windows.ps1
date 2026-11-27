@@ -108,7 +108,9 @@ if ($Wait) {
 }
 
 $signtool = Find-SignTool
-$files = Read-List $List
+# Wrapped again: PowerShell unrolls a function's list on return, so a list of one file would arrive as a bare string,
+# and `@todo` below would hand signtool one argument per character of the path.
+$files = @(Read-List $List)
 
 if ($Inspect) {
   $facts = foreach ($f in $files) {
