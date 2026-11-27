@@ -227,6 +227,12 @@ describe('GitHub workflows', () => {
     expect(build.env?.PRISM_SIGN_PREVIOUS).toBe(previous.env?.PRISM_SIGN_PREVIOUS)
     expect(previous.env?.PRISM_SIGN_PREVIOUS).toMatch(/runner\.temp/)
     for (const s of [previous, build]) expect(s.env?.WINDOWS_SIGN_LIMIT).toBe('${{ vars.WINDOWS_SIGN_LIMIT }}')
+    // The record of the latest release is read with the job's own token: an anonymous call can run out of its
+    // hourly limit, and without the previous release a run stops or spends new signatures.
+    expect(previous.env?.GITHUB_TOKEN).toBe('${{ github.token }}')
+    // No other step of the signing job gets the token, the signing session least of all.
+    const others = steps.filter((s) => s !== previous && JSON.stringify(s).includes('github.token'))
+    expect(others).toEqual([])
     // The whole unpacked app, not a list of our own executables: nothing unsigned may ship.
     expect(step(/sign-windows\.mjs check/).run).toMatch(/sign-windows\.mjs check release\/win-unpacked release\/PrismLCA-Setup-\*\.exe/)
   })

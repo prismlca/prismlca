@@ -215,6 +215,9 @@ jobs:
         env:
           PRISM_SIGN_PREVIOUS: ${{ runner.temp }}/previous
           WINDOWS_SIGN_LIMIT: ${{ vars.WINDOWS_SIGN_LIMIT }}
+          # The job's read-only token, for GitHub's record of the latest release: an anonymous call shares a limit
+          # of 60 an hour with everything else from this machine's address.
+          GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/release/sign-windows.mjs previous "$PRISM_SIGN_PREVIOUS"
       # Everything that needs no key is built before this point. The signing session opens here and closes right
       # after the installer; while it is open, electron-builder and its dependencies run with it, which is why
