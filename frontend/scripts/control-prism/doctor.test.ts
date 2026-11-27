@@ -139,6 +139,13 @@ describe('judge', () => {
     ])
   })
 
+  it('sends a session whose kept copy outlived its host to restart or stop, not to stop-then-launch', () => {
+    // stop-then-launch would remove the copy, and with it what was built in it.
+    const kept =
+      'session "default" is over (it ended without stop), and its copy … restart starts the app on it again'
+    expect(failures(input({ app: null, hostError: 'refused', keptCopy: kept, window: null }))).toEqual([kept])
+  })
+
   it('tells a stuck driver from a frozen window when the host does not answer', () => {
     const silent = (window: DoctorInput['window']): string[] =>
       failures(input({ app: null, hostError: 'no answer within 40 s', window }))

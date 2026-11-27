@@ -57,6 +57,9 @@ export interface SessionRecord {
   /** The app's processes, refreshed by the host; `stop` ends these when the host cannot. */
   processes: ProcessInfo[]
   idleMinutes: number
+  /** Set when the idle stop ended the session and kept its folders (a copy; host.ts); a restart that
+   *  starts the app on them again clears it. */
+  idleKept?: boolean
 }
 
 /**
@@ -125,6 +128,24 @@ export function updateSession(
   const next = { ...current, ...patch }
   writeSession(next)
   return next
+}
+
+/**
+ * What to say about a session on a copy that is over without a stop — the idle stop ended it, the app
+ * closed, the host died — while its folders are still there: they hold what was built in them, models
+ * nobody has decided about yet among it, so only an explicit stop removes them. Null for a fresh session,
+ * and for a copy whose folder is gone. Whether the session is over is the caller's to know.
+ */
+export function keptCopyNotice(record: SessionRecord): string | null {
+  if (record.mode !== 'copy' || !existsSync(record.install.root)) return null
+  const how = record.idleKept
+    ? `the idle stop ended it after ${record.idleMinutes} min without a command`
+    : 'it ended without stop'
+  return (
+    `session "${record.name}" is over (${how}), and its copy of your data is still in ` +
+    `${record.install.root}, with what was built in it. restart starts the app on it again (without ` +
+    'stored keys); stop removes the copy; stop --keep forgets the session and leaves the folder'
+  )
 }
 
 /** Removes the record, if it is still the one with `token`. */

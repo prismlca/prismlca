@@ -19,7 +19,7 @@ import type { AppFacts } from './facts'
 import { hostAlive, runHost } from './host'
 import { launch, restart, stop } from './lifecycle'
 import { readSealLog, refusedLines } from './sealed'
-import { controlDir, readSession, sessionName, type SessionRecord } from './session'
+import { controlDir, keptCopyNotice, readSession, sessionName, type SessionRecord } from './session'
 import { TargetError } from './targets'
 import { WAIT_HELP } from './waits'
 import { probeWindow } from './windowProbe'
@@ -41,9 +41,13 @@ session
                      Also says whether the window answers past the driver, and what the driver is busy
                      with: when commands get no answer, it tells a stuck driver from a frozen window
   status             the session's record
-  restart [--no-build]   quit and start again on the same data (rebuilds out/ first if the sources changed)
+  restart [--no-build]   quit and start again on the same data (rebuilds out/ first if the sources changed);
+                     a --copy session that is over without stop (idle stop, crash) starts again on its
+                     kept copy, without stored keys
   stop [--keep]      quit the app, end what it started, remove its folders (--keep keeps them,
                      without stored keys)
+                     A session quits its app after --idle minutes without a command (default 60); a
+                     --copy session then keeps its copy, without stored keys, until restart or stop
   build              build out/ and stamp it (launch does this when needed)
 
 exploring                            (Linux, and macOS on Apple silicon)
@@ -147,6 +151,7 @@ async function doctorCmd(record: SessionRecord): Promise<void> {
   // The window is asked past the driver at the same time, so its answer does not wait for the host's.
   const [{ app, hostError }, window] = await Promise.all([facts, probeWindow(record.install.userData)])
   const fresh = readSession(FRONTEND, record.name) ?? record
+  const keptCopy = hostAlive(fresh, listProcesses()) ? null : keptCopyNotice(fresh)
   // Read after the facts, so the lines of this doctor's own probes are in it.
   const sealLog = fresh.seal ? readSealLog(fresh.seal) : null
   const checks = judge({
@@ -154,6 +159,7 @@ async function doctorCmd(record: SessionRecord): Promise<void> {
     record: fresh,
     app,
     hostError,
+    keptCopy,
     window,
     current: {
       src: sourceFingerprint(FRONTEND),
@@ -226,7 +232,7 @@ async function main(argv: string[]): Promise<void> {
       return
     }
     case 'restart':
-      out(await restart(requireSession(name), p.flags))
+      out(await restart(requireSession(name), bundlePath(), p.flags))
       return
     case 'stop':
       ;(await stop(requireSession(name), p.flags)).forEach(out)

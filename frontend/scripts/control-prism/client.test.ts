@@ -1,4 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer, type Server, type ServerResponse } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Exit, HostTimeout, send } from './client'
@@ -82,6 +85,43 @@ describe('send', () => {
     servers.push(dropping.server)
     const broken = send(session(dropping.port), 'wait', ['chat-idle'], {})
     await expect(broken).rejects.toThrow(/broke off \(ECONNRESET\) — doctor says whether the host/)
+  })
+
+  it('sends a session on a copy that is over to restart or stop, not to stop-then-launch', async () => {
+    // "run stop, then launch" would remove the copy, and with it what was built there.
+    const root = mkdtempSync(join(tmpdir(), 'cp-client-'))
+    try {
+      const copy = {
+        name: 'run',
+        mode: 'copy',
+        status: 'exited',
+        detail: 'stopped after 60 min without a command',
+        idleKept: true,
+        idleMinutes: 60,
+        install: { root }
+      } as unknown as SessionRecord
+      const over = send(copy, 'snapshot', [], {})
+      await expect(over).rejects.toThrow(Exit)
+      await expect(over).rejects.toThrow(
+        /is over \(the idle stop ended it .*restart starts the app on it again/
+      )
+
+      // Its host gone without a word (status still ready): the same advice.
+      const closed = await fakeHost()
+      await new Promise((r) => closed.server.close(r))
+      const gone = { ...copy, status: 'ready', idleKept: undefined, port: closed.port, token: 't' }
+      await expect(send(gone as SessionRecord, 'snapshot', [], {})).rejects.toThrow(
+        /nothing listens on its port any more; session "run" is over \(it ended without stop\)/
+      )
+
+      // A fresh session holds nothing to keep: stop, then launch, as before.
+      const fresh = { ...copy, mode: 'fresh' } as SessionRecord
+      await expect(send(fresh, 'snapshot', [], {})).rejects.toThrow(
+        /is exited \(stopped after 60 min without a command\) — run stop, then launch/
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('passes the host’s refusal through as a failed command', async () => {

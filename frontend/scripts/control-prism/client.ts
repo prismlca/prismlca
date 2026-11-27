@@ -8,7 +8,7 @@ import { request } from 'node:http'
 import { FRONTEND } from '../../e2e/app'
 import type { Parsed } from './args'
 import type { Reply } from './host'
-import { readSession, type SessionRecord } from './session'
+import { keptCopyNotice, readSession, type SessionRecord } from './session'
 import { callerDeadline } from './watchdog'
 
 /** An error with the exit code the command line ends with: 1 failed, 2 wrong usage, 3 no session. */
@@ -48,9 +48,11 @@ export async function send(
   flags: Parsed['flags']
 ): Promise<string> {
   if (record.status !== 'ready' || !record.port) {
+    const over = record.status === 'exited' || record.status === 'failed'
     throw new Exit(
       3,
-      `session "${record.name}" is ${record.status}${record.detail ? ` (${record.detail})` : ''} — run stop, then launch`
+      (over ? keptCopyNotice(record) : null) ??
+        `session "${record.name}" is ${record.status}${record.detail ? ` (${record.detail})` : ''} — run stop, then launch`
     )
   }
   const ms = callerDeadline(cmd, flags)
@@ -76,7 +78,7 @@ export async function send(
       throw new Exit(
         3,
         `the host of session "${record.name}" does not answer — nothing listens on its port any more; ` +
-          'run stop (it cleans up), then launch'
+          (keptCopyNotice(record) ?? 'run stop (it cleans up), then launch')
       )
     }
     // The host was there and the connection broke off under the command: it may have died with it, or may

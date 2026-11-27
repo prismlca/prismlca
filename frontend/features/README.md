@@ -45,7 +45,11 @@ node scripts/control-prism.mjs help
   the sources changed. Use it after an edit, and to prove that something survives a restart.
 - `stop` at the end. It ends what this session started and removes its folders (`--keep` keeps them for
   a look); the logs stay in `.cache/control-prism/logs/<session>/`. A session that is forgotten quits its
-  app after an hour without commands.
+  app after an hour without commands (`--idle <min>` at launch). A fresh session's folders go with it; a
+  `--copy` keeps its folders, without the stored keys, because what was built there may exist nowhere
+  else. The same holds when a copy's app closed or its host died. Such a session is over but not gone:
+  `restart` starts the app on the kept copy again, `stop` removes it, and `launch` under its name
+  refuses until one of the two has happened.
 
 Several sessions in one checkout take `--session <name>`. A session is invisible from any other checkout.
 

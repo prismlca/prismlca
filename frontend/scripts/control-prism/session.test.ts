@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync }
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { lockSession } from './session'
+import { keptCopyNotice, lockSession, type SessionRecord } from './session'
 
 describe('lockSession', () => {
   let frontend: string
@@ -62,5 +62,41 @@ describe('lockSession', () => {
     const before = new Date(Date.now() - 60_000)
     utimesSync(lock, before, before)
     lockSession(frontend, 'default')()
+  })
+})
+
+describe('keptCopyNotice', () => {
+  let root: string
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'cp-kept-'))
+  })
+  afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  const ended = (patch: Partial<SessionRecord>): SessionRecord =>
+    ({
+      name: 'run',
+      mode: 'copy',
+      status: 'exited',
+      idleMinutes: 240,
+      install: { root, data: join(root, 'data'), userData: join(root, 'user-data'), downloads: '' },
+      ...patch
+    }) as SessionRecord
+
+  it('sends a copy that is over to restart or stop, never to a launch that would remove it', () => {
+    // The copy holds what was built in it — a practice run's models nobody has decided about yet.
+    const notice = keptCopyNotice(ended({ idleKept: true }))
+    expect(notice).toContain('the idle stop ended it after 240 min without a command')
+    expect(notice).toContain(`still in ${root}`)
+    expect(notice).toMatch(
+      /restart starts the app on it again \(without stored keys\); stop removes the copy/
+    )
+    expect(notice).not.toContain('launch')
+    expect(keptCopyNotice(ended({}))).toContain('(it ended without stop)')
+  })
+
+  it('has nothing to say about a fresh session, nor about a copy whose folder is gone', () => {
+    expect(keptCopyNotice(ended({ mode: 'fresh' }))).toBeNull()
+    rmSync(root, { recursive: true, force: true })
+    expect(keptCopyNotice(ended({ idleKept: true }))).toBeNull()
   })
 })
