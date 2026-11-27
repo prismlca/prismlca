@@ -1,0 +1,66 @@
+# Keeps the latest release's Windows installer in the Actions cache of main. The Windows job of the tests reads that
+# release on every pull request (ci.yml, the signature inspection) and restores the installer from here instead of
+# downloading it: every download from a release counts in its download statistics. A pull request can restore what
+# main's cache holds, while an entry it saves itself would serve only that pull request — so main keeps it, filled
+# here, with one download per release.
+#
+# Daily, and by hand right after a release: gh workflow run previous-installer-cache.yml -R prismlca/prismlca
+# GitHub drops a cache entry nobody restored for seven days; the next run puts it back. Nothing from the repository
+# runs here — no checkout, only GitHub's own tools and the SHA-256 GitHub states for the installer.
+name: Previous installer cache
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  installer:
+    name: The latest release's installer in the cache
+    # The image of the Windows tests: an entry is found only under the path and platform it was saved with.
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Which installer the latest release has
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '
+            [.assets[] | select(.name | test("^PrismLCA-Setup-[0-9A-Za-z.-]+\\.exe$"))] as $exe
+            | if ($exe | length) != 1 then error("\(.tag_name) has \($exe | length) Windows installers, not one") else . end
+            | "tag=\(.tag_name)\nname=\($exe[0].name)\nsha256=\($exe[0].digest // "" | ltrimstr("sha256:"))"' > "$RUNNER_TEMP/latest.txt"
+          cat "$RUNNER_TEMP/latest.txt"
+          grep -qE '^sha256=[0-9a-f]{64}$' "$RUNNER_TEMP/latest.txt" || { echo '::error::GitHub states no SHA-256 for the installer'; exit 1; }
+          cat "$RUNNER_TEMP/latest.txt" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: cache
+        with:
+          path: ${{ runner.temp }}/previous-installer
+          key: previous-installer-windows-${{ steps.latest.outputs.tag }}
+          lookup-only: true
+      - name: Download it once, checked against the SHA-256 GitHub states
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.latest.outputs.tag }}
+          NAME: ${{ steps.latest.outputs.name }}
+          SHA256: ${{ steps.latest.outputs.sha256 }}
+        run: |
+          cd "$RUNNER_TEMP"
+          mkdir -p previous-installer
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$NAME" -D previous-installer
+          cd previous-installer
+          echo "$SHA256  $NAME" | sha256sum -c -
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/previous-installer
+          key: previous-installer-windows-${{ steps.latest.outputs.tag }}

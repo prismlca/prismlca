@@ -6,6 +6,8 @@
  *   afterSign (electron-builder.yml)                  `afterSign`, the whole unpacked app at once, after packing
  *                                                     and before the installer is built from it
  *   node scripts/release/sign-windows.mjs previous <dir>      before the sign-in: the previous release's signed files
+ *   node scripts/release/sign-windows.mjs inspect-previous <dir> [--cache <dir>]
+ *                                                     the same reading without a key, for the tests on Windows
  *   node scripts/release/sign-windows.mjs wait                waits for the SimplySign sign-in
  *   node scripts/release/sign-windows.mjs check <dir|file>…   every program file signed, ours to our standard
  *   node scripts/release/sign-budget.mjs estimate vX.Y.Z     before tagging: does this release need WINDOWS_SIGN_LIMIT?
@@ -273,10 +275,10 @@ function clearPrevious(dir) {
  * Windows says about each one's signature. Needs no key. Throws when the installer cannot be fetched, is not ours
  * or cannot be unpacked or inspected.
  */
-async function readPreviousRelease(dir, ours, target) {
+async function readPreviousRelease(dir, ours, target, cache) {
   const installer = join(dir, 'installer.exe')
   const archive = join(dir, 'app.7z')
-  const version = await downloadPreviousInstaller(target, installer)
+  const version = await downloadPreviousInstaller(target, installer, { cache })
   // The installer is checked before anything in it is unpacked: it must be ours, valid and to our standard.
   const [fact] = inspect([installer])
   if (signatureState(fact, Boolean(readPeLayout(installer)?.certSize)) !== 'valid' || fact.subject !== ours)
@@ -339,12 +341,13 @@ async function previous(dir) {
  * The reading half of signing, for a machine without the key (the Windows job of the tests): fetches the previous
  * release, unpacks it and asks Windows about every program file, exactly as the release does before the sign-in.
  * It spends nothing and counts against no limit; it fails when the reading itself fails or when a maker's signature
- * is not accepted — the two things a release run would otherwise meet first on the release machine.
+ * is not accepted — the two things a release run would otherwise meet first on the release machine. `cache` may hold
+ * the installer, restored from the Actions cache, so that a test run adds nothing to the release's downloads.
  */
-async function inspectPrevious(dir) {
+async function inspectPrevious(dir, cache) {
   const ours = subject()
   clearPrevious(dir)
-  const { version, pe, facts } = await readPreviousRelease(dir, ours, publishTargetFrom(config()))
+  const { version, pe, facts } = await readPreviousRelease(dir, ours, publishTargetFrom(config()), cache)
   const { broken, kept, foreign, unsigned } = tally(pe, facts, ours)
   console.log(`${version}: ${pe.length} program files, ${kept} signed by us, ${foreign} by others, ${unsigned} without a usable signature`)
   if (broken.length) {
@@ -403,10 +406,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const [cmd, ...args] = process.argv.slice(2)
   if (cmd === 'wait') process.exit(powershell(['-Wait']))
   else if (cmd === 'previous' && args.length === 1) await previous(resolve(args[0]))
-  else if (cmd === 'inspect-previous' && args.length === 1) await inspectPrevious(resolve(args[0]))
+  else if (cmd === 'inspect-previous' && (args.length === 1 || (args.length === 3 && args[1] === '--cache')))
+    await inspectPrevious(resolve(args[0]), args[2] && resolve(args[2]))
   else if (cmd === 'check' && args.length) check(args)
   else {
-    console.error('usage: sign-windows.mjs wait | previous <dir> | inspect-previous <dir> | check <dir|file>…')
+    console.error('usage: sign-windows.mjs wait | previous <dir> | inspect-previous <dir> [--cache <dir>] | check <dir|file>…')
     process.exit(2)
   }
 }

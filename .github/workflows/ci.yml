@@ -165,9 +165,26 @@ jobs:
       # First the reading half of the release's signing, on the previous release's files: what Windows says
       # about each program file's signature needs no key, and a release run must not be the first place
       # that script meets a real Windows.
+      #
+      # The previous release's installer comes from the Actions cache of main, which previous-installer-cache.yml
+      # fills once per release: every download from the release counts in its download statistics, and this job
+      # runs on every pull request. Restored only — a pull request's own cache entry would serve that pull request
+      # alone, at 600 MB each. A miss downloads it as before. Which release is the latest comes from GitHub's
+      # record of it, which counts as no download.
+      - name: Which release is the latest
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/previous-installer
+          key: previous-installer-windows-${{ steps.latest.outputs.tag }}
       - name: The release's signature inspection reads the previous release
         working-directory: frontend
-        run: node scripts/release/sign-windows.mjs inspect-previous "$RUNNER_TEMP/previous"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release/sign-windows.mjs inspect-previous "$RUNNER_TEMP/previous" --cache "$RUNNER_TEMP/previous-installer"
       # And the signing half with a throwaway certificate: signtool sign, the timestamp and the check
       # afterwards, as the release makes them. Only the release key's own provider is missing here.
       - name: The release's signing script signs and checks with a test certificate

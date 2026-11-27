@@ -18,6 +18,8 @@
  *    step failed; the final check covers every program file of the package.
  *  - Both builds start the packaged program's MCP bridge once, as a client does, after their start check —
  *    on Windows after the signing session has closed.
+ *  - The tests on Windows restore the previous release's installer from main's Actions cache and never save one;
+ *    only the cache workflow fills it, from main, without running anything from the repository.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -173,6 +175,38 @@ describe('GitHub workflows', () => {
     const selftest = steps[at + 1] as Step & { shell?: string }
     expect(selftest.run).toMatch(/sign-windows-selftest\.ps1 -From /)
     expect(selftest.shell).toBe('powershell')
+  })
+
+  it("test workflow: the previous release's installer is restored from main's cache, never saved by a pull request", () => {
+    // Every download from a release counts in its statistics, and this job runs on every pull request.
+    const steps = load('ci.yml').wf.jobs!['test-windows'].steps ?? []
+    const at = steps.findIndex((s) => /sign-windows\.mjs inspect-previous /.test(s.run ?? ''))
+    const caches = steps.filter((s) => s.uses?.startsWith('actions/cache'))
+    expect(caches.map((s) => s.uses!.split('@')[0])).toEqual(['actions/cache/restore'])
+    const restore = steps.indexOf(caches[0])
+    expect(restore).toBeLessThan(at)
+    const { path } = caches[0].with as { path: string }
+    expect(steps[at].run).toContain(`--cache "$RUNNER_TEMP/${path.split('/').pop()}"`)
+    // The same entry the cache workflow saves: one key, one path, one platform.
+    const warm = load('previous-installer-cache.yml').wf.jobs!.installer
+    const saved = (warm.steps ?? []).find((s) => s.uses?.startsWith('actions/cache/save@'))!
+    expect(saved.with).toEqual(caches[0].with)
+    expect(warm['runs-on']).toBe(load('ci.yml').wf.jobs!['test-windows']['runs-on'])
+  })
+
+  it('cache workflow: only main fills it, on a schedule or by hand, and nothing from the repository runs there', () => {
+    const { wf } = load('previous-installer-cache.yml')
+    expect(Object.keys(triggers(wf)).sort()).toEqual(['schedule', 'workflow_dispatch'])
+    expect(wf.permissions).toEqual({})
+    const steps = Object.values(wf.jobs ?? {}).flatMap((j) => j.steps ?? [])
+    expect(steps.some((s) => s.uses?.startsWith('actions/checkout'))).toBe(false)
+    // One download per release: the installer is fetched and saved only when the cache does not hold it yet —
+    // looked up under the very key and path it is saved with, or every run would download it again.
+    const lookup = steps.find((s) => s.uses?.startsWith('actions/cache/restore@'))!
+    const saved = steps.find((s) => s.uses?.startsWith('actions/cache/save@'))!
+    expect(lookup.with).toEqual({ ...saved.with, 'lookup-only': true })
+    for (const s of steps.filter((s) => /gh release download/.test(s.run ?? '') || s === saved))
+      expect(s.if).toBe("steps.cache.outputs.cache-hit != 'true'")
   })
 
   it('the signing self-test trusts its certificate on a hosted runner only, and the release never calls it', () => {
