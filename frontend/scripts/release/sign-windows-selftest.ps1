@@ -5,8 +5,9 @@
 .DESCRIPTION
   The release signs with a key that exists on one machine, so signing itself — signtool sign, the timestamp, the
   check afterwards — cannot run anywhere else as it is. This makes a self-signed code-signing certificate, trusts it
-  on the runner, and has sign-windows.ps1 sign and inspect two program files with it. What it cannot show is the
-  release key's own provider; everything the script does around it, it does here.
+  on the runner, and has sign-windows.ps1 sign and inspect two program files with it, then a third on its own (what
+  electron-builder's hook asks for). What it cannot show is the release key's own provider; everything the script
+  does around it, it does here.
 
   It adds a root certificate to the machine, so it runs on GitHub's hosted runners only (a fresh machine per job)
   and refuses everywhere else — a developer's PC and the release VM above all.
@@ -66,4 +67,19 @@ foreach ($fact in $facts) {
   }
   Write-Host "signed, timestamped and inspected: $($fact.file) ($($fact.type))"
 }
-Write-Host "The signing script signed and checked $($files.Count) files with the test certificate."
+
+# One file on its own list, as the hook for the installer and uninstaller sends it: signed in the first call, without
+# a retry. A second try would hide a list of one that reached signtool as something other than one path.
+$single = Join-Path $work "single-$($picked[0].Name)"
+Copy-Item -LiteralPath $picked[0].FullName -Destination $single
+$singleList = Join-Path $work 'single.txt'
+[System.IO.File]::WriteAllLines($singleList, [string[]]@($single), (New-Object System.Text.UTF8Encoding $false))
+# Only standard output is kept, where the script's own lines go: redirecting signtool's errors as well would make
+# Windows PowerShell throw on the first one under ErrorActionPreference Stop.
+$log = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -Sign -List $singleList |
+  Out-String
+Write-Host $log
+if ($LASTEXITCODE -ne 0) { throw "sign-windows.ps1 -Sign failed for a single file (exit $LASTEXITCODE)." }
+if ($log -match 'signtool sign left') { throw 'Signing a single file needed a second try; the first call did not sign it.' }
+
+Write-Host "The signing script signed and checked $($files.Count + 1) files with the test certificate."
