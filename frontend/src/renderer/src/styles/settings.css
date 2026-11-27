@@ -237,3 +237,25 @@
 .allowlist-add .btn { flex: none; padding-top: 0; padding-bottom: 0; }
 .allowlist-editor > .settings-hint { margin: 8px 0 0; }
 .allowlist-editor > .settings-hint:first-child { margin: 0 0 10px; }
+/* "What is new in …" on About (views/settings/ReleaseNotes.tsx): a newer version's release notes, folded
+   under their summary. The summary keeps the hint's voice; the notes take the body colour on a quiet panel,
+   because a list of twenty items in hint grey is hard to read. Bullets are the browser's, in hint grey. */
+.update-notes > summary { cursor: pointer; width: fit-content; }
+.update-notes > summary:hover { color: var(--text); }
+.release-notes { margin-top: 8px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-2); color: var(--text); }
+.release-notes h5 { margin: 14px 0 6px; font-size: var(--fs-body); font-weight: 600; }
+.release-notes h5:first-child { margin-top: 0; }
+.release-notes p { margin: 0 0 8px; }
+.release-notes ul, .release-notes ol { margin: 0 0 10px; padding-left: 18px; }
+.release-notes li { margin: 0 0 6px; }
+.release-notes li::marker { color: var(--muted); }
+.release-notes li > p { margin: 0 0 4px; }
+.release-notes li > :last-child, .release-notes > :last-child { margin-bottom: 0; }
+.release-notes li > ul, .release-notes li > ol { margin-top: 4px; }
+.release-notes code { font-family: var(--mono); font-size: .95em; }
+.release-notes .release-notes-cut { margin-top: 10px; color: var(--muted); }
+/* A code block in the notes keeps its lines; a long line scrolls inside the block, not the page. */
+.release-notes pre { margin: 0 0 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); overflow-x: auto; white-space: pre; font-family: var(--mono); }
+.release-notes pre code { font-size: inherit; }

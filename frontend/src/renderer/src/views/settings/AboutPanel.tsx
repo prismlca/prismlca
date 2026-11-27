@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import PrivacyLink from '../overview/PrivacyLink'
 import LicenceLink from '../overview/LicenceLink'
 import { AboutLinks, LeadDeveloper } from './AboutLinks'
+import { ReleaseNotes } from './ReleaseNotes'
 import { GITHUB_URL, openLink } from '../../lib/links'
 import type { UpdateState } from '../../../../shared/updates'
 import type { BuildInfo } from '../../../../shared/buildInfo'
@@ -173,7 +174,7 @@ export function AboutPanel(): JSX.Element {
           {st.notes ? (
             <details className="settings-hint update-notes">
               <summary>What is new in {st.version}</summary>
-              <p style={{ whiteSpace: 'pre-wrap' }}>{st.notes}</p>
+              <ReleaseNotes notes={st.notes} releaseUrl={releasePage(st.version)} />
             </details>
           ) : null}
         </>

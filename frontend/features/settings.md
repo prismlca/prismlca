@@ -14,7 +14,8 @@ no Save. "Reset" puts the page shown back to its defaults. It opens over whateve
 - Transport distances (a group): API provider (openrouteservice key and the geocoder), DAF, Limits,
   Usage & costs.
 - AI (a group): Provider, Models, Limits, Chat, MCP, Skills, Tools, Usage & costs.
-- About: version ("Copy version info"), licence and privacy notices, and the update check.
+- About: version ("Copy version info"), licence and privacy notices, and the update check; when a newer
+  version is found, its release notes fold out under "What is new in …" as headings and bulleted items.
 
 ## How to get there
 
@@ -69,4 +70,8 @@ node scripts/control-prism.mjs wait unchecked "role=checkbox:Show the product"
 - **No key can be stored in a control-prism instance** unless it was launched with `--keys`, and typing a
   key into a provider field may send it to the provider to check it: leave the key fields empty.
 - The logo "Upload" opens a file dialog: manual (a sealed session cancels it).
+- The update check works only in an installed app, so a control-prism instance never reaches "Version … is
+  available" or its release notes ("Update checks work in the installed app only."). The notes are covered by
+  `ReleaseNotes.dom.test.tsx`; on the running app they can be shown by sending an `updates:event` from the
+  main process through the end-to-end harness (`e2e/app.ts`), with notes read by `main/releaseNotes.ts`.
 - Reset only resets the page shown, not the whole sheet.

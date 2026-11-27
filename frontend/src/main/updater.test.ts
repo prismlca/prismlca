@@ -312,13 +312,20 @@ describe('the manual update check', () => {
     expect(fake.setFeedURL).not.toHaveBeenCalled()
   })
 
-  it('checks without downloading, and reports a newer version with plain-text notes', async () => {
+  it('checks without downloading, and reports a newer version with its notes as blocks', async () => {
     fake.checkForUpdates.mockImplementation(async () => {
       fake.emit('update-available', { version: '1.3.0', releaseNotes: '<p>Faster &amp; <b>better</b></p>' })
       return { isUpdateAvailable: true, updateInfo: { version: '1.3.0' } }
     })
     const s = await call('updates:check')
-    expect(s).toEqual({ phase: 'available', current: '1.2.0', version: '1.3.0', notes: 'Faster & better' })
+    expect(s).toEqual({
+      phase: 'available',
+      current: '1.2.0',
+      version: '1.3.0',
+      notes: {
+        blocks: [{ kind: 'paragraph', spans: [{ text: 'Faster & ' }, { text: 'better', strong: true }] }]
+      }
+    })
     expect(fake.autoDownload).toBe(false)
     // Install-on-quit is the updater module's own (V-2/V-4), never electron-updater's.
     expect(fake.autoInstallOnAppQuit).toBe(false)

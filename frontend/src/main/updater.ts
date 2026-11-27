@@ -47,6 +47,7 @@ import type { PrepareInstallResult, UpdateState } from '../shared/updates'
 import { BUILD } from './buildInfo'
 import { distrustIn } from './distrustedRoots'
 import { withSystemProxy } from './networkProxy'
+import { readReleaseNotes } from './releaseNotes'
 import { acceptedChecks, confirmChecked, guardUpdateSignature, SIGNATURE_UNCHECKED } from './updateSignature'
 
 export type { PrepareInstallResult, UpdateState }
@@ -64,8 +65,6 @@ function unavailableReason(): string | null {
   if (BUILD.kind === 'dev') return DEV_BUILD
   return null
 }
-/** Release notes are shown as plain text on the About page; a long changelog is cut. */
-const MAX_NOTES_CHARS = 2000
 /** Written just before an install starts, read on the next start (V-3). In `userData`. */
 const MARKER_FILE = 'pending-update.json'
 /** What electron-updater would otherwise create in `userData` and send as `x-user-staging-id` (V-1). */
@@ -192,30 +191,6 @@ function setState(next: UpdateState): UpdateState {
 
 /** The version the renderer shows, from the app itself (never from the feed). */
 const current = (): string => getUpdateState().current
-
-/** GitHub's release notes arrive as HTML (a string, or one entry per version). Plain text out. */
-export function plainNotes(raw: unknown): string | undefined {
-  const parts = Array.isArray(raw)
-    ? raw.map((r) => (r && typeof r === 'object' ? String((r as { note?: unknown }).note ?? '') : ''))
-    : typeof raw === 'string'
-      ? [raw]
-      : []
-  const text = parts
-    .join('\n\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|li|h[1-6])>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
-  if (!text) return undefined
-  return text.length > MAX_NOTES_CHARS ? `${text.slice(0, MAX_NOTES_CHARS).trimEnd()}…` : text
-}
 
 /** One readable sentence for whatever the updater threw. */
 export function describeUpdateError(err: unknown, during: 'check' | 'download' | 'install'): string {
@@ -374,7 +349,7 @@ async function loadUpdater(): Promise<AutoUpdater> {
       phase: 'available',
       current: current(),
       version: info.version,
-      notes: plainNotes(info.releaseNotes),
+      notes: readReleaseNotes(info.releaseNotes),
       ...(installKind() === 'manual' ? { manualOnly: true } : {})
     })
   )
@@ -443,7 +418,7 @@ export async function checkForUpdates(): Promise<UpdateState> {
           phase: 'available',
           current: current(),
           version: info.version,
-          notes: plainNotes(info.releaseNotes),
+          notes: readReleaseNotes(info.releaseNotes),
           ...(installKind() === 'manual' ? { manualOnly: true } : {})
         })
       else if (result) setState({ phase: 'up-to-date', current: current(), checkedAt: Date.now() })
