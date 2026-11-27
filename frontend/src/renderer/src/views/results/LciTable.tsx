@@ -8,6 +8,7 @@ import { fmtSig, useSettings } from '../../lib/settings'
 import { useSortState } from '../../lib/useSortState'
 import { ChevronIcon, ExcelIcon } from '../../components/icons'
 import { filterLciRows, lciExport, lciRows, sortLciRows, type LciSortKey } from './lciRows'
+import { FilterToggle, LciFilterRow, useLciFilters } from './LciColumnFilters'
 import type { Matrix } from './types'
 
 /** Rows drawn until "Show all" is pressed. A system on ecoinvent exchanges a few thousand flows, and drawing
@@ -20,7 +21,8 @@ export const LCI_ROWS_SHOWN = 200
  * elementary flow, one amount column per subject — the baseline and each scenario side by side.
  *
  * The amounts come from the same run as the scores above (see `useCompareRun`). Every header sorts with the
- * click cycle of the score table (ascending, descending, back to name order); a double-click copies an amount
+ * click cycle of the score table (ascending, descending, back to name order); the flow and the compartment
+ * column each have a filter behind a funnel in their header (`LciColumnFilters`); a double-click copies an amount
  * unrounded, as in the score table; the export writes the rows as they are shown, filtered and sorted — all of
  * them, also those past the first `LCI_ROWS_SHOWN` drawn.
  */
@@ -33,11 +35,14 @@ export function LciTable({
 }): JSX.Element | null {
   // Folded by default: a few thousand rows are the reference beneath the results, not the first thing to read.
   const [open, setOpen] = usePersisted('prism.res.lciOpen', false)
-  const [query, setQuery] = useState('')
   const { sort, sortClick, sortMark } = useSortState<LciSortKey>()
   const { round } = useSettings()
   const rows = useMemo(() => lciRows(matrix), [matrix])
-  const shown = useMemo(() => sortLciRows(filterLciRows(rows, query), sort), [rows, query, sort])
+  const filters = useLciFilters(rows)
+  const shown = useMemo(
+    () => sortLciRows(filterLciRows(rows, filters.filter), sort),
+    [rows, filters.filter, sort]
+  )
   // "Show all" holds for the run it was pressed on; the next run starts short again.
   const [allFor, setAllFor] = useState<Matrix | null>(null)
   const drawn = allFor === matrix ? shown : shown.slice(0, LCI_ROWS_SHOWN)
@@ -61,14 +66,32 @@ export function LciTable({
   const ariaSort = (key: LciSortKey): 'ascending' | 'descending' | undefined =>
     sort?.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined
   // A real button in the header, so the sort is reachable by Tab and Enter as well as by the mouse.
-  const head = (key: LciSortKey, label: string, title: string, className?: string): JSX.Element => (
-    <th key={key} aria-sort={ariaSort(key)} className={className}>
+  const head = (
+    key: LciSortKey,
+    label: string,
+    title: string,
+    className?: string,
+    filter?: JSX.Element
+  ): JSX.Element => {
+    const sortButton = (
       <button type="button" className="th-sort-btn" title={title} onClick={() => sortClick(key)}>
         {label}
         {sortMark(key)}
       </button>
-    </th>
-  )
+    )
+    return (
+      <th key={key} aria-sort={ariaSort(key)} className={className}>
+        {filter ? (
+          <span className="lci-th">
+            {sortButton}
+            {filter}
+          </span>
+        ) : (
+          sortButton
+        )}
+      </th>
+    )
+  }
 
   return (
     <section className={`res-lci${open ? ' open' : ''}`}>
@@ -84,12 +107,6 @@ export function LciTable({
       {open ? (
         <div className="res-lci-body">
           <div className="res-lci-tools">
-            <input
-              className="flowpick-search"
-              placeholder="Filter flows…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
             <span className="res-lci-count">
               {shown.length} of {rows.length}
             </span>
@@ -107,13 +124,26 @@ export function LciTable({
               <table className="lci-table" aria-label="Life cycle inventory">
                 <thead>
                   <tr>
-                    {head('flow', 'Flow', 'Sort by flow')}
-                    {head('compartment', 'Compartment', 'Sort by compartment')}
+                    {head(
+                      'flow',
+                      'Flow',
+                      'Sort by flow',
+                      undefined,
+                      <FilterToggle label="Filter by flow" f={filters.flow} />
+                    )}
+                    {head(
+                      'compartment',
+                      'Compartment',
+                      'Sort by compartment',
+                      undefined,
+                      <FilterToggle label="Filter by compartment" f={filters.compartment} />
+                    )}
                     {head('unit', 'Unit', 'Sort by unit')}
                     {matrix.subjects.map((s, j) =>
                       head(`s:${j}`, s.label, `${s.label} — click to sort by this amount`, 'lci-amt-th')
                     )}
                   </tr>
+                  <LciFilterRow filters={filters} columns={3 + matrix.subjects.length} />
                 </thead>
                 <tbody>
                   {drawn.map((r) => (
@@ -135,6 +165,13 @@ export function LciTable({
                       ))}
                     </tr>
                   ))}
+                  {shown.length ? null : (
+                    <tr>
+                      <td className="lci-none" colSpan={3 + matrix.subjects.length}>
+                        No flow matches the filters.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
               {drawn.length < shown.length ? (

@@ -40,11 +40,48 @@ export function lciRows(matrix: Matrix): LciRow[] {
   return rows.sort((a, b) => byText(a.flow, b.flow) || byText(compartment(a), compartment(b)))
 }
 
-/** The rows whose flow name or compartment holds `query`, ignoring case. */
-export function filterLciRows(rows: LciRow[], query: string): LciRow[] {
-  const q = query.trim().toLowerCase()
-  if (!q) return rows
-  return rows.filter((r) => r.flow.toLowerCase().includes(q) || compartment(r).toLowerCase().includes(q))
+/** What the filters of the first two columns hold: part of a flow name, and a compartment as its path of
+ *  categories (`['air']`, `['air', 'urban air close to ground']`), or none. */
+export interface LciFilter {
+  flow: string
+  compartment: string[] | null
+}
+
+/** A row lies in a compartment when its categories begin with that path: `['air']` holds every air
+ *  emission, whatever its sub-compartment. */
+const liesIn = (r: LciRow, path: string[]): boolean => path.every((c, i) => r.categories[i] === c)
+
+/** The rows whose flow name holds the text, ignoring case, and that lie in the compartment. */
+export function filterLciRows(rows: LciRow[], filter: LciFilter): LciRow[] {
+  const q = filter.flow.trim().toLowerCase()
+  const path = filter.compartment
+  if (!q && !path) return rows
+  return rows.filter((r) => (!q || r.flow.toLowerCase().includes(q)) && (!path || liesIn(r, path)))
+}
+
+/** A compartment path as one string, for a select's value; the separator is a control character no
+ *  category name holds. */
+export const compartmentKey = (path: string[]): string => path.join('\u001f')
+
+const byPath = (a: string[], b: string[]): number => {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const c = byText(a[i], b[i])
+    if (c) return c
+  }
+  return a.length - b.length
+}
+
+/** The compartments the compartment filter offers: every one a row lies in, and every one above it, so
+ *  "air" is there to choose although each air flow names a sub-compartment. In name order, each compartment
+ *  right before its own sub-compartments. */
+export function compartmentPaths(rows: LciRow[]): string[][] {
+  const seen = new Map<string, string[]>()
+  for (const r of rows)
+    for (let depth = 1; depth <= r.categories.length; depth++) {
+      const path = r.categories.slice(0, depth)
+      seen.set(compartmentKey(path), path)
+    }
+  return [...seen.values()].sort(byPath)
 }
 
 /** The rows ordered by one column, or as they came when there is no sort. Text compares by locale and ignores

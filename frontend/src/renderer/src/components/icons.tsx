@@ -253,6 +253,15 @@ export function SortIcon(): JSX.Element {
   )
 }
 
+/** Funnel (Feather "filter"): a column's filter, beside its header. */
+export function FilterIcon(): JSX.Element {
+  return (
+    <svg {...svgProps} width={12} height={12}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  )
+}
+
 /** Maximize/enlarge icon: opens a chart in an overlay at full size. */
 /** Zoom in / out. Bare plus and minus, matching the canvas's own zoom controls rather than a magnifier —
  *  the two sit next to each other in the app and should read as the same control. */

@@ -418,13 +418,14 @@
 .res-lci-head .s { margin-left: auto; font-size: var(--fs-sec); color: var(--faint); }
 .res-lci-body { padding: 0 14px 12px; }
 .res-lci-tools { display: flex; align-items: center; gap: 10px; margin: 2px 0 10px; }
-.res-lci-tools .flowpick-search { max-width: 280px; margin-bottom: 0; }
 .res-lci-count { color: var(--muted); font-size: var(--fs-sec); white-space: nowrap; }
 .res-lci-export { margin-left: auto; }
 .res-lci-scroll { overflow: auto; max-height: min(70vh, 720px); border: 1px solid var(--border); border-radius: 8px; }
 .lci-table { border-collapse: collapse; width: 100%; font-size: var(--fs-sec); }
 .lci-table th, .lci-table td { padding: 5px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.lci-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-3); color: var(--navy); vertical-align: bottom; }
+/* The whole head stays in sight, the filter row under the titles included. */
+.lci-table thead { position: sticky; top: 0; z-index: 1; }
+.lci-table thead th { background: var(--surface-3); color: var(--navy); vertical-align: bottom; }
 .lci-table th.lci-amt-th { text-align: right; white-space: normal; max-width: 160px; overflow-wrap: break-word; }
 .lci-table .th-sort-btn { all: unset; cursor: pointer; text-align: inherit; }
 .lci-table .th-sort-btn:hover { color: var(--green-ink); }
@@ -483,3 +484,16 @@
  *  closing the list of the pairs that were split. */
 .why-ask { margin: 8px 0 0; font-size: var(--fs-sec); color: var(--faint); }
 .why .why-ask { margin-top: 6px; }
+/* The LCI table's column filters: a funnel beside the Flow and Compartment titles, and their fields in a second
+ *  header row while open. A funnel whose filter holds a value stays marked. */
+.lci-table .lci-th { display: inline-flex; align-items: center; gap: 6px; }
+.lci-table .lci-filter-btn { all: unset; display: inline-flex; align-items: center; padding: 3px; border-radius: 4px;
+  color: var(--faint); cursor: pointer; }
+.lci-table .lci-filter-btn:hover, .lci-table .lci-filter-btn.open { color: var(--green-ink); }
+.lci-table .lci-filter-btn.active { color: var(--green-ink); background: var(--green-soft); }
+.lci-table .lci-filter-btn:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.lci-table .lci-filter-row td { background: var(--surface-3); padding-top: 0; padding-bottom: 6px; }
+.lci-table .lci-filter-field { width: 100%; min-width: 160px; box-sizing: border-box; height: 28px; padding: 0 8px;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+.lci-table .lci-filter-field:focus { outline: none; border-color: var(--green); }
+.lci-table td.lci-none { color: var(--muted); padding: 10px; }

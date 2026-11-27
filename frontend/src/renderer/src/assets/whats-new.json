@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-27",
+    "title": "Filter the inventory by flow and compartment",
+    "details": "In the life cycle inventory under the Results charts, the funnel beside Flow opens a search field and the one beside Compartment a list of compartments: choose air for every air emission, or one sub-compartment such as urban air close to ground. Both filters combine, a second click on a funnel clears it, and Export LCI writes the rows they leave."
+  },
+  {
+    "date": "2026-11-27",
     "title": "Jump between parameters that use each other",
     "details": "On the Parameters page, a parameter whose formula uses another one now appears under \"Used by\" as a link with the Parameters icon, like the processes beside it. Click it to bring that parameter into view: its group unfolds, a search that hides it is cleared, and its row stays highlighted until you click somewhere else."
   },

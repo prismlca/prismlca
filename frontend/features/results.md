@@ -25,8 +25,9 @@ subject and one indicator, broken down), and "Sensitivity analysis" (tornado and
 - "Save charts" (PNG files) and "Export Excel" (a "Results" sheet, and the inventory as a second sheet "LCI").
 - "Life cycle inventory (LCI)", folded at the foot of the page after a calculation: one row per elementary
   flow (flow, compartment, unit), one amount column per subject — the baseline and each scenario side by
-  side. A filter, a click on a header sorts, a double-click copies an amount, "Export LCI" writes the rows as
-  shown.
+  side. A funnel beside "Flow" opens a search field for the flow name, one beside "Compartment" a list of the
+  compartments (a compartment holds its sub-compartments); a click on a header sorts, a double-click copies an
+  amount, "Export LCI" writes the rows as shown.
 - Decomposition tree: method family and indicator, cutoff, depth, group by tag; an SVG tree with zoom,
   "Expand all" / "Collapse all", PNG export; an elementary-flows panel with Excel export.
 - Sensitivity analysis: a tornado over the model's parameters and a curve for one parameter, each with
@@ -68,6 +69,16 @@ node scripts/control-prism.mjs snapshot --target "role=table:Life cycle inventor
 Its rows are named by flow, compartment, unit and one amount per subject, so an amount can be checked the
 same way (`wait visible "role=row:/^Carbon dioxide, fossil air/"`).
 
+Its filters open from the funnels in the header:
+
+```sh
+node scripts/control-prism.mjs click "role=button:Filter by compartment"
+node scripts/control-prism.mjs select "role=combobox:Compartment filter" "air"
+node scripts/control-prism.mjs click "role=button:Filter by flow"
+node scripts/control-prism.mjs type "role=textbox:Flow filter" "carbon dioxide"
+node scripts/control-prism.mjs wait text "css=.res-lci-count" "/^1 of /"
+```
+
 What makes the difference needs a scenario and its baseline (or a copy and its original) among the subjects.
 After the recipe in scenarios.md (the scenario `heavy`, which doubles `mass`, calculated beside the
 baseline):
@@ -92,9 +103,13 @@ node scripts/control-prism.mjs click "role=dialog:heavy vs baseline — climate 
 - `"role=button:Save charts"` and `"role=button:Export Excel"` are disabled until there is a result.
 - LCI table: the header toggles with `"role=button:/^Life cycle inventory/"` (its name ends with the flow
   count); the column heads are buttons named by the column — `"role=button:Flow"`, `"role=button:Unit"`, or
-  a subject's label — and sort on each click (ascending, descending, back to name order); the filter is
-  `"placeholder=Filter flows…"`, the export `"role=button:Export LCI"`. Only the first 200 rows of the filtered
-  and sorted list are drawn; `"role=button:/^Show all/"` draws the rest (the export writes them all anyway).
+  a subject's label — and sort on each click (ascending, descending, back to name order). The filters are behind
+  `"role=button:Filter by flow"` and `"role=button:Filter by compartment"` (`aria-pressed` says whether open; a
+  second click closes and clears it); open, they are `"role=textbox:Flow filter"` (`"placeholder=Filter flows…"`)
+  and `"role=combobox:Compartment filter"`, whose options are the compartments, each followed by its
+  sub-compartments and written as in the column (`select "role=combobox:Compartment filter" "air"`, or a
+  sub-compartment such as air / urban air close to ground). The export is `"role=button:Export LCI"`. Only the first 200 rows of the
+  filtered and sorted list are drawn; `"role=button:/^Show all/"` draws the rest (the export writes them all anyway).
 - Decomposition tree: the subjects are radios, one per process of this model on its list (it starts
   with the model's first reference process; "+ Add from this model" adds others);
   `"role=button:/^Impact category/"` opens the group with `"role=combobox:Method family"` and
