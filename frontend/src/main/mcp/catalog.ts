@@ -24,6 +24,10 @@ export const MCP_EXCLUDED_TOOLS: ReadonlySet<string> = new Set([
   'plan'
 ])
 
+// research_bom's `known_parts` — weighing a list the chat already has, with no researcher running — stays out
+// with the tool, and so does the prompt's sentence asking the chat to weigh its own figures: a client researches
+// and records its findings with its own means, and the research log is the in-app chat's record of what it looked up.
+
 // The chat's sentence on the order of the calls in one reply (ai/systemPrompt.ts `CALL_ORDER_RULE`)
 // reaches the orientation not at all: it describes the chat's loop, which runs consecutive reads side by
 // side. This server runs a session's calls one after another (sessions.ts), and how a client's own harness

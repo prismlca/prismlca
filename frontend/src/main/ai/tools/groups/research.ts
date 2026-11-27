@@ -4,10 +4,12 @@
 // tools.test.ts scans spec text against implementation names.
 
 import type { Tool } from '../context'
-import { bool, num, obj, str, strArr } from '../schema'
+import { bool, num, obj, objArr, str, strArr } from '../schema'
 import { RESEARCH_CAP_PHRASE, S, batchResult, runItem } from '../format'
 import type { BomResult } from '../../researchBom'
 import { bomLogEntry } from './bomLogEntry'
+import { knownPartsArg } from '../../bomKnownParts'
+import { chatRecord, onChatRecord } from '../../bomChatRecord'
 
 /**
  * The `recipe` argument read, or the refusal that names how it arrived. A weak model JSON-encodes nested values into
@@ -55,7 +57,7 @@ export const researchTools: Tool[] = [
       function: {
         name: 'research_bom',
         description:
-          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, retailer, article number or EAN, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Naming the components you want makes it much more accurate; do not list the total weight as a component — every researcher reports the whole product\'s mass when a source states it ("totals_found"). HAVE A DOCUMENT THAT LISTS THE PARTS (manual, exploded view, spare-parts list, datasheet, EPD)? Take "components" from its list — open it yourself first if you have not read it — at most 8, the small parts grouped (e.g. "screws, nuts and washers"), and put its address into "context", named as the document it is: every researcher opens it first. A MIXTURE in the product (soap, detergent, paint, food, concrete, a rubber compound) goes under "recipe", never its ingredients under "components": researched one by one, ingredients come from different recipes on different bases and do not add up. READ "summary" FIRST: what was summed, against which total, and what is still open. "balance_ok" is true/false/null and **null means it could not be checked** — a component has no mass, a research leg failed, entries overlap, the figures rest on different versions of the product, or no usable total exists; the note says which. "mass_kg" is always the mass of all pieces of an entry together ("count" says how many); "packaging" entries ("sales" or "transport") are kept out of "sum_kg". "recipe" in the result says whether the mixture\'s lines close against the total its source states ("closes", "gap_pct", "gap_kg"), which known ingredients it lacks ("missing_ingredients"), and whether it is the product\'s own recipe or a frame formulation; its ingredients stand in "items" with "group": "recipe" once a mass is known, and a recipe that does not close keeps "balance_ok" null. "requests" gives each requested component\'s status, "unresolved" names every open one with its reason, "residual_kg" is the total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. "versions" appears when the sources showed more than one version of the product (another EAN, board thickness, weight): find out which one the user means before you build. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text. Items may carry "alternatives": other figures the research found for the same part (another variant, another source) — never summed; the entry\'s own figure is the one counted, and when the user\'s product is one of the alternatives, book that figure instead.',
+          'Research a product\'s BILL OF MATERIALS on the web (components, materials, masses in kg, with sources) — for when the user describes a product but has no composition data. Runs as an isolated research sub-agent: web search only, it does NOT read or change the model, so afterwards YOU build the processes/exchanges from the result (and put the sources in the comments). IMPORTANT: the sub-agent shares NONE of this conversation — it only sees what you pass, so put every known specific (size, volume, mass, market/region, retailer, article number or EAN, standard, year, intended use, anything the user stated) into "context", or the research will be about a generic product instead of theirs. Naming the components you want makes it much more accurate; do not list the total weight as a component — every researcher reports the whole product\'s mass when a source states it ("totals_found"). HAVE A DOCUMENT THAT LISTS THE PARTS (manual, exploded view, spare-parts list, datasheet, EPD)? Take "components" from its list — open it yourself first if you have not read it — at most 8, the small parts grouped (e.g. "screws, nuts and washers"), and put its address into "context", named as the document it is: every researcher opens it first. A MIXTURE in the product (soap, detergent, paint, food, concrete, a rubber compound) goes under "recipe", never its ingredients under "components": researched one by one, ingredients come from different recipes on different bases and do not add up. A part whose mass you ALREADY HAVE — from a document you opened, your own search, the user, or your own derivation — goes under "known_parts", not "components" (see there). READ "summary" FIRST: what was summed, against which total, and what is still open. "balance_ok" is true/false/null and **null means it could not be checked** — a component has no mass, a research leg failed, entries overlap, the figures rest on different versions of the product, or no usable total exists; the note says which. "mass_kg" is always the mass of all pieces of an entry together ("count" says how many); "packaging" entries ("sales" or "transport") are kept out of "sum_kg". "recipe" in the result says whether the mixture\'s lines close against the total its source states ("closes", "gap_pct", "gap_kg"), which known ingredients it lacks ("missing_ingredients"), and whether it is the product\'s own recipe or a frame formulation; its ingredients stand in "items" with "group": "recipe" once a mass is known, and a recipe that does not close keeps "balance_ok" null. "requests" gives each requested component\'s status, "unresolved" names every open one with its reason, "residual_kg" is the total minus the parts found. Unaccounted mass is a gap to close (research it separately or ask the user), NEVER a residual to hand to whichever part is still unknown — that turns a missing figure into a made-up one. "versions" appears when the sources showed more than one version of the product (another EAN, board thickness, weight): find out which one the user means before you build. Items may carry "mass_range_kg" [min, max] when the sources gave a range — build scenario spreads from that range instead of re-deriving one from the note text. Items may carry "alternatives": other figures the research found for the same part (another variant, another source) — never summed; the entry\'s own figure is the one counted, and when the user\'s product is one of the alternatives, book that figure instead.',
         parameters: obj(
           {
             product: str(
@@ -68,7 +70,34 @@ export const researchTools: Tool[] = [
               "The product's own mass in kg WITHOUT sales packaging — only a figure the user stated or a source gave, never your own estimate (the balance would then check your estimate against itself). Leave it out when unknown: the research looks for it."
             ),
             components: strArr(
-              'Components to research individually (e.g. ["bottle body","cap","label"]). Omit to let the research enumerate them. A mixture\'s ingredients go under "recipe", not here.'
+              'Components to research individually (e.g. ["bottle body","cap","label"]). Omit to let the research enumerate them. A mixture\'s ingredients go under "recipe", not here; a part you already have a mass for goes under "known_parts".'
+            ),
+            known_parts: objArr(
+              'Parts whose mass you ALREADY HAVE — read off a document or page you opened, found by your own web search, stated by the user, or worked out yourself (dimensions × density) — one entry each, with where it came from. They are weighed together with the researched components and recorded in the research log, which the health check, the reviewer and the report read: a figure you found yourself and keep out of here is on no record. A part is either here or under "components", never both. A part you took as the total minus the other parts does NOT go here: leave it out, and "residual_kg" is that figure — weighed as a part, it would only check the total against itself. With known_parts and no components (and no recipe), NOTHING is researched and nothing is billed — the call only weighs your list (against total_mass_kg when given) and records it: use that whenever you put a bill of materials together yourself, and to weigh a list again once you have closed its gaps.',
+              {
+                component: str('The part, named as you would name it under "components".'),
+                material: str('Its material.'),
+                mass_kg: num(
+                  'Mass of ALL pieces of this entry together, in kg. A figure the source gives only as a bound ("< 0.1 kg") goes in as that bound, named so in "note".'
+                ),
+                count: num('How many pieces the entry stands for, when more than one.'),
+                mass_each_kg: num('Mass of one piece, when that is what you have — give "count" with it.'),
+                source_url: str(
+                  'The page or document the figure stands on — or the one with the dimensions you derived it from: an address you opened or a research result named, never one from memory. One the user gave counts as read once you have opened it.'
+                ),
+                stated_by_user: bool(
+                  'true when the user gave this figure (in the chat or in a file they attached): the user is then its source, and no source_url is needed.'
+                ),
+                note: str(
+                  'How you got the figure when you worked it out (e.g. "2 × 1.9 m steel tube 32 × 1.5 mm at 7850 kg/m³"), or where in the document it stands.'
+                ),
+                packaging: str(
+                  '"sales" or "transport" when the entry is packaging — kept out of the parts\' sum.'
+                ),
+                version: str(
+                  'The version of the product the figure belongs to (EAN, article number), when the source names one.'
+                )
+              }
             ),
             recipe: {
               ...obj(
@@ -102,6 +131,18 @@ export const researchTools: Tool[] = [
     },
     surface: 'subagent',
     run: async (a, ctx) => {
+      const known = knownPartsArg(a.known_parts)
+      if (typeof known === 'string') return S({ error: known })
+      const components: string[] | undefined = Array.isArray(a.components)
+        ? a.components.map(String)
+        : undefined
+      const twice = (known ?? [])
+        .map((o) => o.request as string)
+        .filter((n) => components?.some((c) => c.trim().toLowerCase() === n.toLowerCase()))
+      if (twice.length)
+        return S({
+          error: `${twice.map((n) => `"${n}"`).join(', ')} stand${twice.length === 1 ? 's' : ''} under "known_parts" and under "components" — a part you have a mass for is known, one you need researched is a component; send it once.`
+        })
       if (ctx.webSearchAllowed === false) {
         return S({
           error:
@@ -116,12 +157,30 @@ export const researchTools: Tool[] = [
         context: a.context ? String(a.context) : undefined,
         totalMassKg: typeof a.total_mass_kg === 'number' ? a.total_mass_kg : undefined
       }
+      // What a known part's page is held against: this chat's lookups, what its research answers vouch for, and the
+      // verdicts the model's research log holds (bomChatRecord.ts).
+      let log: unknown = []
+      if (known?.length && ctx.activeDb)
+        try {
+          log = await ctx.api(
+            'GET',
+            `/api/v1/provenance/research?database=${encodeURIComponent(ctx.activeDb)}`
+          )
+        } catch {
+          /* without the log, its verdicts are simply not on the record */
+        }
+      const record = known?.length
+        ? chatRecord(ctx.webLookups?.() ?? [], ctx.researchAnswers?.() ?? [], log)
+        : undefined
       const result = (await ctx.research({
         ...call,
-        components: Array.isArray(a.components) ? a.components.map(String) : undefined,
+        components,
         maxComponents: typeof a.max_components === 'number' ? a.max_components : undefined,
         domains: Array.isArray(a.domains) ? a.domains.map(String) : undefined,
-        ...(recipe ? { recipe } : {})
+        ...(recipe ? { recipe } : {}),
+        ...(known?.length && record
+          ? { known, onChatRecord: (url: string) => onChatRecord(record, url) }
+          : {})
       })) as Partial<BomResult>
       // Same provenance log the web research writes: the BOM's sourced masses are exactly the kind of figure a
       // report has to be able to attribute, and the check — also of a call that found no mass at all — is what

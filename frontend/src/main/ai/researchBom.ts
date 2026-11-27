@@ -226,12 +226,19 @@ export async function researchBom(opts: {
   /** Research the recipe of a mixture in one leg of its own (bomRecipe.ts): what it is of, the mass it is scaled
    *  to, the ingredients known. Without components, it is the only leg. */
   recipe?: RecipeRequest
+  /** Parts the caller already has a mass for, one outcome each (bomKnownParts.ts): weighed with the researched ones,
+   *  never researched. With none to research beside them, no leg runs and the call only weighs. */
+  known?: LegOutcome[]
+  /** Whether a known part's page is on the chat's own record — its searches, the user's addresses, the log. */
+  onChatRecord?: (url: string) => boolean | undefined
 }): Promise<BomResult> {
   const cap = Math.max(1, Math.min(opts.maxComponents ?? 8, 8))
   const named = (opts.components ?? []).map((c) => c.trim()).filter(Boolean)
   const components = named.slice(0, cap)
   // Over the limit is named, not dropped: a list cut to eight cannot pass for the product.
   const notResearched = named.slice(cap)
+  const known = opts.known ?? []
+  const knownNames = known.map((o) => o.request as string)
   const domains = normalizeDomains(opts.domains)
   // Every page the engine cited across all legs and passes — the evidence the items can point to.
   const book = new CitationBook()
@@ -315,9 +322,14 @@ export async function researchBom(opts: {
   // ("includes"), and a leg asked for the frame knows the shelves are not its business.
   const siblings = (c: string): string => {
     const others = [...components.filter((o) => o !== c), ...(recipeOf ? [`the recipe of ${recipeOf}`] : [])]
-    return others.length
-      ? `\nResearched separately, by other researchers: ${others.map((o) => `"${o}"`).join(', ')}.`
-      : ''
+    return (
+      (others.length
+        ? `\nResearched separately, by other researchers: ${others.map((o) => `"${o}"`).join(', ')}.`
+        : '') +
+      (knownNames.length
+        ? `\nAlready known, not to be researched: ${knownNames.map((o) => `"${o}"`).join(', ')}.`
+        : '')
+    )
   }
   // The recipe leg runs beside the component legs and outside their follow-up pass, which would ask the ingredients
   // one by one again — the very cut that made a recipe from four sources.
@@ -339,7 +351,7 @@ export async function researchBom(opts: {
           c
         )
       )
-    : recipeOf
+    : recipeOf || known.length
       ? []
       : [
           ask(
@@ -358,18 +370,28 @@ export async function researchBom(opts: {
     Promise.allSettled(legs),
     recipeLeg ? Promise.allSettled([recipeLeg]) : Promise.resolve([])
   ])
-  const outcomes: LegOutcome[] = settled.map((r, i) => ({
-    request: components.length ? components[i] : null,
-    ...(r.status === 'fulfilled'
-      ? { leg: r.value }
-      : { error: r.reason instanceof Error ? r.reason.message : String(r.reason) })
-  }))
+  const outcomes: LegOutcome[] = [
+    ...settled.map((r, i) => ({
+      request: components.length ? components[i] : null,
+      ...(r.status === 'fulfilled'
+        ? { leg: r.value }
+        : { error: r.reason instanceof Error ? r.reason.message : String(r.reason) })
+    })),
+    ...known
+  ]
 
   // A requested part whose researcher found only the whole product's mass is a gap like any other: named, and
   // asked again below for the part alone. Left as a bare whole-product answer it had no entry to follow up.
   for (const o of outcomes) {
     const leg = o.leg
-    if (o.request === null || !leg || leg.items.length || leg.unresolved.length || !leg.product_masses.length)
+    if (
+      o.request === null ||
+      o.known ||
+      !leg ||
+      leg.items.length ||
+      leg.unresolved.length ||
+      !leg.product_masses.length
+    )
       continue
     o.leg = {
       ...leg,
@@ -396,8 +418,9 @@ export async function researchBom(opts: {
   // a coating the follow-up had found, because it spelt the component differently. A gap another leg's page
   // states a figure for goes first: of the three the pass takes, it is the likeliest to land.
   const gaps = outcomes
+    // A known part without a mass is open, but it was given, not asked for: it is never researched here.
     .flatMap((o, i) =>
-      (o.leg?.unresolved ?? []).filter((u) => u.reason !== 'failed').map((u) => ({ o: i, u }))
+      o.known ? [] : (o.leg?.unresolved ?? []).filter((u) => u.reason !== 'failed').map((u) => ({ o: i, u }))
     )
     .sort((a, b) => Number(leadsOf(b).length > 0) - Number(leadsOf(a).length > 0))
   let follow_up: BomResult['follow_up']
@@ -474,12 +497,12 @@ export async function researchBom(opts: {
   const weighed = weighBom(outcomes, {
     totalMassKg: opts.totalMassKg,
     notResearched,
-    itemCap: Math.max(cap * 3, 12),
+    itemCap: Math.max(cap * 3, 12) + known.length,
     ...(recipe ? { recipe } : {})
   })
   // The weighing never reads an address, so the sources are settled after it: a figure left without a page is
   // kept in the sums and named (bomSources.ts).
-  const sourced = settleSources(weighed, book)
+  const sourced = settleSources(weighed, book, opts.onChatRecord)
   const emptyNote =
     weighed.items.length === 0 && !sourced.unresolved.length && !weighed.recipe?.lines.length
       ? 'The research returned no usable figures — ask the user for the composition, or try a more specific product description.'

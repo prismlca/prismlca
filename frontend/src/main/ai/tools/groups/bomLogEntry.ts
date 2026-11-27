@@ -36,7 +36,10 @@ function partFindings(result: Partial<BomResult>): Item[] {
         (typeof i.count === 'number' && i.count > 1 ? ` (${i.count} pieces)` : '')
       const shared = {
         sources: i.source_url ? [String(i.source_url)] : [],
-        ...(!i.source_url ? { unsourced: true } : {}),
+        // A part the user stated has the user as its source; any other figure without a page is marked.
+        ...(!i.source_url && i.origin !== 'user' ? { unsourced: true } : {}),
+        // Who had the figure before the call: the chat itself or the user — absent for what the research found.
+        ...(i.origin ? { origin: i.origin } : {}),
         ...(i.source_url && excerptOf(i.source_url) ? { excerpt: excerptOf(i.source_url) } : {}),
         ...(i.source_class ? { source_class: String(i.source_class) } : {}),
         ...(i.confidence ? { confidence: String(i.confidence) } : {}),

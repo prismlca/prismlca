@@ -45,6 +45,9 @@ MAX_ALTERNATIVES = 4
 #: only works over a closed set.
 SOURCE_CLASSES = {"official", "industry", "media", "community"}
 CONFIDENCES = {"high", "medium", "low"}
+#: Who had a bill-of-materials figure before the call that logged it: the chat itself (a page it opened, its own
+#: search, its own derivation) or the user. Absent: the research found it.
+ORIGINS = {"assistant", "user"}
 
 #: What the research was given besides the question — product, version, market, a given total mass.
 #: The same question asked in two chats can mean two versions of a product; this tells them apart.
@@ -355,6 +358,9 @@ def _clean_finding(raw: object) -> dict | None:
         finding["version"] = version
     if isinstance(raw.get("cited_by_search"), bool):
         finding["cited_by_search"] = raw["cited_by_search"]
+    origin = str(raw.get("origin") or "").strip().lower()
+    if origin in ORIGINS:
+        finding["origin"] = origin
     # A bill-of-materials figure the research counted with no page behind it. Only where no source is kept:
     # a finding that has one is not unsourced, whatever the flag says.
     if raw.get("unsourced") is True and not sources:
@@ -385,7 +391,8 @@ def clean_entry(item: object) -> dict | None:
     and — for bill-of-materials research — the structured figure itself (``component``, ``mass_kg``,
     ``mass_range_kg`` when the sources gave a span rather than one number, ``alternatives_kg`` when they gave
     other figures for the same part) with its derivation (``note``), the product version it belongs to
-    (``version``) and whether no page backs it (``unsourced``, or ``unsourced_kg`` for the share of a merged
+    (``version``), who had it before the call when the research did not find it (``origin``) and whether no page
+    backs it (``unsourced``, or ``unsourced_kg`` for the share of a merged
     mass), which is what lets the health check list the
     researched masses for whoever holds them against the model. The entry may carry the ``context`` the
     research was given and, for a bill-of-materials call, its ``bom_check`` — with a valid check an entry
@@ -476,6 +483,34 @@ def _add_sources(stored: dict, repeat: dict) -> bool:
     return True
 
 
+def _add_backed_verdict(stored: dict, repeat: dict) -> bool:
+    """Mark a stored part's page as backed when a repeat of it brings that page backed by a lookup; True when it did.
+
+    A part weighed with a page nobody had opened is stored with ``cited_by_search: false``; opened since and weighed
+    again, it repeats with the same text and would not be stored again. Only "backed" travels this way, never the
+    other direction: a later chat that has no record of a page says nothing against an earlier lookup.
+    """
+    if repeat.get("cited_by_search") is not True or stored.get("cited_by_search") is not False:
+        return False
+    if not set(repeat.get("sources") or []) & set(stored.get("sources") or []):
+        return False
+    stored["cited_by_search"] = True
+    return True
+
+
+def _add_user_statement(stored: dict, repeat: dict) -> bool:
+    """Mark a stored part as stated by the user when a repeat of it says so; True when it changed.
+
+    The user is then the figure's source, so it is no longer a mass counted without one. What its page says is left
+    as it was: a user confirming a figure does not make the page behind it one that a lookup returned.
+    """
+    if repeat.get("origin") != "user" or stored.get("origin") == "user":
+        return False
+    stored["origin"] = "user"
+    stored.pop("unsourced", None)
+    return True
+
+
 def _restore_evicted(kept: list[dict], repeated: list[tuple[dict, list[dict]]]) -> None:
     """Give a new entry back the repeated findings whose first record the trim just evicted.
 
@@ -511,8 +546,10 @@ class ResearchLogStore(JsonFileStore):
         An entry with a bill-of-materials or a web figure check is appended every time, with only its new
         findings: the check is that call's own result, and a repeat that found the same masses may still have
         settled a part or met another version. A repeated part that brings other figures for it the
-        stored one lacks hands them to the stored one (``_add_alternatives``), and one that brings a page
-        for a part stored without any hands that over too (``_add_sources``).
+        stored one lacks hands them to the stored one (``_add_alternatives``), one that brings a page
+        for a part stored without any hands that over too (``_add_sources``), one the user stated marks the
+        stored part so (``_add_user_statement``), and one whose page a lookup now backs says so
+        (``_add_backed_verdict``).
         """
         with self._lock:
             data = self._load()
@@ -538,6 +575,8 @@ class ResearchLogStore(JsonFileStore):
                         widened |= _add_sources(held, f)
                         widened |= _add_alternatives(held, f)
                         widened |= _add_check(held, f)
+                        widened |= _add_user_statement(held, f)
+                        widened |= _add_backed_verdict(held, f)
                 if not fresh and "bom_check" not in entry and "web_check" not in entry:
                     continue
                 repeated.append((entry, [f for f in entry["findings"] if f not in fresh]))

@@ -1,6 +1,11 @@
 [
   {
     "date": "2026-11-27",
+    "title": "Your own bill-of-materials figures are checked and recorded",
+    "details": "Masses the assistant reads in a datasheet or EPD, works out from dimensions or gets from you now go through the same bill-of-materials check as researched parts and into the research log, each marked as given by the assistant or stated by you. A page counts as a source only once a search returned it or the assistant opened it, and the health check says when one did not."
+  },
+  {
+    "date": "2026-11-27",
     "title": "Web research checks its weak figures",
     "details": "When the assistant researches a question on the web, up to three figures that rest only on press, blogs, forums or a low-confidence source are now checked against other pages, even when an official source stands beside them. Each says whether another source confirms it, gives a different value, refers to something else (net or gross, another variant, region or year) or was not found; the model's research log keeps the check."
   },
