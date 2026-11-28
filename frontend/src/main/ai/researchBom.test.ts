@@ -9,8 +9,9 @@ import type { StreamEvent } from './providers/types'
 vi.mock('./client', async () => (await import('./test/fakeStream')).clientModuleMock())
 chat.alwaysDelta = true
 
-const { researchBom } = await import('./researchBom')
+const { MAX_COMPONENTS, researchBom } = await import('./researchBom')
 const { researchWeb } = await import('./subagent')
+const { researchTools } = await import('./tools/groups/research')
 
 const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.content ?? ''))
 const answer = (o: unknown): { text: string } => ({ text: JSON.stringify(o) })
@@ -144,11 +145,27 @@ describe('researchBom', () => {
 
   it('names the components over the limit instead of dropping them silently', async () => {
     chat.fallbackText = '{"items": [{"component": "x", "mass_kg": 1, "source_url": "https://e.org"}]}'
-    const r = await researchBom({ product: 'x', components: Array.from({ length: 10 }, (_, i) => `c${i}`) })
-    expect(asked()).toHaveLength(8)
-    expect(r.not_researched).toEqual(['c8', 'c9'])
-    expect(r.coverage).toEqual({ requested: 10, with_mass: 8 })
+    const r = await researchBom({ product: 'x', components: Array.from({ length: 14 }, (_, i) => `c${i}`) })
+    expect(MAX_COMPONENTS).toBe(12)
+    expect(asked()).toHaveLength(12)
+    expect(r.not_researched).toEqual(['c12', 'c13'])
+    expect(r.coverage).toEqual({ requested: 14, with_mass: 12 })
     expect(r.balance_ok).toBeNull()
+  })
+
+  it('starts one leg per named component, not one per place under the limit', async () => {
+    chat.fallbackText = '{"items": [{"component": "x", "mass_kg": 1, "source_url": "https://e.org"}]}'
+    const r = await researchBom({ product: 'x', components: ['frame', 'wheel', 'tub'] })
+    expect(asked()).toHaveLength(3)
+    expect(r.not_researched).toBeUndefined()
+  })
+
+  it('tells the chat the same limit the call enforces', () => {
+    // The tool text is written out, not built from the constant: the tool groups stay clear of the research
+    // code's imports. This keeps the two from drifting apart.
+    const spec = researchTools.find((t) => t.spec.function.name === 'research_bom')!.spec.function
+    expect(spec.description).toContain(`at most ${MAX_COMPONENTS}, the small parts grouped`)
+    expect(JSON.stringify(spec.parameters)).toContain(`(default ${MAX_COMPONENTS}, max ${MAX_COMPONENTS})`)
   })
 
   it('counts a part once and keeps its other figures with their pages, telling the leg where they go', async () => {

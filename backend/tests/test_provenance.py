@@ -94,6 +94,16 @@ def test_clean_entry_keeps_the_engine_excerpt_bounded():
     assert "excerpt" not in entry["findings"][1]
 
 
+def test_clean_entry_keeps_every_mass_of_the_largest_bill_of_materials():
+    # 36 researched entries, 24 known parts and a 30-line recipe: everything such a call counts.
+    counted = [{"text": f"part {i}: 1 kg", "sources": [f"https://a.de/{i}"], "mass_kg": 1.0} for i in range(90)]
+    others = [{"text": f"Alternative figure {i}", "sources": [f"https://b.de/{i}"]} for i in range(20)]
+    entry = clean_entry({"question": "Bill of materials: x", "findings": counted + others})
+    assert entry is not None
+    assert [f["text"] for f in entry["findings"][:90]] == [f["text"] for f in counted]
+    assert len(entry["findings"]) == 100
+
+
 #: A bill-of-materials call that found no mass at all, as research.ts logs it (T4/T5 shape).
 BOM_NO_MASS = {
     "question": "Bill of materials: Schwerlastregal Atlas 176 x 90 x 40 cm",
