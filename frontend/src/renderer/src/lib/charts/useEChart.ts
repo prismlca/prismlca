@@ -70,8 +70,16 @@ export function useEChart(
     reg.set(regId, () =>
       chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: cssVar('--surface', '#ffffff') })
     )
-    chart.setOption(build(ref.current))
-    bind?.(chart)
+    try {
+      chart.setOption(build(ref.current))
+      bind?.(chart)
+    } catch (e) {
+      // The throw means React never receives the cleanup below, so the instance is let go here — or it
+      // stays in echarts' registry. The error goes on to the caller's error boundary (chat/ChatChart.tsx).
+      reg.delete(regId)
+      chart.dispose()
+      throw e
+    }
     const unfollow = followBox(ref.current, chart)
     return () => {
       unfollow()

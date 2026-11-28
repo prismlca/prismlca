@@ -49,6 +49,11 @@ function blocks(node: Node, out: Line[]): void {
       out.push({ text: inline(node.children), heading: node.type === 'heading' })
       return
     case 'code':
+      // A chart block is drawn as a chart (chat/ChatChart.tsx); its JSON is nothing a reader sees.
+      // The first word of the language, as the chat reads it (chat/remarkChartBlocks.ts, `isChartLang`).
+      if ((node.lang ?? '').split(/\s+/)[0] === 'echarts') return
+      out.push({ text: node.value, heading: false })
+      return
     case 'html': // react-markdown shows raw HTML as the text it is
       out.push({ text: node.value, heading: false })
       return

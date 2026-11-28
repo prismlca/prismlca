@@ -33,6 +33,9 @@ const DROP_BULLET = new RegExp(
     ...EXCLUDED_NAMES.map((n) => `\\b${n}\\b`),
     // The clickable process chip is rendered by the in-app chat only.
     'prism:process/',
+    // So is a chart from an `echarts` block (CHART_RULE); a client draws its own Markdown, and a block
+    // it cannot draw would reach the user as a page of JSON.
+    'language `echarts`',
     // "Web search is enabled for this chat" — the client's own web access is its own affair.
     '\\*\\*Web search\\*\\* is enabled',
     // The chat's "+" menu of switches; a session's sources are set in the app's settings instead.

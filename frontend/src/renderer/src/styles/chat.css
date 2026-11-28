@@ -637,3 +637,14 @@
 
 /* The run's own clock beside the step clock: quieter than the step's, which is the one that moves. */
 .chat-runbar-run { color: var(--faint); font-variant-numeric: tabular-nums; }
+
+/* A chart the assistant drew from an `echarts` block (chat/ChatChart.tsx). It takes the bubble's full
+   width — a bubble shrinks to its text, and a chart squeezed to a short answer's width is unreadable. */
+.chat-msg.assistant:has(.chat-chart) { width: 92%; }
+.chat-chart { position: relative; margin: .5em 0; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.chat-chart-canvas { width: 100%; }
+/* "Save as PNG" in the top right corner, where the title leaves room for it (chartOption.ts). */
+.chat-chart-save { position: absolute; top: 6px; right: 6px; }
+.chat-chart-note { color: var(--muted); font-size: var(--fs-sec); }
+.chat-chart .chat-chart-note { margin-top: 4px; }
+.chat-chart-pending { margin: .5em 0; padding: 18px 12px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--muted); font-size: var(--fs-sec); text-align: center; }

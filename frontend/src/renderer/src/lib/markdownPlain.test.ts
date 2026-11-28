@@ -30,6 +30,13 @@ describe('plainFromMarkdown', () => {
     expect(plainFromMarkdown('About 75 kg[^1]\n\n[^1]: Source')).toBe('About 75 kg')
   })
 
+  it('leaves out a chart block, which the chat draws as a chart, and keeps other code', () => {
+    expect(plainFromMarkdown('Total 14 kg.\n\n```echarts\n{"series": []}\n```\n\nDone.')).toBe(
+      'Total 14 kg.\nDone.'
+    )
+    expect(plainFromMarkdown('Run:\n\n```sh\nnpm test\n```')).toBe('Run:\nnpm test')
+  })
+
   it('keeps the words of emphasis, links and code', () => {
     expect(plainFromMarkdown('**Rund 75 kg** and __bold__, *it* and _it_, ~~gone~~, ***both***')).toBe(
       'Rund 75 kg and bold, it and it, gone, both'

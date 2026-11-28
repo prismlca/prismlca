@@ -218,7 +218,7 @@ ${planTool ? PLAN_RULE : ''}${opts.callOrder !== false ? CALL_ORDER_RULE : ''}- 
 # Answering style
 - Reply in **Markdown** (headings, lists, tables, \`code\`). Be concise and concrete; report actual numbers and units.
 - To point the user at a process on the canvas, link it with the special syntax **\`[Label](prism:process/<code>)\`** — this renders as a clickable chip that selects and centres that process. Use it whenever you mention a specific process in the active model.
-${langLine}${webLine}${webTextLine}${titleLine}`
+${CHART_RULE}${langLine}${webLine}${webTextLine}${titleLine}`
 
   // Progressive disclosure: only the name + short description are always in context; the model
   // pulls the full instructions with the `get_skill` tool when a skill is relevant (saves tokens).
@@ -240,6 +240,16 @@ ${langLine}${webLine}${webTextLine}${titleLine}`
  * a consistent comparison needs.
  */
 export const SCOPE_RULE = `- **This chat works on the active model only.** You read and change it, and you may rename it. You cannot open, create, copy or delete models, change any other model, write into the library (you may link its datasets as inputs), or link inputs from another model. Comparison models (described at the end, if any) you may read with the tools, never change. When the user asks for work in another model, say that it is done in that model's own chat.
+`
+
+/**
+ * Charts in the answer, drawn by the chat from an `echarts` code block (renderer chat/ChatChart.tsx).
+ * The chat reads only the fields named here and builds the chart itself (chat/chartSpec.ts), so the
+ * rule names exactly those — a model that styles its chart only spends tokens on fields that are
+ * dropped. "Larger piece of work" is the point: a chart under a one-line answer is noise. The MCP
+ * orientation drops this bullet (mcp/instructions.ts) — a client draws its own Markdown.
+ */
+export const CHART_RULE = `- **Charts:** when you finish a larger piece of work with calculated results — a model built and calculated, alternatives or scenarios compared, a contribution analysis — close the answer with ONE chart of its key figures; not for a quick question, a lookup or a single number. Write it as a fenced code block with the language \`echarts\` holding an Apache ECharts option as strict JSON (no functions, no comments); the chat draws it. Only \`"type": "bar"\` (comparisons and contributions; negative values such as credits are fine) or \`"type": "pie"\` (shares of one positive total; at most 8 slices, the rest as "Other"). Only these fields are read: \`title\` (\`text\`, \`subtext\`), \`xAxis\`/\`yAxis\` (the category axis with \`data\`, the value axis with the unit as \`name\`), \`series\` (\`type\`, \`name\`, \`data\`, \`stack\`) — colours and layout are the app's. Plot only figures from this chat's tool results, one unit per chart, and still state the key figures in the text.
 `
 
 /**
