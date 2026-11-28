@@ -1,11 +1,15 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ToolCtx } from '../context'
 import type { BomItem, BomLeg } from '../../bomAnswer'
 import { weighBom } from '../../bomBalance'
 import { parseRecipeAnswer } from '../../bomRecipe'
-import { weighRecipe } from '../../recipeBalance'
+import { RECIPE_LINE_CAP, weighRecipe } from '../../recipeBalance'
 import { bomLogEntry } from './bomLogEntry'
 import { researchTools } from './research'
+import { MAX_COMPONENTS, itemCapFor } from '../../researchBom'
+import { MAX_KNOWN_PARTS } from '../../bomKnownParts'
 
 const leg = (l: Partial<BomLeg>): BomLeg => ({
   items: [],
@@ -150,6 +154,20 @@ describe('the research log entry of a bill-of-materials call', () => {
     const { posts, out } = await run({ error: 'no provider' })
     expect(posts).toEqual([])
     expect(JSON.parse(out as string).error).toBe('no provider')
+  })
+})
+
+describe('the research log keeps what the largest call counts', () => {
+  it('has room for every part entry and every recipe line, before the other figures', () => {
+    // The backend cuts an entry's findings at MAX_FINDINGS; a counted mass cut there would be missing where the
+    // health check, the review and the report look for it.
+    const py = readFileSync(
+      join(__dirname, '../../../../../../backend/src/prism_lca/engine/research_log.py'),
+      'utf8'
+    )
+    const backendCap = Number(/^MAX_FINDINGS = (\d+)$/m.exec(py)?.[1])
+    expect(backendCap).toBeGreaterThan(0)
+    expect(itemCapFor(MAX_COMPONENTS, MAX_KNOWN_PARTS) + RECIPE_LINE_CAP).toBeLessThanOrEqual(backendCap)
   })
 })
 

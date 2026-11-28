@@ -38,6 +38,16 @@ import {
   type CostSink
 } from './subagent'
 
+/**
+ * Components one call researches, each by a leg of its own: a call that names fewer starts fewer legs, so the
+ * ceiling only bounds the largest calls — a parts list of a dozen assemblies, the small parts grouped.
+ */
+export const MAX_COMPONENTS = 12
+
+/** Part entries a call keeps: a researched component may come back as a few entries (a set split into its pieces),
+ *  each known part is one. The research log keeps every one of them (research_log.MAX_FINDINGS). */
+export const itemCapFor = (components: number, known: number): number => Math.max(components * 3, 12) + known
+
 const BOM_SYSTEM = `You research bills of materials for life-cycle assessment.
 Answer with ONE JSON object ONLY — no prose, no code fence:
 {"items": [{"component": string, "material": string, "mass_kg": number | null, "count": integer,
@@ -232,10 +242,10 @@ export async function researchBom(opts: {
   /** Whether a known part's page is on the chat's own record — its searches, the user's addresses, the log. */
   onChatRecord?: (url: string) => boolean | undefined
 }): Promise<BomResult> {
-  const cap = Math.max(1, Math.min(opts.maxComponents ?? 8, 8))
+  const cap = Math.max(1, Math.min(opts.maxComponents ?? MAX_COMPONENTS, MAX_COMPONENTS))
   const named = (opts.components ?? []).map((c) => c.trim()).filter(Boolean)
   const components = named.slice(0, cap)
-  // Over the limit is named, not dropped: a list cut to eight cannot pass for the product.
+  // Over the limit is named, not dropped: a list cut to the limit cannot pass for the product.
   const notResearched = named.slice(cap)
   const known = opts.known ?? []
   const knownNames = known.map((o) => o.request as string)
@@ -497,7 +507,7 @@ export async function researchBom(opts: {
   const weighed = weighBom(outcomes, {
     totalMassKg: opts.totalMassKg,
     notResearched,
-    itemCap: Math.max(cap * 3, 12) + known.length,
+    itemCap: itemCapFor(cap, known.length),
     ...(recipe ? { recipe } : {})
   })
   // The weighing never reads an address, so the sources are settled after it: a figure left without a page is

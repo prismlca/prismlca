@@ -32,9 +32,13 @@ from prism_lca.engine._store import JsonFileStore, now_z
 #: Entries per model. Beyond this the oldest go first — a model researched in waves keeps the
 #: recent evidence, and 80 questions is far past anything a study legitimately needs.
 MAX_ENTRIES = 80
-#: Findings per entry / sources per finding. The tools already condense; these only stop abuse. A
-#: bill-of-materials call can bring eight parts and a recipe of up to thirty ingredients.
-MAX_FINDINGS = 40
+#: Findings per entry / sources per finding. The tools already condense; these only stop abuse. Every
+#: mass a bill-of-materials call counts has to fit, or it is missing where the health check, the review
+#: and the report look for it: up to three entries for each of twelve components plus 24 known parts
+#: (60) and a recipe of up to thirty lines (90), with ten to spare for substances a trade form adds
+#: beyond its own line. The other figures found for a part come last and are what a cut takes first.
+#: bomLogEntry.test.ts holds the frontend's limits against this figure.
+MAX_FINDINGS = 100
 MAX_SOURCES = 5
 #: Other figures kept per bill-of-materials part — as many as the research leg may give.
 MAX_ALTERNATIVES = 4

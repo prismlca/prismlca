@@ -51,7 +51,7 @@ _BOM_TEXT = re.compile(r"^(.+?):\s*([0-9]+(?:\.[0-9]+)?)\s*kg\s*$")
 #: unit conversion costs (200 g against 0.2 kg), never a neighbouring mass.
 _SAME_VALUE = 1e-3
 
-#: Rows one entry prints. A model's research is a handful of calls of two to eight parts; beyond this the
+#: Rows one entry prints. A model's research is a handful of calls of two to twelve parts; beyond this the
 #: oldest rows are counted, not printed, and the entry says so.
 MAX_ROWS = 60
 #: Same-valued parameters one row names.
