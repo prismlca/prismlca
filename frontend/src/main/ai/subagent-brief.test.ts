@@ -18,7 +18,7 @@ const asked = (): string[] => chat.seen.map((c) => String(c.messages.at(-1)?.con
 const legs = (): Array<{ system: string; reasoningEffort?: string }> =>
   chat.seen.map((c) => ({ system: String(c.messages[0]?.content ?? ''), reasoningEffort: c.reasoningEffort }))
 
-const { researchBom } = await import('./researchBom')
+const { MAX_COMPONENTS, researchBom } = await import('./researchBom')
 const { researchWeb } = await import('./subagent')
 const { setActiveProvider } = await import('./providers/state')
 const { WEB_TEXT_RULE_LEG } = await import('./webContent')
@@ -70,7 +70,7 @@ describe('researchBom brief', () => {
 
     chat.seen.length = 0
     await researchBom({ product: 'x', components: Array.from({ length: 20 }, (_, i) => `c${i}`) })
-    expect(asked().length).toBeLessThanOrEqual(8) // hard cap keeps the cost bounded
+    expect(asked().length).toBeLessThanOrEqual(MAX_COMPONENTS) // hard cap keeps the cost bounded
   })
 
   it('reports a failed mass balance rather than hiding it', async () => {
