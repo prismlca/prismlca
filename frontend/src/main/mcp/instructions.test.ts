@@ -53,6 +53,8 @@ describe('buildOrientation', () => {
     // prompt writes tool names in backticks anyway — so a tool is "named" when it stands alone.
     for (const name of MCP_EXCLUDED_TOOLS) expect(text, name).not.toMatch(new RegExp(`\\b${name}\\b`))
     expect(text).not.toContain('prism:process/')
+    // Charts from an `echarts` block are drawn by the chat; a client would show the user the JSON.
+    expect(text).not.toContain('echarts')
     // The chat's "+" menu of switches is the chat's; an external session has none.
     expect(text).not.toContain('left of the chat input')
     // How the chat's loop runs several calls of one reply is the chat's too: this server runs them in turn.

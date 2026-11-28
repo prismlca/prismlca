@@ -1,5 +1,6 @@
-import { memo, useMemo, type ReactNode } from 'react'
+import { memo, useMemo, useRef, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
+import type { PluggableList } from 'unified'
 import remarkGfm from 'remark-gfm'
 import type { AttachmentMeta, ChatMessage } from '../lib/ai'
 import { safeMarkdownUrl } from '../lib/markdownUrl'
@@ -9,6 +10,8 @@ import { attachExtent } from './chatFormat'
 import { splitAskTranscript } from './askTranscript'
 import { AnsweredQuestions } from './AnsweredQuestions'
 import { AnswerSources } from './WebSources'
+import { ChatChart } from './ChatChart'
+import { chartBlockCount, remarkChartBlocks } from './remarkChartBlocks'
 
 /**
  * One finished message of the transcript.
@@ -85,21 +88,45 @@ export const MessageRow = memo(function MessageRow({
 
 /**
  * An assistant's text: Markdown, with the questions it asked and the user's answers drawn as such
- * rather than as the quoted lines they are stored as (chat/askTranscript.ts).
+ * rather than as the quoted lines they are stored as (chat/askTranscript.ts). `live` marks the answer
+ * that is still streaming in, where a chart block may not be finished yet.
  */
 export function AssistantText({
   text,
-  onJump
+  onJump,
+  live = false
 }: {
   text: string
   onJump: (code: string) => void
+  live?: boolean
 }): JSX.Element {
   const segments = useMemo(() => splitAskTranscript(text), [text])
+  // Where each piece's charts start among the answer's: the chart budget is per answer, and every
+  // Markdown piece numbers its own blocks from 0. One piece, the usual case, needs no count, and the
+  // last piece never does — no offset comes after it. A streaming answer publishes up to once a frame,
+  // so a finished piece is counted once and its count kept for as long as its text stays the same.
+  const counted = useRef(new Map<string, number>())
+  const chartOffsets = useMemo(() => {
+    if (segments.length < 2) return [0]
+    const kept = new Map<string, number>()
+    let n = 0
+    const offsets = segments.map((s, i) => {
+      const at = n
+      if (s.kind === 'text' && i < segments.length - 1) {
+        const c = counted.current.get(s.text) ?? chartBlockCount(s.text)
+        kept.set(s.text, c)
+        n += c
+      }
+      return at
+    })
+    counted.current = kept
+    return offsets
+  }, [segments])
   return (
     <>
       {segments.map((s, i) =>
         s.kind === 'text' ? (
-          <Markdown key={i} text={s.text} onJump={onJump} />
+          <Markdown key={i} text={s.text} onJump={onJump} live={live} chartOffset={chartOffsets[i] ?? 0} />
         ) : (
           <AnsweredQuestions key={i} pairs={s.pairs} />
         )
@@ -110,7 +137,8 @@ export function AssistantText({
 
 /** Module-level, so the array identity never changes. It used to be a literal in the JSX below,
  *  which handed `ReactMarkdown` a new array on every single render. */
-const REMARK_PLUGINS = [remarkGfm]
+const REMARK_PLUGINS: PluggableList = [remarkGfm, [remarkChartBlocks, { live: false }]]
+const REMARK_PLUGINS_LIVE: PluggableList = [remarkGfm, [remarkChartBlocks, { live: true }]]
 
 /**
  * Let our own `prism:process/<code>` links through, and filter everything else with `safeMarkdownUrl`.
@@ -160,8 +188,35 @@ function withTrailingArrow(children: ReactNode): ReactNode {
   )
 }
 
+/** The hast element under a `pre`, as far as `pre` below reads it. */
+interface HastCode {
+  type?: string
+  tagName?: string
+  properties?: { className?: unknown; dataOpenFence?: unknown; dataChartIndex?: unknown }
+  children?: { type?: string; value?: string }[]
+}
+
 /**
- * Render assistant Markdown; `prism:process/<code>` links become clickable jumps to the canvas.
+ * The code of an `echarts` block, or null for any other `pre`. The text is read from the hast node
+ * rather than from the rendered children, which react-markdown may already have turned into elements.
+ */
+function echartsSource(
+  node: { children?: unknown[] } | undefined
+): { source: string; open: boolean; index: number } | null {
+  // Only a block the plugin numbered is a chart: one it did not see has no place in the budget.
+  const code = node?.children?.[0] as HastCode | undefined
+  if (code?.type !== 'element' || code.tagName !== 'code') return null
+  const cls = code.properties?.className
+  if (!Array.isArray(cls) || !cls.includes('language-echarts')) return null
+  const source = (code.children ?? []).map((c) => (c.type === 'text' ? (c.value ?? '') : '')).join('')
+  const index = code.properties?.dataChartIndex
+  if (typeof index !== 'number') return null
+  return { source: source.trim(), open: code.properties?.dataOpenFence === true, index }
+}
+
+/**
+ * Render assistant Markdown; `prism:process/<code>` links become clickable jumps to the canvas, and an
+ * `echarts` code block becomes the chart it describes (ChatChart.tsx).
  *
  * Memoised, and that is not a micro-optimisation: react-markdown 10 has NO cache. Its body is
  * `createProcessor(options)` → `parse` → `runSync` → build React elements, all synchronous, on every
@@ -173,15 +228,30 @@ function withTrailingArrow(children: ReactNode): ReactNode {
  */
 export const Markdown = memo(function Markdown({
   text,
-  onJump
+  onJump,
+  live = false,
+  chartOffset = 0
 }: {
   text: string
   onJump: (code: string) => void
+  live?: boolean
+  /** How many chart blocks the answer holds before this piece of it (see `AssistantText`). */
+  chartOffset?: number
 }): JSX.Element {
-  // Rebuilt only when the handler changes, i.e. never — a fresh map here would defeat the memo above
-  // by handing ReactMarkdown new component functions on every render.
+  // Rebuilt only when the handler, `live` or the offset changes, i.e. never for a stored message — a fresh map here
+  // would defeat the memo above by handing ReactMarkdown new component functions on every render, and
+  // with them unmount and redraw every chart.
   const components = useMemo(
     () => ({
+      // While the answer streams, a chart block without its closing fence is a placeholder, not
+      // half a JSON text that grows line by line and then turns into a chart.
+      pre: ({ node, children }: { node?: { children?: unknown[] }; children?: ReactNode }) => {
+        const chart = echartsSource(node)
+        if (!chart) return <pre>{children}</pre>
+        return (
+          <ChatChart source={chart.source} pending={live && chart.open} index={chartOffset + chart.index} />
+        )
+      },
       a: ({ href, children }: { href?: string; children?: ReactNode }) => {
         const h = href ?? ''
         if (h.startsWith('prism:process/')) {
@@ -233,10 +303,14 @@ export const Markdown = memo(function Markdown({
         )
       }
     }),
-    [onJump]
+    [onJump, live, chartOffset]
   )
   return (
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components} urlTransform={urlTransform}>
+    <ReactMarkdown
+      remarkPlugins={live ? REMARK_PLUGINS_LIVE : REMARK_PLUGINS}
+      components={components}
+      urlTransform={urlTransform}
+    >
       {text}
     </ReactMarkdown>
   )

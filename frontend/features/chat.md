@@ -16,6 +16,8 @@ opens into a panel with the conversation, the run's status, plans, question card
 - The chat model picker with reasoning effort; the "+" menu with attachments, web search, databases to
   search, comparison models and skills; voice input.
 - Several chats per model: switch, new, delete; "N other runs" when the assistant works elsewhere.
+- Charts in an answer: an `echarts` block the assistant writes (bar or pie) is drawn as a chart with a
+  "Save chart as PNG" button; a block it cannot draw stays as code under "Not drawn as a chart: …".
 
 ## How to get there
 
@@ -48,6 +50,27 @@ node scripts/control-prism.mjs press Escape
   once the run ended. A stored turn's traces fold into `"role=button:/tool calls/"`.
 - Question cards: `"css=.chat-ask"` with option buttons and `"role=button:Answer"`; a confirmation card is
   `"role=group:Confirmation request"` with "Allow" and "Decline".
+- A chart in an answer is an image named after its title — `"role=img:Footprint"` in the recipe below,
+  "Bar chart" or "Pie chart" for a chart without one —, its button
+  `"role=button:Save chart as PNG"`, which delivers `prism-chart-<title>.png`; a block that was not drawn
+  leaves `"css=.chat-chart-note"` beside its code. While an answer streams, an unfinished chart block
+  shows "Drawing a chart…".
+
+A chart without paying for a run: store an answer in a chat of the open model through the chat API, then
+restart and open the chat as a person does. The store is preparation, not the proof:
+
+```sh
+node scripts/control-prism.mjs read "window.prism.api('POST', '/api/v1/ai/chats/bottle', {title: 'Charts'}).then(r => r.body.id)"
+node scripts/control-prism.mjs read "window.prism.api('POST', '/api/v1/ai/chats/bottle/<id>/messages', {messages: [{role: 'user', content: 'Chart?'}, {role: 'assistant', content: 'Here:\n\n\`\`\`echarts\n{\"title\": {\"text\": \"Footprint\"}, \"xAxis\": {\"data\": [\"A\", \"B\"]}, \"series\": [{\"type\": \"bar\", \"data\": [2, -1]}]}\n\`\`\`'}]}).then(r => r.status)"
+node scripts/control-prism.mjs restart
+node scripts/control-prism.mjs wait app-ready
+node scripts/control-prism.mjs click "role=navigation:Pages >> role=button:Model"
+node scripts/control-prism.mjs select "Active model" bottle
+node scripts/control-prism.mjs click "Message to the assistant"
+node scripts/control-prism.mjs wait visible "role=img:Footprint"
+```
+
+The panel opens only with a key (`launch --keys`); nothing here sends a message.
 
 ## Gotchas
 
@@ -66,3 +89,6 @@ node scripts/control-prism.mjs press Escape
 - "New chat" stores an empty chat at once; "Delete chat" asks for no confirmation.
 - Attaching files opens a native file dialog, and dropping files onto the chat needs a drag in from
   another program: both manual.
+- A chart is drawn only while its box is in or near the transcript's view; far off it is an empty box of
+  the chart's height, with no `role=img`. Scroll it into view before waiting on it. An answer draws at
+  most four charts; further blocks stay code.

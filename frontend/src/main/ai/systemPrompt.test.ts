@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CALL_ORDER_RULE, buildSystemPrompt } from './systemPrompt'
+import { CALL_ORDER_RULE, CHART_RULE, buildSystemPrompt } from './systemPrompt'
 import { PARALLEL_SAFE_TOOLS } from './tools/registry'
 
 const base = { activeDb: 'window-study', skills: [] }
@@ -208,5 +208,13 @@ describe('the order of the calls in one reply', () => {
     }
     expect([...PARALLEL_SAFE_TOOLS].sort()).toEqual(Object.keys(covered).sort())
     for (const words of new Set(Object.values(covered))) expect(CALL_ORDER_RULE).toContain(words)
+  })
+})
+
+describe('the chart rule', () => {
+  it('is in every chat prompt, in the part that stays the same from turn to turn', () => {
+    const p = buildSystemPrompt(base)
+    expect(p).toContain(CHART_RULE.trim())
+    expect(p.indexOf(CHART_RULE.trim())).toBeLessThan(p.indexOf('Every user turn opens'))
   })
 })

@@ -1,5 +1,10 @@
 [
   {
+    "date": "2026-11-28",
+    "title": "Charts in the assistant's answers",
+    "details": "When the assistant finishes a larger task with calculated results, its answer now closes with a chart of the main figures: bars for comparisons and contributions, credits included as negative bars, or a pie for the shares of one total. For a shorter question, ask for one. The icon in the chart's corner saves it as a PNG."
+  },
+  {
     "date": "2026-11-27",
     "title": "Filter the inventory by flow and compartment",
     "details": "In the life cycle inventory under the Results charts, the funnel beside Flow opens a search field and the one beside Compartment a list of compartments: choose air for every air emission, or one sub-compartment such as urban air close to ground. Both filters combine, a second click on a funnel clears it, and Export LCI writes the rows they leave."

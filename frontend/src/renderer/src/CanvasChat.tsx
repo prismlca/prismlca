@@ -1068,7 +1068,7 @@ export default function CanvasChat({
             ) : null}
             {streaming ? (
               <div className="chat-msg assistant">
-                <AssistantText text={streaming} onJump={jump} />
+                <AssistantText text={streaming} onJump={jump} live />
               </div>
             ) : null}
             {ask && ask.chatId === chatId ? (
